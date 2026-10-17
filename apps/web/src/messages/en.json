@@ -1,0 +1,17 @@
+{
+  "common": {
+    "appName": "Syrnike",
+    "language": "Language"
+  },
+  "settings": {
+    "sections": {
+      "language": "Language"
+    },
+    "language": {
+      "title": "Interface language",
+      "description": "Choose the language used across the app",
+      "en": "English",
+      "ru": "Русский"
+    }
+  }
+}

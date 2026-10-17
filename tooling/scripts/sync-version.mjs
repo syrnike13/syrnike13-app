@@ -53,6 +53,7 @@ syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
 syncPackageJson('packages/desktop-native/package.json')
 syncPackageJson('packages/platform/package.json')
+syncPackageJson('packages/ui/package.json')
 syncGeneratedVersionFiles()
 
 console.log(`[version] synced ${version}`)

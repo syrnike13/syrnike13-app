@@ -19,6 +19,7 @@ const apiTypesGatewaySchemaEntry = path.resolve(
   '../../packages/api-types/src/gateway-schema.ts',
 )
 const platformEntry = path.resolve(webRoot, '../../packages/platform/src/index.ts')
+const uiEntry = path.resolve(webRoot, '../../packages/ui/src')
 /** Пакет помечен `type:module`, но `main` указывает на CJS `dist/index.js`. */
 const squircleReactEntry = path.resolve(
   webRoot,
@@ -43,6 +44,7 @@ const config = defineConfig({
     noExternal: [
       '@syrnike13/api-types',
       '@syrnike13/platform',
+      '@syrnike13/ui',
       '@squircle-js/react',
     ],
   },
@@ -52,12 +54,14 @@ const config = defineConfig({
       '@syrnike13/api-types/gateway-schema': apiTypesGatewaySchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,
       '@syrnike13/platform': platformEntry,
+      '@syrnike13/ui': uiEntry,
       '@squircle-js/react': squircleReactEntry,
     },
     tsconfigPaths: true,
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
+    exclude: ['@syrnike13/ui'],
     include: [
       '@remixicon/react',
       'iconoir-react',

@@ -1,0 +1,17 @@
+{
+  "common": {
+    "appName": "Сырники",
+    "language": "Язык"
+  },
+  "settings": {
+    "sections": {
+      "language": "Язык"
+    },
+    "language": {
+      "title": "Язык интерфейса",
+      "description": "На каком языке показывать приложение",
+      "en": "English",
+      "ru": "Русский"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
@@ -39,6 +40,7 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
   sessions: 'Устройства',
   notifications: 'Уведомления',
   appearance: 'Оформление',
+  language: 'Язык',
   hotkeys: 'Горячие клавиши',
   overlay: 'Оверлей',
   desktop: 'Приложение',
@@ -383,6 +385,31 @@ export function SettingsAppearancePanel() {
   )
 }
 
+export function SettingsLanguagePanel() {
+  const { locale, setLocale } = useLocale()
+  const t = useTranslations('settings.language')
+
+  return (
+    <div className="space-y-6">
+      <SettingsBlock title={t('title')} description={t('description')}>
+        <div className="flex flex-wrap gap-2">
+          {(['ru', 'en'] as const).map((value) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={locale === value ? 'default' : 'outline'}
+              onClick={() => setLocale(value)}
+            >
+              {t(value)}
+            </Button>
+          ))}
+        </div>
+      </SettingsBlock>
+    </div>
+  )
+}
+
 export function SettingsNotificationsPanel() {
   return <NotificationSettings layout="settings" />
 }
@@ -401,6 +428,8 @@ export function SettingsPanelContent({ section }: { section: SettingsSection }) 
       return <SettingsNotificationsPanel />
     case 'appearance':
       return <SettingsAppearancePanel />
+    case 'language':
+      return <SettingsLanguagePanel />
     case 'hotkeys':
       return <SettingsHotkeysPanel />
     case 'overlay':

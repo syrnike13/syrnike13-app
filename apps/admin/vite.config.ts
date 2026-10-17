@@ -15,6 +15,7 @@ const apiTypesEffectSchemaEntry = path.resolve(
   adminRoot,
   '../../packages/api-types/src/effect-schema.ts',
 )
+const uiEntry = path.resolve(adminRoot, '../../packages/ui/src')
 
 const config = defineConfig({
   envDir: path.resolve(adminRoot, 'env'),
@@ -29,17 +30,19 @@ const config = defineConfig({
     strictPort: true,
   },
   ssr: {
-    noExternal: ['@syrnike13/api-types'],
+    noExternal: ['@syrnike13/api-types', '@syrnike13/ui'],
   },
   resolve: {
     alias: {
       '@syrnike13/api-types/effect-schema': apiTypesEffectSchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,
+      '@syrnike13/ui': uiEntry,
     },
     tsconfigPaths: true,
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
+    exclude: ['@syrnike13/ui'],
     include: ['@remixicon/react'],
   },
   plugins: [

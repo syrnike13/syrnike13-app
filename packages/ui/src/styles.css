@@ -1,0 +1,6 @@
+/* Shared design-system styles. */
+@theme inline {
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-scrim: var(--scrim);
+}

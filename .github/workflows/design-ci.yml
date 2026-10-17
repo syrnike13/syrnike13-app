@@ -1,0 +1,47 @@
+name: Design CI
+
+on:
+  pull_request:
+    paths:
+      - packages/ui/**
+      - apps/web/src/components/**
+      - apps/web/src/features/**
+      - apps/web/src/routes/**
+      - apps/web/src/styles.css
+      - apps/admin/src/**
+      - tooling/scripts/check-ui*
+      - tooling/ui-baseline.json
+      - .github/workflows/design-ci.yml
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - packages/ui/**
+      - apps/web/src/components/**
+      - apps/web/src/features/**
+      - apps/web/src/routes/**
+      - apps/web/src/styles.css
+      - apps/admin/src/**
+      - tooling/scripts/check-ui*
+      - tooling/ui-baseline.json
+      - .github/workflows/design-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  design:
+    name: Design rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tooling/scripts/check-ui.test.mjs
+      - run: node tooling/scripts/check-ui.mjs

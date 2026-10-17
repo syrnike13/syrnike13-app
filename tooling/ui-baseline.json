@@ -1,0 +1,814 @@
+{
+  "apps/admin/src/components/access-denied.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/components/admin-shell.tsx": {
+    "px-size": 6,
+    "hardcoded-string": 7
+  },
+  "apps/admin/src/components/badge-icon.tsx": {
+    "px-size": 3
+  },
+  "apps/admin/src/components/form-field.tsx": {
+    "px-size": 2
+  },
+  "apps/admin/src/components/icon-dropzone.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/components/layout/page.tsx": {
+    "px-size": 4
+  },
+  "apps/admin/src/components/meta-flag.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/ui/button.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/ui/dialog.tsx": {
+    "palette-color": 1,
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/components/ui/input.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/ui/label.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/ui/select.tsx": {
+    "px-size": 2
+  },
+  "apps/admin/src/components/ui/switch.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/ui/textarea.tsx": {
+    "px-size": 1
+  },
+  "apps/admin/src/components/unsaved-changes-bar.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/features/api/admin-api.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/admin/src/features/api/media-api.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/admin/src/features/auth/auth-context.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/admin/src/features/badges/badge-editor.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 24
+  },
+  "apps/admin/src/features/badges/badges-catalog.tsx": {
+    "px-size": 4,
+    "hardcoded-string": 7
+  },
+  "apps/admin/src/features/feedback/feedback-meta.ts": {
+    "hardcoded-string": 15
+  },
+  "apps/admin/src/features/feedback/feedback-moderation.tsx": {
+    "icon-import": 1,
+    "px-size": 30,
+    "hardcoded-string": 46
+  },
+  "apps/admin/src/features/feedback/feedback-similarity.ts": {
+    "hardcoded-string": 133
+  },
+  "apps/admin/src/lib/api/client.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/admin/src/router.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/routes/__root.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/admin/src/routes/_admin/badges/$badgeId.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 4
+  },
+  "apps/admin/src/routes/_admin/diagnostics/$reportId.tsx": {
+    "px-size": 7,
+    "hardcoded-string": 24
+  },
+  "apps/admin/src/routes/_admin/diagnostics/index.tsx": {
+    "px-size": 6,
+    "hardcoded-string": 19
+  },
+  "apps/admin/src/routes/_admin/users/index.tsx": {
+    "px-size": 6,
+    "hardcoded-string": 13
+  },
+  "apps/admin/src/routes/login.tsx": {
+    "px-size": 5,
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/appearance/color-mode-segment.tsx": {
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/appearance/custom-theme-editor.tsx": {
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/appearance/theme-picker-grid.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/appearance/theme-preview-swatch.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/auth/password-input.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/channels/category-settings-dialog.tsx": {
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/channels/channel-category-header.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/channels/channel-settings-dialog.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/channels/channel-settings-overview-panel.tsx": {
+    "hardcoded-string": 37
+  },
+  "apps/web/src/components/channels/channel-settings-page.tsx": {
+    "px-size": 3,
+    "hardcoded-string": 5,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/channels/channel-settings-permissions-panel.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/channels/channel-settings-types.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/channels/channel-settings-webhooks-panel.tsx": {
+    "hardcoded-string": 22
+  },
+  "apps/web/src/components/channels/channel-sidebar-item.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 18
+  },
+  "apps/web/src/components/channels/create-category-dialog.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/channels/server-channel-list.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/chat/channel-chat-panel.tsx": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/components/chat/channel-member-sidebar.tsx": {
+    "px-size": 2
+  },
+  "apps/web/src/components/chat/channel-pinned-dialog.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/components/chat/channel-search-dialog.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/chat/channel-view.tsx": {
+    "palette-color": 6,
+    "hardcoded-string": 34
+  },
+  "apps/web/src/components/chat/composer-attachment-strip.tsx": {
+    "px-size": 4,
+    "hardcoded-string": 6,
+    "restyle-shared": 2
+  },
+  "apps/web/src/components/chat/composer-editor.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/chat/direct-message-profile-panel.tsx": {
+    "palette-color": 1,
+    "px-size": 2,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/chat/group-management-dialog.tsx": {
+    "hardcoded-string": 28
+  },
+  "apps/web/src/components/chat/mention-suggestion-menu.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/chat/message-actions-menu.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/chat/message-attachments.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/chat/message-composer.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 21,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/chat/message-date-divider.tsx": {
+    "px-size": 1
+  },
+  "apps/web/src/components/chat/message-embeds.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/chat/message-hover-toolbar.tsx": {
+    "hardcoded-string": 3,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/chat/message-layout.ts": {
+    "px-size": 1
+  },
+  "apps/web/src/components/chat/message-reactions.tsx": {
+    "hardcoded-string": 1,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/chat/message-reply-preview.tsx": {
+    "arbitrary-radius": 1,
+    "px-size": 6,
+    "hardcoded-string": 7,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/chat/message-row.tsx": {
+    "px-size": 8,
+    "hardcoded-string": 25
+  },
+  "apps/web/src/components/chat/server-channel-search-popover.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/chat/typing-indicator.tsx": {
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/command-palette/command-palette-trigger.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/command-palette/command-palette.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 16,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/feedback/feedback-create-dialog.tsx": {
+    "hardcoded-string": 30
+  },
+  "apps/web/src/components/feedback/feedback-detail-view.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/feedback/feedback-meta.ts": {
+    "hardcoded-string": 28
+  },
+  "apps/web/src/components/feedback/feedback-status.tsx": {
+    "px-size": 1
+  },
+  "apps/web/src/components/feedback/feedback-suggestion-row.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/feedback/feedback-view.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 23,
+    "restyle-shared": 3
+  },
+  "apps/web/src/components/feedback/feedback-vote-button.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/friends/friendship-action.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/home/active-now-panel.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/home/dm-channel-list.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/home/home-view.tsx": {
+    "hardcoded-string": 19,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/home/new-conversation-button.tsx": {
+    "hardcoded-string": 10
+  },
+  "apps/web/src/components/landing/hero-section.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/landing/landing-game-homages/index.tsx": {
+    "px-size": 3
+  },
+  "apps/web/src/components/landing/site-header.tsx": {
+    "px-size": 3
+  },
+  "apps/web/src/components/layout/channel-sidebar.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/layout/connection-status-banner.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/layout/gateway-loading-screen.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/layout/mobile/mobile-profile-page.tsx": {
+    "palette-color": 2,
+    "hardcoded-string": 4,
+    "restyle-shared": 2
+  },
+  "apps/web/src/components/layout/mobile/mobile-user-panel.tsx": {
+    "hardcoded-string": 7,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/layout/mobile/mobile-voice-floating-tile.tsx": {
+    "palette-color": 3,
+    "px-size": 1,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/layout/people-rail-section.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/layout/rail-icon-button.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/layout/server-rail.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/layout/shell-title-bar-controls.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 5
+  },
+  "apps/web/src/components/layout/user-panel.tsx": {
+    "palette-color": 1,
+    "arbitrary-radius": 1,
+    "px-size": 3,
+    "hardcoded-string": 7,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/media/image-lightbox.tsx": {
+    "palette-color": 9,
+    "arbitrary-color": 3,
+    "hardcoded-string": 14
+  },
+  "apps/web/src/components/notifications/notification-badge.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 1,
+    "restyle-shared": 2
+  },
+  "apps/web/src/components/notifications/notification-settings.tsx": {
+    "hardcoded-string": 15
+  },
+  "apps/web/src/components/servers/add-role-members-dialog.tsx": {
+    "hardcoded-string": 6,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/create-channel-dialog.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/components/servers/create-server-dialog.tsx": {
+    "hardcoded-string": 13
+  },
+  "apps/web/src/components/servers/edit-member-roles-dialog.tsx": {
+    "hardcoded-string": 2,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/member-roles-editor.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/servers/permission-state-button.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/servers/role-colour-picker.tsx": {
+    "palette-color": 2,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/servers/role-colour-preview.tsx": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/servers/role-members-panel.tsx": {
+    "hardcoded-string": 5,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/server-avatar.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/servers/server-header-menu.tsx": {
+    "hardcoded-string": 11
+  },
+  "apps/web/src/components/servers/server-invite-dialog.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 21
+  },
+  "apps/web/src/components/servers/server-settings-audit-panel.tsx": {
+    "palette-color": 5,
+    "px-size": 1,
+    "hardcoded-string": 85
+  },
+  "apps/web/src/components/servers/server-settings-bans-panel.tsx": {
+    "hardcoded-string": 11,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/server-settings-invites-panel.tsx": {
+    "hardcoded-string": 14
+  },
+  "apps/web/src/components/servers/server-settings-members-panel.tsx": {
+    "hardcoded-string": 12,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/server-settings-page.tsx": {
+    "px-size": 3,
+    "hardcoded-string": 7,
+    "restyle-shared": 2
+  },
+  "apps/web/src/components/servers/server-settings-panels.tsx": {
+    "hardcoded-string": 38
+  },
+  "apps/web/src/components/servers/server-settings-role-editor.tsx": {
+    "hardcoded-string": 13,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/servers/server-settings-roles-panel.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 12
+  },
+  "apps/web/src/components/servers/server-settings-types.ts": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/components/settings/settings-desktop-panel.tsx": {
+    "hardcoded-string": 39
+  },
+  "apps/web/src/components/settings/settings-hotkeys-panel.tsx": {
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/settings/settings-mobile-modal.tsx": {
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/settings/settings-modal.tsx": {
+    "px-size": 2,
+    "hardcoded-string": 7,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/settings/settings-nav-config.ts": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/settings/settings-overlay-panel.tsx": {
+    "hardcoded-string": 11
+  },
+  "apps/web/src/components/settings/settings-panels.tsx": {
+    "hardcoded-string": 40
+  },
+  "apps/web/src/components/settings/settings-profile-panel.tsx": {
+    "palette-color": 2,
+    "hardcoded-string": 16
+  },
+  "apps/web/src/components/settings/settings-profile-status-dialog.tsx": {
+    "hardcoded-string": 6,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/settings/settings-sessions-panel.tsx": {
+    "hardcoded-string": 11
+  },
+  "apps/web/src/components/settings/settings-voice-panel.tsx": {
+    "px-size": 4,
+    "hardcoded-string": 32
+  },
+  "apps/web/src/components/settings/unsaved-changes-bar.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/settings/voice-gate-sensitivity-bar.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/sounds/sound-settings.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/ui/resizable.tsx": {
+    "icon-import": 1
+  },
+  "apps/web/src/components/user/current-user-profile-menu.tsx": {
+    "palette-color": 1,
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/user/mobile-presence-drawer.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/user/profile-menu-row.ts": {
+    "arbitrary-radius": 1
+  },
+  "apps/web/src/components/user/user-avatar.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/user/user-context-menu-content.tsx": {
+    "arbitrary-radius": 1,
+    "hardcoded-string": 13
+  },
+  "apps/web/src/components/user/user-context-menu-voice-controls.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/components/user/user-global-profile-dialog.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/user/user-global-profile-sections.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/user/user-global-profile-sidebar.tsx": {
+    "palette-color": 1,
+    "px-size": 2,
+    "hardcoded-string": 10
+  },
+  "apps/web/src/components/user/user-profile-card-header.tsx": {
+    "palette-color": 1,
+    "px-size": 1,
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/user/user-profile-card.tsx": {
+    "palette-color": 2,
+    "hardcoded-string": 11,
+    "restyle-shared": 4
+  },
+  "apps/web/src/components/user/user-profile-status-bubble.tsx": {
+    "px-size": 1
+  },
+  "apps/web/src/components/voice/incoming-voice-call-overlay.tsx": {
+    "hardcoded-string": 4,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/voice/mobile-voice-channel-drawer.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/voice/voice-call-banner.tsx": {
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/voice/voice-connection-strip.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 4,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/voice/voice-local-broadcast-strip.tsx": {
+    "palette-color": 1,
+    "hardcoded-string": 2,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/voice/voice-mic-split-control.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/voice/voice-panel-media-bar.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/components/voice/voice-participant-icons.tsx": {
+    "px-size": 1,
+    "palette-color": 2,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/components/voice/voice-participant-row.tsx": {
+    "px-size": 1,
+    "palette-color": 1,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/voice/voice-ping-chart.tsx": {
+    "px-size": 3,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/voice/voice-ping-popover.tsx": {
+    "hardcoded-string": 13
+  },
+  "apps/web/src/components/voice/voice-rtc-debug-view.tsx": {
+    "hardcoded-string": 29
+  },
+  "apps/web/src/components/voice/voice-screen-share-quality.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/voice/voice-sound-split-control.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/voice/voice-split-control.tsx": {
+    "palette-color": 4
+  },
+  "apps/web/src/components/voice/voice-stage-activity-tile.tsx": {
+    "hardcoded-string": 10,
+    "restyle-shared": 1
+  },
+  "apps/web/src/components/voice/voice-stage-controls.tsx": {
+    "palette-color": 21,
+    "hardcoded-string": 30,
+    "restyle-shared": 5
+  },
+  "apps/web/src/components/voice/voice-stage-filmstrip.tsx": {
+    "palette-color": 4,
+    "px-size": 1,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/voice/voice-stage-focus-stage.tsx": {
+    "palette-color": 1,
+    "hardcoded-string": 4
+  },
+  "apps/web/src/components/voice/voice-stage-grid.tsx": {
+    "palette-color": 1
+  },
+  "apps/web/src/components/voice/voice-stage-layout.ts": {
+    "px-size": 1
+  },
+  "apps/web/src/components/voice/voice-stage-media-tile.tsx": {
+    "palette-color": 8,
+    "px-size": 1,
+    "hardcoded-string": 9
+  },
+  "apps/web/src/components/voice/voice-stage-mic-settings-menu.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 12
+  },
+  "apps/web/src/components/voice/voice-stage-popout-placeholder.tsx": {
+    "palette-color": 3,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/components/voice/voice-stage-popover-styles.ts": {
+    "px-size": 1
+  },
+  "apps/web/src/components/voice/voice-stage-stream-volume-control.tsx": {
+    "palette-color": 2,
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/voice/voice-stage-tile.tsx": {
+    "palette-color": 2,
+    "px-size": 1,
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/voice/voice-stage-video.tsx": {
+    "palette-color": 1
+  },
+  "apps/web/src/components/voice/voice-stage-view.tsx": {
+    "palette-color": 19,
+    "px-size": 3,
+    "hardcoded-string": 26,
+    "restyle-shared": 2
+  },
+  "apps/web/src/components/voice/voice-stream-mini-player.tsx": {
+    "palette-color": 7,
+    "px-size": 5,
+    "hardcoded-string": 14
+  },
+  "apps/web/src/components/voice/voice-stream-preview-hover-card.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/components/voice/voice-stream-viewers.tsx": {
+    "px-size": 3,
+    "hardcoded-string": 6
+  },
+  "apps/web/src/components/voice/voice-text-channel-dock.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/activities/channel-activity-catalog.ts": {
+    "hardcoded-string": 4
+  },
+  "apps/web/src/features/activities/channel-activity-panel.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/api/media-api.ts": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/features/api/messages-api.ts": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/auth/auth-context.tsx": {
+    "hardcoded-string": 16
+  },
+  "apps/web/src/features/auth/authed-gate.tsx": {
+    "icon-import": 1,
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/auth/login-form.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/features/auth/schemas.ts": {
+    "hardcoded-string": 12
+  },
+  "apps/web/src/features/chat/use-channel-chat.ts": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/features/chat/use-composer-attachments.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/chat/use-jump-to-message.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/command-palette/build-command-items.ts": {
+    "hardcoded-string": 12
+  },
+  "apps/web/src/features/desktop/desktop-startup-update-gate.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/features/desktop/desktop-update-banner.tsx": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/desktop/native-media-runtime-banner.tsx": {
+    "hardcoded-string": 17
+  },
+  "apps/web/src/features/dm/dm-actions.ts": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/friends/friend-actions.ts": {
+    "hardcoded-string": 14
+  },
+  "apps/web/src/features/hotkeys/hotkey-combo.ts": {
+    "hardcoded-string": 25
+  },
+  "apps/web/src/features/notifications/use-message-notifications.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/overlay/desktop-overlay-hud.tsx": {
+    "px-size": 1,
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/overlay/desktop-overlay-publisher.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/search/server-message-search.ts": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/sounds/sound-events.ts": {
+    "hardcoded-string": 21
+  },
+  "apps/web/src/features/sync/channel-label.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/sync/member-list-groups.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/sync/selectors.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/users/use-set-custom-status.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/users/use-set-presence.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/voice/desktop-screen-share-picker.tsx": {
+    "hardcoded-string": 19,
+    "restyle-shared": 1
+  },
+  "apps/web/src/features/voice/stream-preview.ts": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/voice/use-voice-stage-presentation.ts": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/features/voice/voice-broadcast-source.ts": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/features/voice/voice-media-availability.ts": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/features/voice/voice-mic-status.ts": {
+    "hardcoded-string": 19
+  },
+  "apps/web/src/features/voice/voice-participant-label.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/voice/voice-ping.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/voice/voice-preference-types.ts": {
+    "hardcoded-string": 3
+  },
+  "apps/web/src/features/voice/voice-provider.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/features/voice/voice-stage-items.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/voice/voice-stage-media.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/features/voice/voice-stage-view-session.ts": {
+    "hardcoded-string": 2
+  },
+  "apps/web/src/routes/__root.tsx": {
+    "hardcoded-string": 1
+  },
+  "apps/web/src/routes/invite/$code.tsx": {
+    "hardcoded-string": 6
+  },
+  "apps/web/src/routes/login/check.tsx": {
+    "hardcoded-string": 5
+  },
+  "apps/web/src/routes/login/onboard.tsx": {
+    "hardcoded-string": 4
+  },
+  "apps/web/src/routes/login/register.tsx": {
+    "hardcoded-string": 10
+  },
+  "apps/web/src/routes/login/resend.tsx": {
+    "hardcoded-string": 9
+  },
+  "apps/web/src/routes/login/reset.$token.tsx": {
+    "hardcoded-string": 7
+  },
+  "apps/web/src/routes/login/reset.tsx": {
+    "hardcoded-string": 8
+  },
+  "apps/web/src/routes/verify.$token.tsx": {
+    "hardcoded-string": 9
+  },
+  "packages/ui/src/tokens/catalog.ts": {
+    "hardcoded-string": 42
+  }
+}

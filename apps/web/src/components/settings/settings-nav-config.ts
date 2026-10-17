@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  GlobeIcon,
   MonitorIcon,
   PaletteIcon,
   PencilFillIcon,
@@ -20,6 +21,7 @@ export const GENERAL_SETTINGS_NAV: {
   { id: 'sessions', label: 'Устройства', icon: MonitorIcon },
   { id: 'notifications', label: 'Уведомления', icon: BellIcon },
   { id: 'appearance', label: 'Оформление', icon: PaletteIcon },
+  { id: 'language', label: 'Язык', icon: GlobeIcon },
 ]
 
 export function isGeneralSettingsSection(

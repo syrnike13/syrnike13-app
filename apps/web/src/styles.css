@@ -3,8 +3,11 @@
 @plugin '@tailwindcss/typography';
 
 @import 'tw-animate-css';
+@import '@syrnike13/ui/styles.css';
 
 @custom-variant dark (&:is(.dark *));
+
+@source '../../../packages/ui/src';
 
 :root {
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
@@ -58,6 +61,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-scrim: var(--scrim);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

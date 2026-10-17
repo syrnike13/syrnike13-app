@@ -1,0 +1,48 @@
+{
+  "name": "@syrnike13/ui",
+  "version": "0.7.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./icons": "./src/icons/index.tsx",
+    "./lib/cn": "./src/lib/cn.ts",
+    "./primitives/*": "./src/primitives/*/index.tsx",
+    "./styles.css": "./src/styles.css",
+    "./tokens": "./src/tokens/index.ts",
+    "./test-utils": "./src/test-utils/index.tsx"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@remixicon/react": "^4.9.0",
+    "@squircle-js/react": "^1.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "radix-ui": "^1.4.3",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.0.2"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "jsdom": "^28.1.0",
+    "typescript": "^6.0.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  }
+}

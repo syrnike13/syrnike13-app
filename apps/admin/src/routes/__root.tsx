@@ -5,10 +5,14 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 
+import { LocaleProvider } from '@syrnike13/ui/i18n'
+
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { config } from '#/lib/config'
+import en from '#/messages/en.json'
+import ru from '#/messages/ru.json'
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -49,12 +53,14 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext()
 
   return (
-    <TanstackQueryProvider client={queryClient}>
-      <AuthProvider>
-        <Outlet />
-        <Toaster richColors closeButton />
-      </AuthProvider>
-    </TanstackQueryProvider>
+    <LocaleProvider catalogs={{ en, ru }} defaultLocale="ru">
+      <TanstackQueryProvider client={queryClient}>
+        <AuthProvider>
+          <Outlet />
+          <Toaster richColors closeButton />
+        </AuthProvider>
+      </TanstackQueryProvider>
+    </LocaleProvider>
   )
 }
 

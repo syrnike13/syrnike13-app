@@ -49,8 +49,11 @@ On Windows, missing OpenSSL/vcpkg/Docker for backend checks is an environment bl
 
 ## Client UI
 
+- Full UI rules, component catalog, reference screens and desktop contracts live in `packages/ui/AGENTS.md`. Read it before UI work; run `pnpm check:ui` before finishing.
+- Build screens from `@syrnike13/ui` primitives (or the app's re-export shims until migration finishes). Do not create local copies of shared components; add a variant instead.
 - Do not hardcode UI colors or use Tailwind palette/arbitrary colors. Use semantic theme tokens such as `primary`, `destructive`, `chart-*`, `background`, `card`, and `border`.
-- Theme sources of truth are `apps/web/src/features/appearance/theme-catalog-data.ts`, `theme-tokens.ts`, and `applyThemeToDocument()`. `styles.css` contains only non-color static tokens.
+- Theme sources of truth are `packages/ui/src/tokens` (being migrated from `apps/web/src/features/appearance/theme-catalog-data.ts`, `theme-tokens.ts`, and `applyThemeToDocument()`). `styles.css` contains only non-color static tokens.
+- All UI strings, including `aria-label`, `placeholder`, and `title`, go through `useTranslations` from `@syrnike13/ui/i18n`; catalogs are `apps/{web,admin}/src/messages/{en,ru}.json`.
 - API-provided role/server colors, role color selection, decorative avatar gradients, meta colors, and native window-shell colors are exceptions.
 - `VITE_RELEASE_CHANNEL` is the only client release-channel source. Define experimental UI capabilities in `apps/web/src/lib/ui-feature-flags.ts` and gate every entry point; flags are not authorization boundaries.
 

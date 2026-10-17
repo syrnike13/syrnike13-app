@@ -20,6 +20,7 @@ import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { DesktopStartupUpdateGate } from '#/features/desktop/desktop-startup-update-gate'
 import { DiagnosticErrorReporter } from '#/features/diagnostics/diagnostic-error-reporter'
+import { AppLocaleProvider } from '#/features/i18n/locale-provider'
 
 import appCss from '../styles.css?url'
 
@@ -135,16 +136,12 @@ function RootComponent() {
     select: (state) => state.location.pathname,
   })
 
-  if (isDesktopOverlayPath(pathname)) {
-    return (
-      <AppearanceProvider>
-        <ThemeColorMeta />
-        <Outlet />
-      </AppearanceProvider>
-    )
-  }
-
-  return (
+  const content = isDesktopOverlayPath(pathname) ? (
+    <AppearanceProvider>
+      <ThemeColorMeta />
+      <Outlet />
+    </AppearanceProvider>
+  ) : (
     <TanstackQueryProvider client={queryClient}>
       <AppearanceProvider>
         <ThemeColorMeta />
@@ -162,6 +159,8 @@ function RootComponent() {
       </AppearanceProvider>
     </TanstackQueryProvider>
   )
+
+  return <AppLocaleProvider>{content}</AppLocaleProvider>
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {

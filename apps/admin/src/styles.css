@@ -3,8 +3,11 @@
 @plugin '@tailwindcss/typography';
 
 @import 'tw-animate-css';
+@import '@syrnike13/ui/styles.css';
 
 @custom-variant dark (&:is(.dark *));
+
+@source '../../../packages/ui/src';
 
 /* Dark palette from apps/web (.dark) — admin is dark-only */
 :root,

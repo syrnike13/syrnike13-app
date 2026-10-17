@@ -6,6 +6,7 @@ packages:
   - packages/desktop-native
   - packages/windows-media-engine
   - packages/platform
+  - packages/ui
 
 allowBuilds:
   "@sentry/cli": true
