@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { ServerChannelList } from '#/components/channels/server-channel-list'
 import { ScrollArea } from '#/components/ui/scroll-area'
@@ -32,6 +34,7 @@ export function ChannelSidebar({
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const users = useSyncStore((s) => s.users)
   const unreads = useSyncStore((s) => s.unreads)
+  const t = useTranslations('layout.channel')
   const servers = useSyncStore((s) => s.servers)
   const prefersReducedMotion = useMediaQuery(
     '(prefers-reduced-motion: reduce)',
@@ -46,7 +49,7 @@ export function ChannelSidebar({
   const selectedServer = selectedServerId
     ? servers[selectedServerId]
     : undefined
-  const serverName = selectedServer?.name ?? 'Личные сообщения'
+  const serverName = selectedServer?.name ?? t('directMessages')
   const bannerUrl = serverBannerUrl(selectedServer?.banner, {
     animated: !prefersReducedMotion,
   })

@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from '#/components/icons'
 
 import {
@@ -27,6 +29,7 @@ export function ShellHistoryNavButtons({
   layout = 'default',
   heightPx,
 }: ShellHistoryNavButtonsProps) {
+  const t = useTranslations('layout.nav')
   const { canGoBack, canGoForward, goBack, goForward } = useShellHistoryNav()
   const isMac = layout === 'macos'
   const isWindows = layout === 'windows'
@@ -57,7 +60,7 @@ export function ShellHistoryNavButtons({
       <button
         type="button"
         className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
-        aria-label="Назад"
+        aria-label={t('back')}
         disabled={!canGoBack}
         onClick={goBack}
       >
@@ -66,14 +69,14 @@ export function ShellHistoryNavButtons({
       <button
         type="button"
         className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
-        aria-label="Вперёд"
+        aria-label={t('forward')}
         disabled={!canGoForward}
         onClick={goForward}
       >
         <ChevronRightIcon className="size-4" />
       </button>
       {isNightly ? (
-        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-[10px] font-medium leading-none text-chart-2">
+        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-[0.625rem] font-medium leading-none text-chart-2">
           nightly
         </span>
       ) : null}
@@ -86,6 +89,7 @@ type ShellWindowControlsProps = {
 }
 
 export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
+  const t = useTranslations('layout.nav')
   const { desktop } = usePlatform()
   if (!desktop) return null
 
@@ -106,7 +110,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
         type="button"
         className={titleBarWindowButtonClass}
         style={buttonStyle}
-        aria-label="Свернуть"
+        aria-label={t('minimize')}
         onClick={() => desktop.window.minimize()}
       >
         <MinusIcon className="size-3.5" />
@@ -115,7 +119,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
         type="button"
         className={titleBarWindowButtonClass}
         style={buttonStyle}
-        aria-label="Развернуть"
+        aria-label={t('maximize')}
         onClick={() => desktop.window.maximize()}
       >
         <SquareIcon className="size-3" />
@@ -127,7 +131,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
           'hover:bg-destructive hover:text-destructive-foreground',
         )}
         style={buttonStyle}
-        aria-label="Закрыть"
+        aria-label={t('close')}
         onClick={() => desktop.window.close()}
       >
         <XIcon className="size-3.5" />

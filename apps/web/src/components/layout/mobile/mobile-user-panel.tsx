@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { BellIcon, ChevronDownIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
@@ -12,12 +13,12 @@ import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { userStatusSubtitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
-const gatewayLabels = {
-  idle: 'Не подключён',
-  connecting: 'Подключение…',
-  connected: 'в сети',
-  disconnected: 'Нет связи',
-  reconnecting: 'Переподключение…',
+const gatewayStatusKeys = {
+  idle: 'status.idle',
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  disconnected: 'status.disconnected',
+  reconnecting: 'status.reconnecting',
 } as const
 
 /**
@@ -26,6 +27,7 @@ const gatewayLabels = {
  * Голосовые контролы — в `MobileVoiceFloatingTile`. Тап по pill → `/m/profile`.
  */
 export function MobileUserPanel() {
+  const t = useTranslations('layout.user')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceStage = useVoiceStage()
@@ -43,7 +45,7 @@ export function MobileUserPanel() {
 
   const statusLabel = gatewayConnected
     ? userStatusSubtitle(user)
-    : gatewayLabels[auth.gatewayState]
+    : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
     <div className="pointer-events-none absolute bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 right-2 z-50">
@@ -89,11 +91,11 @@ export function MobileUserPanel() {
 
           <Button
             type="button"
-            variant="ghost"
+            variant="floating"
             size="icon"
-            className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full bg-background/60 hover:bg-background/80"
-            title="Уведомления"
-            aria-label="Уведомления"
+            className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full"
+            title={t('notifications')}
+            aria-label={t('notifications')}
             onClick={() => openSettings('notifications')}
           >
             <BellIcon className="size-5" />

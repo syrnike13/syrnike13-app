@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { SettingsIcon, TelegramIcon } from '#/components/icons'
 import {
@@ -28,12 +29,12 @@ import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { FLOATING_BAR_HEIGHT_CLASS } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
-const gatewayLabels = {
-  idle: 'Не подключён',
-  connecting: 'Подключение…',
-  connected: 'в сети',
-  disconnected: 'Нет связи',
-  reconnecting: 'Переподключение…',
+const gatewayStatusKeys = {
+  idle: 'status.idle',
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  disconnected: 'status.disconnected',
+  reconnecting: 'status.reconnecting',
 } as const
 
 const userPanelControlButtonClass =
@@ -53,6 +54,7 @@ export function UserPanel({
   onDismissTelegramPromo,
   onHeightChange,
 }: UserPanelProps) {
+  const t = useTranslations('layout.user')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceSession = useVoiceSession()
@@ -102,7 +104,7 @@ export function UserPanel({
 
   const statusLabel = gatewayConnected
     ? userStatusSubtitle(user)
-    : gatewayLabels[auth.gatewayState]
+    : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
     <div
@@ -159,7 +161,7 @@ export function UserPanel({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
+                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-accent/60"
                 >
                   <UserAvatar
                     user={user}
@@ -220,7 +222,7 @@ export function UserPanel({
                   variant="ghost"
                   size="icon"
                   className={userPanelControlButtonClass}
-                  title="Настройки"
+                  title={t('settings')}
                   onClick={() => openSettings('account')}
                 >
                   <SettingsIcon className="size-4" />
@@ -258,7 +260,7 @@ export function UserPanel({
         <div
           data-telegram-promo-hover=""
           className={cn(
-            'absolute inset-x-0 bottom-[calc(100%-3.25rem)] z-20 grid overflow-hidden rounded-t-[10px] border-x border-t border-shell-divider',
+            'absolute inset-x-0 bottom-[calc(100%-3.25rem)] z-20 grid overflow-hidden rounded-t-lg border-x border-t border-shell-divider',
             'telegram-promo-surface bg-secondary bg-linear-to-r from-sidebar-ring/25 via-accent/60 to-sidebar-ring/15 text-foreground',
             'transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
             telegramPromoOpen
@@ -272,7 +274,7 @@ export function UserPanel({
             className="relative h-13 text-left outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             aria-expanded={telegramPromoOpen}
             aria-controls="telegram-promo-details"
-            aria-label="Подпишись на наш Telegram"
+            aria-label={t('telegram.title')}
             onClick={() => setTelegramPromoOpen(true)}
           >
             <span
@@ -286,7 +288,7 @@ export function UserPanel({
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold leading-4">
-                  Подпишись на наш Telegram
+                  {t('telegram.title')}
                 </span>
                 <span
                   className={cn(
@@ -299,14 +301,14 @@ export function UserPanel({
                 >
                   <span className="min-h-0 overflow-hidden">
                     <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground">
-                      Новости проекта без лишнего шума
+                      {t('telegram.subtitle')}
                     </span>
                   </span>
                 </span>
               </span>
 
               <span className="telegram-promo-icon relative flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-ring/80 text-primary-foreground ring-1 ring-sidebar-ring/60">
-                <TelegramIcon aria-hidden="true" className="size-[18px]" />
+                <TelegramIcon aria-hidden="true" className="size-[1.125rem]" />
               </span>
             </span>
           </button>
@@ -315,7 +317,7 @@ export function UserPanel({
             <div
               id="telegram-promo-details"
               aria-hidden={!telegramPromoOpen}
-              className="relative isolate flex h-[104px] flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
+              className="relative isolate flex h-[6.5rem] flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
             >
               <img
                 src="/telegram-promo-cat.png"
@@ -324,8 +326,8 @@ export function UserPanel({
                 draggable={false}
                 className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain [image-rendering:pixelated]"
               />
-              <p className="relative z-10 max-w-[250px] text-sm font-semibold leading-5 text-foreground">
-                Спойлеры, анонсы и.. Сырники!
+              <p className="relative z-10 max-w-[15.625rem] text-sm font-semibold leading-5 text-foreground">
+                {t('telegram.headline')}
               </p>
               <div className="relative z-10 flex items-center gap-2 pl-12">
                 <Button
@@ -336,12 +338,13 @@ export function UserPanel({
                   className="min-w-0 flex-1 px-2 text-xs"
                   onClick={onDismissTelegramPromo}
                 >
-                  Я уже подписан
+                  {t('telegram.dismiss')}
                 </Button>
                 <Button
                   asChild
                   size="sm"
-                  className="min-w-0 flex-1 bg-foreground px-2 text-xs text-background hover:bg-foreground/90"
+                  variant="inverse"
+                  className="min-w-0 flex-1 px-2 text-xs"
                 >
                   <a
                     href={TELEGRAM_CHANNEL_URL}
@@ -349,7 +352,7 @@ export function UserPanel({
                     rel="noreferrer"
                     tabIndex={telegramPromoOpen ? 0 : -1}
                   >
-                    В Telegram
+                    {t('telegram.open')}
                   </a>
                 </Button>
               </div>

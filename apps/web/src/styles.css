@@ -64,6 +64,8 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-scrim: var(--scrim);
+  --color-on-scrim: var(--on-scrim);
+  --color-on-solid: var(--on-solid);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

@@ -1,18 +1,18 @@
-/** Факты на экране подключения (стиль Discord «Did you know»). */
-export const GATEWAY_LOADING_FACTS = [
-  'Можно отметить сообщение реакцией быстрее, чем объяснить, что вы согласны.',
-  'Голосовой канал формально не судит за чайник у микрофона — это делают другие участники.',
-  '«@everyone» — самый быстрый способ услышать «хватит».',
-  'Непрочитанные копятся быстрее, чем желание их открыть.',
-  'Статус «в сети» не гарантирует ответ в ближайшие пять минут.',
-  'Закреплённое сообщение — это важное объявление, которое все обещают прочитать позже.',
-  'История чата помнит всё. Даже то, что вы уже удалили.',
-  'Редактирование сообщения не стирает память у тех, кто успел прочитать.',
-  'Эмодзи в нике — легальный способ занять ещё три пикселя внимания.',
-  'Скролл вверх до «самого начала» — отдельный квест с наградой в виде усталости.',
+/** Keys for the connection screen facts (Discord-style "Did you know"). */
+export const GATEWAY_LOADING_FACT_KEYS = [
+  'facts.1',
+  'facts.2',
+  'facts.3',
+  'facts.4',
+  'facts.5',
+  'facts.6',
+  'facts.7',
+  'facts.8',
+  'facts.9',
+  'facts.10',
 ] as const
 
-export function pickGatewayLoadingFact() {
-  const index = Math.floor(Math.random() * GATEWAY_LOADING_FACTS.length)
-  return GATEWAY_LOADING_FACTS[index]!
+export function pickGatewayLoadingFactKey() {
+  const index = Math.floor(Math.random() * GATEWAY_LOADING_FACT_KEYS.length)
+  return GATEWAY_LOADING_FACT_KEYS[index]!
 }

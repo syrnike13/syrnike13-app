@@ -1,4 +1,5 @@
 import { useMatch, useRouterState } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   HashIcon,
   HomeIcon,
@@ -62,6 +63,7 @@ function ServerRailTooltipAvatarRow({
   users: Record<string, User | undefined>
   currentUser?: User | null
 }) {
+  const t = useTranslations('layout.rail')
   if (participants.length === 0) return null
 
   const visibleParticipants = participants.slice(0, MAX_TOOLTIP_AVATARS)
@@ -91,7 +93,7 @@ function ServerRailTooltipAvatarRow({
               <UserAvatar
                 user={user}
                 className="size-7 ring-2 ring-popover"
-                fallbackClassName="size-7 text-[11px]"
+                fallbackClassName="size-7 text-[0.6875rem]"
                 showPresence={false}
                 animated="never"
               />
@@ -100,8 +102,8 @@ function ServerRailTooltipAvatarRow({
         })}
         {hiddenCount > 0 ? (
           <li
-            aria-label={`Ещё ${hiddenCount}`}
-            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-[11px] font-black text-muted-foreground ring-2 ring-popover"
+            aria-label={t('more', { count: hiddenCount })}
+            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-[0.6875rem] font-black text-muted-foreground ring-2 ring-popover"
           >
             +{hiddenCount}
           </li>
@@ -122,6 +124,7 @@ function ServerRailTooltip({
   users: Record<string, User | undefined>
   currentUser?: User | null
 }) {
+  const t = useTranslations('layout.serverTooltip')
   const voiceParticipants = participants.filter(
     (participant) => !participant.screensharing,
   )
@@ -134,7 +137,7 @@ function ServerRailTooltip({
       <div className="truncate text-sm font-black">{serverName}</div>
       <ServerRailTooltipAvatarRow
         kind="voice"
-        label="Участники голосовых каналов"
+        label={t('voiceParticipants')}
         icon={<Volume2BoldIcon aria-hidden="true" className="size-4" />}
         participants={voiceParticipants}
         users={users}
@@ -142,7 +145,7 @@ function ServerRailTooltip({
       />
       <ServerRailTooltipAvatarRow
         kind="screen-share"
-        label="Демонстрируют экран"
+        label={t('screenSharing')}
         icon={<MonitorUpIcon aria-hidden="true" className="size-4" />}
         participants={screenSharingParticipants}
         users={users}
@@ -172,6 +175,7 @@ export function ServerRail({
   reserveUserPanelSpace?: boolean
   userPanelReservePx?: number
 }) {
+  const t = useTranslations('layout.rail')
   const auth = useAuth()
   const ready = useSyncStore((s) => s.ready)
   const servers = useSyncStore(listServers)
@@ -242,7 +246,7 @@ export function ServerRail({
       >
         <RailIconButton
           active={homeActive}
-          title="Главная"
+          title={t('home')}
           to={homeTo}
           search={{ tab: 'online' }}
           onClick={() => syncStore.setSelectedServerId(null)}
@@ -289,7 +293,7 @@ export function ServerRail({
                   railIconIdleClass,
                   'flex items-center justify-center text-foreground',
                 )}
-                title="Нет серверов"
+                title={t('noServers')}
               >
                 <HashIcon className={railGlyphClass} />
               </Squircle>

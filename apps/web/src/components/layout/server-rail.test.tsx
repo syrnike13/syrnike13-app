@@ -3,19 +3,27 @@
 import {
   cleanup,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react'
+import { renderWithI18n } from '@syrnike13/ui/test-utils'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerRail } from '#/components/layout/server-rail'
+import en from '#/messages/en.json'
+import ru from '#/messages/ru.json'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
+
+function renderRail() {
+  return renderWithI18n(<ServerRail variant="desktop" />, {
+    messages: { en, ru },
+  })
+}
 
 vi.mock('@tanstack/react-router', () => ({
   Link: forwardRef<
@@ -99,7 +107,7 @@ describe('ServerRail', () => {
   })
 
   it('shows home notifications on the home rail button', () => {
-    const { container } = render(<ServerRail variant="desktop" />)
+    const { container } = renderRail()
 
     expect(screen.getByRole('link', { name: 'Главная' })).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
@@ -140,7 +148,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const image = screen
       .getByRole('link', { name: 'Demo' })
@@ -170,7 +178,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
       pointerType: 'mouse',
@@ -273,7 +281,7 @@ describe('ServerRail', () => {
       voice_calls: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const activityBadge = serverLink.querySelector<HTMLElement>(
@@ -356,7 +364,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const image = serverLink.querySelector('img')
@@ -422,7 +430,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
     await waitFor(() => expect(mediaListener).toHaveBeenCalled())
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
@@ -474,7 +482,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const home = screen.getByRole('link', { name: 'Главная' })
     expect(screen.getByTitle('alice')).toBeTruthy()
@@ -520,7 +528,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     expect(screen.queryByTitle('alice')).toBeNull()
   })
@@ -578,7 +586,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const home = screen.getByRole('link', { name: 'Главная' })
     const person = screen.getByTitle('alice')
@@ -628,7 +636,7 @@ describe('ServerRail', () => {
     } as never)
     syncStore.setSelectedServerId('server-1')
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     fireEvent.click(screen.getByTitle('alice'))
 
@@ -681,7 +689,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const serverRow = serverLink.closest('.group')
@@ -741,7 +749,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverRow = screen
       .getByRole('link', { name: 'Demo' })

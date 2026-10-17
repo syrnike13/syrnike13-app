@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { Loader2Icon, WifiOffIcon } from '#/components/icons'
 
 import { useAuth } from '#/features/auth/auth-context'
@@ -5,6 +7,7 @@ import { useSyncReady } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
 
 export function ConnectionStatusBanner() {
+  const t = useTranslations('layout.connection')
   const auth = useAuth()
   const ready = useSyncReady()
   const { gatewayState } = auth
@@ -34,9 +37,7 @@ export function ConnectionStatusBanner() {
         <WifiOffIcon className="size-3.5" aria-hidden />
       )}
       <span>
-        {reconnecting
-          ? 'Восстанавливаем соединение…'
-          : 'Нет связи с сервером. Повторная попытка…'}
+        {reconnecting ? t('reconnecting') : t('offline')}
       </span>
     </div>
   )

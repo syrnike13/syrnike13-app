@@ -13,5 +13,226 @@
       "en": "English",
       "ru": "Русский"
     }
+  },
+  "auth": {
+    "home": "Back to home",
+    "email": "Email",
+    "passwordLabel": "Password",
+    "confirmPassword": "Repeat password",
+    "back": "Back",
+    "confirm": "Confirm",
+    "toLogin": "Back to sign in",
+    "backToLogin": "Back to sign in",
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
+    "session": {
+      "invalid": "The session is no longer valid. Sign in again."
+    },
+    "toast": {
+      "loggedIn": "Signed in",
+      "mfaRequired": "Two-factor authentication required",
+      "accountDisabled": "Account disabled",
+      "mfaFailed": "MFA failed, try again",
+      "usernameSet": "Username set",
+      "emailVerified": "Email verified, you are signed in",
+      "mfaPassword": "Confirm sign in with your password (MFA)",
+      "verifyLoginFailed": "Could not sign in after email verification",
+      "loggedOut": "Signed out",
+      "profileLoadError": "Could not load the profile"
+    },
+    "gate": {
+      "profileUnavailable": "Profile unavailable",
+      "profileLoadError": "Could not load the profile",
+      "retry": "Retry"
+    },
+    "login": {
+      "title": "Sign in",
+      "submit": "Sign in",
+      "firstTime": "First time here?",
+      "createAccount": "Create account",
+      "forgotPassword": "Forgot password?",
+      "resend": "Didn't get the email?",
+      "error": "Could not sign in"
+    },
+    "mfa": {
+      "title": "Confirm sign in",
+      "description": "This account has extra protection enabled. Enter your password again.",
+      "error": "Could not confirm MFA"
+    },
+    "register": {
+      "title": "Create account",
+      "submit": "Create account",
+      "alreadyRegistered": "Already with us?",
+      "inviteCode": "Invite code",
+      "waitConfig": "Please wait, loading server settings…",
+      "captchaNotConfigured": "Captcha is not configured on the server",
+      "captchaFailed": "Could not pass captcha",
+      "verifyEmail": "Check your email to verify the account",
+      "created": "Account created",
+      "error": "Could not create the account"
+    },
+    "check": {
+      "notRequiredTitle": "Verification not required",
+      "notRequiredDescription": "You can go back to sign in and continue.",
+      "title": "Check your email",
+      "sent": "We sent a verification email. It usually arrives within 10 minutes.",
+      "followLink": "Follow the link in the email to finish registration.",
+      "resend": "Send the email again"
+    },
+    "resend": {
+      "disabledTitle": "Verification disabled",
+      "disabledDescription": "No email is required — you can sign in or create an account right away.",
+      "title": "Send the email again",
+      "description": "Enter the email you used to register.",
+      "submit": "Send email",
+      "backToLogin": "Back to sign in",
+      "sent": "Verification email sent again",
+      "error": "Could not send the email"
+    },
+    "reset": {
+      "title": "Restore access",
+      "sentTitle": "Email sent",
+      "description": "Enter your email — we will send a link for a new password.",
+      "sentDescription": "If such an account exists, the password reset link is already in your inbox.",
+      "submit": "Send link",
+      "remembered": "Remembered your password?",
+      "sent": "If the account exists, the email has been sent",
+      "error": "Could not send the email",
+      "confirmTitle": "Choose a new password",
+      "confirmDescription": "It will replace the old password for this account.",
+      "confirmSubmit": "Save password",
+      "updated": "Password updated",
+      "updateError": "Could not change the password"
+    },
+    "onboard": {
+      "title": "What should we call you?",
+      "description": "Friends will find you by this name. You can change it later.",
+      "username": "Username",
+      "submit": "Continue",
+      "error": "Could not save the username"
+    },
+    "verify": {
+      "loadingTitle": "Checking the link",
+      "loadingDescription": "This will take a few seconds.",
+      "successTitle": "Email verified",
+      "successTicket": "Signed in, redirecting…",
+      "successNoTicket": "Account verified. You can sign in now.",
+      "errorTitle": "The link did not work",
+      "error": "Could not verify the email",
+      "toLogin": "Go to sign in"
+    }
+  },
+  "landing": {
+    "tagline": "voice, chat, servers",
+    "downloadFor": "Download for {platform}",
+    "openInBrowser": "Open in browser"
+  },
+  "layout": {
+    "loading": {
+      "factTitle": "Did you know?",
+      "status": {
+        "idle": "Starting",
+        "connecting": "Connecting",
+        "connected": "Syncing",
+        "disconnected": "Reconnecting",
+        "reconnecting": "Reconnecting"
+      },
+      "facts": {
+        "1": "You can react to a message faster than explaining that you agree.",
+        "2": "A voice channel does not judge the kettle near your mic — other participants do.",
+        "3": "\"@everyone\" is the fastest way to hear \"enough\".",
+        "4": "Unread messages pile up faster than the desire to open them.",
+        "5": "\"Online\" does not guarantee an answer in the next five minutes.",
+        "6": "A pinned message is an important announcement everyone promises to read later.",
+        "7": "Chat history remembers everything. Even what you already deleted.",
+        "8": "Editing a message does not erase the memory of those who already read it.",
+        "9": "An emoji in your nickname is a legal way to take three more pixels of attention.",
+        "10": "Scrolling up to \"the very beginning\" is a separate quest rewarded with fatigue."
+      }
+    },
+    "connection": {
+      "reconnecting": "Restoring the connection…",
+      "offline": "No connection to the server. Retrying…"
+    },
+    "nav": {
+      "back": "Back",
+      "forward": "Forward",
+      "minimize": "Minimize",
+      "maximize": "Maximize",
+      "close": "Close"
+    },
+    "rail": {
+      "unread": "Unread messages",
+      "more": "More: {count}",
+      "home": "Home",
+      "noServers": "No servers"
+    },
+    "voice": {
+      "activeCall": "Call in progress",
+      "incomingCall": "Incoming call",
+      "outgoingCall": "Outgoing call",
+      "channel": "Voice channel",
+      "dragHint": "Voice: {title}. Drag to a corner or tap to manage",
+      "soundOff": "Sound off"
+    },
+    "channel": {
+      "directMessages": "Direct messages"
+    },
+    "serverTooltip": {
+      "voiceParticipants": "Voice channel participants",
+      "screenSharing": "Sharing screen"
+    },
+    "user": {
+      "status": {
+        "idle": "Not connected",
+        "connecting": "Connecting…",
+        "connected": "online",
+        "disconnected": "No connection",
+        "reconnecting": "Reconnecting…"
+      },
+      "settings": "Settings",
+      "notifications": "Notifications",
+      "close": "Close",
+      "telegram": {
+        "title": "Follow our Telegram",
+        "subtitle": "Project news without extra noise",
+        "headline": "Spoilers, announcements and.. Syrniki!",
+        "dismiss": "I'm already following",
+        "open": "Open Telegram"
+      }
+    }
+  },
+  "invite": {
+    "title": "Invitation",
+    "code": "Code: {code}",
+    "notFound": "The invitation was not found or has expired",
+    "channel": "Channel: {channel}",
+    "members": "Members: {count}",
+    "public": "Public invitation",
+    "join": "Join",
+    "loginToJoin": "Sign in to accept",
+    "serverJoined": "You joined the server",
+    "accepted": "Invitation accepted",
+    "unknown": "Unknown invitation type",
+    "error": "Could not accept the invitation"
+  },
+  "validation": {
+    "fields": "Check the fields",
+    "email": "Enter a valid email",
+    "passwordRequired": "Enter your password",
+    "passwordMin": "At least 8 characters",
+    "passwordConfirm": "Repeat the password",
+    "passwordsMismatch": "Passwords do not match",
+    "usernameMin": "At least 2 characters",
+    "usernameMax": "At most 32 characters",
+    "usernamePattern": "Only Latin letters, digits and underscore",
+    "inviteRequired": "An invite code is required",
+    "displayNameMax": "At most 32 characters",
+    "statusMax": "At most 128 characters",
+    "bioMax": "At most 2000 characters",
+    "profileFields": "Check the profile fields",
+    "profileNameMin": "Name must be at least 2 characters"
   }
 }

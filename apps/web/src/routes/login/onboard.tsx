@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
@@ -34,6 +35,8 @@ export const Route = createFileRoute('/login/onboard')({
 })
 
 function OnboardPage() {
+  const t = useTranslations('auth')
+  const tv = useTranslations('validation')
   const auth = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
@@ -61,7 +64,7 @@ function OnboardPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(usernameSchema, value.username)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте ник')
+        toast.error(tv(parsed.issues[0]?.message ?? 'usernameMin'))
         return
       }
 
@@ -71,7 +74,7 @@ function OnboardPage() {
         void navigate({ to: postLoginPath(false), replace: true })
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : 'Не удалось сохранить ник',
+          error instanceof Error ? error.message : t('onboard.error'),
         )
       } finally {
         setSubmitting(false)
@@ -91,10 +94,8 @@ function OnboardPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>Как вас называть?</CardTitle>
-          <CardDescription>
-            По этому имени вас найдут друзья. Его можно изменить позже.
-          </CardDescription>
+          <CardTitle>{t('onboard.title')}</CardTitle>
+          <CardDescription>{t('onboard.description')}</CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -106,7 +107,7 @@ function OnboardPage() {
             <form.Field name="username">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="onboard-username">Имя пользователя</Label>
+                  <Label htmlFor="onboard-username">{t('onboard.username')}</Label>
                   <Input
                     className="auth-input"
                     id="onboard-username"
@@ -127,7 +128,7 @@ function OnboardPage() {
               {submitting ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : null}
-              Продолжить
+              {t('onboard.submit')}
             </Button>
           </CardFooter>
         </form>

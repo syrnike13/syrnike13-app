@@ -1,5 +1,6 @@
 import { useForm } from '@tanstack/react-form'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Loader2Icon } from '#/components/icons'
 import { useRef, useState } from 'react'
 import { Effect } from 'effect'
@@ -29,6 +30,8 @@ import { postLoginPath } from '#/lib/auth-post-login-path'
 export function LoginForm() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const t = useTranslations('auth')
+  const tv = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
@@ -41,7 +44,7 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(loginSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -57,7 +60,7 @@ export function LoginForm() {
       } catch (error) {
         if (auth.session) return
         toast.error(
-          error instanceof Error ? error.message : 'Не удалось войти',
+          error instanceof Error ? error.message : t('login.error'),
         )
       } finally {
         setSubmitting(false)
@@ -70,7 +73,7 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(mfaPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -81,7 +84,7 @@ export function LoginForm() {
         )
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : 'Не удалось подтвердить MFA',
+          error instanceof Error ? error.message : t('mfa.error'),
         )
       } finally {
         setSubmitting(false)
@@ -93,11 +96,8 @@ export function LoginForm() {
     return (
       <AuthCard>
         <CardHeader>
-          <CardTitle>Подтвердите вход</CardTitle>
-          <CardDescription>
-            Для этого аккаунта включена дополнительная защита. Введите пароль
-            ещё раз.
-          </CardDescription>
+          <CardTitle>{t('mfa.title')}</CardTitle>
+          <CardDescription>{t('mfa.description')}</CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -109,7 +109,7 @@ export function LoginForm() {
             <mfaForm.Field name="password">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="mfa-password">Пароль</Label>
+                  <Label htmlFor="mfa-password">{t('passwordLabel')}</Label>
                   <PasswordInput
                     id="mfa-password"
                     autoComplete="current-password"
@@ -129,13 +129,13 @@ export function LoginForm() {
               onClick={auth.cancelMfa}
               disabled={submitting}
             >
-              Назад
+              {t('back')}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : null}
-              Подтвердить
+              {t('confirm')}
             </Button>
           </CardFooter>
         </form>
@@ -146,7 +146,7 @@ export function LoginForm() {
   return (
     <AuthCard>
       <CardHeader>
-        <CardTitle>Вход</CardTitle>
+        <CardTitle>{t('login.title')}</CardTitle>
       </CardHeader>
       <form
         onSubmit={(event) => {
@@ -158,7 +158,7 @@ export function LoginForm() {
           <loginForm.Field name="email">
             {(field) => (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('email')}</Label>
                 <Input
                   className="auth-input"
                   id="email"
@@ -183,7 +183,7 @@ export function LoginForm() {
           <loginForm.Field name="password">
             {(field) => (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Пароль</Label>
+                <Label htmlFor="password">{t('passwordLabel')}</Label>
                 <PasswordInput
                   ref={passwordInputRef}
                   id="password"
@@ -200,28 +200,16 @@ export function LoginForm() {
             {submitting ? (
               <Loader2Icon className="animate-spin" data-icon="inline-start" />
             ) : null}
-            Войти
+            {t('login.submit')}
           </Button>
           <p className="auth-secondary-action">
-            Впервые здесь?
-            <Link
-              to="/login/register"
-            >
-              Создать аккаунт
-            </Link>
+            {t('login.firstTime')}
+            <Link to="/login/register">{t('login.createAccount')}</Link>
           </p>
           <div className="auth-support-links">
-            <Link
-              to="/login/reset"
-            >
-              Забыли пароль?
-            </Link>
+            <Link to="/login/reset">{t('login.forgotPassword')}</Link>
             {emailVerification ? (
-              <Link
-                to="/login/resend"
-              >
-                Не пришло письмо
-              </Link>
+              <Link to="/login/resend">{t('login.resend')}</Link>
             ) : null}
           </div>
         </CardFooter>

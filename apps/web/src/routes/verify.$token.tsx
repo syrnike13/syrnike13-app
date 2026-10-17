@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -34,6 +35,7 @@ type VerifyState =
   | { status: 'success'; hasTicket: boolean }
 
 function VerifyEmailPage() {
+  const t = useTranslations('auth')
   const { token } = Route.useParams()
   const auth = useAuth()
   const navigate = useNavigate()
@@ -47,7 +49,7 @@ function VerifyEmailPage() {
         if (!ticket) {
           yield* Effect.sync(() => {
             setState({ status: 'success', hasTicket: false })
-            toast.success('Email подтверждён')
+            toast.success(t('verify.successTitle'))
           })
           return
         }
@@ -73,7 +75,7 @@ function VerifyEmailPage() {
               message:
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось подтвердить email',
+                  : t('verify.error'),
             })
           }),
         ),
@@ -90,17 +92,16 @@ function VerifyEmailPage() {
       <AuthCard>
         <CardHeader>
           <CardTitle>
-            {state.status === 'loading' && 'Проверяем ссылку'}
-            {state.status === 'success' && 'Email подтверждён'}
-            {state.status === 'error' && 'Ссылка не сработала'}
+            {state.status === 'loading' && t('verify.loadingTitle')}
+            {state.status === 'success' && t('verify.successTitle')}
+            {state.status === 'error' && t('verify.errorTitle')}
           </CardTitle>
           <CardDescription>
-            {state.status === 'loading' &&
-              'Это займёт всего несколько секунд.'}
+            {state.status === 'loading' && t('verify.loadingDescription')}
             {state.status === 'success' &&
               (state.hasTicket
-                ? 'Вход выполнен, перенаправляем…'
-                : 'Аккаунт подтверждён. Теперь можно войти.')}
+                ? t('verify.successTicket')
+                : t('verify.successNoTicket'))}
             {state.status === 'error' && state.message}
           </CardDescription>
         </CardHeader>
@@ -112,7 +113,7 @@ function VerifyEmailPage() {
         {state.status !== 'loading' ? (
           <CardFooter className="flex flex-col gap-2">
             <Button className="w-full" asChild>
-              <Link to="/login">Перейти ко входу</Link>
+              <Link to="/login">{t('verify.toLogin')}</Link>
             </Button>
           </CardFooter>
         ) : null}

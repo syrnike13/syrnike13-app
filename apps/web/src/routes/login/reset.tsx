@@ -1,4 +1,5 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
@@ -30,6 +31,8 @@ export const Route = createFileRoute('/login/reset')({
 })
 
 function ResetRequestPage() {
+  const t = useTranslations('auth')
+  const tv = useTranslations('validation')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
 
@@ -38,7 +41,7 @@ function ResetRequestPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте email')
+        toast.error(tv(parsed.issues[0]?.message ?? 'email'))
         return
       }
 
@@ -48,13 +51,13 @@ function ResetRequestPage() {
           Effect.tap(() =>
             Effect.sync(() => {
               setSent(true)
-              toast.success('Если аккаунт существует, письмо отправлено')
+              toast.success(t('reset.sent'))
             }),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : 'Не удалось отправить',
+                error instanceof Error ? error.message : t('reset.error'),
               )
             }),
           ),
@@ -68,17 +71,17 @@ function ResetRequestPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>{sent ? 'Письмо отправлено' : 'Вернуть доступ'}</CardTitle>
+          <CardTitle>
+            {sent ? t('reset.sentTitle') : t('reset.title')}
+          </CardTitle>
           <CardDescription>
-            {sent
-              ? 'Если такой аккаунт существует, ссылка для нового пароля уже в почте.'
-              : 'Укажите email — отправим ссылку для нового пароля.'}
+            {sent ? t('reset.sentDescription') : t('reset.description')}
           </CardDescription>
         </CardHeader>
         {sent ? (
           <CardFooter>
             <Button className="w-full" asChild>
-              <Link to="/login">Ко входу</Link>
+              <Link to="/login">{t('toLogin')}</Link>
             </Button>
           </CardFooter>
         ) : (
@@ -92,7 +95,7 @@ function ResetRequestPage() {
               <form.Field name="email">
                 {(field) => (
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="reset-email">Email</Label>
+                    <Label htmlFor="reset-email">{t('email')}</Label>
                     <Input
                       className="auth-input"
                       id="reset-email"
@@ -112,10 +115,11 @@ function ResetRequestPage() {
                 {submitting ? (
                   <Loader2Icon className="animate-spin" data-icon="inline-start" />
                 ) : null}
-                Отправить ссылку
+                {t('reset.submit')}
               </Button>
               <p className="auth-secondary-action">
-                Вспомнили пароль? <Link to="/login">Вернуться ко входу</Link>
+                {t('reset.remembered')}{' '}
+                <Link to="/login">{t('backToLogin')}</Link>
               </p>
             </CardFooter>
           </form>

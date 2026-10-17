@@ -1,3 +1,5 @@
+// design-allow-file hardcoded-string: dev-only homage debug panel
+
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '#/lib/utils'
@@ -178,7 +180,7 @@ export function LandingGameHomages() {
 
       {debugEnabled && (
         <div className="pointer-events-auto fixed bottom-4 left-4 z-50 max-w-[min(100vw-2rem,22rem)] rounded-lg border border-border/60 bg-card/95 p-2 shadow-lg backdrop-blur-sm">
-          <p className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mb-1.5 px-1 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
             Фоновые отсылки (dev)
           </p>
           <div className="flex flex-wrap gap-1">
@@ -188,7 +190,7 @@ export function LandingGameHomages() {
                 type="button"
                 onClick={() => playRef.current(kind)}
                 className={cn(
-                  'rounded-md border border-border/50 px-2 py-1 text-[11px]',
+                  'rounded-md border border-border/50 px-2 py-1 text-[0.6875rem]',
                   'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                 )}
               >
@@ -199,7 +201,7 @@ export function LandingGameHomages() {
               type="button"
               onClick={() => playRef.current()}
               className={cn(
-                'rounded-md border border-dashed border-border/50 px-2 py-1 text-[11px]',
+                'rounded-md border border-dashed border-border/50 px-2 py-1 text-[0.6875rem]',
                 'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
               )}
             >

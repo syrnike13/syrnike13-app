@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { DataEditUser, FieldsUser, User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -56,6 +57,7 @@ function revokeObjectUrl(url: string | null) {
 }
 
 export function SettingsProfilePanel() {
+  const tv = useTranslations('validation')
   const auth = useAuth()
   const queryClient = useQueryClient()
   const user = auth.user
@@ -253,13 +255,13 @@ export function SettingsProfilePanel() {
       bio,
     })
     if (!parsed.success) {
-      toast.error('Проверьте поля профиля')
+      toast.error(tv(parsed.issues[0]?.message ?? 'profileFields'))
       return false
     }
 
     const trimmedName = parsed.data.display_name.trim()
     if (trimmedName.length > 0 && trimmedName.length < 2) {
-      toast.error('Имя должно быть не короче 2 символов')
+      toast.error(tv('profileNameMin'))
       return false
     }
 

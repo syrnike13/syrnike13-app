@@ -117,9 +117,6 @@
   "apps/web/src/components/appearance/theme-preview-swatch.tsx": {
     "hardcoded-string": 1
   },
-  "apps/web/src/components/auth/password-input.tsx": {
-    "hardcoded-string": 1
-  },
   "apps/web/src/components/channels/category-settings-dialog.tsx": {
     "hardcoded-string": 9
   },
@@ -286,59 +283,8 @@
   "apps/web/src/components/home/new-conversation-button.tsx": {
     "hardcoded-string": 10
   },
-  "apps/web/src/components/landing/hero-section.tsx": {
-    "px-size": 1,
-    "hardcoded-string": 1
-  },
-  "apps/web/src/components/landing/landing-game-homages/index.tsx": {
-    "px-size": 3
-  },
   "apps/web/src/components/landing/site-header.tsx": {
-    "px-size": 3
-  },
-  "apps/web/src/components/layout/channel-sidebar.tsx": {
-    "hardcoded-string": 1
-  },
-  "apps/web/src/components/layout/connection-status-banner.tsx": {
-    "hardcoded-string": 2
-  },
-  "apps/web/src/components/layout/gateway-loading-screen.tsx": {
-    "hardcoded-string": 5
-  },
-  "apps/web/src/components/layout/mobile/mobile-profile-page.tsx": {
-    "palette-color": 2,
-    "hardcoded-string": 4,
-    "restyle-shared": 2
-  },
-  "apps/web/src/components/layout/mobile/mobile-user-panel.tsx": {
-    "hardcoded-string": 7,
-    "restyle-shared": 1
-  },
-  "apps/web/src/components/layout/mobile/mobile-voice-floating-tile.tsx": {
-    "palette-color": 3,
-    "px-size": 1,
-    "hardcoded-string": 3
-  },
-  "apps/web/src/components/layout/people-rail-section.tsx": {
-    "hardcoded-string": 3
-  },
-  "apps/web/src/components/layout/rail-icon-button.tsx": {
-    "hardcoded-string": 2
-  },
-  "apps/web/src/components/layout/server-rail.tsx": {
-    "px-size": 2,
-    "hardcoded-string": 5
-  },
-  "apps/web/src/components/layout/shell-title-bar-controls.tsx": {
-    "px-size": 1,
-    "hardcoded-string": 5
-  },
-  "apps/web/src/components/layout/user-panel.tsx": {
-    "palette-color": 1,
-    "arbitrary-radius": 1,
-    "px-size": 3,
-    "hardcoded-string": 7,
-    "restyle-shared": 1
+    "px-size": 1
   },
   "apps/web/src/components/media/image-lightbox.tsx": {
     "palette-color": 9,
@@ -454,7 +400,7 @@
   },
   "apps/web/src/components/settings/settings-profile-panel.tsx": {
     "palette-color": 2,
-    "hardcoded-string": 16
+    "hardcoded-string": 14
   },
   "apps/web/src/components/settings/settings-profile-status-dialog.tsx": {
     "hardcoded-string": 6,
@@ -667,19 +613,6 @@
   "apps/web/src/features/api/messages-api.ts": {
     "hardcoded-string": 1
   },
-  "apps/web/src/features/auth/auth-context.tsx": {
-    "hardcoded-string": 16
-  },
-  "apps/web/src/features/auth/authed-gate.tsx": {
-    "icon-import": 1,
-    "hardcoded-string": 1
-  },
-  "apps/web/src/features/auth/login-form.tsx": {
-    "hardcoded-string": 8
-  },
-  "apps/web/src/features/auth/schemas.ts": {
-    "hardcoded-string": 12
-  },
   "apps/web/src/features/chat/use-channel-chat.ts": {
     "hardcoded-string": 7
   },
@@ -783,30 +716,6 @@
   },
   "apps/web/src/routes/__root.tsx": {
     "hardcoded-string": 1
-  },
-  "apps/web/src/routes/invite/$code.tsx": {
-    "hardcoded-string": 6
-  },
-  "apps/web/src/routes/login/check.tsx": {
-    "hardcoded-string": 5
-  },
-  "apps/web/src/routes/login/onboard.tsx": {
-    "hardcoded-string": 4
-  },
-  "apps/web/src/routes/login/register.tsx": {
-    "hardcoded-string": 10
-  },
-  "apps/web/src/routes/login/resend.tsx": {
-    "hardcoded-string": 9
-  },
-  "apps/web/src/routes/login/reset.$token.tsx": {
-    "hardcoded-string": 7
-  },
-  "apps/web/src/routes/login/reset.tsx": {
-    "hardcoded-string": 8
-  },
-  "apps/web/src/routes/verify.$token.tsx": {
-    "hardcoded-string": 9
   },
   "packages/ui/src/tokens/catalog.ts": {
     "hardcoded-string": 42

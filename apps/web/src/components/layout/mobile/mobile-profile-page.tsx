@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -19,6 +20,7 @@ import { userAvatarUrl, userBannerUrl } from '#/lib/media'
  * Полноэкранная страница профиля текущего пользователя (мобильная).
  */
 export function MobileProfilePage() {
+  const t = useTranslations('layout.user')
   const auth = useAuth()
   const user = auth.user
   const token = auth.session?.token
@@ -54,11 +56,11 @@ export function MobileProfilePage() {
             <>
               <Button
                 type="button"
-                variant="ghost"
+                variant="scrim"
                 size="icon"
-                className="size-10 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-                aria-label="Закрыть"
-                title="Закрыть"
+                className="size-10 rounded-full"
+                aria-label={t('close')}
+                title={t('close')}
                 asChild
               >
                 <Link to="/m" search={{ tab: 'online' }}>
@@ -67,11 +69,11 @@ export function MobileProfilePage() {
               </Button>
               <Button
                 type="button"
-                variant="ghost"
+                variant="scrim"
                 size="icon"
-                className="size-10 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-                aria-label="Настройки"
-                title="Настройки"
+                className="size-10 rounded-full"
+                aria-label={t('settings')}
+                title={t('settings')}
                 onClick={() => openSettings()}
               >
                 <SettingsIcon className="size-5" />

@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ComponentProps, PropsWithChildren } from 'react'
 
 import { HomeIcon } from '#/components/icons'
@@ -10,6 +11,7 @@ import { usePlatform } from '#/platform/use-platform'
 
 export function AuthLayout({ children }: PropsWithChildren) {
   const { isDesktop } = usePlatform()
+  const t = useTranslations('auth')
 
   return (
     <div className="auth-shell gradient-surface-content">
@@ -19,7 +21,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
           {!isDesktop ? (
             <Link to="/" className="auth-home-link">
               <HomeIcon aria-hidden="true" />
-              На главную
+              {t('home')}
             </Link>
           ) : null}
         </header>

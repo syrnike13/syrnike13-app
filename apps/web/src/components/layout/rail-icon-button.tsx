@@ -4,6 +4,7 @@ import {
   type RegisteredRouter,
   type UseLinkPropsOptions,
 } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ReactNode } from 'react'
 
 import {
@@ -32,11 +33,12 @@ const railIndicatorBaseClass =
 
 /** Статичная полоска непрочитанного без hover/active-поведения. */
 export function RailUnreadIndicator({ className }: { className?: string }) {
+  const t = useTranslations('layout.rail')
   return (
     <span
       data-slot="rail-indicator"
       data-unread=""
-      aria-label="Есть непрочитанные сообщения"
+      aria-label={t('unread')}
       className={cn(railIndicatorBaseClass, 'h-2 opacity-100', className)}
     />
   )
@@ -53,15 +55,14 @@ export function RailActiveIndicator({
   active,
   unread = false,
 }: RailActiveIndicatorProps) {
+  const t = useTranslations('layout.rail')
   return (
     <span
       data-slot="rail-indicator"
       data-active={active ? '' : undefined}
       data-unread={!active && unread ? '' : undefined}
       aria-hidden={active || unread ? undefined : true}
-      aria-label={
-        !active && unread ? 'Есть непрочитанные сообщения' : undefined
-      }
+      aria-label={!active && unread ? t('unread') : undefined}
       className={cn(
         railIndicatorBaseClass,
         active

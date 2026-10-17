@@ -20,6 +20,8 @@ import {
   isOutgoingVoiceCall,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
 import { railAvatarClass } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -30,21 +32,22 @@ function voiceCallMarkerTitleForCall(
   voiceCall: VoiceCallState | undefined,
   dismissedVoiceCallKeys: Record<string, true>,
   currentUserId: string | undefined,
+  t: (key: string) => string,
 ): string | null {
   if (voiceCall?.phase === 'active') {
-    return 'Идёт звонок'
+    return t('activeCall')
   }
   if (
     !isVoiceCallRingingDismissed(voiceCall, dismissedVoiceCallKeys) &&
     isIncomingVoiceCall(voiceCall, currentUserId)
   ) {
-    return 'Входящий звонок'
+    return t('incomingCall')
   }
   if (
     !isVoiceCallRingingDismissed(voiceCall, dismissedVoiceCallKeys) &&
     isOutgoingVoiceCall(voiceCall, currentUserId)
   ) {
-    return 'Исходящий звонок'
+    return t('outgoingCall')
   }
   return null
 }
@@ -93,6 +96,7 @@ function PeopleRailButton({
   activeChannelId?: string
   currentUserId?: string
 }) {
+  const t = useTranslations('layout.voice')
   const users = useSyncStore((s) => s.users)
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
@@ -102,6 +106,7 @@ function PeopleRailButton({
       s.voiceCalls[channel._id],
       s.dismissedVoiceCallKeys,
       currentUserId,
+      t,
     ),
   )
 

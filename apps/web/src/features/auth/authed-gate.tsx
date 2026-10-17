@@ -1,8 +1,9 @@
 import { useNavigate } from '@tanstack/react-router'
-import { RiRefreshLine } from '@remixicon/react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { type ReactNode, useEffect } from 'react'
 
+import { RefreshIcon } from '#/components/icons'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
@@ -108,14 +109,16 @@ function ProfileLoadErrorScreen({
   message: string
   retry: () => Effect.Effect<void, unknown>
 }) {
+  const t = useTranslations('auth')
+
   return (
     <div className="gradient-surface-content fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
       <div className="flex w-full max-w-md flex-col items-center text-center">
         <p className="text-xs font-bold tracking-[0.12em] text-foreground uppercase">
-          Профиль недоступен
+          {t('gate.profileUnavailable')}
         </p>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          {message || 'Не удалось загрузить профиль'}
+          {message || t('gate.profileLoadError')}
         </p>
         <Button
           type="button"
@@ -124,8 +127,8 @@ function ProfileLoadErrorScreen({
             void Effect.runPromise(retry())
           }}
         >
-          <RiRefreshLine aria-hidden="true" />
-          Повторить
+          <RefreshIcon aria-hidden="true" />
+          {t('gate.retry')}
         </Button>
       </div>
     </div>

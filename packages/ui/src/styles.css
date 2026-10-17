@@ -3,4 +3,6 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-scrim: var(--scrim);
+  --color-on-scrim: var(--on-scrim);
+  --color-on-solid: var(--on-solid);
 }

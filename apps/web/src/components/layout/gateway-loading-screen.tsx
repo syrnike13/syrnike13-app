@@ -1,22 +1,23 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useState } from 'react'
 
 import type { GatewayState } from '#/features/events/gateway'
 import { APP_LOGO_SRC, APP_NAME } from '#/lib/brand'
 import {
-  GATEWAY_LOADING_FACTS,
-  pickGatewayLoadingFact,
+  GATEWAY_LOADING_FACT_KEYS,
+  pickGatewayLoadingFactKey,
 } from '#/lib/gateway-loading-facts'
 import { cn } from '#/lib/utils'
 
-/** Один и тот же текст на сервере и при первом рендере клиента — без hydration mismatch. */
-const INITIAL_FACT = GATEWAY_LOADING_FACTS[0]
+/** Один и тот же ключ на сервере и при первом рендере клиента — без hydration mismatch. */
+const INITIAL_FACT_KEY = GATEWAY_LOADING_FACT_KEYS[0]
 
 const STATUS_BY_STATE: Record<GatewayState, string> = {
-  idle: 'Запуск',
-  connecting: 'Подключение',
-  connected: 'Синхронизация',
-  disconnected: 'Переподключение',
-  reconnecting: 'Переподключение',
+  idle: 'status.idle',
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  disconnected: 'status.disconnected',
+  reconnecting: 'status.reconnecting',
 }
 
 type GatewayLoadingScreenProps = {
@@ -28,12 +29,14 @@ export function GatewayLoadingScreen({
   gatewayState,
   statusText,
 }: GatewayLoadingScreenProps) {
+  const t = useTranslations('layout.loading')
   const [visible, setVisible] = useState(false)
-  const [fact, setFact] = useState<string>(INITIAL_FACT)
-  const status = statusText ?? STATUS_BY_STATE[gatewayState]
+  const [factKey, setFactKey] = useState<string>(INITIAL_FACT_KEY)
+  const status = statusText ?? t(STATUS_BY_STATE[gatewayState])
+  const fact = t(factKey)
 
   useEffect(() => {
-    setFact(pickGatewayLoadingFact())
+    setFactKey(pickGatewayLoadingFactKey())
     const frame = requestAnimationFrame(() => setVisible(true))
     return () => cancelAnimationFrame(frame)
   }, [])
@@ -61,7 +64,7 @@ export function GatewayLoadingScreen({
         />
 
         <p className="mt-10 text-xs font-bold tracking-[0.12em] text-foreground uppercase">
-          А вы знали?
+          {t('factTitle')}
         </p>
 
         <p className="mt-3 text-base leading-relaxed font-normal text-muted-foreground">
@@ -73,9 +76,7 @@ export function GatewayLoadingScreen({
         ) : null}
       </div>
 
-      <p className="sr-only">
-        {status}…
-      </p>
+      <p className="sr-only">{status}…</p>
     </div>
   )
 }

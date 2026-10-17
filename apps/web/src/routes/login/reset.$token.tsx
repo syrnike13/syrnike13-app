@@ -1,4 +1,5 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
@@ -30,6 +31,8 @@ export const Route = createFileRoute('/login/reset/$token')({
 })
 
 function ResetConfirmPage() {
+  const t = useTranslations('auth')
+  const tv = useTranslations('validation')
   const { token } = Route.useParams()
   const [submitting, setSubmitting] = useState(false)
 
@@ -38,7 +41,7 @@ function ResetConfirmPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -46,14 +49,14 @@ function ResetConfirmPage() {
       await Effect.runPromise(
         confirmPasswordResetEffect(token, parsed.data.password, true).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success('Пароль обновлён')),
+            Effect.sync(() => toast.success(t('reset.updated'))),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось сменить пароль',
+                  : t('reset.updateError'),
               )
             }),
           ),
@@ -67,10 +70,8 @@ function ResetConfirmPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>Придумайте новый пароль</CardTitle>
-          <CardDescription>
-            Он заменит старый пароль для этого аккаунта.
-          </CardDescription>
+          <CardTitle>{t('reset.confirmTitle')}</CardTitle>
+          <CardDescription>{t('reset.confirmDescription')}</CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -82,7 +83,7 @@ function ResetConfirmPage() {
             <form.Field name="password">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="new-password">Пароль</Label>
+                  <Label htmlFor="new-password">{t('passwordLabel')}</Label>
                   <PasswordInput
                     id="new-password"
                     autoComplete="new-password"
@@ -97,7 +98,9 @@ function ResetConfirmPage() {
             <form.Field name="confirm">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="new-password-confirm">Повтор пароля</Label>
+                  <Label htmlFor="new-password-confirm">
+                    {t('confirmPassword')}
+                  </Label>
                   <PasswordInput
                     id="new-password-confirm"
                     autoComplete="new-password"
@@ -115,10 +118,10 @@ function ResetConfirmPage() {
               {submitting ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : null}
-              Сохранить пароль
+              {t('reset.confirmSubmit')}
             </Button>
             <p className="auth-secondary-action">
-              <Link to="/login">Вернуться ко входу</Link>
+              <Link to="/login">{t('backToLogin')}</Link>
             </p>
           </CardFooter>
         </form>

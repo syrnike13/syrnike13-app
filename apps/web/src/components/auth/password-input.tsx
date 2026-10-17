@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { EyeIcon, EyeOffIcon } from '#/components/icons'
 import { Input } from '#/components/ui/input'
 import { cn } from '#/lib/utils'
@@ -14,6 +15,7 @@ export function PasswordInput({
   ...props
 }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
+  const t = useTranslations('auth')
 
   return (
     <div className="relative">
@@ -26,7 +28,7 @@ export function PasswordInput({
       <button
         type="button"
         className="auth-password-toggle"
-        aria-label={visible ? 'Скрыть пароль' : 'Показать пароль'}
+        aria-label={visible ? t('password.hide') : t('password.show')}
         aria-pressed={visible}
         disabled={disabled}
         onClick={() => setVisible((current) => !current)}

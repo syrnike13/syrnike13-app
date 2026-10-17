@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { Loader2Icon } from '#/components/icons'
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/invite/$code')({
 })
 
 function InviteJoinPage() {
+  const t = useTranslations('invite')
   const { code } = Route.useParams()
   const auth = useAuth()
   const navigate = useNavigate()
@@ -75,13 +77,13 @@ function InviteJoinPage() {
             })
         }
           yield* Effect.sync(() =>
-            toast.success('Вы присоединились к серверу'),
+            toast.success(t('serverJoined')),
           )
         return
       }
 
       if (isGroupInviteJoin(response)) {
-          yield* Effect.sync(() => toast.success('Приглашение принято'))
+          yield* Effect.sync(() => toast.success(t('accepted')))
           yield* Effect.tryPromise({
             try: () =>
               navigate({
@@ -95,13 +97,13 @@ function InviteJoinPage() {
       }
 
         yield* Effect.sync(() =>
-          toast.error('Неизвестный тип приглашения'),
+          toast.error(t('unknown')),
         )
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось принять',
+              error instanceof Error ? error.message : t('error'),
             )
           }),
         ),
@@ -113,39 +115,35 @@ function InviteJoinPage() {
     <div className="flex min-h-svh items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Приглашение</CardTitle>
-          <CardDescription>Код: {code}</CardDescription>
+          <CardTitle>{t('title')}</CardTitle>
+          <CardDescription>{t('code', { code })}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {inviteQuery.isLoading ? (
             <Loader2Icon className="mx-auto animate-spin" />
           ) : inviteQuery.isError ? (
-            <p className="text-sm text-destructive">
-              Приглашение не найдено или истекло
-            </p>
+            <p className="text-sm text-destructive">{t('notFound')}</p>
           ) : invite && 'type' in invite && invite.type === 'Server' ? (
             <div className="space-y-1 text-sm">
               <p className="font-medium">{invite.server_name}</p>
               <p className="text-muted-foreground">
-                Канал: {invite.channel_name}
+                {t('channel', { channel: invite.channel_name })}
               </p>
               <p className="text-muted-foreground">
-                Участников: {invite.member_count}
+                {t('members', { count: invite.member_count })}
               </p>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Публичное приглашение
-            </p>
+            <p className="text-sm text-muted-foreground">{t('public')}</p>
           )}
 
           {token ? (
             <Button type="button" onClick={() => void join()}>
-              Присоединиться
+              {t('join')}
             </Button>
           ) : (
             <Button asChild>
-              <Link to="/login">Войти, чтобы принять</Link>
+              <Link to="/login">{t('loginToJoin')}</Link>
             </Button>
           )}
         </CardContent>

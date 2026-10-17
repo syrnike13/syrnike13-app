@@ -10,12 +10,18 @@ import {
   RiHomeLine,
   RiLoader4Line,
   RiLogoutBoxLine,
+  RiRefreshLine,
   RiShareForwardBoxLine,
   RiSquareLine,
   RiSubtractLine,
 } from '@remixicon/react'
 
 import { defineIcon } from '#/components/icons/define-icon'
+
+export const RefreshIcon = defineIcon(RiRefreshLine, {
+  pack: 'remixicon',
+  name: 'RiRefreshLine',
+})
 
 export const ChevronDownIcon = defineIcon(RiArrowDownSLine, {
   pack: 'remixicon',
