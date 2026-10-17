@@ -51,9 +51,6 @@ type ServerSettingsPageProps = {
   tab: ServerSettingsTab
 }
 
-const SETTINGS_SHELL_MAX = '64rem'
-const SETTINGS_NAV_WIDTH = '218px'
-const SETTINGS_GRID_COLUMNS = `calc((100vw - min(100vw, ${SETTINGS_SHELL_MAX})) / 2 + ${SETTINGS_NAV_WIDTH}) minmax(0, calc(${SETTINGS_SHELL_MAX} - ${SETTINGS_NAV_WIDTH})) calc((100vw - min(100vw, ${SETTINGS_SHELL_MAX})) / 2)`
 
 function settingsNavItemClass(active: boolean) {
   return cn(
@@ -74,7 +71,7 @@ function NavSection({
   return (
     <div className="flex flex-col gap-0.5">
       {title ? (
-        <p className="px-2 py-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+        <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
         </p>
       ) : null}
@@ -244,17 +241,11 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const canViewAdminSection = canViewTab('invites') || canViewTab('audit')
 
   return (
-    <div
-      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground"
-      style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
-    >
+    <div className="gradient-surface-content settings-page-grid relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground">
       <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
-        <div
-          className="ml-auto flex h-full min-w-0 flex-col"
-          style={{ width: SETTINGS_NAV_WIDTH }}
-        >
+        <div className="ml-auto flex h-full w-54.5 min-w-0 flex-col">
           <div className="border-b border-border/60 px-3 py-4">
-            <p className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+            <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               {server.name}
             </p>
           </div>
@@ -402,7 +393,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           <XIcon className="size-4" />
           <span className="sr-only">{t('close')}</span>
         </Button>
-        <span className="text-[0.625rem] font-semibold tracking-wider text-muted-foreground uppercase">
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           esc
         </span>
       </div>

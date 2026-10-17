@@ -102,7 +102,7 @@ function StreamViewerCount({
             {viewers.length}
           </span>
         </TooltipTrigger>
-        <TooltipContent side="top" className="z-[420]">
+        <TooltipContent side="top" className="z-420">
           {streamViewersSummary(viewers, t)}
         </TooltipContent>
       </Tooltip>
@@ -174,13 +174,13 @@ function StreamViewerAvatars({
               key={viewer.id}
               user={viewer.user}
               className="size-6 ring-2 ring-background"
-              fallbackClassName="size-6 text-[0.625rem]"
+              fallbackClassName="size-6 text-xs"
               showPresence={false}
               animated="never"
             />
           ))}
           {hiddenCount > 0 ? (
-            <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
+            <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
               {`+${hiddenCount}`}
             </span>
           ) : null}
@@ -189,7 +189,7 @@ function StreamViewerAvatars({
       <PopoverContent
         side="top"
         align="end"
-        className="z-[420] w-56 p-2"
+        className="z-420 w-56 p-2"
         onMouseEnter={show}
         onMouseLeave={scheduleClose}
         initialFocus={false}
@@ -207,7 +207,7 @@ function StreamViewerAvatars({
               <UserAvatar
                 user={viewer.user}
                 className="size-6"
-                fallbackClassName="size-6 text-[0.625rem]"
+                fallbackClassName="size-6 text-xs"
                 showPresence={false}
                 animated="never"
               />

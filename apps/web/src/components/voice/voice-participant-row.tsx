@@ -121,7 +121,7 @@ export function VoiceParticipantRow({
             voiceElsewhere && 'opacity-60',
           )}
           fallbackClassName={
-            compact ? 'size-6 text-[0.625rem]' : 'size-8 text-xs'
+            compact ? 'size-6 text-xs' : 'size-8 text-xs'
           }
           showPresence={false}
         />

@@ -21,7 +21,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
 
 const metaChipClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/20 px-2 text-[0.6875rem] font-medium text-muted-foreground'
+  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/20 px-2 text-xs font-medium text-muted-foreground'
 
 function formatFeedbackDate(value: string, locale: AppLocale) {
   const date = new Date(value)
@@ -82,7 +82,7 @@ export function FeedbackSuggestionRow({
             {feedbackPlatformLabel(suggestion.platform, tm)}
           </span>
         ) : null}
-        <span className="ml-auto hidden shrink-0 text-[0.6875rem] text-muted-foreground sm:block">
+        <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:block">
           {authorLabel} · {formatFeedbackDate(suggestion.created_at, locale)}
         </span>
       </div>

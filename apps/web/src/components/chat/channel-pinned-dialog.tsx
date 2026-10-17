@@ -78,11 +78,15 @@ export function ChannelPinnedDialog({
           type="button"
           variant="ghost"
           size="icon"
-          className={cn('size-8', triggerClassName)}
+          className={cn(
+            'size-8',
+            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+            triggerClassName,
+          )}
           title={t('pinnedTitle')} />}>
           <PinIcon className="size-4" />
         </DialogTrigger>
-      <DialogContent className="flex max-h-[80vh] max-w-lg flex-col gap-4">
+      <DialogContent className="flex max-h-dialog-xs max-w-lg flex-col gap-4">
         <DialogHeader>
           <DialogTitle>{t('pinnedTitle')}</DialogTitle>
         </DialogHeader>

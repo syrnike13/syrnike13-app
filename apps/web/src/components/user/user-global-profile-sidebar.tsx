@@ -51,6 +51,7 @@ import {
   canToggleMemberRole,
 } from '#/lib/member-roles'
 import { FxImage } from '#/components/ui/fx-image'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { canMessageUser } from '#/features/authorization/authorization'
 
@@ -66,9 +67,9 @@ type UserGlobalProfileSidebarProps = {
   onEditProfile: () => void
 }
 
-function roleDotStyle(colour: string | null) {
-  if (!colour) return { backgroundColor: 'var(--muted-foreground)' }
-  return { backgroundColor: colour.startsWith('#') ? colour : `#${colour}` }
+function roleDotColour(colour: string | null) {
+  if (!colour) return 'var(--muted-foreground)'
+  return colour.startsWith('#') ? colour : `#${colour}`
 }
 
 function formatDate(iso: string, locale: string) {
@@ -242,12 +243,12 @@ export function UserGlobalProfileSidebar({
           <div className="absolute -bottom-12 left-4 z-10">
             <UserProfileStatusBubble
               status={customStatus}
-              className="left-full top-[43%] ml-2"
+              className="left-full top-43/100 ml-2"
             />
             <UserAvatar
               user={user}
               className="size-24"
-              fallbackClassName="size-24 text-2xl ring-[5px] ring-secondary bg-secondary"
+              fallbackClassName="size-24 text-2xl ring-5 ring-secondary bg-secondary"
               animated="always"
               showPresence
               presenceRingClassName="border-secondary"
@@ -363,7 +364,7 @@ export function UserGlobalProfileSidebar({
                 <DropdownMenuContent
                   side="top"
                   align="end"
-                  className="z-[310] w-auto min-w-[11rem]"
+                  className="z-310 w-auto min-w-44"
                 >
                   {user.relationship === 'Incoming' ? (
                     <DropdownMenuItem
@@ -424,7 +425,7 @@ export function UserGlobalProfileSidebar({
         {/* Member since (server context) */}
         {showServerSection && member?.joined_at ? (
           <div className="mt-4">
-            <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('memberSince')}
             </p>
             <p className="text-sm text-foreground/90">{formatDate(member.joined_at, locale)}</p>
@@ -434,7 +435,7 @@ export function UserGlobalProfileSidebar({
         {/* Roles (server context) */}
         {showServerSection && server && member && (roles.length > 0 || canEditRoles) ? (
           <div className="mt-4">
-            <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('roles')}
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -461,8 +462,12 @@ export function UserGlobalProfileSidebar({
                     )}
                   >
                     <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={roleDotStyle(role.colour)}
+                      className="size-2 shrink-0 rounded-full bg-(--role-dot)"
+                      style={
+                        {
+                          '--role-dot': roleDotColour(role.colour),
+                        } as CSSVars
+                      }
                     />
                     <span className="truncate">{role.name}</span>
                     {canRemove ? (

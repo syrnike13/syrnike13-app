@@ -17,7 +17,7 @@ export function AdminUnsavedChangesBar({
 
   return (
     <AdminStickyFooter visible>
-      <p className="min-w-0 flex-1 text-[0.8125rem] leading-5 text-muted-foreground">
+      <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
         {t('unsavedChanges')}
       </p>
       <div className="flex shrink-0 items-center gap-2">

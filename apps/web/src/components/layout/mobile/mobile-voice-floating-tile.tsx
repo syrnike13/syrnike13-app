@@ -26,6 +26,7 @@ import {
   MOBILE_VOICE_FLOATING_TILE_SIZE_PX,
   MOBILE_VOICE_TILE_CORNER_STORAGE_KEY,
 } from '#/lib/floating-corner'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 /**
@@ -114,15 +115,16 @@ export function MobileVoiceFloatingTile() {
   return (
     <div
       className={cn(
-        'pointer-events-none fixed z-[60]',
+        'pointer-events-none fixed z-60',
         !isDragging && floatingCornerPositionClass(corner),
+        dragPoint && 'left-(--floating-tile-left) top-(--floating-tile-top)',
       )}
       style={
         dragPoint
-          ? {
-              left: dragPoint.x - half,
-              top: dragPoint.y - half,
-            }
+          ? ({
+              '--floating-tile-left': `${dragPoint.x - half}px`,
+              '--floating-tile-top': `${dragPoint.y - half}px`,
+            } as CSSVars)
           : undefined
       }
     >
@@ -180,7 +182,7 @@ export function MobileVoiceFloatingTile() {
             ) : null}
             {soundOff ? (
               <span
-                className="flex size-4 items-center justify-center rounded-full bg-muted text-[0.625rem] font-bold text-foreground"
+                className="flex size-4 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground"
                 title={t('soundOff')}
               >
                 !

@@ -25,6 +25,7 @@
     "ui:typecheck": "pnpm --filter @syrnike13/ui typecheck",
     "check:ui": "node tooling/scripts/check-ui.mjs",
     "check:messages": "node tooling/scripts/check-messages.mjs",
+    "lint:design": "eslint apps/web/src apps/admin/src",
     "check:ui:update": "node tooling/scripts/check-ui.mjs --update",
     "desktop:dev": "pnpm --filter @syrnike13/desktop dev",
     "desktop:dev:prod": "pnpm --filter @syrnike13/desktop dev:prod",
@@ -50,6 +51,9 @@
     "livekit:check": "cd services/livekit-server && go test ./..."
   },
   "devDependencies": {
+    "@shadcn/lint": "^0.2.1",
+    "@typescript-eslint/parser": "^8.71.2",
+    "eslint": "^9.39.5",
     "typescript": "^6.0.2"
   }
 }

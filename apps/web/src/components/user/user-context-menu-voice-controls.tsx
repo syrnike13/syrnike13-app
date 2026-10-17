@@ -55,7 +55,7 @@ type UserContextMenuVoiceControlsProps = {
 type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect' | 'move'
 
 const voiceActionClassName =
-  'grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2'
+  'grid icon-text-grid items-center gap-x-2'
 const destructiveVoiceActionClassName = `${voiceActionClassName} text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20 [&_svg]:text-destructive`
 
 function isServerVoiceMoveTarget(channel: Channel): boolean {
@@ -278,7 +278,7 @@ export function UserContextMenuVoiceControls({
           {canServerMove && moveTargets.length > 0 ? (
             <ContextMenuSub>
               <ContextMenuSubTrigger
-                className="grid grid-cols-[1rem_minmax(0,1fr)_1rem] items-center gap-x-2"
+                className="grid icon-text-icon-grid items-center gap-x-2"
                 disabled={pendingAction !== null}
               >
                 <HeadphonesIcon />

@@ -15,7 +15,8 @@ import {
   listServerRoles,
 } from '#/lib/member-roles'
 import { roleIconUrl } from '#/lib/media'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type MemberRolesEditorProps = {
@@ -204,17 +205,31 @@ export function MemberRolesEditor({
                   />
                 ) : (
                   <span
-                    className="size-2.5 shrink-0 rounded-full bg-muted-foreground"
+                    className={cn(
+                      'size-2.5 shrink-0 rounded-full',
+                      role.colour ? 'bg-(--role-color)' : 'bg-muted-foreground',
+                    )}
                     style={
                       role.colour
-                        ? { backgroundColor: normalizeRoleColour(role.colour) }
+                        ? ({
+                            '--role-color': normalizeRoleColour(role.colour),
+                          } as CSSVars)
                         : undefined
                     }
                   />
                 )}
                 <span
-                  className="truncate text-sm font-medium"
-                  style={roleColourStyle(role.colour)}
+                  className={cn(
+                    'truncate text-sm font-medium',
+                    role.colour && 'text-(--role-color)',
+                  )}
+                  style={
+                    role.colour
+                      ? ({
+                          '--role-color': normalizeRoleColour(role.colour),
+                        } as CSSVars)
+                      : undefined
+                  }
                 >
                   {role.name}
                 </span>

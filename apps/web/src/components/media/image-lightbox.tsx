@@ -31,6 +31,7 @@ import {
 import { UserAvatar } from '#/components/user/user-avatar'
 import { attachmentOriginalUrl, attachmentPreviewUrl } from '#/lib/media'
 import { formatMessageTimestamp } from '#/lib/message-time'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type ImageLightboxAuthor = {
@@ -233,7 +234,7 @@ export function ImageLightbox({
         aria-describedby={undefined}
         showCloseButton={false}
         className={cn(
-          'fixed inset-0 top-0 left-0 z-[300] flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
+          'fixed inset-0 top-0 left-0 z-300 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
           'rounded-none border-none bg-transparent p-0 shadow-none outline-none sm:max-w-none',
           'data-closed:fade-out-0 data-open:fade-in-0',
         )}
@@ -243,7 +244,7 @@ export function ImageLightbox({
         <TooltipProvider delay={300}>
           {author ? (
             <div
-              className="absolute top-5 left-4 z-10 flex max-w-[min(20rem,calc(100vw-8rem))] items-center gap-3"
+              className="absolute top-5 left-4 z-10 flex max-w-lightbox-caption items-center gap-3"
               onClick={stopBubble}
             >
               <UserAvatar
@@ -254,9 +255,16 @@ export function ImageLightbox({
               />
               <div className="min-w-0">
                 <p
-                  className="truncate text-sm font-semibold text-on-media"
+                  className={cn(
+                    'truncate text-sm font-semibold text-on-media',
+                    author.nameColor && 'text-(--author-name-color)',
+                  )}
                   style={
-                    author.nameColor ? { color: author.nameColor } : undefined
+                    author.nameColor
+                      ? ({
+                          '--author-name-color': author.nameColor,
+                        } as CSSVars)
+                      : undefined
                   }
                 >
                   {author.name}
@@ -404,15 +412,19 @@ export function ImageLightbox({
             src={src}
             alt={title}
             className={cn(
-              'max-h-[calc(100vh-5rem)] max-w-[calc(100vw-5rem)] touch-none object-contain select-none',
-              hasGallery && 'max-h-[calc(100vh-9rem)]',
+              'lightbox-transform max-h-lightbox max-w-lightbox touch-none object-contain select-none',
+              hasGallery && 'max-h-lightbox-image',
               zoomed
                 ? dragging
                   ? 'cursor-grabbing'
                   : 'cursor-grab'
                 : 'cursor-zoom-in',
             )}
-            style={{ transform: imageTransform(offset, zoom) }}
+            style={
+              {
+                '--lightbox-transform': imageTransform(offset, zoom),
+              } as CSSVars
+            }
             draggable={false}
             loading="eager"
             decoding="async"
@@ -464,7 +476,7 @@ export function ImageLightbox({
               <div
                 className={cn(
                   'flex max-w-full items-center gap-1.5 overflow-x-auto',
-                  '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
+                  'scrollbar-thin [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
                 )}
               >
                 {files.map((item, itemIndex) => {

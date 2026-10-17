@@ -235,7 +235,7 @@ export function SettingsHotkeysPanel() {
                   label={t(`actions.${action.id}.label`)}
                   stacked
                 >
-                  <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_auto_auto] md:items-start">
+                  <div className="grid w-full grid-cols-1 gap-3 settings-hotkeys-grid md:items-start">
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-muted-foreground">
                         {t('action')}

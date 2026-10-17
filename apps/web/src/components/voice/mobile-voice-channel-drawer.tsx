@@ -90,8 +90,8 @@ export function MobileVoiceChannelDrawer() {
       <DrawerContent
         className={cn(
           fullscreen
-            ? 'inset-0 top-0 h-[100dvh] max-h-[100dvh] rounded-none border-0 pb-0'
-            : 'h-[min(85dvh,720px)] max-h-[min(92dvh,820px)]',
+            ? 'inset-0 top-0 h-dvh max-h-dvh rounded-none border-0 pb-0'
+            : 'h-mobile-voice-drawer-tall max-h-mobile-voice-drawer',
           'flex flex-col gap-0 overflow-hidden p-0',
         )}
       >
@@ -101,10 +101,10 @@ export function MobileVoiceChannelDrawer() {
               className={cn(
                 'flex min-h-0 flex-col overflow-hidden',
                 chatOpen && !fullscreen
-                  ? 'h-[min(52dvh,420px)] shrink-0'
+                  ? 'h-mobile-voice-drawer shrink-0'
                   : 'min-h-0 flex-1',
                 fullscreen && !chatOpen && 'min-h-0 flex-1',
-                fullscreen && chatOpen && 'h-[55%] shrink-0',
+                fullscreen && chatOpen && 'h-55/100 shrink-0',
               )}
             >
               <VoiceStageView

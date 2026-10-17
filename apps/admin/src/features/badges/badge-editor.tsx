@@ -245,7 +245,7 @@ export function BadgeEditorPage({
       }
     >
       <form onSubmit={submit} className="space-y-5">
-        <div className="grid gap-5 lg:grid-cols-[1fr_16rem]">
+        <div className="grid gap-5 badge-editor-grid">
           <AdminSection className="p-4 sm:p-5">
             <div className="grid gap-4">
               <Field>
@@ -471,7 +471,7 @@ function SwitchRow({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 text-[0.8125rem]">
+    <label className="flex items-center justify-between gap-3 text-sm">
       <span>{label}</span>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </label>

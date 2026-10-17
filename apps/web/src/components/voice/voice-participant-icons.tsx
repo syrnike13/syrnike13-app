@@ -26,7 +26,7 @@ export function VoiceOnAirBadge({
   return (
     <span
       className={cn(
-        'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[0.5625rem] font-bold leading-none tracking-wide text-destructive-foreground',
+        'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-3xs font-bold leading-none tracking-wide text-destructive-foreground',
         onDoubleClick && 'cursor-pointer select-none',
         className,
       )}

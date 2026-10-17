@@ -46,7 +46,7 @@ export function NotificationBadge({
       variant="destructive"
       aria-label={countLabel}
       className={cn(
-        'pointer-events-none h-4 min-w-4 px-1 text-[0.625rem] leading-none',
+        'pointer-events-none h-4 min-w-4 px-1 text-xs leading-none',
         className,
       )}
     >

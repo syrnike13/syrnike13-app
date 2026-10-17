@@ -44,7 +44,7 @@ export function GatewayLoadingScreen({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden',
+        'fixed inset-0 z-200 flex flex-col items-center justify-center overflow-hidden',
         'gradient-surface-content bg-background px-6 text-foreground transition-opacity duration-300',
         visible ? 'opacity-100' : 'opacity-0',
       )}
@@ -63,7 +63,7 @@ export function GatewayLoadingScreen({
           draggable={false}
         />
 
-        <p className="mt-10 text-xs font-bold tracking-[0.12em] text-foreground uppercase">
+        <p className="mt-10 text-xs font-bold tracking-widest text-foreground uppercase">
           {t('factTitle')}
         </p>
 

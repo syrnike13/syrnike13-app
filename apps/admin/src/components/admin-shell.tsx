@@ -56,14 +56,14 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
-      <aside className="flex w-[var(--shell-sidebar-width)] shrink-0 flex-col border-r border-border/60 bg-sidebar">
+      <aside className="flex w-(--shell-sidebar-width) shrink-0 flex-col border-r border-border/60 bg-sidebar">
         <div className="flex h-14 items-center gap-2.5 px-4">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <SparklesIcon className="size-3.5" aria-hidden />
           </span>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-[0.8125rem] font-semibold">syrnike13</div>
-            <div className="text-[0.625rem] text-muted-foreground">admin</div>
+            <div className="truncate text-sm font-semibold">syrnike13</div>
+            <div className="text-xs text-muted-foreground">admin</div>
           </div>
         </div>
 
@@ -75,7 +75,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
 
         <div className="border-t border-border/60 p-2">
           {config.releaseChannel === 'nightly' ? (
-            <div className="mb-2 px-2 text-[0.625rem] font-medium uppercase tracking-wide text-warning">
+            <div className="mb-2 px-2 text-xs font-medium uppercase tracking-wide text-warning">
               Nightly
             </div>
           ) : null}
@@ -83,7 +83,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-medium">{name}</div>
               {auth.user?.username ? (
-                <div className="truncate text-[0.6875rem] text-muted-foreground">
+                <div className="truncate text-xs text-muted-foreground">
                   @{auth.user.username}
                 </div>
               ) : null}
@@ -134,7 +134,7 @@ function NavLink({
     <Link
       to={to}
       className={cn(
-        'flex h-8 items-center gap-2 rounded-md px-2.5 text-[0.8125rem] transition-colors',
+        'flex h-8 items-center gap-2 rounded-md px-2.5 text-sm transition-colors',
         active
           ? 'bg-sidebar-accent font-medium text-foreground'
           : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground',

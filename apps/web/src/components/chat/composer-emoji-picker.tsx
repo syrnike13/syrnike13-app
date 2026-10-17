@@ -34,7 +34,10 @@ export function ComposerEmojiPicker({
           type="button"
           variant="ghost"
           size="icon"
-          className={triggerClassName ?? 'size-9 shrink-0'}
+          className={
+            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+            triggerClassName ?? 'size-9 shrink-0'
+          }
           disabled={disabled}
           title="Emoji" />}>
           <SmileIcon className="size-4" />

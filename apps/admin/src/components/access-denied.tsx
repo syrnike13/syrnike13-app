@@ -11,8 +11,8 @@ export function AccessDenied() {
   return (
     <div className="flex h-svh items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-md border border-border/70 bg-card p-6 text-center">
-        <h1 className="text-[0.9375rem] font-semibold">{t('accessDeniedTitle')}</h1>
-        <p className="mt-2 text-[0.8125rem] text-muted-foreground">
+        <h1 className="text-base font-semibold">{t('accessDeniedTitle')}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           {t('accessDeniedDescription')}
         </p>
         {auth.session ? (

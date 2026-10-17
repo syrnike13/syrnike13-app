@@ -62,7 +62,7 @@ export function EditMemberRolesDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[min(16rem,calc(90vh-10rem))] px-2 py-1.5">
+        <ScrollArea className="max-h-roles-dialog px-2 py-1.5">
           <MemberRolesEditor
             server={server}
             targetMember={targetMember}

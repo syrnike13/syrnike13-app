@@ -172,6 +172,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        {/* eslint-disable-next-line shadcn/no-inline-styles -- pre-hydration theme CSS must be inline before stylesheets load */}
         <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />

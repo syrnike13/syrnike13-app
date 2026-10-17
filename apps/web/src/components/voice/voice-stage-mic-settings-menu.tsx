@@ -25,6 +25,7 @@ import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const METER_BAR_COUNT = 25
@@ -369,7 +370,7 @@ function MicSettingsDeviceRow({
         <>
           <span className="min-w-0 flex-1">
             <span className={voiceStagePopoverSectionTitleClass}>{title}</span>
-            <span className="mt-0.5 block truncate text-[0.6875rem] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
               {subtitle}
             </span>
           </span>
@@ -459,13 +460,15 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
         <span
           key={index}
           className={cn(
-            'w-1 rounded-sm bg-muted transition-[height,background-color] duration-75',
+            'h-(--meter-height) w-1 rounded-sm bg-muted motion-height transition-colors duration-75',
             level > 0.35 && 'bg-primary',
             level > 0.12 && level <= 0.35 && 'bg-muted-foreground/50',
           )}
-          style={{
-            height: `${Math.max(12, Math.round(level * 100))}%`,
-          }}
+          style={
+            {
+              '--meter-height': `${Math.max(12, Math.round(level * 100))}%`,
+            } as CSSVars
+          }
         />
       ))}
     </div>

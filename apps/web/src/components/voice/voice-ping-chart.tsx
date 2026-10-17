@@ -7,6 +7,7 @@ import {
   voicePingChartDomain,
   type VoicePingSample,
 } from '#/features/voice/voice-ping-history'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const WIDTH = 288
@@ -106,7 +107,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
                 x={WIDTH - 4}
                 y={y + 3}
                 textAnchor="end"
-                className="fill-muted-foreground text-[0.5625rem]"
+                className="fill-muted-foreground text-3xs"
               >
                 {tick}
               </text>
@@ -150,7 +151,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
             x={tick.x}
             y={HEIGHT - 4}
             textAnchor="middle"
-            className="fill-muted-foreground text-[0.5625rem]"
+            className="fill-muted-foreground text-3xs"
           >
             {tick.label}
           </text>
@@ -169,13 +170,13 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
 
       {activePoint ? (
         <div
-          className="gradient-surface-floating pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
-          style={{ left: `${tooltipLeft}%` }}
+          className="gradient-surface-floating pointer-events-none absolute top-1 left-(--ping-left) z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+          style={{ '--ping-left': `${tooltipLeft}%` } as CSSVars}
         >
           <p className="font-semibold tabular-nums">
             {t('ping.ms', { ms: activePoint.ms })}
           </p>
-          <p className="text-[0.625rem] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {activePoint.label}
           </p>
         </div>

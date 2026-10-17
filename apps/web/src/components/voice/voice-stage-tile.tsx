@@ -14,19 +14,13 @@ import {
 } from '#/components/voice/voice-participant-icons'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
-import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
+import type { CSSVars } from '#/lib/css-vars'
+import { cn } from '#/lib/utils'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
-import { cn } from '#/lib/utils'
 
 const TILE_SURFACE =
-  'relative aspect-video w-full overflow-hidden rounded-xl shadow-inner transition-[background] duration-500 ease-out'
-
-function stageAvatarSize(compact: boolean) {
-  return compact
-    ? 'size-14 sm:size-16'
-    : 'size-20 sm:size-24 md:size-28 lg:size-32'
-}
+  'relative aspect-video w-full overflow-hidden rounded-xl shadow-inner transition-colors duration-500 ease-out'
 
 type VoiceStageTileProps = {
   participant: UserVoiceState
@@ -51,7 +45,9 @@ export function VoiceStageTile({
 }: VoiceStageTileProps) {
   const muted = participant.server_muted || participant.self_mute
   const deafened = participant.server_deafened || participant.self_deaf
-  const avatarSize = stageAvatarSize(compact)
+  const avatarSize = compact
+    ? 'size-14 sm:size-16'
+    : 'size-20 sm:size-24 md:size-28 lg:size-32'
   const palette = useVoiceTilePalette(user, participant.id)
 
   const canFocus = Boolean(onSelect)
@@ -62,12 +58,18 @@ export function VoiceStageTile({
       tabIndex={canFocus ? 0 : undefined}
       className={cn(
         TILE_SURFACE,
+        'tile-palette',
         dimmed && 'opacity-50',
         speaking && 'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
         canFocus && 'cursor-pointer hover:brightness-110',
-        focused && 'min-h-[min(50vh,24rem)]',
+        focused && 'min-h-voice-tile',
       )}
-      style={tilePaletteStyle(palette)}
+      style={
+        {
+          '--tile-from': palette.from,
+          '--tile-to': palette.to,
+        } as CSSVars
+      }
       onClick={canFocus ? onSelect : undefined}
       onKeyDown={
         canFocus
@@ -100,7 +102,7 @@ export function VoiceStageTile({
         </div>
       ) : null}
 
-      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-media-backdrop/55 px-1.5 py-0.5 text-xs font-medium text-on-media sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
+      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-media-inset min-w-0 items-center gap-1.5 rounded bg-media-backdrop/55 px-1.5 py-0.5 text-xs font-medium text-on-media sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
@@ -171,7 +173,7 @@ export function VoiceStageInviteTile({
       <p className="text-sm font-medium text-foreground">
         {t('actions.inviteFriends')}
       </p>
-      <p className="max-w-[90%] text-[0.6875rem] leading-snug text-muted-foreground sm:text-xs">
+      <p className="max-w-90/100 text-xs leading-snug text-muted-foreground sm:text-xs">
         {t('actions.inviteDescription')}
       </p>
       <Button

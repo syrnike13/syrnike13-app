@@ -128,7 +128,7 @@ function SettingsDesktopModal() {
       <DialogContent
         showCloseButton={false}
         className={cn(
-          'flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl',
+          'flex h-settings-modal max-h-settings-modal w-settings-modal max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl',
         )}
       >
         <DialogTitle className="sr-only">{t('userSettingsTitle')}</DialogTitle>
@@ -136,7 +136,7 @@ function SettingsDesktopModal() {
           {t('userSettingsDescription')}
         </DialogDescription>
 
-        <aside className="flex min-h-0 w-[13.625rem] shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
+        <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
           <div className="border-b border-border/60 p-3">
             <button
               type="button"
@@ -175,7 +175,7 @@ function SettingsDesktopModal() {
 
           <ScrollArea className="h-0 min-h-0 flex-1">
             <nav className="flex flex-col gap-0.5 p-2">
-              <p className="px-2 py-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+              <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 {t('userSettings')}
               </p>
               {navItems.map((item) => {

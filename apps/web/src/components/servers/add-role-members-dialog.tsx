@@ -198,7 +198,7 @@ export function AddRoleMembersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(32rem,90vh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent className="flex max-h-role-members flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
         <DialogHeader className="space-y-2 px-6 pt-6 pb-4 text-left">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>

@@ -150,7 +150,7 @@ export function UserGlobalProfileDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[min(41.25rem,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[56.25rem]"
+        className="flex h-profile-dialog max-h-dialog flex-col gap-0 overflow-hidden p-0 sm:max-w-225"
         showCloseButton
       >
         <DialogTitle className="sr-only">

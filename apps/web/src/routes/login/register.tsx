@@ -67,7 +67,7 @@ export const Route = createFileRoute('/login/register')({
 
 function RegisterPage() {
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const auth = useAuth()
   const navigate = useNavigate()
   const configQuery = useSyrnikeConfig()
@@ -103,7 +103,7 @@ function RegisterPage() {
           const fieldName = issue.path?.[0]
           if (!isRegisterFieldName(fieldName)) continue
 
-          nextErrors[fieldName] ??= tv(issue.message)
+          nextErrors[fieldName] ??= tValidation(issue.message)
           firstInvalidField ??= fieldName
         }
 

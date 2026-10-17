@@ -180,7 +180,7 @@ export function UserPanel({
                 <div className="relative h-4 overflow-hidden">
                   <p
                     className={cn(
-                      'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
+                      'truncate text-xs leading-4 transition duration-200 ease-out',
                       'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
                       gatewayConnected
                         ? 'text-muted-foreground'
@@ -194,7 +194,7 @@ export function UserPanel({
                   <p
                     className={cn(
                       'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
-                      'translate-y-full opacity-0 transition-[transform,opacity] duration-200 ease-out',
+                      'translate-y-full opacity-0 transition duration-200 ease-out',
                       'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
                     )}
                   >
@@ -236,7 +236,7 @@ export function UserPanel({
             side="top"
             align="start"
             sideOffset={8}
-            className="z-[200] w-[min(300px,calc(100vw-1rem))] overflow-hidden border-0 bg-popover p-0 text-popover-foreground shadow-xl ring-1 ring-shell-divider"
+            className="z-200 w-user-panel-popover overflow-hidden border-0 bg-popover p-0 text-popover-foreground shadow-xl ring-1 ring-shell-divider"
             initialFocus={false}
           >
             <CurrentUserProfileMenu
@@ -261,12 +261,12 @@ export function UserPanel({
         <div
           data-telegram-promo-hover=""
           className={cn(
-            'absolute inset-x-0 bottom-[calc(100%-3.25rem)] z-20 grid overflow-hidden rounded-t-lg border-x border-t border-shell-divider',
+            'absolute inset-x-0 bottom-full translate-y-13 z-20 grid overflow-hidden rounded-t-lg border-x border-t border-shell-divider',
             'telegram-promo-surface bg-secondary bg-linear-to-r from-sidebar-ring/25 via-accent/60 to-sidebar-ring/15 text-foreground',
-            'transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
+            'motion-rows duration-200 ease-out-expo',
             telegramPromoOpen
-              ? 'grid-rows-[52px_1fr]'
-              : 'grid-rows-[52px_0fr]',
+              ? 'promo-open-rows'
+              : 'promo-closed-rows',
             'motion-reduce:transition-none',
           )}
         >
@@ -293,10 +293,10 @@ export function UserPanel({
                 </span>
                 <span
                   className={cn(
-                    'grid transition-[grid-template-rows,opacity] duration-150 ease-out',
+                    'grid motion-rows transition-opacity duration-150 ease-out',
                     telegramPromoOpen
-                      ? 'grid-rows-[0fr] opacity-0'
-                      : 'grid-rows-[1fr] opacity-100',
+                      ? 'collapsed-rows opacity-0'
+                      : 'expanded-rows opacity-100',
                     'motion-reduce:transition-none',
                   )}
                 >
@@ -309,7 +309,7 @@ export function UserPanel({
               </span>
 
               <span className="telegram-promo-icon relative flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-ring/80 text-primary-foreground ring-1 ring-sidebar-ring/60">
-                <TelegramIcon aria-hidden="true" className="size-[1.125rem]" />
+                <TelegramIcon aria-hidden="true" className="size-4.5" />
               </span>
             </span>
           </button>
@@ -318,16 +318,16 @@ export function UserPanel({
             <div
               id="telegram-promo-details"
               aria-hidden={!telegramPromoOpen}
-              className="relative isolate flex h-[6.5rem] flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
+              className="relative isolate flex h-26 flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
             >
               <img
                 src="/telegram-promo-cat.png"
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain [image-rendering:pixelated]"
+                className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain pixelated"
               />
-              <p className="relative z-10 max-w-[15.625rem] text-sm font-semibold leading-5 text-foreground">
+              <p className="relative z-10 max-w-62.5 text-sm font-semibold leading-5 text-foreground">
                 {t('telegram.headline')}
               </p>
               <div className="relative z-10 flex items-center gap-2 pl-12">

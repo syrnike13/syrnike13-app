@@ -23,7 +23,7 @@ import { cn } from '#/lib/utils'
 
 /** Компактная подсказка пинга, как в Discord. */
 const pingTooltipClass =
-  'px-2 py-1 text-[0.6875rem] leading-none font-medium'
+  'px-2 py-1 text-xs leading-none font-medium'
 
 const VOICE_STATUS_CONNECTED = {
   accent: 'text-chart-3',
@@ -81,6 +81,12 @@ export function VoiceConnectionStrip() {
       : connected
         ? VOICE_STATUS_CONNECTED
         : VOICE_STATUS_CONNECTING
+  const statusIconBg =
+    voice.connectionPhase === 'failed'
+      ? 'bg-destructive/15'
+      : connected
+        ? 'bg-chart-3/15'
+        : 'bg-chart-2/15'
   const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase, ts)
   const pingLabel = formatVoicePingLabel(
     voiceTelemetry.voicePingMs,
@@ -104,7 +110,7 @@ export function VoiceConnectionStrip() {
                   type="button"
                   className={cn(
                     'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
-                    status.iconBg,
+                    statusIconBg,
                   )}
                   aria-label={`${pingLabel}. ${t('openStats')}`} />}>
                   <SignalIcon

@@ -13,7 +13,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
 
   return (
     <main className="h-screen overflow-hidden bg-transparent p-5 text-foreground">
-      <section data-overlay-panel className="w-[18.5rem] overflow-hidden">
+      <section data-overlay-panel className="w-74 overflow-hidden">
         <div className="space-y-1">
           {state.snapshot.participants.map((participant) => (
             <div

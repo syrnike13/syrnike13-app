@@ -10,6 +10,7 @@ import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 type HomeSidebarProps = {
   activeChannelId?: string
@@ -32,10 +33,16 @@ export function HomeSidebar({
     cn(buttonVariants({ variant: 'ghost' }), className)
   return (
     <aside
-      className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
+      className={cn(
+        'flex h-full min-h-0 w-full flex-col',
+        shellNavSurface,
+        reserveUserPanelSpace && 'pb-(--sidebar-bottom-reserve)',
+      )}
       style={
         reserveUserPanelSpace
-          ? { paddingBottom: userPanelReservePx }
+          ? ({
+              '--sidebar-bottom-reserve': `${userPanelReservePx}px`,
+            } as CSSVars)
           : undefined
       }
     >

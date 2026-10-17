@@ -142,9 +142,9 @@ export function VoicePanelMediaBar() {
           onClick={voiceMedia.toggleCamera}
         >
           {cameraOn ? (
-            <VideoIcon className="size-[1.125rem]" />
+            <VideoIcon className="size-4.5" />
           ) : (
-            <VideoOffIcon className="size-[1.125rem]" />
+            <VideoOffIcon className="size-4.5" />
           )}
         </PanelMediaButton>
 
@@ -155,11 +155,11 @@ export function VoicePanelMediaBar() {
           onClick={voiceMedia.toggleScreenShare}
         >
           {screenShareStarting ? (
-            <Loader2Icon className="size-[1.125rem] animate-spin" />
+            <Loader2Icon className="size-4.5 animate-spin" />
           ) : sharingScreen ? (
-            <MonitorXIcon className="size-[1.125rem]" />
+            <MonitorXIcon className="size-4.5" />
           ) : (
-            <MonitorUpIcon className="size-[1.125rem]" />
+            <MonitorUpIcon className="size-4.5" />
           )}
         </PanelMediaButton>
 
@@ -201,12 +201,12 @@ export function VoicePanelMediaBar() {
               )
             }}
           >
-            <ActivityIcon className="size-[1.125rem]" />
+            <ActivityIcon className="size-4.5" />
           </PanelMediaButton>
         ) : null}
 
         <PanelMediaButtonSoon title={t('actions.soundboard')}>
-          <SoundboardIcon className="size-[1.125rem]" />
+          <SoundboardIcon className="size-4.5" />
         </PanelMediaButtonSoon>
       </div>
     </TooltipProvider>

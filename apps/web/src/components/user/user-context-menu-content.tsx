@@ -65,7 +65,8 @@ import {
 } from '#/features/authorization/authorization'
 import { canToggleMemberRole, listServerRoles } from '#/lib/member-roles'
 import { roleIconUrl } from '#/lib/media'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type UserContextMenuContentProps = {
@@ -220,7 +221,7 @@ function UserRolesContextMenuSub({
               key={role._id}
               disabled={disabled}
               className={cn(
-                'grid grid-cols-[1rem_minmax(0,1fr)_1rem] gap-2',
+                'grid icon-text-icon-grid gap-2',
                 assigned &&
                   disabled &&
                   'data-[disabled]:bg-accent/45 data-[disabled]:opacity-100',
@@ -240,18 +241,32 @@ function UserRolesContextMenuSub({
               ) : (
                 <span className="flex size-4 shrink-0 items-center justify-center">
                   <span
-                    className="size-2.5 rounded-full bg-muted-foreground"
+                    className={cn(
+                      'size-2.5 rounded-full',
+                      role.colour ? 'bg-(--role-color)' : 'bg-muted-foreground',
+                    )}
                     style={
                       role.colour
-                        ? { backgroundColor: normalizeRoleColour(role.colour) }
+                        ? ({
+                            '--role-color': normalizeRoleColour(role.colour),
+                          } as CSSVars)
                         : undefined
                     }
                   />
                 </span>
               )}
               <span
-                className="min-w-0 truncate"
-                style={roleColourStyle(role.colour)}
+                className={cn(
+                  'min-w-0 truncate',
+                  role.colour && 'text-(--role-color)',
+                )}
+                style={
+                  role.colour
+                    ? ({
+                        '--role-color': normalizeRoleColour(role.colour),
+                      } as CSSVars)
+                    : undefined
+                }
               >
                 {role.name}
               </span>
@@ -497,7 +512,7 @@ export function UserContextMenuContent({
 
   return (
     <>
-      <ContextMenuContent className="z-[200] w-56">
+      <ContextMenuContent className="z-200 w-56">
       {showVoiceControls ? (
         <UserContextMenuVoiceControls
           userId={user._id}
@@ -656,7 +671,7 @@ export function UserContextMenuContent({
                 <select
                   id={`ban-delete-messages-${user._id}`}
                   value={banDeleteMessageSeconds}
-                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
                   disabled={banning}
                   onChange={(event) =>
                     setBanDeleteMessageSeconds(event.target.value)

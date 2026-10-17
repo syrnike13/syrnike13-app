@@ -181,3 +181,37 @@ body,
 .admin-dropzone-active {
   animation: admin-dropzone-pulse 1.6s ease-in-out infinite;
 }
+
+/* Design-system utilities introduced by the @shadcn/lint cleanup. */
+@utility feedback-split-grid {
+  grid-template-columns: minmax(19rem, 0.82fr) minmax(0, 1.35fr);
+}
+
+@utility comparison-grid {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+@utility form-aside-grid {
+  grid-template-columns: 13rem minmax(0, 1fr);
+}
+
+@utility diagnostics-row-grid {
+  grid-template-columns: minmax(0, 1fr) 10rem 10rem 10rem auto;
+}
+
+@utility diagnostics-report-grid {
+  grid-template-columns: minmax(0, 1fr) 18rem;
+}
+
+@utility badge-editor-grid {
+  grid-template-columns: 1fr 16rem;
+}
+
+@utility min-h-feedback-page {
+  min-height: calc(100svh - 9.5rem);
+}
+
+@theme {
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 0.875rem;
+}

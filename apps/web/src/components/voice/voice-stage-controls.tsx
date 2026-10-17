@@ -839,7 +839,7 @@ function VoiceStageExitControl({
         onClick={onPrimaryAction}
         className={cn(
           'flex shrink-0 items-center justify-center bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50',
-          surface === 'overlay' && 'min-w-[3.75rem] self-stretch px-3',
+          surface === 'overlay' && 'min-w-15 self-stretch px-3',
           surface === 'mobile' && 'h-11 min-w-11 px-3',
           surface === 'legacy' &&
             (compact ? 'h-8 min-w-8 px-2' : 'h-11 min-w-11 px-3'),
@@ -1188,7 +1188,10 @@ function StageViewSettings({
       <PopoverContent
         align="center"
         data-voice-stage-popover
-        className={voiceStagePopoverSettingsClass}
+        className={
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverSettingsClass
+        }
       >
         <StageFilterToggle
           checked={filters.showOwnStream}

@@ -511,7 +511,7 @@ function ServerSettingsGeneralPanel({
           </p>
         </div>
 
-        <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+        <div className="mt-6 grid gap-8 settings-panels-grid xl:items-start">
           <div className="min-w-0 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="server-rename">{t('name')}</Label>

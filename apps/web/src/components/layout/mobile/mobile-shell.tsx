@@ -90,7 +90,7 @@ export function MobileShell() {
         <div
           className={cn(
             'theme-surface-content gradient-surface-content flex min-h-0 flex-1 flex-col text-card-foreground',
-            !isProfileRoute && 'pt-[env(safe-area-inset-top)]',
+            !isProfileRoute && 'safe-pt',
           )}
         >
           <Outlet />
@@ -98,7 +98,7 @@ export function MobileShell() {
       ) : (
         <div
           className={cn(
-            'relative flex min-h-0 flex-1 pt-[env(safe-area-inset-top)]',
+            'relative flex min-h-0 flex-1 safe-pt',
           )}
         >
           <ServerRail variant="mobile" />

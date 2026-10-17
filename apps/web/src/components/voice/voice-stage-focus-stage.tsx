@@ -12,15 +12,16 @@ import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
 import { useVoiceStageFocusSizing } from '#/features/voice/use-voice-stage-focus-sizing'
 import { voiceStageChromeMotion } from '#/features/voice/use-voice-stage-chrome-visible'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_STREAM_ASPECT_RATIO = 16 / 9
 
 const focusStageFadeSlideClass =
-  'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
+  'transition duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-card px-2 text-sm font-medium text-card-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-card px-2 text-sm font-medium text-card-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
@@ -108,11 +109,18 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
           )}
         >
           <div
-            className="max-w-full shrink-0 transition-[width,height] duration-200 ease-out motion-reduce:transition-none"
-            style={
+            className={cn(
+              'max-w-full shrink-0 motion-size duration-200 ease-out motion-reduce:transition-none',
               layout.focus.width > 0 && layout.focus.height > 0
-                ? { width: layout.focus.width, height: layout.focus.height }
-                : { width: '100%', aspectRatio: streamAspectRatio }
+                ? 'h-(--focus-height) w-(--focus-width)'
+                : 'aspect-(--focus-aspect) w-full',
+            )}
+            style={
+              {
+                '--focus-width': `${layout.focus.width}px`,
+                '--focus-height': `${layout.focus.height}px`,
+                '--focus-aspect': streamAspectRatio,
+              } as CSSVars
             }
           >
             <div className="size-full overflow-hidden rounded-md">
@@ -122,8 +130,10 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
 
           {stripItems.length > 0 ? (
             <div
-              className="grid w-full transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
-              style={{ gridTemplateRows: stripCollapsed ? '0fr' : '1fr' }}
+              className={cn(
+                'grid w-full motion-rows duration-200 ease-out motion-reduce:transition-none',
+                stripCollapsed ? 'collapsed-rows' : 'expanded-rows',
+              )}
             >
               <div className="overflow-hidden">
                 <div
@@ -153,8 +163,8 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
           {stripItems.length > 0 && stripToggleTop != null ? (
             <div
               data-voice-stage-chrome
-              className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 transition-[top] duration-200 ease-out motion-reduce:transition-none"
-              style={{ top: stripToggleTop }}
+              className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 top-(--strip-toggle-top) motion-top duration-200 ease-out motion-reduce:transition-none"
+              style={{ '--strip-toggle-top': `${stripToggleTop}px` } as CSSVars}
             >
               <div
                 className={cn(

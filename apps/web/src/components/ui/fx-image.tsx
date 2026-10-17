@@ -53,28 +53,24 @@ export function FxImage({
     Number.isFinite(aspectRatio) &&
     aspectRatio > 0
 
-  const containerBoxStyle = React.useMemo((): React.CSSProperties | undefined => {
-    if (!useIntrinsicBox) return undefined
-    return {
-      aspectRatio,
-      width: 'auto',
-      maxWidth: '100%',
-      height: 'auto',
-    }
-  }, [aspectRatio, useIntrinsicBox])
-
   const { draggable, style: wrapperStyle, ...containerProps } = wrapperProps
 
   const containerClassName = cn(
     fill ? 'absolute inset-0 z-0 overflow-hidden' : 'relative z-0 overflow-hidden',
-    useIntrinsicBox && 'w-fit max-w-full',
+    useIntrinsicBox && 'aspect-(--intrinsic-aspect) w-fit max-w-full',
     wrapperClassName,
   )
 
-  const containerStyle: React.CSSProperties = {
-    ...containerBoxStyle,
-    ...wrapperStyle,
-  }
+  /* eslint-disable shadcn/no-inline-styles -- wrapperProps style passthrough */
+  const containerStyle = (
+    useIntrinsicBox
+      ? {
+          '--intrinsic-aspect': aspectRatio,
+          ...wrapperStyle,
+        }
+      : wrapperStyle
+  ) as React.CSSProperties
+  /* eslint-enable shadcn/no-inline-styles */
 
   return (
     <Wrapper

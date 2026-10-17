@@ -231,7 +231,7 @@ export function FeedbackCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-dialog-sm flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 gap-1 border-b border-shell-divider px-6 pt-4 pb-3">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>

@@ -85,7 +85,7 @@ export function DirectMessageProfilePanel({
         <div className="absolute -bottom-10 left-4 z-10">
           <UserProfileStatusBubble
             status={customStatus}
-            className="left-full top-[45%] ml-2"
+            className="left-full top-45/100 ml-2"
           />
           {onOpenProfile ? (
             <button
@@ -98,7 +98,7 @@ export function DirectMessageProfilePanel({
                 <UserAvatar
                   user={user}
                   className="size-20"
-                  fallbackClassName="size-20 text-xl ring-[0.375rem] ring-card bg-muted"
+                  fallbackClassName="size-20 text-xl ring-6 ring-card bg-muted"
                   animated="always"
                   showPresence
                   presenceRingClassName="border-card"
@@ -113,7 +113,7 @@ export function DirectMessageProfilePanel({
             <UserAvatar
               user={user}
               className="size-20"
-              fallbackClassName="size-20 text-xl ring-[0.375rem] ring-card bg-muted"
+              fallbackClassName="size-20 text-xl ring-6 ring-card bg-muted"
               animated="always"
               showPresence
               presenceRingClassName="border-card"
@@ -135,7 +135,7 @@ export function DirectMessageProfilePanel({
         <div className="mt-4 space-y-2">
           {profileBio ? (
             <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t('about')}
               </p>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
@@ -146,7 +146,7 @@ export function DirectMessageProfilePanel({
 
           {aliases.length > 0 ? (
             <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 AKA
               </p>
               <p className="truncate text-sm font-medium text-foreground">

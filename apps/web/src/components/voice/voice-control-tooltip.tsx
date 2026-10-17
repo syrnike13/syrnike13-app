@@ -23,14 +23,25 @@ export function VoiceControlTooltip({
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<span className={cn('inline-flex', wrapperClassName)} />}
+        render={
+          <span
+            className={cn(
+              'inline-flex',
+              // eslint-disable-next-line shadcn/require-static-classes -- caller-owned tooltip wrapper styling
+              wrapperClassName,
+            )}
+          />
+        }
       >
         {children}
       </TooltipTrigger>
       <TooltipContent
         side="top"
         sideOffset={8}
-        className={contentClassName}
+        className={
+          // eslint-disable-next-line shadcn/require-static-classes -- caller-owned tooltip content styling
+          contentClassName
+        }
       >
         {content ?? title}
       </TooltipContent>

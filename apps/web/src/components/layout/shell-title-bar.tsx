@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import type { DesktopOs } from '@syrnike13/platform'
 
 import {
@@ -17,6 +17,7 @@ import {
 } from '#/components/layout/shell-title-bar-controls'
 import { DesktopUpdateTitleBarButton } from '#/features/desktop/desktop-update-banner'
 import { usePlatform } from '#/platform/use-platform'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 function ShellTitleBarDragRegion({ className }: { className?: string }) {
@@ -28,17 +29,22 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
 
   return (
     <header
-      className={cn('relative shrink-0 overflow-visible', shellNavSurface)}
-      style={{ height: heightPx }}
+      className={cn(
+        'relative h-(--shell-titlebar-height) shrink-0 overflow-visible',
+        shellNavSurface,
+      )}
+      style={{ '--shell-titlebar-height': `${heightPx}px` } as CSSVars}
     >
       <ShellTitleBarDragRegion className="h-full w-full" />
       <div
-        className="absolute z-10"
-        style={{
-          left: SHELL_TITLEBAR_MACOS_INSET_PX,
-          top: navTopPx,
-          height: SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX,
-        }}
+        className="absolute left-(--mac-nav-inset) top-(--mac-nav-top) h-(--mac-nav-size) z-10"
+        style={
+          {
+            '--mac-nav-inset': `${SHELL_TITLEBAR_MACOS_INSET_PX}px`,
+            '--mac-nav-top': `${navTopPx}px`,
+            '--mac-nav-size': `${SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX}px`,
+          } as CSSVars
+        }
       >
         <ShellHistoryNavButtons layout="macos" />
       </div>
@@ -56,20 +62,14 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
 
 function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
   const headerStyle = {
-    height: heightPx,
-    maxHeight: heightPx,
-    minHeight: heightPx,
     '--shell-titlebar-height': `${heightPx}px`,
     '--shell-titlebar-button-width': `${SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX}px`,
-  } satisfies CSSProperties & {
-    '--shell-titlebar-height': string
-    '--shell-titlebar-button-width': string
-  }
+  } as CSSVars
 
   return (
     <header
       className={cn(
-        'shell-title-bar-windows relative shrink-0 overflow-hidden',
+        'shell-title-bar-windows relative h-(--shell-titlebar-height) max-h-(--shell-titlebar-height) min-h-(--shell-titlebar-height) shrink-0 overflow-hidden',
         shellNavSurface,
       )}
       style={headerStyle}
@@ -93,8 +93,11 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
   return (
     <header
-      className={cn('relative shrink-0 overflow-hidden', shellNavSurface)}
-      style={{ height: heightPx }}
+      className={cn(
+        'relative h-(--shell-titlebar-height) shrink-0 overflow-hidden',
+        shellNavSurface,
+      )}
+      style={{ '--shell-titlebar-height': `${heightPx}px` } as CSSVars}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
       <div className="absolute inset-y-0 right-0 z-10 flex items-center">

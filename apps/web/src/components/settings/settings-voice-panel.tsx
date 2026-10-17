@@ -50,6 +50,7 @@ import {
   DEFAULT_VOICE_GATE_THRESHOLD_DB,
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 function volumeToSlider(volume: number) {
@@ -149,13 +150,15 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
         <span
           key={index}
           className={cn(
-            'min-h-1 flex-1 rounded-sm bg-muted transition-[height,background-color] duration-75',
+            'min-h-1 h-(--level-height) flex-1 rounded-sm bg-muted motion-height transition-colors duration-75',
             level > 0.35 && 'bg-primary',
             level > 0.12 && level <= 0.35 && 'bg-muted-foreground/50',
           )}
-          style={{
-            height: `${Math.max(12, Math.round(level * 100))}%`,
-          }}
+          style={
+            {
+              '--level-height': `${Math.max(12, Math.round(level * 100))}%`,
+            } as CSSVars
+          }
         />
       ))}
     </div>
@@ -252,7 +255,7 @@ export function SettingsVoicePanel() {
             >
               <SelectTrigger
                 aria-label={ts('cameraQualityAria')}
-                className="w-[13.75rem] max-w-full"
+                className="w-55 max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -409,7 +412,7 @@ export function SettingsVoicePanel() {
             >
               <SelectTrigger
                 aria-label={ts('screenShareQualityAria')}
-                className="w-[13.75rem] max-w-full"
+                className="w-55 max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -435,7 +438,7 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[13.75rem] max-w-full">
+              <SelectTrigger className="w-55 max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -464,7 +467,7 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[13.75rem] max-w-full">
+              <SelectTrigger className="w-55 max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

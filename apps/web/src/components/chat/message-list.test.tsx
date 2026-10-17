@@ -151,6 +151,8 @@ describe('MessageList older history loading', () => {
       '.flex.flex-col.px-4.pt-4',
     ) as HTMLDivElement
 
-    expect(scrollContent.style.paddingBottom).toBe('236px')
+    expect(scrollContent.style.getPropertyValue('--scroll-padding')).toBe(
+      '236px',
+    )
   })
 })

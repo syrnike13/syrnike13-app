@@ -38,7 +38,8 @@ describe('MessageEmbeds website previews', () => {
 
     const card = embedCard(container, 'website')
     expect(card).toBeTruthy()
-    expect(card?.style.borderLeftColor).toBeTruthy()
+    expect(card?.style.getPropertyValue('--embed-accent')).toBeTruthy()
+    expect(card?.className).toContain('border-l-(--embed-accent)')
     expect(screen.getByText('Example')).toBeTruthy()
     expect(screen.getByText('Короткое описание страницы')).toBeTruthy()
 

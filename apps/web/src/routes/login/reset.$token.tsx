@@ -32,7 +32,7 @@ export const Route = createFileRoute('/login/reset/$token')({
 
 function ResetConfirmPage() {
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const { token } = Route.useParams()
   const [submitting, setSubmitting] = useState(false)
 
@@ -41,7 +41,7 @@ function ResetConfirmPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 

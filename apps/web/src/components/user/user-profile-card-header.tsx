@@ -28,11 +28,12 @@ import {
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { FxImage } from '#/components/ui/fx-image'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
-function roleDotStyle(colour: string | null) {
-  if (!colour) return { backgroundColor: 'var(--muted-foreground)' }
-  return { backgroundColor: colour.startsWith('#') ? colour : `#${colour}` }
+function roleDotColour(colour: string | null) {
+  if (!colour) return 'var(--muted-foreground)'
+  return colour.startsWith('#') ? colour : `#${colour}`
 }
 
 export type UserProfileCardHeaderProps = {
@@ -172,7 +173,7 @@ export function UserProfileCardHeader({
                 className="h-full w-full"
               />
               <div
-                className="pointer-events-none absolute inset-0 z-[1] bg-background/30"
+                className="pointer-events-none absolute inset-0 z-1 bg-background/30"
                 aria-hidden
               />
             </>
@@ -196,10 +197,10 @@ export function UserProfileCardHeader({
             className={cn(
               'left-full',
               layout === 'modal'
-                ? 'top-[55%] ml-2'
+                ? 'top-55/100 ml-2'
                 : layout === 'compact'
-                  ? 'top-[50%] ml-1.5'
-                  : 'top-[46%] ml-2.5',
+                  ? 'top-50/100 ml-1.5'
+                  : 'top-46/100 ml-2.5',
             )}
           />
           {onAvatarClick ? (
@@ -224,10 +225,10 @@ export function UserProfileCardHeader({
                   }
                   fallbackClassName={cn(
                     layout === 'modal'
-                      ? 'size-24 text-2xl ring-[6px]'
+                      ? 'size-24 text-2xl ring-6'
                       : layout === 'compact'
                         ? 'size-14 text-base ring-4'
-                        : 'size-20 text-xl ring-[6px]',
+                        : 'size-20 text-xl ring-6',
                     'ring-popover bg-muted',
                   )}
                   animated="always"
@@ -252,10 +253,10 @@ export function UserProfileCardHeader({
               }
               fallbackClassName={cn(
                 layout === 'modal'
-                  ? 'size-24 text-2xl ring-[6px]'
+                  ? 'size-24 text-2xl ring-6'
                   : layout === 'compact'
                     ? 'size-14 text-base ring-4'
-                    : 'size-20 text-xl ring-[6px]',
+                    : 'size-20 text-xl ring-6',
                 'ring-popover bg-muted',
               )}
               animated="always"
@@ -319,7 +320,7 @@ export function UserProfileCardHeader({
 
       {server && member && (roles.length > 0 || canEditRoles) ? (
         <div className="px-4 pb-3">
-          <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Роли
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -347,8 +348,12 @@ export function UserProfileCardHeader({
                   )}
                 >
                   <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={roleDotStyle(role.colour)}
+                    className="size-2.5 shrink-0 rounded-full bg-(--role-dot)"
+                    style={
+                      {
+                        '--role-dot': roleDotColour(role.colour),
+                      } as CSSVars
+                    }
                   />
                   <span className="truncate">{role.name}</span>
                   {canRemove ? (

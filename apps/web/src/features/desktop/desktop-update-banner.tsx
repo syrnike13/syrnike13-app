@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 
 import { DownloadIcon } from '#/components/icons'
-import { shellTitleBarNoDragClass } from '#/components/layout/shell-chrome'
 import {
   Tooltip,
   TooltipContent,
@@ -77,7 +76,7 @@ export function DesktopUpdateTitleBarButton({
                 'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
                 'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
                 'disabled:pointer-events-none disabled:opacity-50',
-                shellTitleBarNoDragClass,
+                'shell-title-bar-no-drag',
                 className,
               )}
               onClick={() => {

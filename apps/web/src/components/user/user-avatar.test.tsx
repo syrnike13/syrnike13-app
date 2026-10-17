@@ -192,7 +192,7 @@ describe('UserAvatar notification badge', () => {
 
     const badge = screen.getByLabelText('3 уведомления')
     expect(badge.textContent).toBe('3')
-    expect(badge.style.backgroundColor).toBe('var(--destructive-contrast)')
+    expect(badge.className).toContain('bg-destructive-contrast')
   })
 
   it('hides presence when a notification badge is shown', () => {

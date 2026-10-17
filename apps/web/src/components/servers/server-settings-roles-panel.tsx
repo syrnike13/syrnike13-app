@@ -65,13 +65,14 @@ import {
 } from '#/features/authorization/authorization'
 import {
   hasServerPermission,
-  roleColourStyle,
+  normalizeRoleColour,
   roleRanksPayload,
   SERVER_PERMISSION_GROUPS,
   sortRolesByHierarchy,
   toggleServerPermission,
 } from '#/lib/server-permissions'
 import { roleIconUrl } from '#/lib/media'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
@@ -137,11 +138,14 @@ function SortableRoleListItem({
     disabled: !canDrag,
   })
 
+  /* eslint-disable shadcn/no-inline-styles */
+  // @dnd-kit owns the sortable transform, transition and z-index.
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 1 : undefined,
   }
+  /* eslint-enable shadcn/no-inline-styles */
 
   const row = (
     <div
@@ -175,12 +179,21 @@ function SortableRoleListItem({
       ) : null}
       <span className="min-w-0 flex-1">
         <span
-          className="block truncate text-sm font-medium"
-          style={roleColourStyle(role.colour)}
+          className={cn(
+            'block truncate text-sm font-medium',
+            role.colour && 'text-(--role-color)',
+          )}
+          style={
+            role.colour
+              ? ({
+                  '--role-color': normalizeRoleColour(role.colour),
+                } as CSSVars)
+              : undefined
+          }
         >
           {role.name}
         </span>
-        <span className="block truncate text-[0.6875rem] font-normal text-muted-foreground">
+        <span className="block truncate text-xs font-normal text-muted-foreground">
           <span>{formatMemberCount(memberCount, t)}</span>
         </span>
       </span>
@@ -664,7 +677,7 @@ export function ServerSettingsRolesPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-1 lg:items-stretch">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 settings-shell-grid lg:grid-rows-1 lg:items-stretch">
       <aside className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
         {canCreateRoles ? (
           <Button

@@ -36,7 +36,7 @@ export const Route = createFileRoute('/login/reset')({
 
 function ResetRequestPage() {
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
 
@@ -45,7 +45,7 @@ function ResetRequestPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'email'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 

@@ -14,7 +14,8 @@ import {
   resolvePresenceBadgeLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
 import { userAvatarUrl } from '#/lib/media'
-import { presenceDotClass, presenceDotTitle } from '#/lib/presence'
+import { getUserPresence, presenceDotTitle } from '#/lib/presence'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 function initials(name: string) {
@@ -60,21 +61,21 @@ export function AvatarNotificationBadge({
       title={countLabel}
       data-slot="avatar-badge"
       className={cn(
-        'absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full select-none',
-        'border-0 font-bold tabular-nums',
+        'avatar-badge absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full leading-none select-none',
+        'border-0 bg-destructive-contrast font-bold text-destructive-foreground tabular-nums',
         layout.offsetClass,
-        badge.count > 9 ? 'min-w-4 px-0.5' : 'aspect-square',
+        badge.count > 9
+          ? 'h-(--badge-w) min-w-(--badge-w) px-0.5'
+          : 'aspect-square size-(--badge-w)',
       )}
-      style={{
-        width: badge.count > 9 ? undefined : layout.sizePx,
-        minWidth: layout.sizePx,
-        height: layout.sizePx,
-        fontSize: Math.round(layout.sizePx * 0.62),
-        lineHeight: 1,
-        backgroundColor: 'var(--destructive-contrast)',
-        color: 'var(--destructive-foreground)',
-        boxShadow: `0 0 0 ${layout.ringPx}px ${presenceRingColorVar(ringClassName)}`,
-      }}
+      style={
+        {
+          '--badge-w': `${layout.sizePx}px`,
+          '--badge-font': `${Math.round(layout.sizePx * 0.62)}px`,
+          '--badge-ring': `${layout.ringPx}px`,
+          '--badge-ring-color': presenceRingColorVar(ringClassName),
+        } as CSSVars
+      }
     >
       <span className="block translate-y-px leading-none">{display}</span>
     </span>
@@ -148,6 +149,17 @@ export function UserAvatar({
     className,
     fallbackClassName,
   )
+  const presence = getUserPresence(user)
+  const dotClass =
+    !user || !user.online || presence === 'Invisible'
+      ? 'bg-muted-foreground'
+      : presence === 'Idle' || presence === 'SystemIdle'
+        ? 'bg-chart-2'
+        : presence === 'Focus'
+          ? 'bg-chart-5'
+          : presence === 'Busy'
+            ? 'bg-destructive'
+            : 'bg-chart-3'
 
   function startHoverAnimation() {
     setHovered(true)
@@ -181,6 +193,7 @@ export function UserAvatar({
           : undefined
       }
     >
+      {/* eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing */}
       <Avatar className={cn(className, fallbackClassName)}>
         {avatarSrc ? (
           <AvatarImage
@@ -198,7 +211,7 @@ export function UserAvatar({
             alt=""
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-0 z-[1] size-full object-cover transition-opacity duration-150',
+              'pointer-events-none absolute inset-0 z-1 size-full object-cover transition-opacity duration-150',
               showAnimatedOverlay ? 'opacity-100' : 'opacity-0',
             )}
             loading="lazy"
@@ -210,15 +223,18 @@ export function UserAvatar({
       {showDot ? (
         <AvatarBadge
           className={cn(
-            'border-0 p-0 text-transparent ring-0',
+            'presence-dot size-(--dot-size) border-0 p-0 text-transparent ring-0',
+            // eslint-disable-next-line shadcn/require-static-classes -- static offset class from layout helper
             presenceBadge.offsetClass,
-            presenceDotClass(user),
+            dotClass,
           )}
-          style={{
-            width: presenceBadge.sizePx,
-            height: presenceBadge.sizePx,
-            boxShadow: `0 0 0 ${presenceBadge.ringPx}px ${presenceRingColorVar(presenceRingClassName)}`,
-          }}
+          style={
+            {
+              '--dot-size': `${presenceBadge.sizePx}px`,
+              '--dot-ring': `${presenceBadge.ringPx}px`,
+              '--dot-ring-color': presenceRingColorVar(presenceRingClassName),
+            } as CSSVars
+          }
           title={presenceDotTitle(user)}
         />
       ) : null}

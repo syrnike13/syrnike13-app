@@ -37,7 +37,7 @@ export function CommandPaletteTrigger({
     >
       <SearchIcon className="size-4 shrink-0 opacity-80" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <kbd className="hidden shrink-0 rounded border border-sidebar-border bg-sidebar px-1 py-0.5 text-[0.625rem] font-medium text-sidebar-foreground sm:inline">
+      <kbd className="hidden shrink-0 rounded border border-sidebar-border bg-sidebar px-1 py-0.5 text-xs font-medium text-sidebar-foreground sm:inline">
         {shortcut}
       </kbd>
     </button>

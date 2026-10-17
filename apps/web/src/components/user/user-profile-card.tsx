@@ -278,7 +278,7 @@ function UserProfileCardBannerMenu({
       <DropdownMenuContent
         side="bottom"
         align="end"
-        className="z-[220] w-auto min-w-[12rem]"
+        className="z-220 w-auto min-w-48"
       >
         {canViewProfile ? (
           <DropdownMenuItem onClick={onViewProfile}>

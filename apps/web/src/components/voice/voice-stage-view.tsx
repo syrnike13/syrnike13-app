@@ -629,23 +629,23 @@ export function VoiceStageView({
       className={cn(
         // VoiceStage is a media canvas: its surface stays black in every theme.
         'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-media-backdrop text-on-media',
-        presentation === 'popout' && 'h-[100dvh] w-full',
+        presentation === 'popout' && 'h-dvh w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
           voiceStage.stageFullscreen &&
-          'fixed inset-0 z-[50]',
+          'fixed inset-0 z-50',
         presentation === 'embedded' &&
           voiceStage.stageFullscreen &&
           !popoutOpen &&
           !mobileDrawer &&
-          'fixed inset-0 z-[300]',
+          'fixed inset-0 z-300',
       )}
     >
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col overflow-hidden',
           mobileDrawer
-            ? 'px-2 pt-12 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]'
+            ? 'px-2 pt-12 voice-stage-safe-pb'
             : voiceStageContentInsetClass,
         )}
       >
@@ -777,7 +777,7 @@ export function VoiceStageView({
                   <span className="shrink-0 text-on-media/35" aria-hidden>
                     |
                   </span>
-                  <span className="shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide text-on-media/55">
+                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-on-media/55">
                     AKA
                   </span>
                   <span className="min-w-0 truncate text-xs text-on-media/70">
@@ -818,7 +818,7 @@ export function VoiceStageView({
                       <UserAvatar
                         user={focusedMediaHeader.user}
                         className="size-5"
-                        fallbackClassName="size-5 text-[0.625rem]"
+                        fallbackClassName="size-5 text-xs"
                         showPresence={false}
                       />
                     ) : null}
@@ -839,7 +839,7 @@ export function VoiceStageView({
         )}
         {dmHeader && focusedMediaHeader ? (
           <div
-            className="flex min-w-0 max-w-[40%] items-center gap-1.5 truncate text-sm font-semibold text-on-media/80"
+            className="flex min-w-0 max-w-40/100 items-center gap-1.5 truncate text-sm font-semibold text-on-media/80"
             title={`${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`}
           >
             <span className="shrink-0 text-on-media/45" aria-hidden>
@@ -849,7 +849,7 @@ export function VoiceStageView({
               <UserAvatar
                 user={focusedMediaHeader.user}
                 className="size-5"
-                fallbackClassName="size-5 text-[0.625rem]"
+                fallbackClassName="size-5 text-xs"
                 showPresence={false}
               />
             ) : null}
@@ -886,7 +886,7 @@ export function VoiceStageView({
         data-voice-stage-chrome
         className={cn(
           mobileDrawer
-            ? 'absolute inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)]'
+            ? 'absolute inset-x-0 bottom-0 z-50 px-3 safe-pb-2'
             : voiceStageControlsChromeClass,
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
@@ -1063,7 +1063,7 @@ function EmptyVoiceStage({
   const t = useTranslations('voice')
 
   return (
-    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+    <div className="flex min-h-voice-tile-sm flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
       <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
       <p className="text-sm text-muted-foreground">{t('stage.noOne')}</p>
       <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
@@ -1104,7 +1104,7 @@ function VoiceStageJoinPreview({
         })
 
   return (
-    <div className="grid min-h-[min(50vh,24rem)] flex-1 place-items-center px-4 text-center">
+    <div className="grid min-h-voice-tile flex-1 place-items-center px-4 text-center">
       <div className="flex translate-y-3 flex-col items-center gap-4">
         <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
           <ul

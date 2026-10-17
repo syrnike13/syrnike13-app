@@ -72,7 +72,6 @@ export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 export const RAIL_ICON_SIZE_PX = 44
 /** Пропорционально `RAIL_ICON_SIZE_PX` (было 14 при 40px). */
 export const RAIL_ICON_CORNER_RADIUS_PX = 15
-export const railIconButtonClass = 'size-11' as const
 /** Круглые аватары DM в рельсе — тот же визуальный размер, что и кнопки. */
 export const railAvatarClass = 'size-11' as const
 /** Glyph внутри кнопки рельса (Home, Plus, Hash). */
@@ -93,13 +92,6 @@ export const railIconIdleClass =
 
 /** Горизонтальный inset колонки рельса (4px = w-1 индикатора с -left-1). */
 export const railColumnInsetClass = 'px-1' as const
-
-/**
- * ScrollArea серверов: сдвиг влево + шире на 4px,
- * чтобы RailActiveIndicator (-left-1) не обрезался overflow-hidden viewport.
- */
-export const railServerScrollAreaClass =
-  '-ml-1 w-[calc(100%+0.25rem)]' as const
 
 /** Внутренний отступ контента ScrollArea — выравнивает кнопки с Home. */
 export const railServerScrollContentClass = 'pl-1' as const

@@ -24,7 +24,7 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
   return (
     <section
       data-homage-anchor="hero"
-      className="flex w-full max-w-[20rem] flex-col items-center"
+      className="flex w-full max-w-80 flex-col items-center"
     >
       {/* Визуальный центр — бренд, не текст */}
       <div className="flex flex-col items-center gap-5">
@@ -32,12 +32,12 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
           data-homage-anchor="logo"
           src={APP_LOGO_SRC}
           alt=""
-          className="size-[7.5rem]"
+          className="size-30"
           width={120}
           height={120}
         />
         <div className="flex flex-col items-center gap-1.5">
-          <p className="font-display text-[2rem] font-bold leading-none tracking-[-0.04em]">
+          <p className="font-display text-3xl font-bold leading-none tracking-tighter">
             {APP_NAME}
           </p>
           <p className="text-sm text-muted-foreground">{t('tagline')}</p>
@@ -51,7 +51,7 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
           href={current.url}
           className={cn(
             buttonVariants({ size: 'lg' }),
-            'h-14 w-full gap-2.5 text-[0.9375rem] font-semibold',
+            'h-14 w-full gap-2.5 text-base font-semibold',
           )}
         >
           <PlatformIcon platform={platform} className="size-4" />

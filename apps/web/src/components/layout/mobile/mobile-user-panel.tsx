@@ -48,7 +48,7 @@ export function MobileUserPanel() {
     : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
-    <div className="pointer-events-none absolute bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 right-2 z-50">
+    <div className="pointer-events-none absolute safe-bottom-2 left-2 right-2 z-50">
       <div className="pointer-events-auto">
         <div className="relative h-14 w-full">
           <div

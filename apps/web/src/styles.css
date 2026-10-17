@@ -825,3 +825,326 @@ html {
     touch-action: manipulation;
   }
 }
+
+/* Design-system utilities introduced by the @shadcn/lint cleanup. */
+@theme {
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 0.875rem;
+  --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
+  --color-role-default: #4e5058;
+}
+
+/* Settings shell: centered 64rem column with a 13.625rem nav. */
+@utility settings-page-grid {
+  grid-template-columns:
+    calc((100vw - min(100vw, 64rem)) / 2 + 13.625rem)
+    minmax(0, calc(64rem - 13.625rem))
+    calc((100vw - min(100vw, 64rem)) / 2);
+}
+
+@utility controls-grid {
+  grid-template-columns: 1fr auto 1fr;
+}
+
+@utility member-table-grid {
+  grid-template-columns: minmax(12rem, 1.4fr) minmax(9rem, 1fr) 8.5rem 3rem;
+}
+
+@utility icon-text-grid {
+  grid-template-columns: 1rem minmax(0, 1fr);
+}
+
+@utility icon-text-icon-grid {
+  grid-template-columns: 1rem minmax(0, 1fr) 1rem;
+}
+
+@utility settings-shell-grid {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+@utility settings-audit-grid {
+  grid-template-columns: minmax(13rem, 16rem) minmax(13rem, 16rem) auto;
+}
+
+@utility settings-profile-grid {
+  grid-template-columns: minmax(0, 1fr) 17.5rem;
+}
+
+@utility settings-hotkeys-grid {
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) auto auto;
+}
+
+@utility settings-panels-grid {
+  grid-template-columns: minmax(0, 1fr) 22rem;
+}
+
+@utility promo-open-rows {
+  grid-template-rows: 52px 1fr;
+}
+
+@utility promo-closed-rows {
+  grid-template-rows: 52px 0fr;
+}
+
+@utility collapsed-rows {
+  grid-template-rows: 0fr;
+}
+
+@utility expanded-rows {
+  grid-template-rows: 1fr;
+}
+
+@utility motion-size {
+  transition-property: width, height;
+}
+
+@utility motion-rows {
+  transition-property: grid-template-rows;
+}
+
+@utility motion-top {
+  transition-property: top;
+}
+
+@utility safe-pt-3 {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+}
+
+@utility safe-pb-2 {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+@utility safe-pb-3 {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+@utility safe-bottom-2 {
+  bottom: calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+@utility safe-top-2 {
+  top: calc(0.5rem + env(safe-area-inset-top));
+}
+
+@utility safe-bottom-18 {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+@utility voice-stage-safe-pb {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@utility tile-palette {
+  background-image: linear-gradient(
+    to bottom right,
+    var(--tile-from),
+    var(--tile-to)
+  );
+}
+
+@utility text-stage-tile {
+  font-size: min(1.125rem, 26cqh);
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+}
+
+@utility lightbox-transform {
+  transform: var(--lightbox-transform);
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility rail-overflow-width {
+  width: calc(100% + 0.25rem);
+}
+
+@utility avatar-badge {
+  font-size: var(--badge-font);
+  box-shadow: 0 0 0 var(--badge-ring) var(--badge-ring-color);
+}
+
+@utility presence-dot {
+  box-shadow: 0 0 0 var(--dot-ring) var(--dot-ring-color);
+}
+
+@utility motion-width {
+  transition-property: width;
+}
+
+@utility motion-height {
+  transition-property: height;
+}
+
+@utility media-picker-rows {
+  grid-template-rows: 1fr auto;
+}
+
+@utility audit-label-grid {
+  grid-template-columns: 7rem minmax(0, 1fr);
+}
+
+@utility safe-bottom-3 {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+@utility size-media-avatar {
+  width: min(58cqh, 36cqw, 4.75rem);
+  height: min(58cqh, 36cqw, 4.75rem);
+}
+
+/* Viewport/surface constraints. */
+@utility h-settings-modal {
+  height: calc(100vh - 2rem);
+}
+
+@utility h-profile-dialog {
+  height: min(41.25rem, 90vh);
+}
+
+@utility h-mobile-voice-drawer {
+  height: min(52dvh, 26.25rem);
+}
+
+@utility h-mobile-voice-drawer-tall {
+  height: min(85dvh, 45rem);
+}
+
+@utility min-h-voice-tile {
+  min-height: min(50vh, 24rem);
+}
+
+@utility min-h-voice-tile-sm {
+  min-height: min(50vh, 20rem);
+}
+
+@utility max-h-dialog {
+  max-height: 90vh;
+}
+
+@utility max-h-dialog-sm {
+  max-height: 85vh;
+}
+
+@utility max-h-dialog-xs {
+  max-height: 80vh;
+}
+
+@utility max-h-feedback {
+  max-height: 70vh;
+}
+
+@utility max-h-settings-modal {
+  max-height: calc(100vh - 2rem);
+}
+
+@utility max-h-lightbox {
+  max-height: calc(100vh - 5rem);
+}
+
+@utility max-h-lightbox-image {
+  max-height: calc(100vh - 9rem);
+}
+
+@utility max-h-prism-tuning {
+  max-height: calc(min(82vh, 46rem) - 3.5rem);
+}
+
+@utility max-h-prism-tuning-body {
+  max-height: min(82vh, 46rem);
+}
+
+@utility max-h-roles-dialog {
+  max-height: min(16rem, calc(90vh - 10rem));
+}
+
+@utility max-h-role-members {
+  max-height: min(32rem, 90vh);
+}
+
+@utility max-h-command-palette {
+  max-height: min(60vh, 26.25rem);
+}
+
+@utility max-h-voice-popover {
+  max-height: min(70vh, 32rem);
+}
+
+@utility max-h-mobile-voice-drawer {
+  max-height: min(92dvh, 51.25rem);
+}
+
+@utility max-w-media-inset-sm {
+  max-width: calc(100% - 0.5rem);
+}
+
+@utility max-w-media-inset {
+  max-width: calc(100% - 0.75rem);
+}
+
+@utility max-w-media-inset-lg {
+  max-width: calc(100% - 1rem);
+}
+
+@utility max-w-media-inset-xl {
+  max-width: calc(100% - 3.5rem);
+}
+
+@utility max-w-viewport-inset {
+  max-width: calc(100vw - 2rem);
+}
+
+@utility max-w-lightbox {
+  max-width: calc(100vw - 5rem);
+}
+
+@utility max-w-landing-card {
+  max-width: min(100vw - 2rem, 22rem);
+}
+
+@utility max-w-lightbox-caption {
+  max-width: min(20rem, calc(100vw - 8rem));
+}
+
+@utility max-w-label-inset {
+  max-width: calc(100% - 3rem);
+}
+
+@utility max-w-label-inset-wide {
+  max-width: calc(100% - 6.5rem);
+}
+
+@utility w-picker-inset {
+  width: calc(100% - 2rem);
+}
+
+@utility w-settings-modal {
+  width: calc(100vw - 2rem);
+}
+
+@utility w-voice-ping-popover {
+  width: min(20rem, calc(100vw - 2rem));
+}
+
+@utility w-user-panel-popover {
+  width: min(18.75rem, calc(100vw - 1rem));
+}
+
+@utility w-profile-popover {
+  width: min(21.25rem, calc(100vw - 1rem));
+}
+
+@utility w-incoming-call {
+  width: min(22.5rem, calc(100vw - 2rem));
+}
+
+@utility w-voice-chat-panel {
+  width: min(26.25rem, 40vw);
+}
+
+@utility w-screen-share-picker {
+  width: min(96vw, 66.667vh);
+}

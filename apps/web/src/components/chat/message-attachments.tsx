@@ -23,6 +23,7 @@ import {
   imageFileAspectRatio,
   isImageFile,
 } from '#/lib/media'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type MessageAttachmentsProps = {
@@ -66,8 +67,8 @@ export function MessageAttachments({
         ) : mosaic ? (
           <div
             data-attachment-mosaic={imageFiles.length}
-            className="relative w-full max-w-md overflow-hidden rounded-md border"
-            style={{ aspectRatio: mosaic.aspectRatio }}
+            className="relative aspect-(--mosaic-aspect) w-full max-w-md overflow-hidden rounded-md border"
+            style={{ '--mosaic-aspect': mosaic.aspectRatio } as CSSVars}
           >
             {mosaic.tiles.map((tile) => {
               const file = imageFiles[tile.index]
@@ -85,15 +86,17 @@ export function MessageAttachments({
                       : (file.filename ?? t('image'))
                   }
                   className={cn(
-                    'absolute overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                    'absolute left-(--tile-left) top-(--tile-top) h-(--tile-height) w-(--tile-width) overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
                     'bg-border',
                   )}
-                  style={{
-                    left: `${tile.left}%`,
-                    top: `${tile.top}%`,
-                    width: `${tile.width}%`,
-                    height: `${tile.height}%`,
-                  }}
+                  style={
+                    {
+                      '--tile-left': `${tile.left}%`,
+                      '--tile-top': `${tile.top}%`,
+                      '--tile-width': `${tile.width}%`,
+                      '--tile-height': `${tile.height}%`,
+                    } as CSSVars
+                  }
                   onClick={() => {
                     if (spoiler) {
                       revealSpoiler(file._id)
@@ -189,12 +192,14 @@ function SingleImageAttachment({
       data-attachment-single
       data-aspect-ratio={String(aspectRatio)}
       aria-label={spoiler ? t('spoilerShow') : label}
-      className="relative block max-h-96 max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-[28rem]"
-      style={{
-        aspectRatio,
-        // Ширина до load: min(100%, 28rem, max-h-96 * ratio), иначе w-fit схлопывается.
-        width: `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
-      }}
+      className="relative block aspect-(--single-aspect) max-h-96 w-(--single-width) max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-112"
+      style={
+        {
+          '--single-aspect': aspectRatio,
+          // Ширина до load: min(100%, 28rem, max-h-96 * ratio), иначе w-fit схлопывается.
+          '--single-width': `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
+        } as CSSVars
+      }
       onClick={() => {
         if (spoiler) {
           onRevealSpoiler()

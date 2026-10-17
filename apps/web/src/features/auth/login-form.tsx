@@ -31,7 +31,7 @@ export function LoginForm() {
   const auth = useAuth()
   const navigate = useNavigate()
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
@@ -44,7 +44,7 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(loginSchema, value)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -73,7 +73,7 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(mfaPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'fields'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 

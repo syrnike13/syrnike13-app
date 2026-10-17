@@ -28,7 +28,7 @@ function DefaultNotFoundComponent() {
   return (
     <div className="gradient-surface-content flex min-h-svh items-center justify-center bg-background px-6 text-foreground">
       <div className="flex max-w-md flex-col items-center text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           404
         </p>
         <h1 className="mt-3 text-2xl font-semibold">Страница не найдена</h1>

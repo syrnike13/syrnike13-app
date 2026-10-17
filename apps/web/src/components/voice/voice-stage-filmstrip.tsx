@@ -5,6 +5,7 @@ import {
   voiceStageFilmstripSpacingClass,
   voiceStageFilmstripTightTopClass,
 } from '#/components/voice/voice-stage-layout'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type VoiceStageFilmstripItem = Readonly<{ id: string }>
@@ -31,10 +32,6 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
   if (stripItems.length === 0) return null
 
   const many = stripItems.length > 4
-  const tileStyle =
-    tileWidth > 0 && tileHeight > 0
-      ? { width: tileWidth, height: tileHeight }
-      : undefined
 
   return (
     <div
@@ -47,14 +44,14 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
       )}
     >
       {many ? (
-        <span className="pointer-events-none absolute top-0 right-1 z-20 rounded bg-media-backdrop/75 px-1.5 py-px text-[0.625rem] font-semibold tabular-nums text-on-media/90">
+        <span className="pointer-events-none absolute top-0 right-1 z-20 rounded bg-media-backdrop/75 px-1.5 py-px text-xs font-semibold tabular-nums text-on-media/90">
           +{stripItems.length}
         </span>
       ) : null}
       <div
         className={cn(
           'overflow-x-auto overscroll-x-contain scroll-smooth py-0.5',
-          '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
+          'scrollbar-thin [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
           many && 'px-1',
         )}
       >
@@ -72,8 +69,20 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
             <div
               key={item.id}
               role="listitem"
-              className="shrink-0"
-              style={tileStyle}
+              className={cn(
+                'shrink-0',
+                tileWidth > 0 &&
+                  tileHeight > 0 &&
+                  'h-(--strip-tile-height) w-(--strip-tile-width)',
+              )}
+              style={
+                tileWidth > 0 && tileHeight > 0
+                  ? ({
+                      '--strip-tile-width': `${tileWidth}px`,
+                      '--strip-tile-height': `${tileHeight}px`,
+                    } as CSSVars)
+                  : undefined
+              }
             >
               {renderTile(item, 'strip')}
             </div>

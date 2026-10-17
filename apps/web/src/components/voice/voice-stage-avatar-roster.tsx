@@ -16,17 +16,6 @@ type VoiceStageAvatarRosterProps = {
   speakingEnabled?: boolean
 }
 
-function rosterAvatarSize(count: number, compact: boolean) {
-  if (compact) {
-    return count <= 4
-      ? 'size-14 sm:size-16'
-      : 'size-12 sm:size-14'
-  }
-  if (count <= 1) return 'size-28 sm:size-36 md:size-40'
-  if (count <= 2) return 'size-24 sm:size-32 md:size-36'
-  if (count <= 4) return 'size-20 sm:size-24 md:size-28'
-  return 'size-16 sm:size-20'
-}
 
 export function VoiceStageAvatarRoster({
   participants,
@@ -40,7 +29,17 @@ export function VoiceStageAvatarRoster({
 }: VoiceStageAvatarRosterProps) {
   if (participants.length === 0) return null
 
-  const avatarSize = rosterAvatarSize(participants.length, compact)
+  const avatarSize = compact
+    ? participants.length <= 4
+      ? 'size-14 sm:size-16'
+      : 'size-12 sm:size-14'
+    : participants.length <= 1
+      ? 'size-28 sm:size-36 md:size-40'
+      : participants.length <= 2
+        ? 'size-24 sm:size-32 md:size-36'
+        : participants.length <= 4
+          ? 'size-20 sm:size-24 md:size-28'
+          : 'size-16 sm:size-20'
 
   return (
     <div
@@ -75,7 +74,7 @@ export function VoiceStageAvatarRoster({
             >
               <div
                 className={cn(
-                  'relative rounded-full transition-[box-shadow]',
+                  'relative rounded-full transition',
                   speaking && 'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
                 )}
               >

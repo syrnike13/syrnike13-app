@@ -39,7 +39,7 @@ describe('MessageAttachments', () => {
     expect(box).toBeTruthy()
     expect(box?.getAttribute('data-aspect-ratio')).toBe(String(640 / 480))
     expect(box?.classList.contains('max-h-96')).toBe(true)
-    expect(box?.classList.contains('sm:max-w-[28rem]')).toBe(true)
+    expect(box?.classList.contains('sm:max-w-112')).toBe(true)
     expect(box?.classList.contains('bg-border')).toBe(true)
     expect(
       screen

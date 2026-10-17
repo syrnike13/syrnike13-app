@@ -503,7 +503,7 @@ describe('UserContextMenuContent', () => {
 
     const assignable = screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ })
     expect(assignable.disabled).toBe(false)
-    expect(assignable.className).toContain('grid-cols-[1rem_minmax(0,1fr)_1rem]')
+    expect(assignable.className).toContain('icon-text-icon-grid')
 
     const assignedRemovable = screen.getByRole<HTMLButtonElement>('button', {
       name: /Assigned Removable/,

@@ -248,12 +248,12 @@ export function CommandPalette() {
             placeholder={t('placeholder')}
             className="h-12 flex-1 [&::-webkit-search-cancel-button]:hidden"
           />
-          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground sm:inline">
+          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground sm:inline">
             Esc
           </kbd>
         </div>
 
-        <ScrollArea className="max-h-[min(60vh,420px)]">
+        <ScrollArea className="max-h-command-palette">
           {items.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {searchingMessages
@@ -309,7 +309,7 @@ export function CommandPalette() {
           )}
         </ScrollArea>
 
-        <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-[0.6875rem] text-muted-foreground">
+        <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <span>{t('footer')}</span>
           <span>
             <kbd className="rounded border bg-background px-1">Ctrl</kbd>+

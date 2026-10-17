@@ -335,7 +335,7 @@ export function ServerInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[27.5rem]">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-110">
         <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle>
             {t('title', { server: server?.name ?? t('serverFallback') })}

@@ -19,7 +19,9 @@ import {
   memberRoleEntries,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
+import { cn } from '#/lib/utils'
 
 type ServerSettingsMembersPanelProps = {
   serverId: string
@@ -123,7 +125,7 @@ export function ServerSettingsMembersPanel({
         </div>
         <select
           value={sort}
-          className="h-9 rounded-md border border-input bg-muted/40 px-3 text-sm outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+          className="h-9 rounded-md border border-input bg-muted/40 px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
           aria-label={t('sortAria')}
           onChange={(event) => {
             const decoded = Schema.decodeUnknownOption(MemberSortSchema)(
@@ -139,13 +141,13 @@ export function ServerSettingsMembersPanel({
       </div>
 
       <div className="overflow-hidden rounded-md border border-border">
-        <div className="grid grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_8.5rem_3rem] gap-3 border-b border-border bg-muted/30 px-3 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <div className="grid member-table-grid gap-3 border-b border-border bg-muted/30 px-3 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           <span>{t('columnName')}</span>
           <span>{t('columnRoles')}</span>
           <span>{t('columnJoined')}</span>
           <span className="text-right">{t('columnActions')}</span>
         </div>
-        <div className="max-h-[32rem] overflow-y-auto">
+        <div className="max-h-128 overflow-y-auto">
           {filteredMembers.map(({ member, user }) => {
             const roles = memberRoleEntries(server, member)
             const displayName = memberDisplayName(user, member)
@@ -162,7 +164,7 @@ export function ServerSettingsMembersPanel({
               >
                 <button
                   type="button"
-                  className="grid min-h-12 w-full grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_8.5rem_3rem] items-center gap-3 border-b border-border/70 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/45 focus-visible:outline-none"
+                  className="grid min-h-12 w-full member-table-grid items-center gap-3 border-b border-border/70 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/45 focus-visible:outline-none"
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <UserAvatar user={user} className="size-8 shrink-0" />
@@ -180,8 +182,17 @@ export function ServerSettingsMembersPanel({
                       roles.slice(0, 3).map((role) => (
                         <span
                           key={role.id}
-                          className="max-w-32 truncate rounded bg-muted px-1.5 py-0.5 text-xs font-medium"
-                          style={roleColourStyle(role.colour)}
+                          className={cn(
+                            'max-w-32 truncate rounded bg-muted px-1.5 py-0.5 text-xs font-medium',
+                            role.colour && 'text-(--role-color)',
+                          )}
+                          style={
+                            role.colour
+                              ? ({
+                                  '--role-color': normalizeRoleColour(role.colour),
+                                } as CSSVars)
+                              : undefined
+                          }
                         >
                           {role.name}
                         </span>

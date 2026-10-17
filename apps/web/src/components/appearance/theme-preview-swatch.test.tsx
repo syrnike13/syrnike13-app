@@ -49,6 +49,9 @@ describe('ThemePreviewSwatch', () => {
     const preview = swatch.firstElementChild as HTMLElement
 
     expect(swatch.getAttribute('aria-pressed')).toBe('false')
-    expect(preview.style.backgroundImage).toContain('linear-gradient')
+    expect(preview.className).toContain('bg-(image:--preview-image)')
+    expect(preview.style.getPropertyValue('--preview-image')).toContain(
+      'linear-gradient',
+    )
   })
 })

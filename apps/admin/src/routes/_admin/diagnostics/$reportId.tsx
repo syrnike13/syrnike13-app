@@ -141,7 +141,7 @@ function DiagnosticReportPage() {
         </Button>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="grid gap-4 diagnostics-report-grid">
         <AdminSection className="p-4">
           <dl className="grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2">
             <Field label={t('fields.id')} value={value.id} mono />
@@ -172,7 +172,7 @@ function DiagnosticReportPage() {
             />
             <Field label={t('fields.sha256')} value={value.sha256} mono />
           </dl>
-          {value.description ? <p className="mt-4 border-t border-border/60 pt-4 text-[0.8125rem]">{value.description}</p> : null}
+          {value.description ? <p className="mt-4 border-t border-border/60 pt-4 text-sm">{value.description}</p> : null}
         </AdminSection>
 
         <AdminSection className="space-y-3 p-4">
@@ -186,7 +186,7 @@ function DiagnosticReportPage() {
               )(event.target.value)
               if (Option.isSome(decoded)) setStatus(decoded.value)
             }}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-[0.8125rem]"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="new">{tStatus('new')}</option>
             <option value="investigating">{tStatus('investigating')}</option>
@@ -226,5 +226,5 @@ function DiagnosticReportPage() {
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className={mono ? 'mt-0.5 break-all font-mono text-[0.6875rem]' : 'mt-0.5 break-words'}>{value}</dd></div>
+  return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className={mono ? 'mt-0.5 break-all font-mono text-xs' : 'mt-0.5 break-words'}>{value}</dd></div>
 }

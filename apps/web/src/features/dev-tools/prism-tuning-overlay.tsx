@@ -249,7 +249,7 @@ export function PrismTuningOverlay() {
         type="button"
         size="sm"
         variant={isCustom ? 'secondary' : 'outline'}
-        className="fixed right-4 bottom-4 z-[1000] gap-1.5"
+        className="fixed right-4 bottom-4 z-1000 gap-1.5"
         onClick={() => setOpen(true)}
       >
         <Settings2Icon className="size-4" />
@@ -259,8 +259,8 @@ export function PrismTuningOverlay() {
   }
 
   return (
-    <div className="fixed right-4 bottom-4 z-[1000] w-[22rem] max-w-[calc(100vw-2rem)]">
-      <Card className="max-h-[min(82vh,46rem)] overflow-hidden shadow-xl">
+    <div className="fixed right-4 bottom-4 z-1000 w-88 max-w-viewport-inset">
+      <Card className="max-h-prism-tuning-body overflow-hidden shadow-xl">
         <CardHeader className="flex-row items-center gap-2 border-b">
           <CardTitle className="flex-1 text-sm">Prism tuning</CardTitle>
           <Button
@@ -273,7 +273,7 @@ export function PrismTuningOverlay() {
             <XIcon className="size-4" />
           </Button>
         </CardHeader>
-        <CardContent className="max-h-[calc(min(82vh,46rem)-3.5rem)] space-y-3 overflow-y-auto pt-4">
+        <CardContent className="max-h-prism-tuning space-y-3 overflow-y-auto pt-4">
           <p className="text-xs text-muted-foreground">
             Live mix percentages for {settings.themeId} · {settings.colorMode}.
             Changes apply immediately and stay active after closing the panel;

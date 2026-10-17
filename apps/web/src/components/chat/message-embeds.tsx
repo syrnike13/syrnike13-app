@@ -11,6 +11,7 @@ import {
   imageFileAspectRatio,
   isImageFile,
 } from '#/lib/media'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 /** Ссылку открываем только по http(s): javascript:/data: из чужой og-разметки не пускаем. */
@@ -92,8 +93,9 @@ function EmbedCardShell({
       data-embed={type}
       className={cn(
         'flex max-w-lg flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-sm',
+        accent && 'border-l-(--embed-accent)',
       )}
-      style={accent ? { borderLeftColor: accent } : undefined}
+      style={accent ? ({ '--embed-accent': accent } as CSSVars) : undefined}
     >
       {children}
     </div>
@@ -179,11 +181,13 @@ function EmbedImageBox({
     <div
       data-embed-image
       data-aspect-ratio={String(aspectRatio)}
-      className="relative max-h-96 w-full max-w-full overflow-hidden rounded-md border border-border bg-border"
-      style={{
-        aspectRatio,
-        width: `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
-      }}
+      className="relative aspect-(--embed-aspect) max-h-96 w-(--embed-width) max-w-full overflow-hidden rounded-md border border-border bg-border"
+      style={
+        {
+          '--embed-aspect': aspectRatio,
+          '--embed-width': `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
+        } as CSSVars
+      }
     >
       <FxImage src={src} alt={alt} fill objectFit="contain" />
     </div>

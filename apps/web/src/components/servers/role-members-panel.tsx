@@ -202,7 +202,7 @@ export function RoleMembersPanel({
           {canAddMembers ? (
             <Button
               type="button"
-              className="shrink-0 sm:min-w-[11rem]"
+              className="shrink-0 sm:min-w-44"
               onClick={() => setAddDialogOpen(true)}
             >
               {t('addMembers')}

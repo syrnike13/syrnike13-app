@@ -2,7 +2,6 @@ import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import {
   floatingBarRingProps,
-  floatingBarSurfaceClass,
   floatingBarSquircleProps,
 } from '#/components/layout/shell-chrome'
 import {
@@ -40,7 +39,11 @@ export function FloatingBarShell({
       <Squircle
         {...floatingBarSquircleProps}
         ring={ring}
-        className={cn(floatingBarSurfaceClass, surfaceClassName)}
+        className={cn(
+          'gradient-surface-floating w-full overflow-hidden bg-secondary text-secondary-foreground',
+          // eslint-disable-next-line shadcn/require-static-classes -- caller-owned surface styling
+          surfaceClassName,
+        )}
         {...surfaceProps}
       >
         {children}

@@ -7,7 +7,6 @@ import { toast } from 'sonner'
 
 import {
   railGlyphClass,
-  railIconButtonClass,
   railIconIdleClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
@@ -187,7 +186,11 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                 type="button"
                 size="icon"
                 variant="ghost"
-                className={cn(railIconButtonClass, railIconIdleClass)}
+                className={cn(
+                  'size-11',
+                  // eslint-disable-next-line shadcn/require-static-classes -- shared rail idle surface constant
+                  railIconIdleClass,
+                )}
                 title={t('triggerAria')}
               >
                 <PlusIcon className={railGlyphClass} />

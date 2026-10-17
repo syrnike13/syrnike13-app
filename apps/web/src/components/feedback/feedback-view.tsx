@@ -284,14 +284,14 @@ export function FeedbackView({
                   <FilterIcon className="size-4" data-icon="inline-start" />
                   {t('filters')}
                   {activeFilterCount > 0 ? (
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[0.6875rem] font-semibold text-primary-foreground">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                       {activeFilterCount}
                     </span>
                   ) : null}
                 </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="flex max-h-[70vh] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0"
+                className="flex max-h-feedback w-104 max-w-viewport-inset flex-col gap-0 overflow-hidden p-0"
               >
                 <ScrollArea className="min-h-0 flex-1">
                   <div className="grid gap-4 p-3 sm:grid-cols-2">
@@ -376,7 +376,7 @@ export function FeedbackView({
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-[80rem] px-3 pb-3 sm:px-5">
+        <div className="mx-auto w-full max-w-320 px-3 pb-3 sm:px-5">
           {activeQuery.isLoading ? (
             <FeedbackListSkeleton />
           ) : activeQuery.isError ? (
@@ -444,7 +444,7 @@ function FeedbackFilterGroup<Value extends string>({
 }) {
   return (
     <div role="group" aria-label={label}>
-      <p className="px-2 pb-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+      <p className="px-2 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </p>
       <div className="space-y-0.5">

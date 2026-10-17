@@ -129,15 +129,15 @@ function PeopleRailButton({
       className={cn(
         'group relative flex shrink-0 items-center justify-center overflow-visible p-0.5',
         'rounded-full outline-none transition-opacity hover:opacity-90',
-        'focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        'focus-visible:ring-3 focus-visible:ring-ring/50',
       )}
     >
       <RailActiveIndicator active={active} />
       {dmUser ? (
         <UserAvatar
           user={dmUser}
-          className={railAvatarClass}
-          fallbackClassName={cn(railAvatarClass, 'text-xs')}
+          className="size-11"
+          fallbackClassName="size-11 text-xs"
           showPresence={false}
           notificationBadge={railNotificationBadge}
           notificationRingClassName="border-background"

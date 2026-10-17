@@ -5,6 +5,7 @@ import type { SuggestionProps } from '@tiptap/suggestion'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type MentionSuggestionState = SuggestionProps<MentionSuggestionItem> & {
@@ -34,6 +35,13 @@ function MentionSuggestionRow({
   buttonRef?: React.Ref<HTMLButtonElement>
   id: string
 }) {
+  const entryColour =
+    item.kind === 'user'
+      ? item.nameColour
+      : item.kind === 'role'
+        ? item.colour
+        : undefined
+
   return (
     <button
       ref={buttonRef}
@@ -67,21 +75,18 @@ function MentionSuggestionRow({
         className={cn(
           'min-w-0 flex-1 truncate text-sm font-medium leading-none',
           item.kind !== 'user' && item.kind !== 'role' && 'text-foreground',
+          entryColour && 'text-(--mention-entry-color)',
         )}
         style={
-          item.kind === 'user'
-            ? item.nameColour
-              ? { color: item.nameColour }
-              : undefined
-            : item.kind === 'role' && item.colour
-              ? { color: item.colour }
-              : undefined
+          entryColour
+            ? ({ '--mention-entry-color': entryColour } as CSSVars)
+            : undefined
         }
       >
         {item.kind === 'user' ? item.serverName : item.label}
       </span>
 
-      <span className="ml-4 max-w-[55%] shrink-0 truncate text-right text-xs text-muted-foreground">
+      <span className="ml-4 max-w-55/100 shrink-0 truncate text-right text-xs text-muted-foreground">
         {item.kind === 'user' ? `@${item.username}` : item.description}
       </span>
     </button>
@@ -178,15 +183,16 @@ export function MentionSuggestionMenu({
       role="listbox"
       aria-label={t('mentions')}
       className={cn(
-        'gradient-surface-solid pointer-events-auto fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
+        'gradient-surface-solid pointer-events-auto fixed left-(--mention-menu-left) top-(--mention-menu-top) z-300 flex w-(--mention-menu-width) -translate-y-full flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
         surfaceClassName,
       )}
-      style={{
-        left: coords.left,
-        width: coords.width,
-        top: coords.top,
-        transform: 'translateY(-100%)',
-      }}
+      style={
+        {
+          '--mention-menu-left': `${coords.left}px`,
+          '--mention-menu-top': `${coords.top}px`,
+          '--mention-menu-width': `${coords.width}px`,
+        } as CSSVars
+      }
       onMouseDown={(event) => event.preventDefault()}
     >
       {participantEntries.length > 0 ? (

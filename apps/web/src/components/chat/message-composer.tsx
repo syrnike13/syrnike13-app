@@ -591,7 +591,7 @@ export function MessageComposer({
       ) : null}
 
       {isEditing && editingMessage ? (
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[0.8125rem] text-muted-foreground">
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-sm text-muted-foreground">
           <span>{t('editing')}</span>
           <Button
             type="button"

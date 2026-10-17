@@ -396,7 +396,7 @@ function AuditActionFilter({
           render={
             <button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           }
         >
@@ -470,7 +470,7 @@ function AuditUserFilter({
           render={
             <button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           }
         >
@@ -488,7 +488,7 @@ function AuditUserFilter({
           </span>
           <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="max-h-80 w-[16.25rem] overflow-y-auto">
+        <DropdownMenuContent className="max-h-80 w-65 overflow-y-auto">
           <div className="sticky top-0 z-10 bg-popover p-1">
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -595,7 +595,7 @@ function AuditEntryRow({
       </button>
 
       {open ? (
-        <dl className="grid gap-x-3 gap-y-1 border-t border-border/70 px-14 py-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+        <dl className="grid gap-x-3 gap-y-1 border-t border-border/70 px-14 py-3 text-sm audit-label-grid">
           <dt className="text-muted-foreground">{t('detail.action')}</dt>
           <dd>{t(`actions.${entry.action.type}`)}</dd>
           {entry.reason ? (
@@ -704,7 +704,7 @@ export function ServerSettingsAuditPanel({
         </p>
       </div>
 
-      <section className="grid gap-3 border-b border-border/60 pb-4 md:grid-cols-[minmax(13rem,16rem)_minmax(13rem,16rem)_auto]">
+      <section className="grid gap-3 border-b border-border/60 pb-4 settings-audit-grid">
         <AuditUserFilter
           users={users}
           value={actorFilter}

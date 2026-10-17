@@ -35,7 +35,7 @@ function EditBadgePage() {
         title={t('badgeTitle')}
         back={{ to: '/badges', label: t('backBadges') }}
       >
-        <div className="flex h-32 items-center justify-center text-[0.8125rem] text-muted-foreground">
+        <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
           <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
           {t('loading')}
         </div>

@@ -62,11 +62,11 @@ describe('ImageLightbox', () => {
     expect(
       image.getAttribute('src')?.endsWith('/attachments/file-1/poster.png'),
     ).toBe(true)
-    expect(image.style.transform).toBe('translate(0px, 0px) scale(1)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toBe('translate(0px, 0px) scale(1)')
 
     fireEvent.click(image)
     expect(onOpenChange).not.toHaveBeenCalled()
-    expect(image.style.transform).toBe('translate(0px, 0px) scale(1)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toBe('translate(0px, 0px) scale(1)')
 
     const openOriginal = within(dialog).getByRole('link', {
       name: 'Открыть оригинал',
@@ -127,18 +127,18 @@ describe('ImageLightbox', () => {
     const stage = image.parentElement!
 
     fireEvent.wheel(stage, { deltaY: -400 })
-    expect(image.style.transform).not.toContain('scale(1)')
-    expect(image.style.transform).toMatch(/scale\(([2-9]|1\.\d*[1-9]|[1-9]\d)/)
+    expect(image.style.getPropertyValue('--lightbox-transform')).not.toContain('scale(1)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toMatch(/scale\(([2-9]|1\.\d*[1-9]|[1-9]\d)/)
 
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Сбросить масштаб' }),
     )
-    expect(image.style.transform).toBe('translate(0px, 0px) scale(1)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toBe('translate(0px, 0px) scale(1)')
 
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Приблизить изображение' }),
     )
-    expect(image.style.transform).toBe('translate(0px, 0px) scale(2)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toBe('translate(0px, 0px) scale(2)')
   })
 
   it('zooms toward the cursor instead of the image center', () => {
@@ -171,7 +171,7 @@ describe('ImageLightbox', () => {
     // Курсор справа от центра — при зуме offset уйдёт влево, чтобы точка осталась под курсором.
     fireEvent.wheel(stage, { deltaY: -800, clientX: 280, clientY: 200 })
 
-    const match = image.style.transform.match(
+    const match = image.style.getPropertyValue('--lightbox-transform').match(
       /translate\((-?\d+(?:\.\d+)?)px, (-?\d+(?:\.\d+)?)px\) scale\((\d+(?:\.\d+)?)\)/,
     )
     expect(match).toBeTruthy()
@@ -214,7 +214,7 @@ describe('ImageLightbox', () => {
     })
     fireEvent.pointerUp(image, { pointerId: 1 })
 
-    expect(image.style.transform).toBe('translate(40px, 25px) scale(2)')
+    expect(image.style.getPropertyValue('--lightbox-transform')).toBe('translate(40px, 25px) scale(2)')
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
@@ -240,7 +240,7 @@ describe('ImageLightbox', () => {
 
     expect(screen.getByTestId('user-avatar').textContent).toBe('alice')
     const name = screen.getByText('Alice')
-    expect(name.getAttribute('style')).toContain('rgb(237, 66, 69)')
+    expect(name.style.getPropertyValue('--author-name-color')).toBe('#ed4245')
     const time = screen.getByText(timestamp)
     expect(time.tagName).toBe('TIME')
     expect(time.getAttribute('dateTime')).toBe(timestamp)

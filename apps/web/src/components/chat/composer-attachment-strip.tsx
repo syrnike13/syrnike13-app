@@ -7,6 +7,7 @@ import {
   stripSpoilerFilename,
   type PendingComposerFile,
 } from '#/lib/composer-files'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const TILE_PREVIEW_CLASS = 'size-28 shrink-0 overflow-hidden rounded-lg'
@@ -77,7 +78,7 @@ function ComposerAttachmentTile({
               className={cn(isSpoiler && 'scale-105 blur-lg')}
             />
             {isSpoiler ? (
-              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-[0.625rem] font-semibold tracking-wide text-foreground uppercase">
+              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-xs font-semibold tracking-wide text-foreground uppercase">
                 {t('spoiler')}
               </span>
             ) : null}
@@ -97,11 +98,11 @@ function ComposerAttachmentTile({
                 isSpoiler && 'opacity-40',
               )}
             />
-            <span className="text-[0.625rem] leading-none text-muted-foreground">
+            <span className="text-xs leading-none text-muted-foreground">
               {formatFileSize(pending.file.size)}
             </span>
             {isSpoiler ? (
-              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-[0.625rem] font-semibold tracking-wide text-foreground uppercase">
+              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-xs font-semibold tracking-wide text-foreground uppercase">
                 {t('spoiler')}
               </span>
             ) : null}
@@ -114,8 +115,8 @@ function ComposerAttachmentTile({
             aria-label={t('uploaded', { progress })}
           >
             <span
-              className="block h-full bg-primary transition-[width] duration-150 motion-reduce:transition-none"
-              style={{ width: `${progress}%` }}
+              className="block h-full w-(--upload-progress) bg-primary motion-width duration-150 motion-reduce:transition-none"
+              style={{ '--upload-progress': `${progress}%` } as CSSVars}
             />
           </span>
         ) : null}
@@ -160,7 +161,7 @@ function ComposerAttachmentTile({
 
       {hasError && pending.error ? (
         <p
-          className="mt-0.5 truncate text-[0.6875rem] leading-tight text-destructive"
+          className="mt-0.5 truncate text-xs leading-tight text-destructive"
           title={pending.error}
         >
           {pending.error}

@@ -1801,7 +1801,6 @@ function useHeldRemoteScreenTracks(
     for (const id of [...held.keys()]) if (!present.has(id)) held.delete(id)
     return { result, nextExpiry }
     // expiryTick re-evaluates held tracks once their grace runs out.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, localScreenRestarting, expiryTick])
   useEffect(() => {
     if (nextExpiry === null) return

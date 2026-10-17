@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
-import { badgeIconSizeClass, type BadgeIconSize } from '#/lib/badge-icon'
+import type { BadgeIconSize } from '#/lib/badge-icon'
 import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
@@ -24,10 +24,13 @@ function BadgeIconImage({
   src: string
   size: BadgeIconSize | 'tooltip'
 }) {
+  const iconSizeClass =
+    size === 'sm' ? 'size-5' : size === 'md' ? 'size-6' : 'size-7'
+
   return (
     <FxImage
       src={src}
-      wrapperClassName={cn(badgeIconSizeClass[size], 'shrink-0')}
+      wrapperClassName={cn(iconSizeClass, 'shrink-0')}
       className="size-full object-contain"
     />
   )

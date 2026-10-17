@@ -234,7 +234,6 @@ function ChannelDroppableList({
                     }
                   }}
                   {...dragProvided.draggableProps}
-                  style={dragProvided.draggableProps.style}
                   className={cn(
                     'touch-none',
                     dragSnapshot.isDragging && 'z-50',

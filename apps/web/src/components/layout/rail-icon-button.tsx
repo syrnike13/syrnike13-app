@@ -8,8 +8,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ReactNode } from 'react'
 
 import {
-  railIconButtonClass,
-  railIconIdleClass,
   railIconItemRowClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
@@ -66,10 +64,10 @@ export function RailActiveIndicator({
       className={cn(
         railIndicatorBaseClass,
         active
-          ? 'h-9 opacity-100 transition-[height] duration-150'
+          ? 'h-9 opacity-100 motion-height duration-150'
           : unread
-            ? 'h-2 opacity-100 transition-[height] duration-150 group-hover:h-5.5'
-            : 'h-2 opacity-0 transition-[height,opacity] duration-150 group-hover:h-5.5 group-hover:opacity-100',
+            ? 'h-2 opacity-100 motion-height duration-150 group-hover:h-5.5'
+            : 'h-2 opacity-0 motion-height transition-opacity duration-150 group-hover:h-5.5 group-hover:opacity-100',
       )}
     />
   )
@@ -117,12 +115,14 @@ export function RailIconButton<TTo extends string>(
                 <a
                   {...anchorProps}
                   className={cn(
+                    // eslint-disable-next-line shadcn/require-static-classes -- buttonVariants output is static per variant
                     buttonVariants({
                       variant: active ? 'default' : 'ghost',
                       size: 'icon',
                     }),
-                    railIconButtonClass,
-                    !active && railIconIdleClass,
+                    'size-11',
+                    !active &&
+                      'bg-card text-foreground hover:bg-secondary hover:text-foreground',
                   )}
                 />
               }

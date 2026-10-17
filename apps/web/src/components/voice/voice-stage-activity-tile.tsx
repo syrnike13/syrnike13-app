@@ -160,7 +160,7 @@ export function VoiceStageActivityTile({
           {variant !== 'focus' &&
           variant !== 'fullscreen' &&
           variant !== 'strip' ? (
-            <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-[calc(100%-3.5rem)] items-center gap-1.5 rounded bg-card/90 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm">
+            <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-media-inset-xl items-center gap-1.5 rounded bg-card/90 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm">
               <Gamepad2Icon className="size-3.5 shrink-0 text-primary" />
               <span className="truncate">
                 {application ? tA(application.titleKey) : t('activity.title')}
@@ -168,7 +168,7 @@ export function VoiceStageActivityTile({
             </div>
           ) : null}
         </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-56">
+      <ContextMenuContent className="z-420 min-w-56">
         <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
           {variant === 'focus'

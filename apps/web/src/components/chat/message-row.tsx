@@ -34,6 +34,7 @@ import {
   formatMessageTimestamp,
   messageCreatedAt,
 } from '#/lib/message-time'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type MessageRowProps = {
@@ -202,7 +203,7 @@ function VoiceCallSystemCard({
       data-message-id={message._id}
       className={cn(
         'group relative -mx-4 flex items-center hover:bg-muted/40',
-        cn('mt-[1.0625rem] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
+        cn('mt-4.25 gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
       )}
     >
       <div className={MESSAGE_AVATAR_COLUMN} aria-hidden>
@@ -224,13 +225,13 @@ function VoiceCallSystemCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[0.9375rem] leading-snug">
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-base leading-snug">
           <span className="min-w-0">
             {callerNameButton}
             <span className="text-muted-foreground">{` ${callInfo}`}</span>
           </span>
           <time
-            className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground"
+            className="shrink-0 text-xs font-medium text-muted-foreground"
             dateTime={timestamp}
           >
             {timestamp}
@@ -353,7 +354,7 @@ function StandardSystemMessageRow({
         <span className="text-foreground">
           {systemMessageText(message.system, users, t)}
         </span>{' '}
-        <time className="text-[0.6875rem] font-medium" dateTime={timestamp}>
+        <time className="text-xs font-medium" dateTime={timestamp}>
           {timestamp}
         </time>
       </p>
@@ -469,8 +470,8 @@ export function MessageRow({
       className={cn(
         'group relative -mx-4 flex items-start hover:bg-muted/40',
         isCompact
-          ? cn('min-h-[1.375rem] py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
-          : cn('mt-[1.0625rem] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
+          ? cn('min-h-5.5 py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
+          : cn('mt-4.25 gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
         highlighted && 'bg-primary/10 hover:bg-primary/15',
         mentionsCurrentUser &&
           !highlighted &&
@@ -536,7 +537,7 @@ export function MessageRow({
         ) : null}
 
         {!isCompact ? (
-          <header className="mb-0.5 flex min-h-5 items-baseline gap-2 leading-snug">
+          <header className="mb-0.5 flex min-h-5 items-baseline gap-2 text-base leading-snug">
             {authorUser ? (
               <MessageAuthorProfileTrigger
                 user={authorUser}
@@ -549,23 +550,35 @@ export function MessageRow({
                   type="button"
                   className={cn(
                     'max-w-full truncate rounded-sm font-semibold text-left',
+                    nameColor && 'text-(--author-name-color)',
                     'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
                   )}
-                  style={nameColor ? { color: nameColor } : undefined}
+                  style={
+                    nameColor
+                      ? ({ '--author-name-color': nameColor } as CSSVars)
+                      : undefined
+                  }
                 >
                   {name}
                 </button>
               </MessageAuthorProfileTrigger>
             ) : (
               <span
-                className="truncate font-semibold"
-                style={nameColor ? { color: nameColor } : undefined}
+                className={cn(
+                  'truncate font-semibold',
+                  nameColor && 'text-(--author-name-color)',
+                )}
+                style={
+                  nameColor
+                    ? ({ '--author-name-color': nameColor } as CSSVars)
+                    : undefined
+                }
               >
                 {name}
               </span>
             )}
             <time
-              className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground"
+              className="shrink-0 text-xs font-medium leading-5.5 text-muted-foreground"
               dateTime={timestamp}
             >
               {timestamp}
@@ -577,7 +590,7 @@ export function MessageRow({
               />
             ) : null}
             {edited ? (
-              <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {ts('edited')}
               </span>
             ) : null}
@@ -607,7 +620,7 @@ export function MessageRow({
           />
         ) : null}
 
-        <div className="flex flex-col gap-1 text-[0.9375rem] leading-snug text-foreground">
+        <div className="flex flex-col gap-1 text-base leading-snug text-foreground">
           {hasContent ? (
             <div className="select-text break-words">{renderedContent}</div>
           ) : null}

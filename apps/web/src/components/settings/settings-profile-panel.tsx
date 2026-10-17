@@ -58,7 +58,7 @@ function revokeObjectUrl(url: string | null) {
 
 export function SettingsProfilePanel() {
   const t = useTranslations('settings.profile')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const tm = useTranslations('media')
   const auth = useAuth()
   const queryClient = useQueryClient()
@@ -257,13 +257,13 @@ export function SettingsProfilePanel() {
       bio,
     })
     if (!parsed.success) {
-      toast.error(tv(parsed.issues[0]?.message ?? 'profileFields'))
+      toast.error(tValidation(parsed.issues[0]?.message ?? 'profileFields'))
       return false
     }
 
     const trimmedName = parsed.data.display_name.trim()
     if (trimmedName.length > 0 && trimmedName.length < 2) {
-      toast.error(tv('profileNameMin'))
+      toast.error(tValidation('profileNameMin'))
       return false
     }
 
@@ -425,7 +425,7 @@ export function SettingsProfilePanel() {
     Boolean(bannerPreview)
 
   return (
-    <div className="grid gap-8 max-lg:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-8 max-lg:grid-cols-1 settings-profile-grid">
       <input
         ref={avatarInputRef}
         type="file"
@@ -627,7 +627,7 @@ function ProfilePreviewCard({
               <ProfileStatusBubbleTrigger
                 status={statusText}
                 onClick={onEditStatus}
-                className="left-full top-[48%] ml-1.5"
+                className="left-full top-48/100 ml-1.5"
               />
             </div>
           </ProfileMediaContextMenu>

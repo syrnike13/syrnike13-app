@@ -36,7 +36,7 @@ export const Route = createFileRoute('/login/onboard')({
 
 function OnboardPage() {
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const auth = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
@@ -64,7 +64,7 @@ function OnboardPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(usernameSchema, value.username)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'usernameMin'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'usernameMin'))
         return
       }
 

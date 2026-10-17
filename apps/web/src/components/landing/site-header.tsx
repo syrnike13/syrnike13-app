@@ -19,7 +19,7 @@ export function SiteHeader() {
           width={28}
           height={28}
         />
-        <span className="text-[0.9375rem] font-bold tracking-tight">
+        <span className="text-base font-bold tracking-tight">
           {config.appTitle}
         </span>
       </Link>

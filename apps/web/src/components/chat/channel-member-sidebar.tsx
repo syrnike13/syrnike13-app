@@ -17,6 +17,7 @@ import {
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { canViewChannelDraft } from '#/features/authorization/permission-draft'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type ChannelMemberSidebarProps = {
@@ -32,7 +33,7 @@ function MemberListSectionHeader({
 }) {
   return (
     <li className="list-none px-2 pt-3 pb-0.5 first:pt-2">
-      <p className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+      <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {title} — {count}
       </p>
     </li>
@@ -83,13 +84,20 @@ function MemberSidebarRow({
           <UserAvatar user={user} className="size-8" showPresence />
           <div className="min-w-0 flex-1">
             <p
-              className="truncate text-sm font-medium"
-              style={nameColour ? { color: nameColour } : undefined}
+              className={cn(
+                'truncate text-sm font-medium',
+                nameColour && 'text-(--member-name-color)',
+              )}
+              style={
+                nameColour
+                  ? ({ '--member-name-color': nameColour } as CSSVars)
+                  : undefined
+              }
             >
               {displayName}
             </p>
             {showStatus && customStatus ? (
-              <p className="truncate text-[0.6875rem] text-muted-foreground">
+              <p className="truncate text-xs text-muted-foreground">
                 {customStatus}
               </p>
             ) : null}

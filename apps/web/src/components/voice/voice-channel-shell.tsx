@@ -70,8 +70,8 @@ export function VoiceChannelShell({
       />
       <div
         className={cn(
-          'flex min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out',
-          chatOpen ? 'w-[min(420px,40vw)]' : 'w-0',
+          'flex min-h-0 shrink-0 overflow-hidden motion-width duration-200 ease-out',
+          chatOpen ? 'w-voice-chat-panel' : 'w-0',
         )}
       >
         {chatOpen ? (

@@ -12,7 +12,7 @@ export function MetaFlag({
   return (
     <span
       className={cn(
-        'text-[0.6875rem] leading-none',
+        'text-xs leading-none',
         tone === 'ok' && 'text-success',
         tone === 'accent' && 'text-primary',
         tone === 'muted' && 'text-muted-foreground',

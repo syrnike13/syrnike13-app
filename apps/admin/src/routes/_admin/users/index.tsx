@@ -91,7 +91,6 @@ function UsersPage() {
     if (!search.u || !token || selectedUser) return
     setQuery(search.u)
     findUserMutation.mutate(search.u)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.u, token])
 
   const assignMutation = useMutation({
@@ -173,13 +172,13 @@ function UsersPage() {
         <AdminEmpty>{t('hint')}</AdminEmpty>
       ) : (
         <div className="space-y-4">
-          <div className="flex items-start justify-between gap-3 text-[0.8125rem]">
+          <div className="flex items-start justify-between gap-3 text-sm">
             <div className="min-w-0">
               <div className="font-medium">
                 {selectedUser.display_name ?? selectedUser.username}
               </div>
               <div className="text-muted-foreground">@{selectedUser.username}</div>
-              <div className="mt-0.5 font-mono text-[0.6875rem] text-muted-foreground">
+              <div className="mt-0.5 font-mono text-xs text-muted-foreground">
                 {selectedUser._id}
               </div>
             </div>
@@ -249,11 +248,11 @@ function BadgeList({
     <AdminSection>
       <AdminSectionHeader>{title}</AdminSectionHeader>
       {loading ? (
-        <div className="flex h-20 items-center justify-center text-[0.8125rem] text-muted-foreground">
+        <div className="flex h-20 items-center justify-center text-sm text-muted-foreground">
           <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
         </div>
       ) : badges.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[0.8125rem] text-muted-foreground">
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
           {t('emptyList')}
         </div>
       ) : (
@@ -265,8 +264,8 @@ function BadgeList({
             >
               <BadgeIcon badge={badge} size="sm" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[0.8125rem]">{badge.name}</div>
-                <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+                <div className="truncate text-sm">{badge.name}</div>
+                <div className="truncate font-mono text-xs text-muted-foreground">
                   {badge.slug}
                 </div>
               </div>

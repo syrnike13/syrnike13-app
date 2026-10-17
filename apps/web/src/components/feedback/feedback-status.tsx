@@ -16,7 +16,7 @@ import {
 import { cn } from '#/lib/utils'
 
 const statusBaseClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-[0.6875rem] font-semibold'
+  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-xs font-semibold'
 
 export function FeedbackProductStatus({
   status,

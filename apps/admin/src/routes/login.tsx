@@ -54,9 +54,9 @@ function LoginPage() {
             <SparklesIcon className="size-4" aria-hidden />
           </span>
           <div>
-            <div className="text-[0.9375rem] font-semibold">syrnike13 admin</div>
+            <div className="text-base font-semibold">syrnike13 admin</div>
             {nightly ? (
-              <div className="text-[0.625rem] font-medium uppercase text-warning">
+              <div className="text-xs font-medium uppercase text-warning">
                 Nightly
               </div>
             ) : null}
@@ -67,8 +67,8 @@ function LoginPage() {
           onSubmit={submit}
           className="rounded-md border border-border/70 bg-card p-5"
         >
-          <h1 className="text-[0.9375rem] font-semibold">{t('title')}</h1>
-          <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+          <h1 className="text-base font-semibold">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {auth.mfaChallenge ? t('mfaSubtitle') : t('subtitle')}
           </p>
 
@@ -118,7 +118,7 @@ function LoginPage() {
             {auth.mfaChallenge ? (
               <button
                 type="button"
-                className="w-full text-center text-[0.8125rem] text-muted-foreground hover:text-foreground"
+                className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => auth.cancelMfa()}
               >
                 {t('back')}

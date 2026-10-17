@@ -12,6 +12,7 @@ import {
   previewVariantForTheme,
   themePreviewColors,
 } from '@syrnike13/ui/tokens'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type ThemePreviewSwatchProps = {
@@ -46,7 +47,7 @@ export function ThemePreviewSwatch({
             aria-pressed={active}
             onClick={onSelect}
             className={cn(
-              'group relative h-11 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              'group relative h-11 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               active
                 ? 'border-primary shadow-sm ring-2 ring-primary/25'
                 : 'border-border/60 hover:border-foreground/40',
@@ -55,8 +56,8 @@ export function ThemePreviewSwatch({
         }
       >
         <span
-          className="absolute inset-0"
-          style={{ backgroundImage }}
+          className="absolute inset-0 bg-(image:--preview-image)"
+          style={{ '--preview-image': backgroundImage } as CSSVars}
           aria-hidden
         />
         <span

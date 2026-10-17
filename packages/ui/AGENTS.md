@@ -93,6 +93,7 @@
 ```sh
 pnpm check:ui              # правила; baseline только уменьшается
 pnpm check:ui:update       # пересчитать baseline после исправлений
+pnpm lint:design           # @shadcn/lint по apps; 0 находок, arbitrary/inline запрещены
 pnpm ui:typecheck && pnpm web:typecheck && pnpm admin:typecheck
 pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build

@@ -68,7 +68,7 @@ export function CurrentUserProfileMenu({
     <div className="flex min-w-0 flex-col">
       <div className="relative">
         {bannerOverlay ? (
-          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
+          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-3 safe-pt-3">
             {bannerOverlay}
           </div>
         ) : null}
@@ -86,7 +86,7 @@ export function CurrentUserProfileMenu({
                 className="h-full w-full"
               />
               <div
-                className="pointer-events-none absolute inset-0 z-[1] bg-background/40"
+                className="pointer-events-none absolute inset-0 z-1 bg-background/40"
                 aria-hidden
               />
             </>
@@ -95,7 +95,7 @@ export function CurrentUserProfileMenu({
         <div className="absolute -bottom-7 left-3 z-10">
           <UserProfileStatusBubble
             status={customStatus}
-            className="left-full top-[52%] ml-2"
+            className="left-full top-52/100 ml-2"
           />
           <button
             type="button"
@@ -115,7 +115,7 @@ export function CurrentUserProfileMenu({
               <UserAvatar
                 user={user}
                 className="size-20"
-                fallbackClassName="size-20 text-xl ring-[6px] ring-popover bg-card"
+                fallbackClassName="size-20 text-xl ring-6 ring-popover bg-card"
                 animated="always"
                 showPresence
                 presenceRingClassName="border-popover"

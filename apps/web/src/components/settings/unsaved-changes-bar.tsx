@@ -166,7 +166,7 @@ export function UnsavedChangesBar({
                 type="button"
                 size="sm"
                 disabled={saving}
-                className="min-w-[7.5rem] transition-colors"
+                className="min-w-30 transition-colors"
                 onClick={() => void handleSave()}
               >
                 {saving ? (

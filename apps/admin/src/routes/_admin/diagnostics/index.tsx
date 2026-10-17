@@ -53,7 +53,7 @@ function DiagnosticsPage() {
     <AdminPage title={t('title')}>
       <form
         key={diagnosticFiltersKey(filters)}
-        className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem_auto]"
+        className="mb-4 grid gap-2 diagnostics-row-grid"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const data = new FormData(event.currentTarget)
@@ -76,18 +76,18 @@ function DiagnosticsPage() {
           name="user_id"
           defaultValue={filters.user_id}
           placeholder={t('userPlaceholder')}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[0.8125rem]"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
         <input
           name="area"
           defaultValue={filters.area}
           placeholder={t('areaPlaceholder')}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[0.8125rem]"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
         <select
           name="status"
           defaultValue={filters.status ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[0.8125rem]"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         >
           <option value="">{t('allStatuses')}</option>
           <option value="new">{t('statusNewPlural')}</option>
@@ -97,7 +97,7 @@ function DiagnosticsPage() {
         <select
           name="release_channel"
           defaultValue={filters.release_channel ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[0.8125rem]"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         >
           <option value="">{t('allChannels')}</option>
           <option value="stable">Stable</option>
@@ -111,7 +111,7 @@ function DiagnosticsPage() {
           {t('reports', { count: reports.data?.length ?? 0 })}
         </AdminSectionHeader>
         {reports.isLoading ? (
-          <div className="flex h-24 items-center justify-center text-[0.8125rem] text-muted-foreground">
+          <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
             <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
             {t('loading')}
           </div>
@@ -119,7 +119,7 @@ function DiagnosticsPage() {
           <AdminEmpty>{t('loadError')}</AdminEmpty>
         ) : reports.data?.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[48rem] text-left text-xs">
+            <table className="w-full min-w-192 text-left text-xs">
               <thead className="border-b border-border/60 text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-medium">{t('columnTime')}</th>

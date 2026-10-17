@@ -5,7 +5,6 @@ import {
   useRef,
   type ComponentProps,
   type RefObject,
-  type CSSProperties,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { Loader2Icon } from '#/components/icons'
@@ -22,6 +21,7 @@ import {
   feedItemEstimateHeight,
   type MessageFeedItem,
 } from '#/lib/message-feed'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const VIRTUAL_THRESHOLD = 60
@@ -395,11 +395,12 @@ export function MessageList({
         className={cn(
           'flex h-0 min-h-0 flex-1 items-center justify-center overflow-hidden p-8 text-sm text-muted-foreground',
           scrollPaddingClassName,
+          scrollPaddingBottom != null && 'pb-(--scroll-padding)',
         )}
         style={
           scrollPaddingBottom == null
             ? undefined
-            : ({ paddingBottom: scrollPaddingBottom } satisfies CSSProperties)
+            : ({ '--scroll-padding': `${scrollPaddingBottom}px` } as CSSVars)
         }
       >
         Сообщений пока нет. Напишите первым.
@@ -416,11 +417,12 @@ export function MessageList({
         className={cn(
           'flex flex-col px-4 pt-4',
           scrollPaddingClassName,
+          scrollPaddingBottom != null && 'pb-(--scroll-padding)',
         )}
         style={
           scrollPaddingBottom == null
             ? undefined
-            : ({ paddingBottom: scrollPaddingBottom } satisfies CSSProperties)
+            : ({ '--scroll-padding': `${scrollPaddingBottom}px` } as CSSVars)
         }
       >
         <div ref={topSentinelRef} className="h-px shrink-0" aria-hidden />
@@ -502,8 +504,12 @@ function VirtualizedFeedItems({
 
   return (
     <div
-      className="relative w-full"
-      style={{ height: virtualizer.getTotalSize() }}
+      className="relative h-(--virtual-height) w-full"
+      style={
+        {
+          '--virtual-height': `${virtualizer.getTotalSize()}px`,
+        } as CSSVars
+      }
     >
       {virtualItems.map((virtualRow) => {
         const item = feedItems[virtualRow.index]
@@ -514,10 +520,12 @@ function VirtualizedFeedItems({
             key={item.key}
             ref={virtualizer.measureElement}
             data-index={virtualRow.index}
-            className="absolute top-0 left-0 w-full"
-            style={{
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
+            className="absolute top-0 left-0 w-full translate-y-(--virtual-offset)"
+            style={
+              {
+                '--virtual-offset': `${virtualRow.start}px`,
+              } as CSSVars
+            }
           >
             <FeedListItem
               item={item}

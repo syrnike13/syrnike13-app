@@ -73,7 +73,11 @@ export function MessageActionsMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className={cn('size-7', triggerClassName)}
+          className={cn(
+            'size-7',
+            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+            triggerClassName,
+          )}
           title={t('more')} />}>
           <MoreHorizontalIcon className="size-3.5" />
         </PopoverTrigger>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   Loader2Icon,
@@ -40,7 +40,7 @@ import {
 } from '#/features/voice/voice-listener-store'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
-import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type StageMediaTileVariant = 'grid' | 'focus' | 'strip' | 'fullscreen'
@@ -70,19 +70,19 @@ const unsubscribedStreamButtonClass =
   'h-auto rounded-md border border-border bg-card font-medium text-card-foreground shadow-sm transition-colors hover:bg-hover'
 
 const screenStreamOwnerLabelClass =
-  'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
+  'absolute z-10 flex min-w-0 max-w-media-inset-lg items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
 
 function screenStreamOwnerLabelPositionClass(variant: StageMediaTileVariant) {
   return variant === 'strip'
-    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-[0.625rem] leading-tight'
+    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-xs leading-tight'
     : 'bottom-2 left-2 px-2 py-1 text-xs'
 }
 
 /** Keeps the bottom-left label clear of the bottom-right viewers chip. */
 function viewersReserveClass(variant: StageMediaTileVariant) {
   return variant === 'strip'
-    ? 'max-w-[calc(100%-3rem)]'
-    : 'max-w-[calc(100%-6.5rem)]'
+    ? 'max-w-label-inset'
+    : 'max-w-label-inset-wide'
 }
 
 function ScreenStreamOwnerLabel({
@@ -327,14 +327,6 @@ export function StageMediaTile({
     : displayName
   const panelAspectRatio =
     isScreen && hasVideo ? aspectRatio : DEFAULT_SCREEN_ASPECT_RATIO
-  const tileStyle = useMemo(
-    () => ({
-      ...(!hasVideo && !isScreenPlaceholder ? tilePaletteStyle(palette) : {}),
-      // Размер grid-плитки задаёт обёртка (VoiceStageGrid), aspect-ratio не нужен.
-      ...(variant === 'focus' ? { aspectRatio: panelAspectRatio } : {}),
-    }),
-    [hasVideo, isScreenPlaceholder, palette, panelAspectRatio, variant],
-  )
   const updateVideoSize = useCallback(
     ({ width, height }: { width: number; height: number }) => {
       if (!isScreen || width <= 0 || height <= 0) return
@@ -359,7 +351,7 @@ export function StageMediaTile({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 overflow-hidden rounded-md outline-none transition-[filter,box-shadow,opacity]',
+            'group relative min-h-0 overflow-hidden rounded-md outline-none transition',
             variant !== 'grid' &&
               variant !== 'strip' &&
               'ring-offset-2 ring-offset-media-backdrop',
@@ -377,8 +369,18 @@ export function StageMediaTile({
               variant !== 'grid' &&
               'ring-2 ring-chart-3',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
+            !hasVideo && !isScreenPlaceholder && 'tile-palette',
+            variant === 'focus' && 'aspect-(--tile-aspect)',
           )}
-          style={variant === 'strip' ? undefined : tileStyle}
+          style={
+            variant === 'strip'
+              ? undefined
+              : ({
+                  '--tile-from': palette.from,
+                  '--tile-to': palette.to,
+                  '--tile-aspect': panelAspectRatio,
+                } as CSSVars)
+          }
           onClick={() => onFocus(item.id)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -435,8 +437,13 @@ export function StageMediaTile({
             <>
               {variant === 'strip' ? (
                 <div
-                  className={stripMediaClipClass}
-                  style={tilePaletteStyle(palette)}
+                  className={cn(stripMediaClipClass, 'tile-palette')}
+                  style={
+                    {
+                      '--tile-from': palette.from,
+                      '--tile-to': palette.to,
+                    } as CSSVars
+                  }
                 />
               ) : null}
               <div
@@ -449,14 +456,14 @@ export function StageMediaTile({
                   user={user}
                   className={cn(
                     variant === 'strip' &&
-                      'aspect-square size-[min(58cqh,36cqw,4.75rem)]',
+                      'aspect-square size-media-avatar',
                     variant === 'grid' && 'size-16 sm:size-20',
                     variant !== 'strip' &&
                       variant !== 'grid' &&
                       'size-24 sm:size-32',
                   )}
                   fallbackClassName={cn(
-                    variant === 'strip' && 'text-[min(1.125rem,26cqh)]',
+                    variant === 'strip' && 'text-stage-tile',
                     variant === 'grid' && 'size-16 text-base sm:size-20',
                     variant !== 'strip' &&
                       variant !== 'grid' &&
@@ -492,8 +499,8 @@ export function StageMediaTile({
               className={cn(
                 'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-media-backdrop/60 font-medium text-on-media',
                 variant === 'strip'
-                  ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-xs leading-tight'
-                  : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
+                  ? 'bottom-1.5 left-1 max-w-media-inset-sm px-1.5 py-0.5 text-xs leading-tight'
+                  : 'bottom-2 left-2 max-w-media-inset-xl px-2 py-1 text-xs',
                 hasViewers && viewersReserveClass(variant),
               )}
             >
@@ -523,7 +530,7 @@ export function StageMediaTile({
             />
           ) : null}
         </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-64 border-on-media/10">
+      <ContextMenuContent className="z-420 min-w-64 border-on-media/10">
         <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
           {t('actions.focus')}

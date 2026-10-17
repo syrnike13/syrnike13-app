@@ -9,6 +9,7 @@ import {
   VOICE_GATE_DB_MAX,
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type VoiceGateSensitivityBarProps = {
@@ -60,10 +61,16 @@ export function VoiceGateSensitivityBar({
       )
 
       if (levelRef.current) {
-        levelRef.current.style.width = `${inputPos * 100}%`
+        levelRef.current.style.setProperty(
+          '--level-width',
+          `${inputPos * 100}%`,
+        )
       }
       if (markerRef.current) {
-        markerRef.current.style.left = `${thresholdPos * 100}%`
+        markerRef.current.style.setProperty(
+          '--marker-left',
+          `${thresholdPos * 100}%`,
+        )
       }
       if (labelRef.current) {
         labelRef.current.textContent = formatGateThresholdDb(
@@ -125,16 +132,16 @@ export function VoiceGateSensitivityBar({
       >
         <div
           ref={levelRef}
-          className="absolute inset-y-0 left-0 rounded-full bg-primary/80"
-          style={{ width: '0%' }}
+          className="absolute inset-y-0 left-0 w-(--level-width) rounded-full bg-primary/80"
+          style={{ '--level-width': '0%' } as CSSVars}
         />
         <div
           ref={markerRef}
-          className="absolute inset-y-0 z-10 w-px -translate-x-1/2 bg-foreground/90"
-          style={{ left: '0%' }}
+          className="absolute inset-y-0 left-(--marker-left) z-10 w-px -translate-x-1/2 bg-foreground/90"
+          style={{ '--marker-left': '0%' } as CSSVars}
         />
       </div>
-      <div className="flex items-center justify-between text-[0.6875rem] text-muted-foreground tabular-nums">
+      <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span>{VOICE_GATE_DB_MIN} dB</span>
         <span>
           {t('gateThreshold', {

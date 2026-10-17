@@ -793,7 +793,7 @@ function MetricRow({
     <section className="min-w-0">
       <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border py-2">
         <div className="min-w-0 text-sm font-bold text-foreground">{label}</div>
-        <div className="max-w-[55%] truncate text-right text-sm tabular-nums text-muted-foreground">
+        <div className="max-w-55/100 truncate text-right text-sm tabular-nums text-muted-foreground">
           {value}
         </div>
       </div>

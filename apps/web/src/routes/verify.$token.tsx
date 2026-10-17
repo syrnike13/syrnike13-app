@@ -85,7 +85,7 @@ function VerifyEmailPage() {
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на token
+    // Один раз на token.
   }, [token])
 
   return (

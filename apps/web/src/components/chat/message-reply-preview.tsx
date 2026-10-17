@@ -6,6 +6,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export function messageAuthorName(
@@ -45,7 +46,7 @@ function ReplyThreadCorner({ className }: { className?: string }) {
     <span
       aria-hidden
       className={cn(
-        'mb-0.5 box-border h-3 w-[1.375rem] shrink-0 rounded-tl-md',
+        'mb-0.5 box-border h-3 w-5.5 shrink-0 rounded-tl-md',
         'border-t-2 border-l-2 border-muted-foreground/45',
         className,
       )}
@@ -104,20 +105,24 @@ export function InlineReplyQuote({
         <UserAvatar
           user={replyUser}
           className="mb-px size-4 shrink-0"
-          fallbackClassName="size-4 text-[0.5rem]"
+          fallbackClassName="size-4 text-3xs"
           showPresence={false}
         />
       ) : null}
       <span
         className={cn(
-          'shrink-0 text-[0.8125rem] font-semibold leading-4',
-          !nameColor && 'text-primary',
+          'shrink-0 text-sm font-semibold leading-4.5',
+          nameColor ? 'text-(--reply-name-color)' : 'text-primary',
         )}
-        style={nameColor ? { color: nameColor } : undefined}
+        style={
+          nameColor
+            ? ({ '--reply-name-color': nameColor } as CSSVars)
+            : undefined
+        }
       >
         {name}
       </span>
-      <span className="min-w-0 truncate text-[0.8125rem] leading-4 text-muted-foreground">
+      <span className="min-w-0 truncate text-sm leading-4.5 text-muted-foreground">
         {snippet}
       </span>
     </>
@@ -156,11 +161,18 @@ export function ComposerReplyBanner({
 
   return (
     <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3">
-      <p className="min-w-0 truncate text-[0.8125rem] leading-none">
+      <p className="min-w-0 truncate text-sm leading-none">
         <span className="text-muted-foreground">{t('replyingTo')} </span>
         <span
-          className={cn('font-semibold', !authorColor && 'text-primary')}
-          style={authorColor ? { color: authorColor } : undefined}
+          className={cn(
+            'font-semibold',
+            authorColor ? 'text-(--reply-author-color)' : 'text-primary',
+          )}
+          style={
+            authorColor
+              ? ({ '--reply-author-color': authorColor } as CSSVars)
+              : undefined
+          }
         >
           {name}
         </span>
@@ -171,7 +183,7 @@ export function ComposerReplyBanner({
           <button
             type="button"
             className={cn(
-              'rounded px-1 text-[0.6875rem] font-semibold leading-none transition-colors',
+              'rounded px-1 text-xs font-semibold leading-none transition-colors',
               mentionEnabled
                 ? 'text-primary hover:text-primary/80'
                 : 'text-muted-foreground hover:text-foreground',

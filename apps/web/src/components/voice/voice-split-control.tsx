@@ -21,8 +21,6 @@ type SegmentState = {
 const splitControlSuccessMainClass =
   'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
 
-const splitControlSuccessChevronClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
 
 export const splitControlDangerMainClass =
   'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
@@ -58,31 +56,6 @@ export function splitControlMainButtonClass(
   )
 }
 
-export function splitControlChevronButtonClass(
-  surface: VoiceSplitControlSurface,
-  { danger, success }: SegmentState,
-) {
-  if (surface === 'stage') {
-    return cn(
-      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
-      danger
-        ? splitControlDangerChevronClass
-        : success
-          ? splitControlSuccessChevronClass
-          : 'group-hover/media:bg-accent group-hover/media:text-foreground',
-    )
-  }
-
-  return cn(
-    'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
-    danger
-      ? splitControlDangerChevronClass
-      : success
-        ? splitControlSuccessChevronClass
-        : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
-  )
-}
-
 function SplitControlChevron({
   surface,
   disabled,
@@ -98,7 +71,24 @@ function SplitControlChevron({
   title: string
   popoverContent: ReactNode
 }) {
-  const segmentState = { danger, success }
+  const chevronClass =
+    surface === 'stage'
+      ? cn(
+          'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          danger
+            ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+            : success
+              ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
+              : 'group-hover/media:bg-accent group-hover/media:text-foreground',
+        )
+      : cn(
+          'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          danger
+            ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+            : success
+              ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
+              : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+        )
 
   return (
     <Popover>
@@ -107,7 +97,7 @@ function SplitControlChevron({
             type="button"
             aria-label={title}
             aria-disabled={disabled}
-            className={splitControlChevronButtonClass(surface, segmentState)} />}>
+            className={chevronClass} />}>
             <ChevronDownIcon
               className={surface === 'panel' ? 'size-3' : 'size-3.5'}
             />
@@ -119,8 +109,9 @@ function SplitControlChevron({
         sideOffset={8}
         data-voice-stage-popover
         className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
           voiceStagePopoverMicSettingsClass,
-          surface === 'panel' && 'z-[200]',
+          surface === 'panel' && 'z-200',
         )}
       >
         {popoverContent}

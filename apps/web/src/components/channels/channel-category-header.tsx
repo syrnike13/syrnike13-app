@@ -49,7 +49,7 @@ export function ChannelCategoryHeader({
             collapsed && '-rotate-90',
           )}
         />
-        <span className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
         </span>
       </button>

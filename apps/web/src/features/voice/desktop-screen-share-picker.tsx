@@ -304,7 +304,7 @@ export function DesktopScreenSharePicker() {
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && cancelRequest()}>
       <DialogContent
         showCloseButton={false}
-        className="grid aspect-[4/3] w-[min(96vw,66.667vh)] max-w-none grid-rows-[1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="grid aspect-4/3 w-screen-share-picker max-w-none media-picker-rows gap-0 overflow-hidden p-0 sm:max-w-none"
       >
         <DialogTitle className="sr-only">{t('sharePicker.title')}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -319,7 +319,7 @@ export function DesktopScreenSharePicker() {
           }}
           className="min-h-0 gap-0"
         >
-          <TabsList className="mx-4 mt-4 w-[calc(100%-2rem)] shrink-0">
+          <TabsList className="mx-4 mt-4 w-picker-inset shrink-0">
             {SOURCE_TABS.map((tab) => {
               const Icon = tab.icon
               const count =
@@ -477,7 +477,7 @@ function DisplaySourceTile({
       <button
         type="button"
         aria-label={t('sharePicker.shareAria', { source: sourceLabel })}
-        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none"
+        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
         disabled={disabled}
         onClick={onShare}
       >
@@ -575,7 +575,11 @@ function ScreenSharePickerSettings({
         side="top"
         align="end"
         sideOffset={8}
-        className={cn(voiceStagePopoverContentClass, 'w-64')}
+        className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverContentClass,
+          'w-64',
+        )}
       >
         <div className="flex flex-col gap-0.5">
           <StreamSettingsSubmenu

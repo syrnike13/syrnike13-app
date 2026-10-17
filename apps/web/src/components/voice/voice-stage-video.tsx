@@ -111,7 +111,7 @@ function QualitySwitchOverlay() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none absolute inset-0 z-[1] flex flex-col items-center justify-center gap-2 bg-media-backdrop/50 px-2 text-on-media"
+      className="pointer-events-none absolute inset-0 z-1 flex flex-col items-center justify-center gap-2 bg-media-backdrop/50 px-2 text-on-media"
     >
       <Loader2Icon className="size-6 shrink-0 animate-spin" aria-hidden />
       <span className="max-w-full truncate text-xs font-medium">

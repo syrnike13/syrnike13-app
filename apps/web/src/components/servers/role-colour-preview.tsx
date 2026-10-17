@@ -5,7 +5,8 @@ import {
   getThemeTokens,
   type ThemeVariant,
 } from '@syrnike13/ui/tokens'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type RoleColourPreviewProps = {
@@ -42,7 +43,7 @@ export function RoleColourPreview({
   const t = useTranslations('servers.roles')
   const { settings } = useAppearance()
   const displayName = name.trim() || t('newRole')
-  const roleStyle = roleColourStyle(colour.trim() || null)
+  const roleColour = colour.trim() ? normalizeRoleColour(colour) : undefined
 
   const palettes = (['light', 'dark'] as const).map((variant) => {
     const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
@@ -67,11 +68,14 @@ export function RoleColourPreview({
               {palette.label}
             </div>
             <div
-              className="space-y-2 px-3 py-3 text-sm"
-              style={{
-                backgroundColor: palette.surface,
-                color: palette.text,
-              }}
+              className="space-y-2 bg-(--palette-surface) px-3 py-3 text-sm text-(--palette-text)"
+              style={
+                {
+                  '--palette-surface': palette.surface,
+                  '--palette-text': palette.text,
+                  '--palette-muted': palette.muted,
+                } as CSSVars
+              }
             >
               <div className="flex items-center gap-2">
                 {iconUrl ? (
@@ -83,21 +87,40 @@ export function RoleColourPreview({
                   />
                 ) : (
                   <span
-                    className="size-2.5 rounded-full"
-                    style={{ backgroundColor: normalizeRoleColour(colour) }}
+                    className="size-2.5 rounded-full bg-(--role-dot)"
+                    style={
+                      { '--role-dot': normalizeRoleColour(colour) } as CSSVars
+                    }
                   />
                 )}
-                <span className="font-semibold" style={roleStyle}>
+                <span
+                  className={cn(
+                    'font-semibold',
+                    roleColour && 'text-(--role-color)',
+                  )}
+                  style={
+                    roleColour
+                      ? ({ '--role-color': roleColour } as CSSVars)
+                      : undefined
+                  }
+                >
                   {displayName}
                 </span>
               </div>
               <p>
-                <span className="font-medium" style={{ color: palette.text }}>
-                  {t('member')}
+                <span className="font-medium">{t('member')}</span>
+                <span className="text-(--palette-muted)"> — </span>
+                <span
+                  className={cn(roleColour && 'text-(--role-color)')}
+                  style={
+                    roleColour
+                      ? ({ '--role-color': roleColour } as CSSVars)
+                      : undefined
+                  }
+                >
+                  @{displayName}
                 </span>
-                <span style={{ color: palette.muted }}> — </span>
-                <span style={roleStyle}>@{displayName}</span>
-                <span style={{ color: palette.muted }}>
+                <span className="text-(--palette-muted)">
                   {t('welcome')}
                 </span>
               </p>

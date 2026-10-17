@@ -379,7 +379,7 @@ function GroupManagementDialogContent({
           aria-label={t('settings')} />}>
           <SettingsIcon className="size-4" />
         </DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden">
+      <DialogContent className="flex max-h-dialog max-w-2xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{t('settings')}</DialogTitle>
           <DialogDescription>

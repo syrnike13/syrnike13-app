@@ -61,7 +61,7 @@ export function VoicePingPopoverContent({
       side="top"
       align="start"
       sideOffset={8}
-      className={cn('w-[min(20rem,calc(100vw-2rem))] p-0', className)}
+      className={cn('w-voice-ping-popover p-0', className)}
     >
       <PopoverHeader className="gap-0 border-b px-3 py-2.5">
         <PopoverTitle className="text-sm font-semibold text-primary">

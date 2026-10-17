@@ -149,8 +149,8 @@ function BadgeRow({ badge }: { badge: Badge }) {
       >
         <BadgeIcon badge={badge} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[0.8125rem] font-medium">{badge.name}</div>
-          <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+          <div className="truncate text-sm font-medium">{badge.name}</div>
+          <div className="truncate font-mono text-xs text-muted-foreground">
             {badge.slug}
           </div>
         </div>
@@ -161,7 +161,7 @@ function BadgeRow({ badge }: { badge: Badge }) {
           {badge.premium ? (
             <MetaFlag tone="accent">{t('premium')}</MetaFlag>
           ) : null}
-          <span className="w-8 text-right font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
+          <span className="w-8 text-right font-mono text-xs tabular-nums text-muted-foreground">
             {badge.display_order}
           </span>
         </div>

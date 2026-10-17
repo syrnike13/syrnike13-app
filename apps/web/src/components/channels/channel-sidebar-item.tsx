@@ -471,7 +471,7 @@ export function ChannelSidebarItem({
             <UserAvatar
               user={dmUser}
               className="size-6"
-              fallbackClassName="size-6 text-[0.625rem]"
+              fallbackClassName="size-6 text-xs"
             />
           ) : channel.channel_type === 'Group' ? (
             channel.icon ? (

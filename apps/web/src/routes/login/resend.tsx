@@ -48,7 +48,7 @@ export const Route = createFileRoute('/login/resend')({
 
 function ResendVerificationPage() {
   const t = useTranslations('auth')
-  const tv = useTranslations('validation')
+  const tValidation = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const features = configQuery.data?.features
   const siteKey = resolveHcaptchaSiteKey(features)
@@ -64,7 +64,7 @@ function ResendVerificationPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(tv(parsed.issues[0]?.message ?? 'email'))
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 

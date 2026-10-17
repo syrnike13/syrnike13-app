@@ -160,7 +160,7 @@ function RadioMark({ checked }: { checked: boolean }) {
     <span
       aria-hidden
       className={cn(
-        'flex -[1.125rem] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+        'flex size-4.5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
         checked ? 'border-primary' : 'border-muted-foreground/60',
       )}
     >
@@ -289,7 +289,11 @@ export function StreamSettingsSubmenu({
             type="button"
             aria-haspopup="menu"
             aria-expanded={open}
-            className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
+            className={cn(
+              // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover row class
+              voiceStagePopoverNavRowClass,
+              open && 'bg-accent/70',
+            )}
             onPointerEnter={show}
             onPointerLeave={scheduleClose}
             onFocus={show}
@@ -308,7 +312,11 @@ export function StreamSettingsSubmenu({
         align="start"
         sideOffset={6}
         data-mini-control
-        className={cn(voiceStagePopoverContentClass, 'z-[520] w-60 p-1')}
+        className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverContentClass,
+          'z-520 w-60 p-1',
+        )}
         onPointerEnter={cancelClose}
         onPointerLeave={scheduleClose}
       >

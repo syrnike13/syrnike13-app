@@ -50,6 +50,7 @@ import {
   shellChromeSurface,
   shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
@@ -157,7 +158,7 @@ export function ChannelView({
   highlightMessageId,
 }: ChannelViewProps) {
   const t = useTranslations('chat')
-  const tv = useTranslations('chat.voice')
+  const tVoice = useTranslations('chat.voice')
   const tf = useTranslations('friends')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
@@ -307,18 +308,18 @@ export function ChannelView({
     voice.channelId === channelId &&
     voice.status === 'connected'
   const voiceCallIncoming = isIncomingVoiceCall(voiceCall, currentUserId)
-  let voiceActionLabel = isDmVoiceCallChannel ? tv('call') : tv('voice')
+  let voiceActionLabel = isDmVoiceCallChannel ? tVoice('call') : tVoice('voice')
   if (
     (isDmVoiceCallChannel && voiceCall?.phase === 'active') ||
     (isGroupDirectMessage && voiceCall)
   ) {
-    voiceActionLabel = tv('join')
+    voiceActionLabel = tVoice('join')
   } else if (
     isDmVoiceCallChannel &&
     !voiceCallRingingDismissed &&
     voiceCallIncoming
   ) {
-    voiceActionLabel = tv('answer')
+    voiceActionLabel = tVoice('answer')
   }
   const showVoiceCallBanner =
     Boolean(voiceCall) &&
@@ -432,8 +433,8 @@ export function ChannelView({
               variant="ghost"
               size="icon"
               className="size-8 shrink-0"
-              aria-label={tv('back')}
-              title={tv('back')}
+              aria-label={tVoice('back')}
+              title={tVoice('back')}
               onClick={handleMobileBack}
             >
               <ChevronLeftIcon className="size-5" />
@@ -480,9 +481,9 @@ export function ChannelView({
               className="size-8"
               aria-pressed={dmProfilePanelOpen}
               aria-label={
-                dmProfilePanelOpen ? tv('hideProfile') : tv('showProfile')
+                dmProfilePanelOpen ? tVoice('hideProfile') : tVoice('showProfile')
               }
-              title={dmProfilePanelOpen ? tv('hideProfile') : tv('showProfile')}
+              title={dmProfilePanelOpen ? tVoice('hideProfile') : tVoice('showProfile')}
               onClick={() => setDmProfilePanelOpen((open) => !open)}
             >
               <UserIcon className="size-4" />
@@ -502,7 +503,7 @@ export function ChannelView({
                   variant="ghost"
                   onClick={dismissVoiceCallBanner}
                 >
-                  {voiceCallInitiatedByCurrentUser ? tv('cancel') : tv('decline')}
+                  {voiceCallInitiatedByCurrentUser ? tVoice('cancel') : tVoice('decline')}
                 </Button>
               ) : null}
               <Button
@@ -595,12 +596,14 @@ export function ChannelView({
           {showInlineVoiceStage ? (
             <section
               ref={inlineVoiceStageRef}
-              aria-label={tv('callAria')}
-              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
-              style={{
-                height: inlineVoiceStageHeight,
-                minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
-              }}
+              aria-label={tVoice('callAria')}
+              className="relative flex h-(--inline-voice-height) min-h-(--inline-voice-min-height) min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
+              style={
+                {
+                  '--inline-voice-height': `${inlineVoiceStageHeight}px`,
+                  '--inline-voice-min-height': `${INLINE_VOICE_STAGE_MIN_HEIGHT}px`,
+                } as CSSVars
+              }
             >
               <VoiceStageView
                 channel={channel}
@@ -657,9 +660,9 @@ export function ChannelView({
                 }
               />
               <div
-                aria-label={tv('resizeAria')}
+                aria-label={tVoice('resizeAria')}
                 aria-orientation="horizontal"
-                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
+                className="absolute inset-x-0 bottom-0 z-70 h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
                 role="separator"
                 onPointerDown={startInlineVoiceStageResize}
               />
@@ -670,19 +673,19 @@ export function ChannelView({
           ) : null}
           {showVoiceCallBanner && voiceCall ? (
             <VoiceCallBanner
-              title={isDirectMessage ? tv('dmCall') : tv('groupCall')}
+              title={isDirectMessage ? tVoice('dmCall') : tVoice('groupCall')}
               detail={
                 voiceCall.phase === 'ringing'
-                  ? tv('calling', { name: voiceCallInitiatorName })
-                  : tv('ongoing')
+                  ? tVoice('calling', { name: voiceCallInitiatorName })
+                  : tVoice('ongoing')
               }
-              actionLabel={tv('answer')}
+              actionLabel={tVoice('answer')}
               dismissLabel={
                 isDirectMessage && voiceCall.phase === 'ringing'
                   ? voiceCallInitiatedByCurrentUser
-                    ? tv('cancel')
-                    : tv('decline')
-                  : tv('hide')
+                    ? tVoice('cancel')
+                    : tVoice('decline')
+                  : tVoice('hide')
               }
               onJoin={() => {
                 void voice.join(channelId)
@@ -848,12 +851,14 @@ export function ChannelView({
             channel.channel_type === 'Group') ? (
             <section
               ref={inlineVoiceStageRef}
-              aria-label={tv('callAria')}
-              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
-              style={{
-                height: inlineVoiceStageHeight,
-                minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
-              }}
+              aria-label={tVoice('callAria')}
+              className="relative flex h-(--inline-voice-height) min-h-(--inline-voice-min-height) min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
+              style={
+                {
+                  '--inline-voice-height': `${inlineVoiceStageHeight}px`,
+                  '--inline-voice-min-height': `${INLINE_VOICE_STAGE_MIN_HEIGHT}px`,
+                } as CSSVars
+              }
             >
               <VoiceStageView
                 channel={channel}
@@ -910,9 +915,9 @@ export function ChannelView({
                 }
               />
               <div
-                aria-label={tv('resizeAria')}
+                aria-label={tVoice('resizeAria')}
                 aria-orientation="horizontal"
-                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
+                className="absolute inset-x-0 bottom-0 z-70 h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
                 role="separator"
                 onPointerDown={startInlineVoiceStageResize}
               />
@@ -923,19 +928,19 @@ export function ChannelView({
           ) : null}
           {showVoiceCallBanner && voiceCall ? (
             <VoiceCallBanner
-              title={isDirectMessage ? tv('dmCall') : tv('groupCall')}
+              title={isDirectMessage ? tVoice('dmCall') : tVoice('groupCall')}
               detail={
                 voiceCall.phase === 'ringing'
-                  ? tv('calling', { name: voiceCallInitiatorName })
-                  : tv('ongoing')
+                  ? tVoice('calling', { name: voiceCallInitiatorName })
+                  : tVoice('ongoing')
               }
-              actionLabel={tv('answer')}
+              actionLabel={tVoice('answer')}
               dismissLabel={
                 isDirectMessage && voiceCall.phase === 'ringing'
                   ? voiceCallInitiatedByCurrentUser
-                    ? tv('cancel')
-                    : tv('decline')
-                  : tv('hide')
+                    ? tVoice('cancel')
+                    : tVoice('decline')
+                  : tVoice('hide')
               }
               onJoin={() => {
                 void voice.join(channelId)

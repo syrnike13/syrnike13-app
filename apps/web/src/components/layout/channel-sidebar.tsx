@@ -12,6 +12,7 @@ import {
   shellColumnHeaderClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { serverBannerUrl } from '#/lib/media'
 import { useMediaQuery } from '#/hooks/use-media-query'
@@ -56,10 +57,16 @@ export function ChannelSidebar({
 
   return (
     <aside
-      className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
+      className={cn(
+        'flex h-full min-h-0 w-full flex-col',
+        shellNavSurface,
+        reserveUserPanelSpace && 'pb-(--sidebar-bottom-reserve)',
+      )}
       style={
         reserveUserPanelSpace
-          ? { paddingBottom: userPanelReservePx }
+          ? ({
+              '--sidebar-bottom-reserve': `${userPanelReservePx}px`,
+            } as CSSVars)
           : undefined
       }
     >

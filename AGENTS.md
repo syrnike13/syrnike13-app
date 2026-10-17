@@ -31,6 +31,7 @@ pnpm install
 pnpm web:dev
 pnpm web:test
 pnpm web:build
+pnpm lint:design
 pnpm desktop:dev
 pnpm desktop:build
 pnpm backend:check
@@ -49,7 +50,8 @@ On Windows, missing OpenSSL/vcpkg/Docker for backend checks is an environment bl
 
 ## Client UI
 
-- Full UI rules, component catalog, reference screens and desktop contracts live in `packages/ui/AGENTS.md`. Read it before UI work; run `pnpm check:ui` before finishing.
+- Full UI rules, component catalog, reference screens and desktop contracts live in `packages/ui/AGENTS.md`. Read it before UI work; run `pnpm check:ui` and `pnpm lint:design` before finishing.
+- Discord target metrics (type, spacing, element sizes, current gaps) live in `docs/discord-design-reference.md`. Do not copy Discord's proprietary font file; align sizes and geometry.
 - Build screens from `@syrnike13/ui/primitives/*`. Primitives are literal shadcn/ui `base-nova` sources on Base UI; do not create local copies or lookalikes. Use the `render` prop instead of Radix `asChild`.
 - Do not hardcode UI colors or use Tailwind palette/arbitrary colors. Use semantic theme tokens such as `primary`, `destructive`, `chart-*`, `background`, `card`, and `border`.
 - Theme sources of truth are `packages/ui/src/tokens` (being migrated from `apps/web/src/features/appearance/theme-catalog-data.ts`, `theme-tokens.ts`, and `applyThemeToDocument()`). `styles.css` contains only non-color static tokens.

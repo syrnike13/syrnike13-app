@@ -180,14 +180,14 @@ function ProfileStatusLivePreview({
           {statusText ? (
             <UserProfileStatusBubble
               status={statusText}
-              className="left-full top-[46%] ml-2.5"
+              className="left-full top-46/100 ml-2.5"
             />
           ) : null}
           <UserAvatar
             user={avatarUrl ? user : { ...user, avatar: null }}
             imageSrc={avatarUrl}
             className="size-20"
-            fallbackClassName="size-20 bg-card text-xl ring-[5px] ring-card"
+            fallbackClassName="size-20 bg-card text-xl ring-5 ring-card"
             animated="always"
             showPresence
             presenceRingClassName="border-card"
@@ -221,7 +221,7 @@ export function ProfileStatusBubbleTrigger({
       aria-label={text ? t('edit') : t('add')}
       onClick={onClick}
       className={cn(
-        'group/status-trigger absolute z-20 cursor-pointer rounded-2xl outline-none transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
+        'group/status-trigger absolute z-20 cursor-pointer rounded-2xl outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
         className,
       )}
     >

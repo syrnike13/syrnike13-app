@@ -54,7 +54,7 @@ export function IconDropzone({
           <FolderPlusIcon className="size-5" aria-hidden />
         </span>
       )}
-      <span className="max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
+      <span className="max-w-64 text-xs leading-relaxed text-muted-foreground">
         {file ? file.name : t('uploadHint')}
       </span>
       <input

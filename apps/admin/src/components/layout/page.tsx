@@ -33,13 +33,13 @@ export function AdminPage({
             {back ? (
               <Link
                 to={back.to}
-                className="inline-flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 <ArrowLeftIcon className="size-3.5" aria-hidden />
                 <span className="hidden sm:inline">{back.label}</span>
               </Link>
             ) : null}
-            <h1 className="truncate text-[0.9375rem] font-semibold tracking-tight">{title}</h1>
+            <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
@@ -99,7 +99,7 @@ export function AdminEmpty({
   return (
     <div
       className={cn(
-        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-[0.8125rem] text-muted-foreground',
+        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-sm text-muted-foreground',
         className,
       )}
     >
@@ -118,7 +118,7 @@ export function AdminStickyFooter({
   if (!visible) return null
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-[var(--page-padding-x)] mt-5 border-t border-border/60 bg-background/95 px-[var(--page-padding-x)] py-3 backdrop-blur-sm">
+    <div className="sticky bottom-0 z-10 -mx-(--page-padding-x) mt-5 border-t border-border/60 bg-background/95 px-(--page-padding-x) py-3 backdrop-blur-sm">
       <div className="flex w-full flex-wrap items-center justify-between gap-2">{children}</div>
     </div>
   )

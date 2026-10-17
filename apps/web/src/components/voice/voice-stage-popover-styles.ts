@@ -9,7 +9,7 @@ const voiceStagePopoverSurfaceClass =
 
 /** Общий контейнер поповеров на голосовой сцене (поверх дефолтного PopoverContent). */
 export const voiceStagePopoverContentClass = cn(
-  'z-[420] overflow-visible p-2 text-sm',
+  'z-420 overflow-visible p-2 text-sm',
   voiceStagePopoverSurfaceClass,
 )
 
@@ -25,7 +25,7 @@ export const voiceStagePopoverSettingsClass = cn(
 
 /** Вложенное подменю справа от строки. */
 export const voiceStagePopoverSubmenuClass = cn(
-  'absolute top-0 left-full z-[430] ml-1 w-56 rounded-md p-1',
+  'absolute top-0 left-full z-430 ml-1 w-56 rounded-md p-1',
   voiceStagePopoverSurfaceClass,
 )
 
@@ -45,7 +45,7 @@ export const voiceStagePopoverSectionTitleClass =
   'text-xs font-semibold text-foreground'
 
 export const voiceStagePopoverHintClass =
-  'text-[0.6875rem] leading-snug text-muted-foreground'
+  'text-xs leading-snug text-muted-foreground'
 
 export const voiceStagePopoverSeparatorClass = 'my-0.5 h-px bg-border'
 

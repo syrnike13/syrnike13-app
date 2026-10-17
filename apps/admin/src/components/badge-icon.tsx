@@ -4,9 +4,9 @@ import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
 const sizeMap = {
-  sm: { box: 'size-8 text-[0.5625rem]', img: 'size-4' },
-  md: { box: 'size-10 text-[0.625rem]', img: 'size-6' },
-  lg: { box: 'size-12 text-[0.625rem]', img: 'size-7' },
+  sm: { box: 'size-8 text-3xs', img: 'size-4' },
+  md: { box: 'size-10 text-3xs', img: 'size-6' },
+  lg: { box: 'size-12 text-3xs', img: 'size-7' },
   xl: { box: 'size-16 text-xs', img: 'size-10' },
 } as const
 

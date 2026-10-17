@@ -130,7 +130,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
               </div>
             ) : null}
 
-            <div className="mt-7 whitespace-pre-wrap text-[0.9375rem] leading-7 text-foreground/90">
+            <div className="mt-7 whitespace-pre-wrap text-base leading-7 text-foreground/90">
               {suggestion.description}
             </div>
 

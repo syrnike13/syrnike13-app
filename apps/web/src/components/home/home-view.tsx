@@ -158,7 +158,7 @@ function HomeFriendRow({
             >
               <MoreHorizontalIcon className="size-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-auto min-w-[11rem]">
+            <DropdownMenuContent align="end" className="w-auto min-w-44">
               {user.relationship === 'Incoming' ? (
                 <DropdownMenuItem
                   onClick={() => {

@@ -52,6 +52,7 @@ import {
   MINI_PLAYER_WIDTH_KEY,
   selectMiniPlayerStream,
 } from '#/features/voice/stream-mini-player'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { VoiceStageVideo } from './voice-stage-video'
 
@@ -164,7 +165,7 @@ function MiniStreamSettings({
               data-mini-control
               aria-label={t('stream.settings')}
               className={miniIconButtonClass} />}>
-              <Settings2Icon className="size-[1.125rem]" />
+              <Settings2Icon className="size-4.5" />
             </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>{t('stream.settings')}</TooltipContent>
@@ -175,8 +176,9 @@ function MiniStreamSettings({
         align="end"
         sideOffset={8}
         className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover surface class
           voiceStagePopoverContentClass,
-          'z-[510] max-h-[min(70vh,32rem)] w-64 overflow-y-auto',
+          'z-510 max-h-voice-popover w-64 overflow-y-auto',
         )}
       >
         {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
@@ -211,9 +213,9 @@ function MiniStreamMuteButton({ userId }: { userId: string }) {
       onClick={() => voiceListenerStore.setStreamMuted(userId, !muted)}
     >
       {silent ? (
-        <VolumeXIcon className="size-[1.125rem]" />
+        <VolumeXIcon className="size-4.5" />
       ) : (
-        <Volume2Icon className="size-[1.125rem]" />
+        <Volume2Icon className="size-4.5" />
       )}
     </MiniControl>
   )
@@ -321,8 +323,8 @@ export function VoiceStreamMiniPlayer() {
       <section
         ref={anchor.ref}
         aria-label={t('miniPlayer.label')}
-        className="group fixed top-0 left-0 z-[500] touch-none select-none will-change-transform"
-        style={{ width, aspectRatio: '16 / 9' }}
+        className="group fixed top-0 left-0 z-500 aspect-video w-(--mini-width) touch-none select-none will-change-transform"
+        style={{ '--mini-width': `${width}px` } as CSSVars}
         onClick={(event) => {
           if (isControl(event.target)) return
           returnToChannel()
@@ -337,8 +339,8 @@ export function VoiceStreamMiniPlayer() {
       >
         <div
           className={cn(
-            'relative size-full overflow-hidden rounded-lg bg-media-backdrop text-on-media shadow-xl ring-1 ring-shell-divider transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none',
-            anchor.dragging && 'scale-[1.03] shadow-2xl',
+            'relative size-full overflow-hidden rounded-lg bg-media-backdrop text-on-media shadow-xl ring-1 ring-shell-divider transition duration-200 ease-out motion-reduce:transition-none',
+            anchor.dragging && 'scale-103 shadow-2xl',
           )}
         >
           <button
@@ -407,14 +409,14 @@ export function VoiceStreamMiniPlayer() {
                 label={t('actions.stopStream')}
                 onClick={voiceMedia.toggleScreenShare}
               >
-                <MonitorXIcon className="size-[1.125rem]" />
+                <MonitorXIcon className="size-4.5" />
               </MiniControl>
             ) : (
               <MiniControl
                 label={t('actions.stopWatching')}
                 onClick={() => voice.setStageMediaSubscribed(item.id, false)}
               >
-                <MonitorXIcon className="size-[1.125rem]" />
+                <MonitorXIcon className="size-4.5" />
               </MiniControl>
             )}
           </div>
@@ -425,12 +427,12 @@ export function VoiceStreamMiniPlayer() {
           type="button"
           data-mini-control
           aria-label={t('miniPlayer.resize')}
-          className="absolute size-4 focus-visible:outline focus-visible:outline-ring"
-          style={{
-            [right ? 'left' : 'right']: 0,
-            [bottom ? 'top' : 'bottom']: 0,
-            cursor: right !== bottom ? 'nesw-resize' : 'nwse-resize',
-          }}
+          className={cn(
+            'absolute size-4 focus-visible:outline focus-visible:outline-ring',
+            right ? 'left-0' : 'right-0',
+            bottom ? 'top-0' : 'bottom-0',
+            right !== bottom ? 'cursor-nesw-resize' : 'cursor-nwse-resize',
+          )}
           onPointerDown={(event) => {
             if (event.button !== 0 || !event.isPrimary) return
             event.stopPropagation()

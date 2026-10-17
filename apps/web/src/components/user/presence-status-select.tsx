@@ -40,7 +40,11 @@ export function PresenceStatusSelect({
           type="button"
           disabled={isPending}
           data-state={open ? 'open' : 'closed'}
-          className={cn(profileMenuRowClass, className)}
+          className={cn(
+            // eslint-disable-next-line shadcn/require-static-classes -- shared profile menu row class
+            profileMenuRowClass,
+            className,
+          )}
           aria-haspopup="listbox"
           aria-expanded={open} />}>
           <span
@@ -66,7 +70,7 @@ export function PresenceStatusSelect({
         side="right"
         align="start"
         sideOffset={6}
-        className="z-[250] w-52 p-1"
+        className="z-250 w-52 p-1"
       >
         {PRESENCE_OPTIONS.map((option) => {
           const selected = option.value === current.value

@@ -274,7 +274,7 @@ function FeedbackModerationContent() {
   const publishedTotal = publishedQuery.data?.pages[0]?.total ?? 0
 
   return (
-    <AdminPage title={t('pageTitle')} innerClassName="max-w-[80rem]">
+    <AdminPage title={t('pageTitle')} innerClassName="max-w-320">
       <div className="flex flex-col gap-4">
         <FeedbackModeTabs
           mode={mode}
@@ -294,8 +294,8 @@ function FeedbackModerationContent() {
             {mode === 'pending' ? t('emptyPending') : t('emptyPublished')}
           </AdminEmpty>
         ) : (
-          <AdminSection className="min-h-[calc(100svh-9.5rem)]">
-            <div className="grid h-full min-h-[calc(100svh-9.5rem)] lg:grid-cols-[minmax(19rem,0.82fr)_minmax(0,1.35fr)]">
+          <AdminSection className="min-h-feedback-page">
+            <div className="grid h-full min-h-feedback-page feedback-split-grid">
               <FeedbackQueue
                 mode={mode}
                 total={mode === 'pending' ? pendingTotal : publishedTotal}
@@ -456,7 +456,7 @@ function ModeTab({
       role="tab"
       aria-selected={active}
       className={cn(
-        'h-9 rounded px-4 text-[0.8125rem] font-medium transition-colors',
+        'h-9 rounded px-4 text-sm font-medium transition-colors',
         active
           ? 'bg-secondary text-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground',
@@ -492,7 +492,7 @@ function FeedbackQueue({
   return (
     <aside className="min-w-0 border-b border-border/60 lg:border-r lg:border-b-0">
       <div className="flex h-16 items-center justify-between border-b border-border/60 px-5">
-        <h2 className="text-[0.9375rem] font-semibold">
+        <h2 className="text-base font-semibold">
           {mode === 'pending' ? t('queuePending') : t('queuePublished')}
         </h2>
         <span className="text-xs text-muted-foreground">{total}</span>
@@ -561,7 +561,7 @@ function FeedbackQueueItem({
             <FeedbackTag tone="anonymous">{t('anonymousShort')}</FeedbackTag>
           ) : null}
         </div>
-        <div className="mt-2 truncate text-[0.8125rem] font-semibold text-foreground">
+        <div className="mt-2 truncate text-sm font-semibold text-foreground">
           {suggestion.title}
         </div>
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -623,10 +623,10 @@ function FeedbackInspector({
     <section className="flex min-h-0 min-w-0 flex-col" aria-label={t('inspectorAria')}>
       <div className="flex flex-1 flex-col gap-6 p-5 sm:p-7">
         <header className="flex flex-col gap-3">
-          <div className="text-[0.6875rem] font-semibold tracking-[0.12em] text-primary uppercase">
+          <div className="text-xs font-semibold tracking-widest text-primary uppercase">
             {mode === 'pending' ? t('newSuggestion') : t('publishedSuggestion')}
           </div>
-          <h2 className="text-balance text-[1.4375rem] leading-tight font-semibold tracking-tight sm:text-[1.625rem]">
+          <h2 className="text-balance text-2xl leading-tight font-semibold tracking-tight">
             {suggestion.title}
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -648,7 +648,7 @@ function FeedbackInspector({
               <FeedbackTag tone="anonymous">{t('anonymousLong')}</FeedbackTag>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
             <UserIcon className="size-4" aria-hidden />
             <span className="font-medium text-foreground">{feedbackAuthorTag(suggestion, t)}</span>
             <span aria-hidden>•</span>
@@ -818,7 +818,7 @@ function DuplicatePicker({
 function CandidateGroup({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </div>
       <div className="flex flex-col gap-2">{children}</div>
@@ -862,11 +862,11 @@ function DuplicateCandidate({
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <span className="truncate text-[0.8125rem] font-semibold text-foreground">
+          <span className="truncate text-sm font-semibold text-foreground">
             {candidate.suggestion.title}
           </span>
           {candidate.similarity ? (
-            <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+            <span className="shrink-0 text-xs text-muted-foreground">
               {tm('matchPercent', {
                 percent: Math.round(candidate.similarity.score * 100),
               })}
@@ -904,7 +904,7 @@ function MergeComparison({
 
   return (
     <div className={cn('overflow-hidden rounded-md border border-border/70 bg-card/35', compact ? 'text-xs' : '')}>
-      <div className="grid items-stretch gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="grid items-stretch gap-3 p-3 comparison-grid">
         <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
           <ArrowRightIcon className="size-5" aria-label={t('votesTransferAria')} />
@@ -933,20 +933,20 @@ function FeedbackComparisonItem({
 
   return (
     <div className="min-w-0 rounded-md bg-muted/25 p-3">
-      <div className="text-[0.625rem] font-semibold tracking-wide text-muted-foreground uppercase">
+      <div className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </div>
-      <div className="mt-1.5 line-clamp-2 text-[0.8125rem] font-semibold leading-5 text-foreground">
+      <div className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-foreground">
         {suggestion.title}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[0.6875rem] text-muted-foreground">
+      <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span>{t('votes', { count: suggestion.vote_count })}</span>
         <span>{feedbackCategoryLabel(suggestion.category, t)}</span>
         {suggestion.area ? <span>{feedbackAreaLabel(suggestion.area, t)}</span> : null}
         {suggestion.platform ? <span>{feedbackPlatformLabel(suggestion.platform)}</span> : null}
         {target && statusLabel ? <span>{statusLabel}</span> : null}
       </div>
-      <p className="mt-2 line-clamp-2 text-[0.6875rem] leading-4 text-muted-foreground">
+      <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
         {suggestion.description}
       </p>
     </div>
@@ -1089,7 +1089,7 @@ function PublishedFeedbackEditor({
           {t('publishDescription')}
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-[13rem_minmax(0,1fr)]">
+      <div className="grid gap-4 form-aside-grid">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`status-${suggestion._id}`}>{t('statusLabel')}</Label>
           <Select
@@ -1152,7 +1152,7 @@ function FeedbackTag({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-md border px-2 py-0.5 text-[0.6875rem] leading-4 font-medium',
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs leading-4 font-medium',
         tone === 'danger' && 'border-destructive/55 bg-destructive/10 text-destructive',
         tone === 'success' && 'border-success/55 bg-success/10 text-success',
         tone === 'area' && 'border-primary/50 bg-primary/10 text-primary',

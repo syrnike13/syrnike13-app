@@ -27,13 +27,11 @@ import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railColumnInsetClass,
   railGlyphClass,
-  railIconButtonClass,
-  railIconIdleClass,
   railIconSquircleProps,
-  railServerScrollAreaClass,
   railServerScrollContentClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -93,7 +91,7 @@ function ServerRailTooltipAvatarRow({
               <UserAvatar
                 user={user}
                 className="size-7 ring-2 ring-popover"
-                fallbackClassName="size-7 text-[0.6875rem]"
+                fallbackClassName="size-7 text-xs"
                 showPresence={false}
                 animated="never"
               />
@@ -103,7 +101,7 @@ function ServerRailTooltipAvatarRow({
         {hiddenCount > 0 ? (
           <li
             aria-label={t('more', { count: hiddenCount })}
-            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-[0.6875rem] font-black text-muted-foreground ring-2 ring-popover"
+            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-xs font-black text-muted-foreground ring-2 ring-popover"
           >
             +{hiddenCount}
           </li>
@@ -208,7 +206,9 @@ export function ServerRail({
     (variant === 'desktop' || !selectedServerId)
 
   const railBottomReserveStyle = reserveUserPanelSpace
-    ? { paddingBottom: userPanelReservePx }
+    ? ({
+        '--rail-bottom-reserve': `${userPanelReservePx}px`,
+      } as CSSVars)
     : undefined
 
   if (!ready) {
@@ -216,14 +216,17 @@ export function ServerRail({
         <div
           className={cn(
             'flex h-full w-18 shrink-0 flex-col items-center',
-            'pt-1 pb-3',
+            reserveUserPanelSpace
+              ? 'pb-(--rail-bottom-reserve)'
+              : 'pb-3',
+            'pt-1',
             shellNavSurface,
           )}
           style={railBottomReserveStyle}
         >
           <Squircle
             {...railIconSquircleProps}
-            className={cn(railIconButtonClass, 'animate-pulse bg-muted')}
+            className={cn('size-11', 'animate-pulse bg-muted')}
           />
         </div>
     )
@@ -233,7 +236,8 @@ export function ServerRail({
     <div
       className={cn(
         'flex h-full w-18 shrink-0 flex-col',
-        'pt-1 pb-3',
+        reserveUserPanelSpace ? 'pb-(--rail-bottom-reserve)' : 'pb-3',
+        'pt-1',
         shellNavSurface,
       )}
       style={railBottomReserveStyle}
@@ -266,7 +270,7 @@ export function ServerRail({
         />
 
         <ScrollArea
-          className={cn('min-h-0 flex-1', railServerScrollAreaClass)}
+          className={cn('min-h-0 flex-1', '-ml-1 rail-overflow-width')}
         >
           <div
             className={cn(
@@ -289,8 +293,8 @@ export function ServerRail({
               <Squircle
                 {...railIconSquircleProps}
                 className={cn(
-                  railIconButtonClass,
-                  railIconIdleClass,
+                  'size-11',
+                  'bg-card text-foreground hover:bg-secondary hover:text-foreground',
                   'flex items-center justify-center text-foreground',
                 )}
                 title={t('noServers')}

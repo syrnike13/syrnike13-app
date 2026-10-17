@@ -33,13 +33,14 @@ import {
   CHANNEL_PERMISSION_GROUPS,
   getAllowedPermissionTriStates,
   getPermissionTriState,
+  normalizeRoleColour,
   overrideFieldFromRole,
   overrideFieldToApi,
-  roleColourStyle,
   setPermissionTriState,
   sortRolesByHierarchy,
   type PermissionOverrideField,
 } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
@@ -238,7 +239,16 @@ function RoleListItem({
           className="size-5"
         />
       ) : null}
-      <span className="truncate" style={roleColourStyle(role.colour)}>
+      <span
+        className={cn('truncate', role.colour && 'text-(--role-color)')}
+        style={
+          role.colour
+            ? ({
+                '--role-color': normalizeRoleColour(role.colour),
+              } as CSSVars)
+            : undefined
+        }
+      >
         {role.name}
       </span>
     </button>
@@ -369,7 +379,7 @@ export function ChannelSettingsPermissionsPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-1 lg:items-stretch">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 settings-shell-grid lg:grid-rows-1 lg:items-stretch">
       <aside className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
         <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24 max-lg:max-h-56">
           <div className="space-y-2 pr-2">
