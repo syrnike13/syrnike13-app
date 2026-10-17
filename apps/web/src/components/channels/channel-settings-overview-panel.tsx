@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
@@ -53,21 +54,21 @@ import { syncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
 
 const SLOWMODE_OPTIONS = [
-  { value: 0, label: 'Выкл.' },
-  { value: 5, label: '5 сек.' },
-  { value: 10, label: '10 сек.' },
-  { value: 15, label: '15 сек.' },
-  { value: 30, label: '30 сек.' },
-  { value: 60, label: '1 мин.' },
-  { value: 120, label: '2 мин.' },
-  { value: 300, label: '5 мин.' },
-  { value: 600, label: '10 мин.' },
-  { value: 900, label: '15 мин.' },
-  { value: 1800, label: '30 мин.' },
-  { value: 3600, label: '1 ч.' },
-  { value: 7200, label: '2 ч.' },
-  { value: 21600, label: '6 ч.' },
-]
+  { value: 0, key: 'off' },
+  { value: 5, key: '5s' },
+  { value: 10, key: '10s' },
+  { value: 15, key: '15s' },
+  { value: 30, key: '30s' },
+  { value: 60, key: '1m' },
+  { value: 120, key: '2m' },
+  { value: 300, key: '5m' },
+  { value: 600, key: '10m' },
+  { value: 900, key: '15m' },
+  { value: 1800, key: '30m' },
+  { value: 3600, key: '1h' },
+  { value: 7200, key: '2h' },
+  { value: 21600, key: '6h' },
+] as const
 
 function maxUsersSliderValue(maxUsers: number | null) {
   return maxUsers ?? 0
@@ -111,6 +112,7 @@ export function ChannelSettingsOverviewPanel({
 }: {
   channel: ServerChannel
 }) {
+  const t = useTranslations('channels.overview')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -198,7 +200,7 @@ export function ChannelSettingsOverviewPanel({
     const trimmedName = name.trim()
     const trimmedTopic = topic.trim()
     if (!token || !trimmedName) {
-      toast.error('Укажите название канала')
+      toast.error(t('nameRequired'))
       return false
     }
 
@@ -250,7 +252,7 @@ export function ChannelSettingsOverviewPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              error instanceof Error ? error.message : t('saveError'),
             )
             return false
           }),
@@ -295,7 +297,7 @@ export function ChannelSettingsOverviewPanel({
         yield* Effect.sync(() => {
           syncStore.removeChannel(channel._id)
           setDeleteDialogOpen(false)
-          toast.success('Канал удалён')
+          toast.success(t('deleted'))
         })
 
         const fallback = pickDefaultChannelId(
@@ -319,7 +321,7 @@ export function ChannelSettingsOverviewPanel({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось удалить канал',
+                : t('deleteError'),
             )
           }),
         ),
@@ -332,17 +334,17 @@ export function ChannelSettingsOverviewPanel({
     <>
       <div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold">Обзор</h2>
+        <h2 className="text-xl font-semibold">{t('title')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Основные параметры канала #{channel.name}
+          {t('description', { channel: channel.name })}
         </p>
       </div>
 
       <div>
-        <SettingsField label="Имя">
+        <SettingsField label={t('name')}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="channel-rename" className="sr-only">
-              Имя
+              {t('name')}
             </Label>
             <Input
               id="channel-rename"
@@ -355,19 +357,19 @@ export function ChannelSettingsOverviewPanel({
 
         {textChannel ? (
           <SettingsField
-            label="Тема канала"
-            description="Коротко опишите, для чего этот канал."
+            label={t('topicLabel')}
+            description={t('topicDescription')}
           >
             <div className="flex flex-col gap-2">
               <Label htmlFor="channel-topic" className="sr-only">
-                Тема канала
+                {t('topicLabel')}
               </Label>
               <Textarea
                 id="channel-topic"
                 value={topic}
                 rows={3}
                 maxLength={1024}
-                placeholder="О чём этот канал"
+                placeholder={t('topicPlaceholder')}
                 onChange={(event) => setTopic(event.target.value)}
               />
             </div>
@@ -375,10 +377,10 @@ export function ChannelSettingsOverviewPanel({
         ) : null}
 
         {textChannel ? (
-          <SettingsField label="Медленный режим">
+          <SettingsField label={t('slowMode')}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="channel-slowmode" className="sr-only">
-                Медленный режим
+                {t('slowMode')}
               </Label>
               <Select
                 value={String(slowmode)}
@@ -390,7 +392,7 @@ export function ChannelSettingsOverviewPanel({
                 <SelectContent>
                   {SLOWMODE_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={String(option.value)}>
-                      {option.label}
+                      {t(`slowModeOptions.${option.key}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -400,10 +402,10 @@ export function ChannelSettingsOverviewPanel({
         ) : null}
 
         {textChannel ? (
-          <SettingsField label="Ограничение возраста">
+          <SettingsField label={t('ageRestricted')}>
             <SettingsToggleRow
-              label="Пометить канал как 18+"
-              hint="Участникам нужно подтвердить возраст, чтобы видеть канал."
+              label={t('ageRestricted')}
+              hint={t('ageRestrictedHint')}
               checked={nsfw}
               onCheckedChange={setNsfw}
             />
@@ -412,12 +414,12 @@ export function ChannelSettingsOverviewPanel({
 
         {voiceChannel ? (
           <SettingsField
-            label="Битрейт"
-            description="Качество аудио для микрофона и звука экрана."
+            label={t('bitrate')}
+            description={t('bitrateDescription')}
           >
             <Slider
               id="channel-audio-bitrate"
-              aria-label="Битрейт"
+              aria-label={t('bitrate')}
               value={[audioBitrateKbps]}
               min={MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
               max={MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
@@ -447,12 +449,12 @@ export function ChannelSettingsOverviewPanel({
 
         {voiceChannel ? (
           <SettingsField
-            label="Лимит пользователей"
-            description="Сколько участников могут одновременно находиться в голосовом канале."
+            label={t('userLimit')}
+            description={t('userLimitDescription')}
           >
             <Slider
               id="channel-max-users"
-              aria-label="Лимит пользователей"
+              aria-label={t('userLimit')}
               value={[maxUsersSliderValue(maxUsers)]}
               min={0}
               max={99}
@@ -462,7 +464,7 @@ export function ChannelSettingsOverviewPanel({
                 { value: 99, label: '99' },
               ]}
               tooltipContent={(value) =>
-                value <= 0 ? 'Без ограничений' : String(value)
+                value <= 0 ? t('unlimited') : String(value)
               }
               onValueChange={([next]) => {
                 if (next == null) return
@@ -473,15 +475,15 @@ export function ChannelSettingsOverviewPanel({
         ) : null}
 
         <SettingsField
-          label="Опасная зона"
-          description="Удаление канала невозможно отменить."
+          label={t('dangerZone')}
+          description={t('dangerDescription')}
           className="mt-6"
         >
           <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="font-medium text-destructive">Удалить канал</p>
+              <p className="font-medium text-destructive">{t('deleteChannel')}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Канал и его сообщения будут удалены для всех.
+                {t('deleteDescription')}
               </p>
             </div>
             <Button
@@ -491,7 +493,7 @@ export function ChannelSettingsOverviewPanel({
               onClick={() => setDeleteDialogOpen(true)}
             >
               <Trash2Icon className="size-4" />
-              Удалить канал
+              {t('deleteChannel')}
             </Button>
           </div>
         </SettingsField>
@@ -507,10 +509,9 @@ export function ChannelSettingsOverviewPanel({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Удалить канал «{channel.name}»?</DialogTitle>
+            <DialogTitle>{t('deleteTitle', { name: channel.name })}</DialogTitle>
             <DialogDescription>
-              Канал и его сообщения будут удалены для всех. Это действие
-              невозможно отменить.
+              {t('deleteDialogDescription')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -520,7 +521,7 @@ export function ChannelSettingsOverviewPanel({
               disabled={deletingChannel}
               onClick={() => setDeleteDialogOpen(false)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -528,7 +529,7 @@ export function ChannelSettingsOverviewPanel({
               disabled={deletingChannel}
               onClick={() => void deleteCurrentChannel()}
             >
-              Удалить канал
+              {t('deleteConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

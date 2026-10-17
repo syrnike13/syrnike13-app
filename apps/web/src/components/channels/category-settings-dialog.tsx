@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import type { Category } from '@syrnike13/api-types'
 import { Effect } from 'effect'
@@ -46,6 +47,7 @@ function CategorySettingsDialogContent({
   open,
   onOpenChange,
 }: CategorySettingsDialogProps) {
+  const t = useTranslations('channels.categories')
   const auth = useAuth()
   const [title, setTitle] = useState(category.title)
   const [savedTitle, setSavedTitle] = useState(category.title)
@@ -76,13 +78,13 @@ function CategorySettingsDialogContent({
           syncStore.upsertServer(updated)
           setTitle(trimmed)
           setSavedTitle(trimmed)
-          toast.success('Категория обновлена')
+          toast.success(t('updated'))
         })
       }).pipe(
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              error instanceof Error ? error.message : t('saveError'),
             )
             return false
           },
@@ -127,7 +129,7 @@ function CategorySettingsDialogContent({
         })
         yield* Effect.sync(() => {
           syncStore.upsertServer(updated)
-          toast.success('Категория удалена')
+          toast.success(t('deleted'))
           setConfirmingDeletion(false)
           onOpenChange(false)
         })
@@ -135,7 +137,7 @@ function CategorySettingsDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить',
+              error instanceof Error ? error.message : t('deleteError'),
             )
           }),
         ),
@@ -162,13 +164,13 @@ function CategorySettingsDialogContent({
         <DialogHeader>
           <DialogTitle>
             {confirmingDeletion
-              ? `Удалить категорию «${category.title}»?`
-              : 'Категория'}
+              ? t('deleteTitle', { title: category.title })
+              : t('deleteFallbackTitle')}
           </DialogTitle>
           <DialogDescription>
             {confirmingDeletion
-              ? 'Каналы останутся на сервере, но категория будет удалена.'
-              : 'Переименование и удаление категории'}
+              ? t('deleteDescription')
+              : t('editDescription')}
           </DialogDescription>
         </DialogHeader>
         {confirmingDeletion ? (
@@ -179,7 +181,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => setConfirmingDeletion(false)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -187,7 +189,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => void removeCategory()}
             >
-              Удалить категорию
+              {t('delete')}
             </Button>
           </DialogFooter>
         ) : (
@@ -200,7 +202,7 @@ function CategorySettingsDialogContent({
               }}
             >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="category-title">Название</Label>
+                <Label htmlFor="category-title">{t('name')}</Label>
                 <Input
                   id="category-title"
                   value={title}
@@ -215,7 +217,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => setConfirmingDeletion(true)}
             >
-              Удалить категорию
+              {t('delete')}
             </Button>
             <UnsavedChangesBar placement="flow" />
           </>

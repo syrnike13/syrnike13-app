@@ -1,4 +1,5 @@
 import type { Channel, Server } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -31,7 +32,7 @@ function MemberListSectionHeader({
 }) {
   return (
     <li className="list-none px-2 pt-3 pb-0.5 first:pt-2">
-      <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+      <p className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
         {title} — {count}
       </p>
     </li>
@@ -88,7 +89,7 @@ function MemberSidebarRow({
               {displayName}
             </p>
             {showStatus && customStatus ? (
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-[0.6875rem] text-muted-foreground">
                 {customStatus}
               </p>
             ) : null}
@@ -100,6 +101,7 @@ function MemberSidebarRow({
 }
 
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
+  const t = useTranslations('chat')
   const server = useSyncStore((s) => s.servers[channel.server])
   const members = useSyncStore((s) => listServerMembers(s, channel.server))
   const userIdsInVoice = useSyncStore((s) => {
@@ -157,7 +159,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
           )}
           {visibleMembers.length === 0 ? (
             <li className="px-2 py-4 text-center text-xs text-muted-foreground">
-              Нет участников
+              {t('noMembers')}
             </li>
           ) : null}
         </ul>

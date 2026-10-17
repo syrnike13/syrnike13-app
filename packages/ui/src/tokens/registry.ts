@@ -228,5 +228,7 @@ export function allThemeCssVariables(tokens: ThemeTokens): Record<string, string
   variables['--scrim'] = 'color-mix(in oklab, black 55%, transparent)'
   variables['--on-scrim'] = 'oklch(1 0 0)'
   variables['--on-solid'] = 'oklch(1 0 0)'
+  variables['--on-media'] = 'oklch(1 0 0)'
+  variables['--media-backdrop'] = 'oklch(0 0 0)'
   return variables
 }

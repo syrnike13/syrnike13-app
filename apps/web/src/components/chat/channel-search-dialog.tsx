@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useRef, useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
@@ -36,6 +37,7 @@ export function ChannelSearchDialog({
   triggerClassName,
   stripClassName,
 }: ChannelSearchDialogProps) {
+  const t = useTranslations('chat')
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
@@ -80,7 +82,7 @@ export function ChannelSearchDialog({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : 'Поиск не удался',
+                error instanceof Error ? error.message : t('searchFailed'),
               )
               setSearching(false)
             }),
@@ -120,7 +122,7 @@ export function ChannelSearchDialog({
             )}
           >
             <SearchIcon className="size-4 shrink-0" />
-            <span className="truncate">Поиск</span>
+            <span className="truncate">{t('search')}</span>
           </button>
         ) : (
           <button
@@ -129,7 +131,7 @@ export function ChannelSearchDialog({
               'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
               triggerClassName,
             )}
-            title="Поиск по сообщениям"
+            title={t('searchMessages')}
           >
             <SearchIcon className="size-4" />
           </button>
@@ -146,29 +148,29 @@ export function ChannelSearchDialog({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск по сообщениям…"
+            placeholder={t('searchMessagesPlaceholder')}
             className="h-8"
           />
         </div>
         <ScrollArea className="max-h-80">
           <div className="flex flex-col gap-1 p-2">
             {searching ? (
-              <p className="px-1 py-2 text-sm text-muted-foreground">Ищем…</p>
+              <p className="px-1 py-2 text-sm text-muted-foreground">{t('searching')}</p>
             ) : null}
             {!searching && query.trim().length < 2 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
-                Введите минимум 2 символа
+                {t('minChars')}
               </p>
             ) : null}
             {!searching && query.trim().length >= 2 && results.length === 0 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
-                Ничего не найдено
+                {t('nothingFound')}
               </p>
             ) : null}
             {results.map((message) => {
               const author = message.user ?? users[message.author]
               const name =
-                author?.display_name ?? author?.username ?? 'Неизвестный'
+                author?.display_name ?? author?.username ?? t('unknownAuthor')
 
               return (
                 <button
@@ -191,7 +193,7 @@ export function ChannelSearchDialog({
                     </div>
                   ) : (
                     <p className="text-sm italic text-muted-foreground">
-                      [без текста]
+                      {t('noText')}
                     </p>
                   )}
                 </button>

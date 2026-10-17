@@ -22,7 +22,23 @@ const buttonVariants = cva(
           "border border-border/50 bg-transparent text-muted-foreground hover:border-border hover:text-foreground",
         inverse: "bg-foreground text-background hover:opacity-90",
         floating: "bg-background/60 text-foreground hover:bg-background/80",
+        "floating-outline":
+          "border border-border/60 bg-background/80 text-foreground shadow-sm backdrop-blur-sm hover:bg-background",
         scrim: "bg-scrim text-on-scrim hover:opacity-80",
+        toolbar:
+          "rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
+        "toolbar-active":
+          "rounded-md bg-primary/15 text-foreground ring-1 ring-primary/30",
+        "reaction-active":
+          "border border-primary/70 bg-primary/30 text-foreground shadow-none hover:bg-primary/40 dark:border-primary/70 dark:bg-primary/30 dark:hover:bg-primary/40",
+        "tile-action":
+          "rounded-sm text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
+        "tile-action-primary":
+          "rounded-sm text-primary hover:bg-foreground/10 hover:text-primary",
+        "tile-action-destructive":
+          "rounded-sm text-destructive hover:bg-destructive/15 hover:text-destructive",
+        "icon-ghost":
+          "rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

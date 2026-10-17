@@ -7,6 +7,7 @@ import {
   type DragEvent,
 } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
@@ -56,19 +57,20 @@ function composerPlaceholder(
   currentUserId: string | undefined,
   isEditing: boolean,
   waitingForConnection: boolean,
+  t: Translator,
 ) {
-  if (waitingForConnection) return 'Ожидание соединения…'
-  if (isEditing) return 'Новый текст сообщения…'
-  if (!channel) return 'Написать сообщение…'
+  if (waitingForConnection) return t('waitingConnection')
+  if (isEditing) return t('newText')
+  if (!channel) return t('writeMessage')
   if (channel.channel_type === 'TextChannel') {
-    return `Сообщение #${channel.name}`
+    return t('messageIn', { name: channel.name })
   }
   if (isServerVoiceChannel(channel)) {
-    const name = runtimeChannelName(channel) || 'голосовой'
-    return `Сообщение #${name}`
+    const name = runtimeChannelName(channel) || t('voiceChannel')
+    return t('messageIn', { name })
   }
   const label = getChannelLabel(channel, users, currentUserId)
-  return `Сообщение — ${label}`
+  return t('messageTo', { label })
 }
 
 type MessageComposerProps = {
@@ -132,6 +134,7 @@ export function MessageComposer({
   floating = false,
   onHeightChange,
 }: MessageComposerProps) {
+  const t = useTranslations('chat.composer')
   const auth = useAuth()
   const members = useSyncStore((s) => s.members)
   const composerRef = useRef<ComposerEditorHandle>(null)
@@ -328,14 +331,14 @@ export function MessageComposer({
             matchingItems.push({
               kind: 'everyone',
               label: '@everyone',
-              description: 'Оповестить всех участников канала',
+              description: t('notifyEveryone'),
             })
           }
           if ('online'.startsWith(q)) {
             matchingItems.push({
               kind: 'online',
               label: '@online',
-              description: 'Оповестить участников в сети',
+              description: t('notifyOnline'),
             })
           }
         }
@@ -352,7 +355,7 @@ export function MessageComposer({
               kind: 'role',
               id: role._id,
               label: `@${role.name}`,
-              description: 'Оповестить участников с этой ролью',
+              description: t('notifyRole'),
               colour: role.colour
                 ? normalizeRoleColour(role.colour)
                 : undefined,
@@ -370,6 +373,7 @@ export function MessageComposer({
       mentionable,
       server,
       serverId,
+      t,
     ],
   )
 
@@ -393,10 +397,10 @@ export function MessageComposer({
             kind: 'channel' as const,
             id: candidate._id,
             label: `#${candidate.name}`,
-            description: 'Упомянуть текстовый канал',
+            description: t('mentionChannel'),
           }))
       },
-    [channels, serverId],
+    [channels, serverId, t],
   )
 
   function appendFiles(fileList: FileList | File[]) {
@@ -455,13 +459,13 @@ export function MessageComposer({
     }
 
     if (!token) {
-      toast.error('Нет сессии')
+      toast.error(t('noSession'))
       return
     }
 
     if (isEditing && editingMessage) {
       if (!content) {
-        toast.error('Сообщение не может быть пустым')
+        toast.error(t('emptyMessage'))
         return
       }
       if (!onEdit) return
@@ -477,7 +481,7 @@ export function MessageComposer({
         onCancelAction?.()
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : 'Не удалось изменить',
+          error instanceof Error ? error.message : t('editError'),
         )
       } finally {
         setSending(false)
@@ -540,7 +544,7 @@ export function MessageComposer({
       )
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Не удалось отправить',
+        error instanceof Error ? error.message : t('sendError'),
       )
     } finally {
       setSending(false)
@@ -554,15 +558,16 @@ export function MessageComposer({
   const placeholder =
     disabledPlaceholder ??
     (slowmodeActive
-      ? `Можно отправить через ${slowmodeRemaining} с`
+      ? t('slowmodeWait', { seconds: slowmodeRemaining })
       : !canSendMessages
-      ? 'У вас нет права отправлять сообщения'
+      ? t('noPermission')
       : composerPlaceholder(
           channel,
           users,
           auth.user?._id,
           isEditing,
           waitingForConnection,
+          t,
         ))
 
   const hasComposerHeader =
@@ -583,15 +588,15 @@ export function MessageComposer({
       ) : null}
 
       {isEditing && editingMessage ? (
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
-          <span>Редактирование сообщения</span>
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[0.8125rem] text-muted-foreground">
+          <span>{t('editing')}</span>
           <Button
             type="button"
-            variant="ghost"
+            variant="icon-ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
+            className="size-6 shrink-0"
             onClick={onCancelAction}
-            aria-label="Отменить редактирование"
+            aria-label={t('cancelEdit')}
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -624,7 +629,7 @@ export function MessageComposer({
               (composerDisabled || sending || !canUploadFiles) &&
                 'pointer-events-none',
             )}
-            title="Вложение"
+            title={t('attachment')}
           >
             <input
               type="file"
@@ -699,7 +704,7 @@ export function MessageComposer({
                 'pointer-events-none',
               )}
               role="status"
-              aria-label="Отправка сообщения"
+              aria-label={t('sending')}
             >
               <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" />
             </span>
@@ -733,7 +738,7 @@ export function MessageComposer({
     >
       {dragActive ? (
         <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
-          Отпустите файлы для вложения
+          {t('dropFiles')}
         </p>
       ) : null}
 

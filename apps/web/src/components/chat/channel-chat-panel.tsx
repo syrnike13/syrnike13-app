@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
 
@@ -38,6 +39,7 @@ export function ChannelChatPanel({
   highlightMessageId,
   onClose,
 }: ChannelChatPanelProps) {
+  const t = useTranslations('chat')
   const [composerHeight, setComposerHeight] = useState(56)
   const chat = useChannelChat({
     channelId,
@@ -71,9 +73,9 @@ export function ChannelChatPanel({
   if (!channel) {
     return (
       <aside className="gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider bg-background">
-        <PanelHeader title="Чат" onClose={onClose} />
+        <PanelHeader title={t('panelChat')} onClose={onClose} />
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          Канал не найден
+          {t('channelNotFound')}
         </div>
       </aside>
     )
@@ -88,18 +90,18 @@ export function ChannelChatPanel({
     Boolean(dmRecipientId && !canMessageUser(dmRecipientId))
   const dmDisabledPlaceholder =
     dmRecipientRelationship === 'Blocked'
-      ? 'Вы заблокировали этого пользователя'
+      ? t('blockedByYou')
       : dmRecipientRelationship === 'BlockedOther'
-        ? 'Пользователь заблокировал вас'
+        ? t('blockedYou')
         : dmMessagesBlocked
-          ? 'Вы не можете отправлять сообщения этому пользователю'
+          ? t('cannotSend')
           : undefined
 
   return (
     <aside className="gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
       <PanelHeader title={title} onClose={onClose}>
         {historyQuery.isFetching ? (
-          <span className="text-xs text-muted-foreground">загрузка…</span>
+          <span className="text-xs text-muted-foreground">{t('loadingShort')}</span>
         ) : null}
         {channel.channel_type === 'TextChannel' ? (
           <ChannelSettingsDialog channel={channel} />
@@ -141,7 +143,7 @@ export function ChannelChatPanel({
           onDelete={(message) => void handleDelete(message)}
           onBlock={(message) => {
             if (!token || message.author === auth.user?._id) return
-            if (!window.confirm('Заблокировать этого пользователя?')) return
+            if (!window.confirm(t('blockConfirm'))) return
             Effect.runFork(
               blockUserRelationship(token, message.author).pipe(Effect.ignore),
             )
@@ -254,6 +256,7 @@ function PanelHeader({
   onClose: () => void
   children?: ReactNode
 }) {
+  const t = useTranslations('chat')
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider px-3">
       <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -264,7 +267,7 @@ function PanelHeader({
         variant="ghost"
         size="icon"
         className="size-8 shrink-0"
-        title="Закрыть чат"
+        title={t('closeChat')}
         onClick={onClose}
       >
         <XIcon className="size-4" />

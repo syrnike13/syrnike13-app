@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { SuggestionProps } from '@tiptap/suggestion'
@@ -69,6 +70,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
     },
     ref,
   ) {
+    const t = useTranslations('chat')
     const editorRootRef = useRef<HTMLDivElement>(null)
     const mentionMenuId = `composer-mentions-${useId().replaceAll(':', '')}`
     const mentionMenuAnchorRef = menuAnchorRef ?? editorRootRef
@@ -215,7 +217,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
               editorClassNameRef.current,
             ),
             role: 'textbox',
-            'aria-label': 'Сообщение',
+            'aria-label': t('messageLabel'),
             'aria-multiline': 'true',
             'aria-autocomplete': 'list',
             ...(activeMention?.items.length

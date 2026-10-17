@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -28,6 +29,7 @@ export function CreateCategoryDialog({
   open,
   onOpenChange,
 }: CreateCategoryDialogProps) {
+  const t = useTranslations('channels.createCategory')
   const auth = useAuth()
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
@@ -56,7 +58,7 @@ export function CreateCategoryDialog({
         })
         yield* Effect.sync(() => {
           syncStore.upsertServer(updated)
-          toast.success(`Категория «${trimmed}» создана`)
+          toast.success(t('success', { title: trimmed }))
           onOpenChange(false)
           setTitle('')
         })
@@ -64,7 +66,7 @@ export function CreateCategoryDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось создать',
+              error instanceof Error ? error.message : t('error'),
             )
           }),
         ),
@@ -77,10 +79,8 @@ export function CreateCategoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Создать категорию</DialogTitle>
-          <DialogDescription>
-            Категории группируют каналы в боковой панели
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -90,18 +90,18 @@ export function CreateCategoryDialog({
           }}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-category-title">Название</Label>
+            <Label htmlFor="new-category-title">{t('name')}</Label>
             <Input
               id="new-category-title"
               value={title}
               maxLength={32}
-              placeholder="Текстовые каналы"
+              placeholder={t('placeholder')}
               autoFocus
               onChange={(event) => setTitle(event.target.value)}
             />
           </div>
           <Button type="submit" disabled={saving || !title.trim()}>
-            Создать
+            {t('submit')}
           </Button>
         </form>
       </DialogContent>

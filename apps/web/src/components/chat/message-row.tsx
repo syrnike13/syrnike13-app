@@ -1,4 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { PhoneFilledIcon, PhoneOffIcon, PinIcon, ReplyIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
@@ -61,12 +62,16 @@ export type MessageRowProps = {
   ) => void
 }
 
-function authorLabel(message: Message, users: Record<string, User>) {
+function authorLabel(
+  message: Message,
+  users: Record<string, User>,
+  fallback: string,
+) {
   if (message.user) {
     return message.user.display_name ?? message.user.username
   }
   const user = users[message.author]
-  return user?.display_name ?? user?.username ?? 'Неизвестный'
+  return user?.display_name ?? user?.username ?? fallback
 }
 
 function memberDisplayColor(
@@ -83,12 +88,20 @@ function memberDisplayColor(
   return undefined
 }
 
-function callParticipantName(userId: string, users: Record<string, User>) {
+function callParticipantName(
+  userId: string,
+  users: Record<string, User>,
+  fallback: string,
+) {
   const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Пользователь'
+  return user?.display_name ?? user?.username ?? fallback
 }
 
-function formatCallDuration(startedAt: Date, finishedAt: string) {
+function formatCallDuration(
+  startedAt: Date,
+  finishedAt: string,
+  t: Translator,
+) {
   const finishedAtMs = new Date(finishedAt).getTime()
   if (!Number.isFinite(finishedAtMs)) return null
 
@@ -98,16 +111,16 @@ function formatCallDuration(startedAt: Date, finishedAt: string) {
   )
 
   if (durationSeconds < 60) {
-    return `${durationSeconds} сек`
+    return t('durationSeconds', { count: durationSeconds })
   }
 
   const durationMinutes = Math.max(1, Math.round(durationSeconds / 60))
   if (durationMinutes < 60) {
-    return `${durationMinutes} мин`
+    return t('durationMinutes', { count: durationMinutes })
   }
 
   const durationHours = Math.max(1, Math.round(durationMinutes / 60))
-  return `${durationHours} ч`
+  return t('durationHours', { count: durationHours })
 }
 
 function isSuccessfulVoiceCall(
@@ -130,6 +143,7 @@ function VoiceCallSystemCard({
   serverId?: string
   currentUserId?: string
 }) {
+  const t = useTranslations('chat.system')
   if (message.system?.type !== 'call_started') return null
 
   const server = useSyncStore((s) =>
@@ -140,25 +154,25 @@ function VoiceCallSystemCard({
   const member = useSyncStore((s) =>
     serverId ? s.members[`${serverId}:${callerId}`] : undefined,
   )
-  const callerName = callParticipantName(callerId, users)
+  const callerName = callParticipantName(callerId, users, t('user'))
   const callerRoles =
     server && member ? memberRoleEntries(server, member) : undefined
   const hideCallerMessage = callerUser?._id === currentUserId
   const startedAt = messageCreatedAt(message)
   const timestamp = formatMessageTimestamp(startedAt)
   const duration = message.system.finished_at
-    ? formatCallDuration(startedAt, message.system.finished_at)
+    ? formatCallDuration(startedAt, message.system.finished_at, t)
     : null
   const endedReason = message.system.ended_reason ?? 'completed'
   const endedStatus =
     endedReason === 'cancelled'
-      ? 'Отменён'
+      ? t('callCancelled')
       : endedReason === 'missed'
-        ? 'Пропущен'
-        : 'Завершён'
+        ? t('callMissed')
+        : t('callEnded')
   const callInfo = message.system.finished_at
-    ? `начал звонок · ${endedStatus}${duration ? ` · ${duration}` : ''}`
-    : 'начал звонок · Идёт сейчас'
+    ? `${t('callStarted')} · ${endedStatus}${duration ? ` · ${duration}` : ''}`
+    : `${t('callStarted')} · ${t('callOngoing')}`
   const successfulCall = isSuccessfulVoiceCall(message.system)
 
   const callerNameButton = callerUser ? (
@@ -188,7 +202,7 @@ function VoiceCallSystemCard({
       data-message-id={message._id}
       className={cn(
         'group relative -mx-4 flex items-center hover:bg-muted/40',
-        cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
+        cn('mt-[1.0625rem] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
       )}
     >
       <div className={MESSAGE_AVATAR_COLUMN} aria-hidden>
@@ -197,7 +211,9 @@ function VoiceCallSystemCard({
             'flex size-10 items-center justify-center',
             successfulCall ? 'text-chart-3' : 'text-muted-foreground',
           )}
-          aria-label={successfulCall ? 'Успешный звонок' : 'Неуспешный звонок'}
+          aria-label={
+            successfulCall ? t('successfulCall') : t('failedCall')
+          }
         >
           {successfulCall ? (
             <PhoneFilledIcon className="size-5" />
@@ -208,13 +224,13 @@ function VoiceCallSystemCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[15px] leading-snug">
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[0.9375rem] leading-snug">
           <span className="min-w-0">
             {callerNameButton}
             <span className="text-muted-foreground">{` ${callInfo}`}</span>
           </span>
           <time
-            className="shrink-0 text-[11px] font-medium text-muted-foreground"
+            className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground"
             dateTime={timestamp}
           >
             {timestamp}
@@ -255,42 +271,52 @@ function MessageAuthorProfileTrigger({
   )
 }
 
-function systemUserLabel(userId: string, users: Record<string, User>) {
+function systemUserLabel(
+  userId: string,
+  users: Record<string, User>,
+  fallback: string,
+) {
   const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Пользователь'
+  return user?.display_name ?? user?.username ?? fallback
 }
 
 function systemMessageText(
   system: NonNullable<Message['system']>,
   users: Record<string, User>,
+  t: Translator,
 ) {
+  const label = (userId: string) => systemUserLabel(userId, users, t('user'))
+
   switch (system.type) {
     case 'text':
       return system.content
     case 'user_added':
-      return `${systemUserLabel(system.by, users)} добавляет ${systemUserLabel(system.id, users)}`
+      return t('userAdded', { actor: label(system.by), target: label(system.id) })
     case 'user_remove':
-      return `${systemUserLabel(system.by, users)} удаляет ${systemUserLabel(system.id, users)}`
+      return t('userRemoved', { actor: label(system.by), target: label(system.id) })
     case 'user_joined':
-      return `${systemUserLabel(system.id, users)} присоединяется к серверу`
+      return t('userJoined', { user: label(system.id) })
     case 'user_left':
-      return `${systemUserLabel(system.id, users)} покидает сервер`
+      return t('userLeft', { user: label(system.id) })
     case 'user_kicked':
-      return `${systemUserLabel(system.id, users)} исключён из сервера`
+      return t('userKicked', { user: label(system.id) })
     case 'user_banned':
-      return `${systemUserLabel(system.id, users)} заблокирован на сервере`
+      return t('userBanned', { user: label(system.id) })
     case 'channel_renamed':
-      return `${systemUserLabel(system.by, users)} переименовывает канал в «${system.name}»`
+      return t('channelRenamed', { actor: label(system.by), name: system.name })
     case 'channel_description_changed':
-      return `${systemUserLabel(system.by, users)} изменяет описание канала`
+      return t('channelDescriptionChanged', { actor: label(system.by) })
     case 'channel_icon_changed':
-      return `${systemUserLabel(system.by, users)} изменяет значок канала`
+      return t('channelIconChanged', { actor: label(system.by) })
     case 'channel_ownership_changed':
-      return `${systemUserLabel(system.from, users)} передаёт владение ${systemUserLabel(system.to, users)}`
+      return t('ownershipTransferred', {
+        from: label(system.from),
+        to: label(system.to),
+      })
     case 'message_pinned':
-      return `${systemUserLabel(system.by, users)} закрепляет сообщение`
+      return t('messagePinned', { actor: label(system.by) })
     case 'message_unpinned':
-      return `${systemUserLabel(system.by, users)} открепляет сообщение`
+      return t('messageUnpinned', { actor: label(system.by) })
     case 'call_started':
       return ''
   }
@@ -303,6 +329,7 @@ function StandardSystemMessageRow({
   message: Message
   users: Record<string, User>
 }) {
+  const t = useTranslations('chat.system')
   if (!message.system || message.system.type === 'call_started') return null
 
   const timestamp = formatMessageTimestamp(messageCreatedAt(message))
@@ -324,9 +351,9 @@ function StandardSystemMessageRow({
       </span>
       <p className="min-w-0 text-muted-foreground">
         <span className="text-foreground">
-          {systemMessageText(message.system, users)}
+          {systemMessageText(message.system, users, t)}
         </span>{' '}
-        <time className="text-[11px] font-medium" dateTime={timestamp}>
+        <time className="text-[0.6875rem] font-medium" dateTime={timestamp}>
           {timestamp}
         </time>
       </p>
@@ -353,6 +380,8 @@ export function MessageRow({
   onUnpin,
   onToggleReaction,
 }: MessageRowProps) {
+  const t = useTranslations('chat')
+  const ts = useTranslations('chat.system')
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
@@ -365,7 +394,7 @@ export function MessageRow({
       : undefined,
   )
 
-  const name = authorLabel(message, users)
+  const name = authorLabel(message, users, ts('unknownUser'))
   const authorUser = message.user ?? users[message.author]
   const own = message.author === currentUserId
   const hasContent = Boolean(message.content?.trim())
@@ -441,7 +470,7 @@ export function MessageRow({
         'group relative -mx-4 flex items-start hover:bg-muted/40',
         isCompact
           ? cn('min-h-[1.375rem] py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
-          : cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
+          : cn('mt-[1.0625rem] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
         highlighted && 'bg-primary/10 hover:bg-primary/15',
         mentionsCurrentUser &&
           !highlighted &&
@@ -536,7 +565,7 @@ export function MessageRow({
               </span>
             )}
             <time
-              className="shrink-0 text-[11px] font-medium text-muted-foreground"
+              className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground"
               dateTime={timestamp}
             >
               {timestamp}
@@ -544,12 +573,12 @@ export function MessageRow({
             {message.pinned ? (
               <PinIcon
                 className="size-3 shrink-0 text-primary"
-                aria-label="Закреплено"
+                aria-label={ts('pinned')}
               />
             ) : null}
             {edited ? (
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                (изменено)
+              <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+                {ts('edited')}
               </span>
             ) : null}
           </header>
@@ -578,7 +607,7 @@ export function MessageRow({
           />
         ) : null}
 
-        <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
+        <div className="flex flex-col gap-1 text-[0.9375rem] leading-snug text-foreground">
           {hasContent ? (
             <div className="select-text break-words">{renderedContent}</div>
           ) : null}
@@ -596,7 +625,7 @@ export function MessageRow({
           {hasEmbeds ? <MessageEmbeds embeds={embeds} /> : null}
           {!hasContent && !hasAttachments && !hasEmbeds ? (
             <p className="text-xs text-muted-foreground italic">
-              [системное сообщение]
+              {ts('systemMessage')}
             </p>
           ) : null}
         </div>
@@ -625,7 +654,7 @@ export function MessageRow({
       <ContextMenuContent className="w-36">
         <ContextMenuItem onSelect={() => onReply(message)}>
           <ReplyIcon className="size-4" />
-          Ответить
+          {t('reply')}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

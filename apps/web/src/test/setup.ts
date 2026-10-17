@@ -1,7 +1,13 @@
 import '@testing-library/jest-dom/vitest'
 
 import { cleanup } from '@testing-library/react'
+import { configureDefaultCatalogs } from '@syrnike13/ui/i18n'
 import { afterEach, vi } from 'vitest'
+
+import en from '#/messages/en.json'
+import ru from '#/messages/ru.json'
+
+configureDefaultCatalogs({ en, ru })
 
 afterEach(() => {
   cleanup()

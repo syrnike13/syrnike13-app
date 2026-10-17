@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { SettingsIcon } from '#/components/icons'
 import { useMatch, useNavigate } from '@tanstack/react-router'
 
@@ -27,6 +28,7 @@ export function ChannelSettingsDialog({
   open: _controlledOpen,
   onOpenChange,
 }: ChannelSettingsDialogProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -89,7 +91,7 @@ export function ChannelSettingsDialog({
       variant="ghost"
       size="icon"
       className="size-8"
-      title="Настройки канала"
+      title={t('channelSettings')}
       onClick={openSettings}
     >
       <SettingsIcon className="size-4" />

@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
@@ -23,6 +24,9 @@ type DmChannelListProps = {
 }
 
 export function DmChannelList({ activeChannelId, className }: DmChannelListProps) {
+  const t = useTranslations('home.dm')
+  const tVoice = useTranslations('layout.voice')
+  const tChannel = useTranslations('channels.channelItem')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
   const syncState = useSyncStore((s) => s)
@@ -33,7 +37,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   if (!ready) {
     return (
       <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        Синхронизация…
+        {t('syncing')}
       </p>
     )
   }
@@ -41,7 +45,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   if (dmChannels.length === 0) {
     return (
       <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        Нет личных сообщений
+        {t('empty')}
       </p>
     )
   }
@@ -67,9 +71,9 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
           isIncomingVoiceCall(voiceCall, auth.user?._id)
         const voiceCallMarkerTitle =
           voiceCall?.phase === 'active'
-            ? 'Идёт звонок'
+            ? tVoice('activeCall')
             : incomingVoiceCall
-              ? 'Входящий звонок'
+              ? tVoice('incomingCall')
               : null
 
         return (
@@ -99,7 +103,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   />
                 ) : (
                   <span
-                    title="Групповой чат"
+                    title={tChannel('groupChat')}
                     className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
                   >
                     <UsersIcon aria-hidden="true" className="size-5" />

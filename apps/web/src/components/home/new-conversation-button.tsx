@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { MessageCircleIcon, PlusIcon, UsersIcon } from '#/components/icons'
 import { useMemo, useState } from 'react'
@@ -32,6 +33,7 @@ import { cn } from '#/lib/utils'
 type DialogMode = 'dm' | 'group' | null
 
 export function NewConversationButton() {
+  const t = useTranslations('home.newConversation')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -120,7 +122,7 @@ export function NewConversationButton() {
           syncStore.upsertChannel(channel)
           syncStore.setSelectedServerId(null)
           closeDialog()
-          toast.success('Группа создана')
+          toast.success(t('created'))
         })
         yield* Effect.tryPromise({
           try: () =>
@@ -137,7 +139,7 @@ export function NewConversationButton() {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось создать группу',
+                : t('createError'),
             )
           }),
         ),
@@ -155,7 +157,7 @@ export function NewConversationButton() {
             variant="ghost"
             size="icon"
             className="size-8 shrink-0"
-            title="Новая беседа"
+            title={t('title')}
           >
             <PlusIcon className="size-4" />
           </Button>
@@ -167,7 +169,7 @@ export function NewConversationButton() {
             onClick={() => openDialog('dm')}
           >
             <MessageCircleIcon className="size-4 shrink-0" />
-            Личное сообщение
+            {t('directMessage')}
           </button>
           <button
             type="button"
@@ -175,7 +177,7 @@ export function NewConversationButton() {
             onClick={() => openDialog('group')}
           >
             <UsersIcon className="size-4 shrink-0" />
-            Группа
+            {t('group')}
           </button>
         </PopoverContent>
       </Popover>
@@ -183,21 +185,21 @@ export function NewConversationButton() {
       <Dialog open={mode === 'dm'} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="gap-0 p-0 sm:max-w-md">
           <DialogHeader className="border-b px-4 py-3">
-            <DialogTitle>Личное сообщение</DialogTitle>
-            <DialogDescription>Выберите друга</DialogDescription>
+            <DialogTitle>{t('directMessage')}</DialogTitle>
+            <DialogDescription>{t('selectFriend')}</DialogDescription>
           </DialogHeader>
           <div className="px-4 py-3">
             <Input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Поиск по имени"
+              placeholder={t('searchByName')}
               className="h-9"
             />
           </div>
           <ScrollArea className="max-h-72 px-2 pb-3">
             {filteredFriends.length === 0 ? (
               <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                Нет друзей
+                {t('noFriends')}
               </p>
             ) : (
               <ul className="flex flex-col gap-0.5">
@@ -228,33 +230,33 @@ export function NewConversationButton() {
       >
         <DialogContent className="gap-0 p-0 sm:max-w-md">
           <DialogHeader className="border-b px-4 py-3">
-            <DialogTitle>Новая группа</DialogTitle>
+            <DialogTitle>{t('groupTitle')}</DialogTitle>
             <DialogDescription>
-              Название и участники (можно добавить позже)
+              {t('groupDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 px-4 py-3">
             <div className="space-y-1.5">
-              <Label htmlFor="group-name">Название</Label>
+              <Label htmlFor="group-name">{t('name')}</Label>
               <Input
                 id="group-name"
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
-                placeholder="Название группы"
+                placeholder={t('groupNamePlaceholder')}
                 className="h-9"
               />
             </div>
             <Input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Поиск друзей"
+              placeholder={t('searchFriends')}
               className="h-9"
             />
           </div>
           <ScrollArea className="max-h-52 px-2">
             {filteredFriends.length === 0 ? (
               <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-                Нет друзей для добавления
+                {t('noFriendsToAdd')}
               </p>
             ) : (
               <ul className="flex flex-col gap-0.5">
@@ -286,14 +288,14 @@ export function NewConversationButton() {
           </ScrollArea>
           <div className="flex justify-end gap-2 border-t px-4 py-3">
             <Button type="button" variant="ghost" onClick={closeDialog}>
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
               disabled={busy || !groupName.trim()}
               onClick={() => void createGroup()}
             >
-              Создать
+              {t('create')}
             </Button>
           </div>
         </DialogContent>

@@ -12,7 +12,7 @@ export function MessageDateDivider({ label }: MessageDateDividerProps) {
       <div className="h-px flex-1 bg-border" />
       <time
         dateTime={label}
-        className="mx-3 shrink-0 rounded px-2 text-[11px] font-semibold text-muted-foreground"
+        className="mx-3 shrink-0 rounded px-2 text-[0.6875rem] font-semibold text-muted-foreground"
       >
         {label}
       </time>

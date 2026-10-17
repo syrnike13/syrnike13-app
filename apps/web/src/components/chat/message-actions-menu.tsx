@@ -1,4 +1,5 @@
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import {
   BanIcon,
@@ -38,12 +39,12 @@ type MessageActionsMenuProps = {
   onUnpin?: () => void
 }
 
-async function copyText(label: string, value: string) {
+async function copyText(label: string, value: string, errorLabel: string) {
   try {
     await Effect.runPromise(writeClipboardTextEffect(value))
     toast.success(label)
   } catch {
-    toast.error('Не удалось скопировать')
+    toast.error(errorLabel)
   }
 }
 
@@ -61,6 +62,7 @@ export function MessageActionsMenu({
   onPin,
   onUnpin,
 }: MessageActionsMenuProps) {
+  const t = useTranslations('chat')
   const canEdit = own && Boolean(message.content?.trim())
   const pinned = Boolean(message.pinned)
   const hasText = Boolean(message.content?.trim())
@@ -73,7 +75,7 @@ export function MessageActionsMenu({
           variant="ghost"
           size="icon"
           className={cn('size-7', triggerClassName)}
-          title="Ещё"
+          title={t('more')}
         >
           <MoreHorizontalIcon className="size-3.5" />
         </Button>
@@ -86,27 +88,29 @@ export function MessageActionsMenu({
           onClick={onReply}
         >
           <ReplyIcon className="size-3.5" />
-          Ответить
+          {t('reply')}
         </Button>
         {hasText ? (
           <Button
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal"
-            onClick={() => void copyText('Текст скопирован', message.content!)}
+            onClick={() =>
+              void copyText(t('textCopied'), message.content!, t('copyError'))
+            }
           >
             <CopyIcon className="size-3.5" />
-            Копировать текст
+            {t('copyText')}
           </Button>
         ) : null}
         <Button
           type="button"
           variant="ghost"
           className="h-8 w-full justify-start px-2 font-normal"
-          onClick={() => void copyText('ID скопирован', message._id)}
+          onClick={() => void copyText(t('idCopied'), message._id, t('copyError'))}
         >
           <CopyIcon className="size-3.5" />
-          Копировать ID
+          {t('copyId')}
         </Button>
         <Button
           type="button"
@@ -114,13 +118,14 @@ export function MessageActionsMenu({
           className="h-8 w-full justify-start px-2 font-normal"
           onClick={() =>
             void copyText(
-              'Ссылка скопирована',
+              t('linkCopied'),
               messageDeepLink(channelId, message._id),
+              t('copyError'),
             )
           }
         >
           <LinkIcon className="size-3.5" />
-          Копировать ссылку
+          {t('copyLink')}
         </Button>
         {pinned && onUnpin ? (
           <Button
@@ -130,7 +135,7 @@ export function MessageActionsMenu({
             onClick={onUnpin}
           >
             <PinOffIcon className="size-3.5" />
-            Открепить
+            {t('unpin')}
           </Button>
         ) : null}
         {!pinned && onPin ? (
@@ -141,7 +146,7 @@ export function MessageActionsMenu({
             onClick={onPin}
           >
             <PinIcon className="size-3.5" />
-            Закрепить
+            {t('pin')}
           </Button>
         ) : null}
         {canEdit && onEdit ? (
@@ -152,7 +157,7 @@ export function MessageActionsMenu({
             onClick={onEdit}
           >
             <PencilIcon className="size-3.5" />
-            Изменить
+            {t('edit')}
           </Button>
         ) : null}
         {own && onDelete ? (
@@ -163,7 +168,7 @@ export function MessageActionsMenu({
             onClick={onDelete}
           >
             <Trash2Icon className="size-3.5" />
-            Удалить
+            {t('delete')}
           </Button>
         ) : null}
         {!own && onBlock ? (
@@ -174,7 +179,7 @@ export function MessageActionsMenu({
             onClick={onBlock}
           >
             <BanIcon className="size-3.5" />
-            Заблокировать
+            {t('block')}
           </Button>
         ) : null}
       </PopoverContent>

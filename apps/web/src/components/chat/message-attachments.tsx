@@ -6,6 +6,8 @@ import {
   ImageLightbox,
   type ImageLightboxAuthor,
 } from '#/components/media/image-lightbox'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { FxImage } from '#/components/ui/fx-image'
 import {
   fileMosaicRatio,
@@ -32,6 +34,7 @@ export function MessageAttachments({
   attachments,
   author,
 }: MessageAttachmentsProps) {
+  const t = useTranslations('chat')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [revealedSpoilers, setRevealedSpoilers] = useState<
     Record<string, true>
@@ -78,8 +81,8 @@ export function MessageAttachments({
                   type="button"
                   aria-label={
                     spoiler
-                      ? 'Спойлер: нажмите, чтобы показать'
-                      : (file.filename ?? 'Изображение')
+                      ? t('spoilerShow')
+                      : (file.filename ?? t('image'))
                   }
                   className={cn(
                     'absolute overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
@@ -101,7 +104,7 @@ export function MessageAttachments({
                 >
                   <FxImage
                     src={attachmentPreviewUrl(file)}
-                    alt={stripSpoilerFilename(file.filename) || 'Изображение'}
+                    alt={stripSpoilerFilename(file.filename) || t('image')}
                     fill
                     objectFit="cover"
                     className={cn(spoiler && 'scale-105 blur-xl')}
@@ -109,7 +112,7 @@ export function MessageAttachments({
                   />
                   {spoiler ? (
                     <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-xs font-semibold tracking-wide text-foreground uppercase">
-                      Спойлер
+                      {t('spoiler')}
                     </span>
                   ) : null}
                 </button>
@@ -131,7 +134,7 @@ export function MessageAttachments({
                 onClick={() => revealSpoiler(file._id)}
               >
                 <FileIcon className="size-4 shrink-0" />
-                <span className="truncate font-semibold uppercase">Спойлер</span>
+                <span className="truncate font-semibold uppercase">{t('spoiler')}</span>
               </button>
             )
           }
@@ -174,17 +177,18 @@ function SingleImageAttachment({
   onRevealSpoiler: () => void
   onOpen: () => void
 }) {
+  const t = useTranslations('chat')
   /** Всегда резервируем box до decode: без ratio intrinsic width ≈ 0. */
   const aspectRatio = imageFileAspectRatio(file) ?? 1
   const spoiler = isSpoilerFilename(file.filename) && !spoilerRevealed
-  const label = stripSpoilerFilename(file.filename) || 'Изображение'
+  const label = stripSpoilerFilename(file.filename) || t('image')
 
   return (
     <button
       type="button"
       data-attachment-single
       data-aspect-ratio={String(aspectRatio)}
-      aria-label={spoiler ? 'Спойлер: нажмите, чтобы показать' : label}
+      aria-label={spoiler ? t('spoilerShow') : label}
       className="relative block max-h-96 max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-[28rem]"
       style={{
         aspectRatio,
@@ -209,7 +213,7 @@ function SingleImageAttachment({
       />
       {spoiler ? (
         <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-sm font-semibold tracking-wide text-foreground uppercase">
-          Спойлер
+          {t('spoiler')}
         </span>
       ) : null}
     </button>

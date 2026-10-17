@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { ChevronDownIcon, PlusIcon, SettingsIcon } from '#/components/icons'
 import { useState } from 'react'
 
@@ -28,6 +29,7 @@ export function ChannelCategoryHeader({
   canManage,
   onToggleCollapsed,
 }: ChannelCategoryHeaderProps) {
+  const t = useTranslations('channels')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
 
@@ -47,7 +49,7 @@ export function ChannelCategoryHeader({
             collapsed && '-rotate-90',
           )}
         />
-        <span className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
         </span>
       </button>
@@ -56,8 +58,8 @@ export function ChannelCategoryHeader({
           <button
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Создать канал"
-            aria-label="Создать канал"
+            title={t('createChannel')}
+            aria-label={t('createChannel')}
             onClick={() => setCreateChannelOpen(true)}
           >
             <PlusIcon className="size-3.5" />
@@ -65,8 +67,8 @@ export function ChannelCategoryHeader({
           <button
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Настройки категории"
-            aria-label="Настройки категории"
+            title={t('categorySettings')}
+            aria-label={t('categorySettings')}
             onClick={() => setSettingsOpen(true)}
           >
             <SettingsIcon className="size-3.5" />
@@ -84,11 +86,11 @@ export function ChannelCategoryHeader({
           <ContextMenuContent className="w-52">
             <ContextMenuItem onSelect={() => setCreateChannelOpen(true)}>
               <PlusIcon className="size-3.5" />
-              Создать канал
+              {t('createChannel')}
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => setSettingsOpen(true)}>
               <SettingsIcon className="size-3.5" />
-              Настройки категории
+              {t('categorySettings')}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>

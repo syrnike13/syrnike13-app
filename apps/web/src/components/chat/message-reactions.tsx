@@ -1,11 +1,11 @@
 import type { Message, User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
 import { Button } from '#/components/ui/button'
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { cn } from '#/lib/utils'
 import { SmilePlusIcon } from '#/components/icons'
 
 type MessageReactionsProps = {
@@ -37,6 +37,7 @@ export function MessageReactions({
   currentUserId,
   onToggle,
 }: MessageReactionsProps) {
+  const t = useTranslations('chat')
   const emojis = useSyncStore((s) => s.emojis)
   const entries = Object.entries(message.reactions ?? {})
 
@@ -55,13 +56,9 @@ export function MessageReactions({
           <Button
             key={emoji}
             type="button"
-            variant={active ? 'ghost' : 'outline'}
+            variant={active ? 'reaction-active' : 'outline'}
             size="sm"
-            className={cn(
-              'h-7 gap-1 px-2 text-xs',
-              active &&
-                'border border-primary/70 bg-primary/30 shadow-none hover:bg-primary/40 dark:border-primary/70 dark:bg-primary/30 dark:hover:bg-primary/40',
-            )}
+            className="h-7 gap-1 px-2 text-xs"
             onClick={() => onToggle(emoji, active)}
             title={userIds
               .map((id) => users[id]?.username ?? id)
@@ -88,7 +85,7 @@ export function MessageReactions({
             variant="outline"
             size="sm"
             className="size-7 px-0"
-            title="Добавить реакцию"
+            title={t('addReaction')}
           >
             <SmilePlusIcon className="size-3.5" />
           </Button>

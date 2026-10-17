@@ -9,4 +9,4 @@ export const MESSAGE_COMPACT_CONTENT_INSET = 'pl-20 pr-6' as const
 
 /** Позиция времени при hover на compact-сообщении (над колонкой аватара). */
 export const MESSAGE_COMPACT_TIME_CLASS =
-  'pointer-events-none absolute top-0.5 left-6 z-[1] hidden w-10 text-center text-[11px] leading-4 font-medium text-muted-foreground group-hover:block' as const
+  'pointer-events-none absolute top-0.5 left-6 z-[1] hidden w-10 text-center text-[0.6875rem] leading-4 font-medium text-muted-foreground group-hover:block' as const

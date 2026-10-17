@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { User } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
@@ -34,6 +35,7 @@ export function ServerChannelSearchPopover({
   users,
   variant = 'strip',
 }: ServerChannelSearchPopoverProps) {
+  const t = useTranslations('chat')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -115,13 +117,13 @@ export function ServerChannelSearchPopover({
             className="gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
           >
             <SearchIcon className="size-4 shrink-0" />
-            <span className="truncate">Поиск</span>
+            <span className="truncate">{t('search')}</span>
           </button>
         ) : (
           <button
             type="button"
             className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Поиск по серверу"
+            title={t('searchServer')}
           >
             <SearchIcon className="size-4" />
           </button>
@@ -138,32 +140,32 @@ export function ServerChannelSearchPopover({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск по серверу…"
+            placeholder={t('searchServerPlaceholder')}
             className="h-8"
           />
         </div>
         <ScrollArea className="max-h-80">
           <div className="flex flex-col gap-1 p-2">
             {searching ? (
-              <p className="px-1 py-2 text-sm text-muted-foreground">Ищем…</p>
+              <p className="px-1 py-2 text-sm text-muted-foreground">{t('searching')}</p>
             ) : null}
             {!searching && query.trim().length < 2 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
-                Введите минимум 2 символа
+                {t('minChars')}
               </p>
             ) : null}
             {!searching &&
             query.trim().length >= 2 &&
             hits.length === 0 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
-                Ничего не найдено
+                {t('nothingFound')}
               </p>
             ) : null}
             {hits.map((hit) => {
               const author =
                 hit.message.user ?? users[hit.message.author]
               const name =
-                author?.display_name ?? author?.username ?? 'Неизвестный'
+                author?.display_name ?? author?.username ?? t('unknownAuthor')
 
               return (
                 <button
@@ -186,7 +188,7 @@ export function ServerChannelSearchPopover({
                     </div>
                   ) : (
                     <p className="text-sm italic text-muted-foreground">
-                      [без текста]
+                      {t('noText')}
                     </p>
                   )}
                 </button>

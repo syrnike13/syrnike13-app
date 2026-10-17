@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -32,6 +33,7 @@ export function DirectMessageProfilePanel({
   aliases,
   onOpenProfile,
 }: DirectMessageProfilePanelProps) {
+  const t = useTranslations('chat')
   useMutualServerMembersSync(user._id, currentUserId, token)
   const mutualServers = useSyncStore((s) =>
     listMutualServers(s, user._id, currentUserId),
@@ -53,7 +55,7 @@ export function DirectMessageProfilePanel({
 
   return (
     <aside
-      aria-label="Профиль пользователя"
+      aria-label={t('profileLabel')}
       className={cn(
         'theme-surface-content gradient-surface-content flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-l border-shell-divider text-card-foreground',
       )}
@@ -88,7 +90,7 @@ export function DirectMessageProfilePanel({
           {onOpenProfile ? (
             <button
               type="button"
-              title="Открыть профиль"
+              title={t('openProfile')}
               className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
               onClick={onOpenProfile}
             >
@@ -96,14 +98,14 @@ export function DirectMessageProfilePanel({
                 <UserAvatar
                   user={user}
                   className="size-20"
-                  fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-muted"
+                  fallbackClassName="size-20 text-xl ring-[0.375rem] ring-card bg-muted"
                   animated="always"
                   showPresence
                   presenceRingClassName="border-card"
                 />
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+                  className="pointer-events-none absolute inset-0 rounded-full bg-scrim/0 transition-colors group-hover/avatar-button:bg-scrim"
                 />
               </span>
             </button>
@@ -111,7 +113,7 @@ export function DirectMessageProfilePanel({
             <UserAvatar
               user={user}
               className="size-20"
-              fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-muted"
+              fallbackClassName="size-20 text-xl ring-[0.375rem] ring-card bg-muted"
               animated="always"
               showPresence
               presenceRingClassName="border-card"
@@ -133,8 +135,8 @@ export function DirectMessageProfilePanel({
         <div className="mt-4 space-y-2">
           {profileBio ? (
             <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                О себе
+              <p className="mb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('about')}
               </p>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                 {profileBio}
@@ -144,7 +146,7 @@ export function DirectMessageProfilePanel({
 
           {aliases.length > 0 ? (
             <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
                 AKA
               </p>
               <p className="truncate text-sm font-medium text-foreground">
@@ -155,12 +157,12 @@ export function DirectMessageProfilePanel({
 
           <div className="rounded-md bg-secondary/70 p-3">
             <p className="text-sm font-semibold text-foreground">
-              Общие серверы — {mutualServers.length}
+              {t('mutualServers', { count: mutualServers.length })}
             </p>
             <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
               {mutualServerNames.length > 0
                 ? mutualServerNames.join(', ')
-                : 'Нет общих серверов'}
+                : t('noMutualServers')}
             </p>
           </div>
         </div>

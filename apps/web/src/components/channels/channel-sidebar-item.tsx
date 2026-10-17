@@ -1,4 +1,5 @@
 import { Link, useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   CheckCheckIcon,
   HashIcon,
@@ -103,6 +104,7 @@ export function ChannelSidebarItem({
   dragHandleProps,
   dragging = false,
 }: ChannelSidebarItemProps) {
+  const t = useTranslations('channels.channelItem')
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
@@ -158,7 +160,7 @@ export function ChannelSidebarItem({
         yield* deleteChannelEffect(token, channel._id)
         yield* Effect.sync(() => {
           syncStore.removeChannel(channel._id)
-          toast.success('Канал удалён')
+          toast.success(t('deleted'))
           setDeleteDialogOpen(false)
         })
 
@@ -193,7 +195,7 @@ export function ChannelSidebarItem({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось удалить канал',
+                : t('deleteError'),
             )
           }),
         ),
@@ -224,9 +226,9 @@ export function ChannelSidebarItem({
     !voiceCallRingingDismissed && isIncomingVoiceCall(voiceCall, currentUserId)
   const voiceCallMarkerTitle =
     voiceCall?.phase === 'active'
-      ? 'Идёт звонок'
+      ? t('callActive')
       : incomingVoiceCall
-        ? 'Входящий звонок'
+        ? t('callIncoming')
         : null
 
   async function markRead() {
@@ -239,11 +241,11 @@ export function ChannelSidebarItem({
         Effect.matchEffect({
           onFailure: () =>
             Effect.sync(() =>
-              toast.error('Не удалось отметить прочитанным'),
+              toast.error(t('markReadError')),
             ),
           onSuccess: () =>
             Effect.sync(() =>
-              toast.success('Канал отмечен прочитанным'),
+              toast.success(t('markedRead')),
             ),
         }),
       ),
@@ -256,9 +258,9 @@ export function ChannelSidebarItem({
       writeClipboardTextEffect(url).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error('Не удалось скопировать')),
+            Effect.sync(() => toast.error(t('copyError'))),
           onSuccess: () =>
-            Effect.sync(() => toast.success('Ссылка скопирована')),
+            Effect.sync(() => toast.success(t('copied'))),
         }),
       ),
     )
@@ -276,12 +278,12 @@ export function ChannelSidebarItem({
         const code = '_id' in invite ? invite._id : ''
         if (!code) return
         yield* writeClipboardTextEffect(inviteUrl(code))
-        yield* Effect.sync(() => toast.success('Приглашение скопировано'))
+        yield* Effect.sync(() => toast.success(t('inviteCopied')))
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось создать',
+              error instanceof Error ? error.message : t('createError'),
             )
           }),
         ),
@@ -395,7 +397,7 @@ export function ChannelSidebarItem({
       targetMember,
     )
     if (!mayMove) {
-      toast.error('Недостаточно прав для перемещения участника')
+      toast.error(t('moveNoPermission'))
       return
     }
 
@@ -413,11 +415,11 @@ export function ChannelSidebarItem({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось переместить участника',
+                  : t('moveError'),
               )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success('Участник перемещён')),
+            Effect.sync(() => toast.success(t('moved'))),
         }),
         Effect.ensuring(Effect.sync(() => setMovingVoiceMember(false))),
       ),
@@ -468,7 +470,7 @@ export function ChannelSidebarItem({
             <UserAvatar
               user={dmUser}
               className="size-6"
-              fallbackClassName="size-6 text-[10px]"
+              fallbackClassName="size-6 text-[0.625rem]"
             />
           ) : channel.channel_type === 'Group' ? (
             channel.icon ? (
@@ -479,7 +481,7 @@ export function ChannelSidebarItem({
               />
             ) : (
               <span
-                title="Групповой чат"
+                title={t('groupChat')}
                 className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
               >
                 <UsersIcon aria-hidden="true" className="size-4" />
@@ -489,7 +491,7 @@ export function ChannelSidebarItem({
             <VoiceChannelIcon channel={channel} server={server} />
           ) : restrictedTextChannel ? (
             <span
-              title="Закрытый текстовый канал"
+              title={t('privateText')}
               className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
             >
               <RestrictedTextChannelIcon className="size-4" />
@@ -513,8 +515,8 @@ export function ChannelSidebarItem({
               <button
                 type="button"
                 className={channelActionButtonClassName}
-                title="Открыть чат"
-                aria-label="Открыть чат"
+                title={t('openChat')}
+                aria-label={t('openChat')}
                 onClick={openVoiceChannelChat}
               >
                 <MessageSquareIcon className="size-3.5" />
@@ -524,7 +526,7 @@ export function ChannelSidebarItem({
               <button
                 type="button"
                 className={channelActionButtonClassName}
-                title="Настройки канала"
+                title={t('channelSettings')}
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -545,16 +547,16 @@ export function ChannelSidebarItem({
     <>
       <ContextMenuItem onSelect={() => void markRead()}>
         <CheckCheckIcon className="size-3.5" />
-        Прочитано
+        {t('markRead')}
       </ContextMenuItem>
       <ContextMenuItem onSelect={() => void copyLink()}>
         <LinkIcon className="size-3.5" />
-        Копировать ссылку
+        {t('copyLink')}
       </ContextMenuItem>
       {channel.channel_type === 'TextChannel' && canInvite ? (
         <ContextMenuItem onSelect={() => void createInvite()}>
           <LinkIcon className="size-3.5" />
-          Приглашение
+          {t('invite')}
         </ContextMenuItem>
       ) : null}
       {canManage && isServerChannel ? (
@@ -562,7 +564,7 @@ export function ChannelSidebarItem({
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={openChannelSettings}>
             <SettingsIcon className="size-3.5" />
-            Настройки канала
+            {t('channelSettings')}
           </ContextMenuItem>
         </>
       ) : null}
@@ -574,7 +576,7 @@ export function ChannelSidebarItem({
             onSelect={() => setDeleteDialogOpen(true)}
           >
             <Trash2Icon className="size-3.5" />
-            Удалить канал
+            {t('deleteChannel')}
           </ContextMenuItem>
         </>
       ) : null}
@@ -600,10 +602,9 @@ export function ChannelSidebarItem({
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Удалить канал «{channel.name}»?</DialogTitle>
+              <DialogTitle>{t('deleteTitle', { name: channel.name })}</DialogTitle>
               <DialogDescription>
-                Это действие необратимо. Сообщения и настройки канала будут
-                удалены.
+                {t('deleteDescription')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -613,7 +614,7 @@ export function ChannelSidebarItem({
                 disabled={deletingChannel}
                 onClick={() => setDeleteDialogOpen(false)}
               >
-                Отмена
+                {t('cancel')}
               </Button>
               <Button
                 type="button"
@@ -621,7 +622,7 @@ export function ChannelSidebarItem({
                 disabled={deletingChannel}
                 onClick={() => void handleDeleteChannel()}
               >
-                Удалить канал
+                {t('deleteConfirm')}
               </Button>
             </DialogFooter>
           </DialogContent>

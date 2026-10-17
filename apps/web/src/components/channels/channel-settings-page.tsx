@@ -1,4 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   LayoutTemplateIcon,
   LinkIcon,
@@ -64,7 +65,7 @@ function NavSection({
   return (
     <div className="flex flex-col gap-0.5">
       {title ? (
-        <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <p className="px-2 py-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
         </p>
       ) : null}
@@ -114,6 +115,7 @@ export function ChannelSettingsPage({
   tab,
   highlightMessageId,
 }: ChannelSettingsPageProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -262,7 +264,7 @@ export function ChannelSettingsPage({
           style={{ width: SETTINGS_NAV_WIDTH }}
         >
           <div className="border-b border-border/60 px-3 py-4">
-            <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            <p className="truncate text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">
               {channelLabel}
             </p>
           </div>
@@ -278,13 +280,13 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<LayoutTemplateIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.overview}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.overview}`)}
                   />
                 </NavSection>
               ) : null}
 
               {canManagePermissions ? (
-                <NavSection title="Доступ">
+                <NavSection title={t('nav.access')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
@@ -292,13 +294,13 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<ShieldFillIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.permissions}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.permissions}`)}
                   />
                 </NavSection>
               ) : null}
 
               {canManageWebhooks ? (
-                <NavSection title="Инструменты">
+                <NavSection title={t('nav.tools')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
@@ -306,7 +308,7 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<LinkIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.webhooks}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.webhooks}`)}
                   />
                 </NavSection>
               ) : null}
@@ -327,7 +329,7 @@ export function ChannelSettingsPage({
                   />
                 </div>
               </div>
-              <UnsavedChangesBar saveLabel="Сохранить" />
+              <UnsavedChangesBar saveLabel={t('save')} />
             </div>
           ) : (
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -339,7 +341,7 @@ export function ChannelSettingsPage({
                   />
                 </div>
               </ScrollArea>
-              <UnsavedChangesBar saveLabel="Сохранить" />
+              <UnsavedChangesBar saveLabel={t('save')} />
             </div>
           )}
         </DraftProvider>
@@ -350,15 +352,15 @@ export function ChannelSettingsPage({
       <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 sm:right-6 lg:right-8">
         <Button
           type="button"
-          variant="ghost"
+          variant="floating-outline"
           size="icon"
-          className="size-9 rounded-full border border-border/60 bg-background/80 shadow-sm backdrop-blur-sm"
+          className="size-9 rounded-full"
           onClick={closeSettings}
         >
           <XIcon className="size-4" />
-          <span className="sr-only">Закрыть</span>
+          <span className="sr-only">{t('close')}</span>
         </Button>
-        <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <span className="text-[0.625rem] font-semibold tracking-wider text-muted-foreground uppercase">
           esc
         </span>
       </div>

@@ -1,6 +1,7 @@
 export {
   LocaleProvider,
   UI_MESSAGES,
+  configureDefaultCatalogs,
   formatMessage,
   mergeMessages,
   useLocale,

@@ -20,6 +20,16 @@ import {
 
 export const UI_MESSAGES: MessageCatalogs = { en, ru }
 
+/**
+ * Test-only fallback used when a component is rendered without a provider.
+ * Apps register their own catalogs in the shared test setup.
+ */
+let defaultCatalogs: MessageCatalogs | null = null
+
+export function configureDefaultCatalogs(catalogs: MessageCatalogs) {
+  defaultCatalogs = catalogs
+}
+
 type LocaleContextValue = {
   locale: AppLocale
   setLocale: (locale: AppLocale) => void
@@ -155,7 +165,8 @@ function useLocaleContext(): LocaleContextValue {
     locale: 'ru',
     setLocale: () => {},
     locales: APP_LOCALES,
-    messages: mergeMessages(UI_MESSAGES.ru, UI_MESSAGES.en),
+    messages:
+      defaultCatalogs?.ru ?? mergeMessages(UI_MESSAGES.ru, UI_MESSAGES.en),
   }
 }
 

@@ -42,14 +42,16 @@ import { listUsersByRelationship } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { cn } from '#/lib/utils'
 
 export type HomeTab = 'online' | 'all' | 'pending'
 
-const TABS: { id: HomeTab; label: string }[] = [
-  { id: 'online', label: 'В сети' },
-  { id: 'all', label: 'Все' },
-  { id: 'pending', label: 'Заявки' },
+const TABS: { id: HomeTab; key: string }[] = [
+  { id: 'online', key: 'online' },
+  { id: 'all', key: 'all' },
+  { id: 'pending', key: 'pending' },
 ]
 
 function userLabel(user: { username: string; display_name?: string | null }) {
@@ -72,6 +74,7 @@ function HomeFriendRow({
   onOpen?: () => void
   actions?: ReactNode
 }) {
+  const t = useTranslations('home.friends')
   const interactive = Boolean(onOpen)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -84,15 +87,15 @@ function HomeFriendRow({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success('ID скопирован')
+      toast.success(t('idCopied'))
     } catch {
-      toast.error('Не удалось скопировать')
+      toast.error(t('copyError'))
     }
   }
 
   function handleBlock() {
     if (!token) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    if (!window.confirm(t('blockConfirm', { username: user.username }))) return
     Effect.runFork(
       blockUserRelationship(token, user._id).pipe(Effect.ignore),
     )
@@ -128,8 +131,8 @@ function HomeFriendRow({
             size="icon"
             variant="ghost"
             className={rowIconActionClass}
-            title="Написать"
-            aria-label="Написать"
+            title={t('write')}
+            aria-label={t('write')}
             onClick={onMessage}
           >
             <MessageCircleIcon className="size-4" />
@@ -143,8 +146,8 @@ function HomeFriendRow({
                 size="icon"
                 variant="ghost"
                 className={rowIconActionClass}
-                title="Ещё"
-                aria-label="Ещё"
+                title={t('more')}
+                aria-label={t('more')}
               >
                 <MoreHorizontalIcon className="size-4" />
               </Button>
@@ -166,7 +169,7 @@ function HomeFriendRow({
                   }}
                 >
                   <XIcon className="size-3.5" />
-                  Отклонить заявку
+                  {t('declineRequest')}
                 </FloatingMenuItem>
               ) : null}
               {user.relationship === 'Outgoing' ? (
@@ -180,7 +183,7 @@ function HomeFriendRow({
                   }}
                 >
                   <XIcon className="size-3.5" />
-                  Отменить заявку
+                  {t('cancelRequest')}
                 </FloatingMenuItem>
               ) : null}
               {user.relationship === 'Friend' ? (
@@ -192,16 +195,16 @@ function HomeFriendRow({
                   }}
                 >
                   <UserMinusIcon className="size-3.5" />
-                  Удалить из друзей
+                  {t('removeFriend')}
                 </FloatingMenuItem>
               ) : null}
               <FloatingMenuItem onClick={() => void copyUserId()}>
                 <CopyIcon className="size-3.5" />
-                Копировать ID
+                {t('copyId')}
               </FloatingMenuItem>
               <FloatingMenuItem onClick={handleBlock}>
                 <BanIcon className="size-3.5" />
-                Заблокировать
+                {t('block')}
               </FloatingMenuItem>
             </PopoverContent>
           </Popover>
@@ -232,6 +235,7 @@ type HomeViewProps = {
 }
 
 export function HomeView({ tab }: HomeViewProps) {
+  const t = useTranslations('home.friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -319,10 +323,10 @@ export function HomeView({ tab }: HomeViewProps) {
 
   const sectionTitle =
     tab === 'online'
-      ? `В сети — ${visibleUsers.length}`
+      ? t('onlineCount', { count: visibleUsers.length })
       : tab === 'all'
-        ? `Все друзья — ${visibleUsers.length}`
-        : `Заявки — ${visibleUsers.length}`
+        ? t('allCount', { count: visibleUsers.length })
+        : t('pendingCount', { count: visibleUsers.length })
 
   return (
     <div className="flex min-w-0 flex-1">
@@ -330,7 +334,7 @@ export function HomeView({ tab }: HomeViewProps) {
         <header className="flex shrink-0 items-center gap-2 border-b border-shell-divider px-4 py-3">
           <div className="flex shrink-0 items-center gap-2">
             <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
-            <span className="text-sm font-semibold">Друзья</span>
+            <span className="text-sm font-semibold">{t('title')}</span>
           </div>
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {visibleTabs.map((item) => (
@@ -338,15 +342,12 @@ export function HomeView({ tab }: HomeViewProps) {
                 key={item.id}
                 variant={tab === item.id ? 'secondary' : 'ghost'}
                 size="sm"
-                className={cn(
-                  'shrink-0 rounded-md',
-                  tab === item.id && 'bg-muted',
-                )}
+                className="shrink-0"
                 asChild
               >
                 <Link to={prefix} search={{ tab: item.id }}>
                   <span className="inline-flex items-center gap-1.5">
-                    {item.label}
+                    {t(`tabs.${item.key}`)}
                     {item.id === 'pending' ? (
                       <NotificationBadge badge={friendRequestBadge} />
                     ) : null}
@@ -362,7 +363,7 @@ export function HomeView({ tab }: HomeViewProps) {
             onClick={() => setAddOpen((open) => !open)}
           >
             <UserPlusIcon className="size-4" data-icon="inline-start" />
-            Добавить
+            {t('add')}
           </Button>
         </header>
 
@@ -382,7 +383,7 @@ export function HomeView({ tab }: HomeViewProps) {
                 disabled={sending}
               />
               <Button type="submit" disabled={sending}>
-                Отправить
+                {t('send')}
               </Button>
             </form>
           </div>
@@ -392,8 +393,8 @@ export function HomeView({ tab }: HomeViewProps) {
           <Input
             value={friendSearch}
             onChange={(event) => setFriendSearch(event.target.value)}
-            placeholder="Поиск по друзьям"
-            className="h-9 max-w-md bg-muted/30"
+            placeholder={t('searchPlaceholder')}
+            className="h-9 max-w-md"
           />
         </div>
 
@@ -405,10 +406,10 @@ export function HomeView({ tab }: HomeViewProps) {
           {visibleUsers.length === 0 ? (
             <p className="px-4 py-8 text-sm text-muted-foreground">
               {tab === 'online'
-                ? 'Нет друзей в сети'
+                ? t('emptyOnline')
                 : tab === 'pending'
-                  ? 'Нет заявок'
-                  : 'Пока нет друзей'}
+                  ? t('emptyPending')
+                  : t('emptyAll')}
             </p>
           ) : (
             <div>
@@ -444,7 +445,7 @@ export function HomeView({ tab }: HomeViewProps) {
                                 )
                               }}
                             >
-                              Принять
+                              {t('accept')}
                             </Button>
                           ) : null}
                           <Button
@@ -470,7 +471,7 @@ export function HomeView({ tab }: HomeViewProps) {
                               )
                             }}
                           >
-                            {isOutgoing ? 'Отменить' : 'Отклонить'}
+                            {isOutgoing ? t('cancel') : t('decline')}
                           </Button>
                         </>
                       ) : null

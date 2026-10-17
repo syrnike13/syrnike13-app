@@ -5,4 +5,6 @@
   --color-scrim: var(--scrim);
   --color-on-scrim: var(--on-scrim);
   --color-on-solid: var(--on-solid);
+  --color-on-media: var(--on-media);
+  --color-media-backdrop: var(--media-backdrop);
 }

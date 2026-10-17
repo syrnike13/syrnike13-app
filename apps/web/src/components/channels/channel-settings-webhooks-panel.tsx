@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Channel, Webhook } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
@@ -51,6 +52,7 @@ export function ChannelSettingsWebhooksPanel({
 }: {
   channel: TextChannel
 }) {
+  const t = useTranslations('channels.webhooks')
   const auth = useAuth()
   const [webhooks, setWebhooks] = useState<Webhook[]>([])
   const [name, setName] = useState('')
@@ -77,7 +79,7 @@ export function ChannelSettingsWebhooksPanel({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось загрузить вебхуки',
+                  : t('loadError'),
               )
               setLoading(false)
             }),
@@ -105,7 +107,7 @@ export function ChannelSettingsWebhooksPanel({
 
     const trimmedName = name.trim()
     if (!token || !trimmedName) {
-      toast.error('Укажите название вебхука')
+      toast.error(t('nameRequired'))
       return
     }
 
@@ -118,13 +120,13 @@ export function ChannelSettingsWebhooksPanel({
           Effect.sync(() => {
             setWebhooks((current) => [webhook, ...current])
             setName('')
-            toast.success('Вебхук создан')
+            toast.success(t('created'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось создать вебхук',
+              error instanceof Error ? error.message : t('createError'),
             )
           }),
         ),
@@ -148,13 +150,13 @@ export function ChannelSettingsWebhooksPanel({
               ),
             )
             setWebhookPendingDeletion(null)
-            toast.success('Вебхук удалён')
+            toast.success(t('deleted'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить вебхук',
+              error instanceof Error ? error.message : t('deleteError'),
             )
           }),
         ),
@@ -181,7 +183,7 @@ export function ChannelSettingsWebhooksPanel({
 
     const trimmedName = editingName.trim()
     if (!token || !trimmedName) {
-      toast.error('Укажите название вебхука')
+      toast.error(t('nameRequired'))
       return
     }
 
@@ -207,7 +209,7 @@ export function ChannelSettingsWebhooksPanel({
               ),
             )
             cancelRename()
-            toast.success('Вебхук обновлён')
+            toast.success(t('updated'))
           }),
         ),
         Effect.catch((error) =>
@@ -215,7 +217,7 @@ export function ChannelSettingsWebhooksPanel({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось обновить вебхук',
+                : t('updateError'),
             )
           }),
         ),
@@ -236,11 +238,11 @@ export function ChannelSettingsWebhooksPanel({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось скопировать URL',
+                  : t('copyError'),
               )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success('URL вебхука скопирован')),
+            Effect.sync(() => toast.success(t('copied'))),
         }),
       ),
     )
@@ -250,47 +252,47 @@ export function ChannelSettingsWebhooksPanel({
     <>
       <div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold">Вебхуки</h2>
+        <h2 className="text-xl font-semibold">{t('title')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">#{channel.name}</p>
       </div>
 
       <section className="border-b border-border/60 py-6">
         <div className="mb-4">
-          <h3 className="text-base font-semibold">Создать вебхук</h3>
+          <h3 className="text-base font-semibold">{t('createTitle')}</h3>
         </div>
         <form className="flex flex-col gap-3 sm:flex-row" onSubmit={createWebhook}>
           <div className="min-w-0 flex-1">
             <Label htmlFor="channel-webhook-name" className="sr-only">
-              Название вебхука
+              {t('nameLabel')}
             </Label>
             <Input
               id="channel-webhook-name"
               value={name}
               maxLength={32}
-              placeholder="Название вебхука"
+              placeholder={t('namePlaceholder')}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
           <Button type="submit" disabled={creating || !name.trim()}>
             <PlusIcon className="size-4" />
-            Создать вебхук
+            {t('createSubmit')}
           </Button>
         </form>
       </section>
 
       <section className="py-6">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-base font-semibold">Вебхуки</h3>
+          <h3 className="text-base font-semibold">{t('title')}</h3>
           <span className="text-xs font-medium text-muted-foreground">
             {sortedWebhooks.length}
           </span>
         </div>
 
         {loading ? (
-          <p className="text-sm text-muted-foreground">Загрузка...</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : sortedWebhooks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            В этом канале нет вебхуков.
+            {t('empty')}
           </p>
         ) : (
           <TooltipProvider delayDuration={300}>
@@ -317,11 +319,11 @@ export function ChannelSettingsWebhooksPanel({
                             htmlFor={`channel-webhook-edit-${webhook.id}`}
                             className="sr-only"
                           >
-                            Новое название вебхука
+                            {t('newName')}
                           </Label>
                           <Input
                             id={`channel-webhook-edit-${webhook.id}`}
-                            aria-label="Новое название вебхука"
+                            aria-label={t('newName')}
                             value={editingName}
                             maxLength={32}
                             onChange={(event) =>
@@ -333,7 +335,7 @@ export function ChannelSettingsWebhooksPanel({
                           type="submit"
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`Сохранить ${webhook.name}`}
+                          aria-label={t('saveAria', { name: webhook.name })}
                           disabled={savingId === webhook.id || !editingName.trim()}
                         >
                           <CheckIcon className="size-4" />
@@ -342,7 +344,7 @@ export function ChannelSettingsWebhooksPanel({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`Отменить ${webhook.name}`}
+                          aria-label={t('cancelAria', { name: webhook.name })}
                           disabled={savingId === webhook.id}
                           onClick={cancelRename}
                         >
@@ -366,7 +368,7 @@ export function ChannelSettingsWebhooksPanel({
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Переименовать ${webhook.name}`}
+                            aria-label={t('renameAria', { name: webhook.name })}
                             disabled={
                               editingId === webhook.id ||
                               deletingId === webhook.id ||
@@ -378,7 +380,7 @@ export function ChannelSettingsWebhooksPanel({
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="top" sideOffset={6}>
-                          Переименовать
+                          {t('rename')}
                         </TooltipContent>
                       </Tooltip>
                       {url ? (
@@ -388,14 +390,14 @@ export function ChannelSettingsWebhooksPanel({
                               type="button"
                               variant="ghost"
                               size="icon-sm"
-                              aria-label={`Копировать URL ${webhook.name}`}
+                              aria-label={t('copyUrlAria', { name: webhook.name })}
                               onClick={() => void copyWebhookUrl(webhook)}
                             >
                               <CopyIcon className="size-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={6}>
-                            Копировать URL
+                            {t('copyUrl')}
                           </TooltipContent>
                         </Tooltip>
                       ) : null}
@@ -405,7 +407,7 @@ export function ChannelSettingsWebhooksPanel({
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Удалить ${webhook.name}`}
+                            aria-label={t('deleteAria', { name: webhook.name })}
                             disabled={
                               deletingId === webhook.id ||
                               savingId === webhook.id
@@ -416,7 +418,7 @@ export function ChannelSettingsWebhooksPanel({
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="top" sideOffset={6}>
-                          Удалить
+                          {t('delete')}
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -439,11 +441,10 @@ export function ChannelSettingsWebhooksPanel({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Удалить вебхук «{webhookPendingDeletion?.name}»?
+              {t('deleteTitle', { name: webhookPendingDeletion?.name ?? '' })}
             </DialogTitle>
             <DialogDescription>
-              Интеграции, которые используют этот URL, больше не смогут
-              отправлять сообщения в канал.
+              {t('deleteDescription')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -453,7 +454,7 @@ export function ChannelSettingsWebhooksPanel({
               disabled={deletingId !== null}
               onClick={() => setWebhookPendingDeletion(null)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -461,7 +462,7 @@ export function ChannelSettingsWebhooksPanel({
               disabled={deletingId !== null}
               onClick={() => void deleteSelectedWebhook()}
             >
-              Удалить вебхук
+              {t('deleteConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

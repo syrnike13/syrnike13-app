@@ -75,6 +75,7 @@ import {
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 type ChannelViewProps = {
   channelId: string
@@ -86,9 +87,9 @@ const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 360
 const INLINE_VOICE_STAGE_MIN_HEIGHT = 220
 const INLINE_CHAT_MIN_HEIGHT = 160
 const VOICE_STAGE_HEADER_ICON_CLASS =
-  'text-white/70 hover:bg-white/10 hover:text-white'
+  'text-on-media/70 hover:bg-on-media/10 hover:text-on-media'
 const VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS =
-  'border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
+  'border-on-media/20 bg-on-media/10 text-on-media/70 hover:bg-on-media/15 hover:text-on-media'
 
 export function clampInlineVoiceStageHeight(
   height: number,
@@ -155,6 +156,8 @@ export function ChannelView({
   channelId,
   highlightMessageId,
 }: ChannelViewProps) {
+  const t = useTranslations('chat')
+  const tv = useTranslations('chat.voice')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
   const isMobileRoute = routePrefix === '/m'
@@ -273,7 +276,7 @@ export function ChannelView({
   if (!channel) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        Канал не найден
+        {t('channelNotFound')}
       </div>
     )
   }
@@ -293,28 +296,28 @@ export function ChannelView({
     Boolean(dmRecipient && !canMessageUser(dmRecipient._id))
   const dmDisabledPlaceholder =
     dmRecipient?.relationship === 'Blocked'
-      ? 'Вы заблокировали этого пользователя'
+      ? t('blockedByYou')
       : dmRecipient?.relationship === 'BlockedOther'
-        ? 'Пользователь заблокировал вас'
+        ? t('blockedYou')
         : dmMessagesBlocked
-          ? 'Вы не можете отправлять сообщения этому пользователю'
+          ? t('cannotSend')
           : undefined
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'
   const voiceCallIncoming = isIncomingVoiceCall(voiceCall, currentUserId)
-  let voiceActionLabel = isDmVoiceCallChannel ? 'Позвонить' : 'Голос'
+  let voiceActionLabel = isDmVoiceCallChannel ? tv('call') : tv('voice')
   if (
     (isDmVoiceCallChannel && voiceCall?.phase === 'active') ||
     (isGroupDirectMessage && voiceCall)
   ) {
-    voiceActionLabel = 'Присоединиться'
+    voiceActionLabel = tv('join')
   } else if (
     isDmVoiceCallChannel &&
     !voiceCallRingingDismissed &&
     voiceCallIncoming
   ) {
-    voiceActionLabel = 'Ответить'
+    voiceActionLabel = tv('answer')
   }
   const showVoiceCallBanner =
     Boolean(voiceCall) &&
@@ -328,7 +331,7 @@ export function ChannelView({
   const voiceCallInitiatorName =
     voiceCallInitiator?.display_name ??
     voiceCallInitiator?.username ??
-    'Пользователь'
+    t('system.user')
   const voiceCallInitiatedByCurrentUser =
     Boolean(currentUserId) && voiceCall?.initiatorId === currentUserId
   function dismissVoiceCallBanner() {
@@ -428,8 +431,8 @@ export function ChannelView({
               variant="ghost"
               size="icon"
               className="size-8 shrink-0"
-              aria-label="Назад"
-              title="Назад"
+              aria-label={tv('back')}
+              title={tv('back')}
               onClick={handleMobileBack}
             >
               <ChevronLeftIcon className="size-5" />
@@ -452,7 +455,7 @@ export function ChannelView({
                 />
               ) : (
                 <span
-                  title="Групповой чат"
+                  title={t('groupChat')}
                   className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
                 >
                   <UsersIcon aria-hidden="true" className="size-5" />
@@ -466,7 +469,7 @@ export function ChannelView({
             </div>
           )}
           {historyQuery.isFetching ? (
-            <span className="text-xs text-muted-foreground">загрузка…</span>
+            <span className="text-xs text-muted-foreground">{t('loadingShort')}</span>
           ) : null}
           {isDirectMessage && dmRecipient ? (
             <Button
@@ -476,9 +479,9 @@ export function ChannelView({
               className="size-8"
               aria-pressed={dmProfilePanelOpen}
               aria-label={
-                dmProfilePanelOpen ? 'Скрыть профиль' : 'Показать профиль'
+                dmProfilePanelOpen ? tv('hideProfile') : tv('showProfile')
               }
-              title={dmProfilePanelOpen ? 'Скрыть профиль' : 'Показать профиль'}
+              title={dmProfilePanelOpen ? tv('hideProfile') : tv('showProfile')}
               onClick={() => setDmProfilePanelOpen((open) => !open)}
             >
               <UserIcon className="size-4" />
@@ -498,7 +501,7 @@ export function ChannelView({
                   variant="ghost"
                   onClick={dismissVoiceCallBanner}
                 >
-                  {voiceCallInitiatedByCurrentUser ? 'Отменить' : 'Отклонить'}
+                  {voiceCallInitiatedByCurrentUser ? tv('cancel') : tv('decline')}
                 </Button>
               ) : null}
               <Button
@@ -591,8 +594,8 @@ export function ChannelView({
           {showInlineVoiceStage ? (
             <section
               ref={inlineVoiceStageRef}
-              aria-label="Голосовой звонок"
-              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-black"
+              aria-label={tv('callAria')}
+              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
               style={{
                 height: inlineVoiceStageHeight,
                 minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
@@ -653,9 +656,9 @@ export function ChannelView({
                 }
               />
               <div
-                aria-label="Изменить высоту звонка"
+                aria-label={tv('resizeAria')}
                 aria-orientation="horizontal"
-                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-white/20"
+                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
                 role="separator"
                 onPointerDown={startInlineVoiceStageResize}
               />
@@ -666,19 +669,19 @@ export function ChannelView({
           ) : null}
           {showVoiceCallBanner && voiceCall ? (
             <VoiceCallBanner
-              title={isDirectMessage ? 'Личный звонок' : 'Групповой звонок'}
+              title={isDirectMessage ? tv('dmCall') : tv('groupCall')}
               detail={
                 voiceCall.phase === 'ringing'
-                  ? `${voiceCallInitiatorName} звонит`
-                  : 'Звонок уже идёт'
+                  ? tv('calling', { name: voiceCallInitiatorName })
+                  : tv('ongoing')
               }
-              actionLabel="Ответить"
+              actionLabel={tv('answer')}
               dismissLabel={
                 isDirectMessage && voiceCall.phase === 'ringing'
                   ? voiceCallInitiatedByCurrentUser
-                    ? 'Отменить'
-                    : 'Отклонить'
-                  : 'Скрыть'
+                    ? tv('cancel')
+                    : tv('decline')
+                  : tv('hide')
               }
               onJoin={() => {
                 void voice.join(channelId)
@@ -706,7 +709,7 @@ export function ChannelView({
               onDelete={(message) => void handleDelete(message)}
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
-                if (!window.confirm('Заблокировать этого пользователя?')) return
+                if (!window.confirm(t('blockConfirm'))) return
                 Effect.runFork(
                   blockUserRelationship(token, message.author).pipe(
                     Effect.ignore,
@@ -844,8 +847,8 @@ export function ChannelView({
             channel.channel_type === 'Group') ? (
             <section
               ref={inlineVoiceStageRef}
-              aria-label="Голосовой звонок"
-              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-black"
+              aria-label={tv('callAria')}
+              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-media-backdrop"
               style={{
                 height: inlineVoiceStageHeight,
                 minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
@@ -906,9 +909,9 @@ export function ChannelView({
                 }
               />
               <div
-                aria-label="Изменить высоту звонка"
+                aria-label={tv('resizeAria')}
                 aria-orientation="horizontal"
-                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-white/20"
+                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-on-media/20"
                 role="separator"
                 onPointerDown={startInlineVoiceStageResize}
               />
@@ -919,19 +922,19 @@ export function ChannelView({
           ) : null}
           {showVoiceCallBanner && voiceCall ? (
             <VoiceCallBanner
-              title={isDirectMessage ? 'Личный звонок' : 'Групповой звонок'}
+              title={isDirectMessage ? tv('dmCall') : tv('groupCall')}
               detail={
                 voiceCall.phase === 'ringing'
-                  ? `${voiceCallInitiatorName} звонит`
-                  : 'Звонок уже идёт'
+                  ? tv('calling', { name: voiceCallInitiatorName })
+                  : tv('ongoing')
               }
-              actionLabel="Ответить"
+              actionLabel={tv('answer')}
               dismissLabel={
                 isDirectMessage && voiceCall.phase === 'ringing'
                   ? voiceCallInitiatedByCurrentUser
-                    ? 'Отменить'
-                    : 'Отклонить'
-                  : 'Скрыть'
+                    ? tv('cancel')
+                    : tv('decline')
+                  : tv('hide')
               }
               onJoin={() => {
                 void voice.join(channelId)
@@ -959,7 +962,7 @@ export function ChannelView({
               onDelete={(message) => void handleDelete(message)}
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
-                if (!window.confirm('Заблокировать этого пользователя?')) return
+                if (!window.confirm(t('blockConfirm'))) return
                 Effect.runFork(
                   blockUserRelationship(token, message.author).pipe(
                     Effect.ignore,

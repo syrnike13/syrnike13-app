@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
@@ -76,6 +77,7 @@ function ChannelPermissionEditor({
   initialPermissions: PermissionOverrideField | null | undefined
   canEdit: boolean
 }) {
+  const t = useTranslations('channels.permissions')
   const [permissions, setPermissions] = useState<PermissionOverrideField>(() =>
     overrideFieldFromRole(initialPermissions),
   )
@@ -131,7 +133,7 @@ function ChannelPermissionEditor({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось сохранить права',
+                : t('saveError'),
             )
             return false
           }),
@@ -156,10 +158,10 @@ function ChannelPermissionEditor({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold">Права — {roleName}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Нажмите на переключатель: наследуется → разрешено → запрещено.
-        </p>
+        <h3 className="text-base font-semibold">
+          {t('title', { role: roleName })}
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t('hint')}</p>
       </div>
 
       <div className="space-y-4">
@@ -202,8 +204,8 @@ function ChannelPermissionEditor({
 
       {!canEdit ? (
         <p className="text-sm text-muted-foreground">
-          Недостаточно прав для изменения прав{' '}
-          {userTargetId ? 'этого участника' : 'этой роли'}.
+          {t('insufficient')}{' '}
+          {userTargetId ? t('thisMember') : t('thisRole')}.
         </p>
       ) : null}
     </div>
@@ -284,6 +286,7 @@ export function ChannelSettingsPermissionsPanel({
   server: Server
   member: Member | undefined
 }) {
+  const t = useTranslations('channels.permissions')
   const auth = useAuth()
   const roles = useMemo(
     () => (server.roles ? sortRolesByHierarchy(Object.values(server.roles)) : []),
@@ -384,7 +387,7 @@ export function ChannelSettingsPermissionsPanel({
             </button>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">Нет ролей</p>
+              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
             ) : (
               <div className="space-y-1">
                 {roles.map((role) => (
@@ -400,11 +403,11 @@ export function ChannelSettingsPermissionsPanel({
 
             <div className="space-y-1 pt-3">
               <p className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Участники
+                {t('members')}
               </p>
               {members.length === 0 ? (
                 <p className="px-1 text-sm text-muted-foreground">
-                  Нет участников
+                  {t('noMembers')}
                 </p>
               ) : (
                 members.map((entry) => {

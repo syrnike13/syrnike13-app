@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   useCallback,
   useEffect,
@@ -88,6 +89,7 @@ function ServerChannelListFrame({
   canManage: boolean
   children: ReactNode
 }) {
+  const t = useTranslations('channels')
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [emptyMenu, setEmptyMenu] = useState<{ x: number; y: number } | null>(
@@ -144,7 +146,7 @@ function ServerChannelListFrame({
           }}
         >
           <PlusCircleIcon className="size-3.5" />
-          Создать канал
+          {t('createChannel')}
         </FloatingMenuItem>
         <FloatingMenuItem
           onClick={() => {
@@ -153,7 +155,7 @@ function ServerChannelListFrame({
           }}
         >
           <FolderPlusIcon className="size-3.5" />
-          Создать категорию
+          {t('createCategory.title')}
         </FloatingMenuItem>
       </FloatingMenu>
 
@@ -424,6 +426,7 @@ export function ServerChannelList({
   currentUserId,
   unreads,
 }: ServerChannelListProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore(
@@ -572,7 +575,7 @@ export function ServerChannelList({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось сохранить порядок',
+                : t('list.orderError'),
             )
           }),
         ),
@@ -648,7 +651,7 @@ export function ServerChannelList({
     return (
       <ServerChannelListFrame serverId={serverId} canManage={canManage}>
         <p className="px-2 py-4 text-xs text-muted-foreground">
-          Нет доступных каналов
+          {t('list.empty')}
         </p>
       </ServerChannelListFrame>
     )

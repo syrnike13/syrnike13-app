@@ -1,4 +1,5 @@
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
@@ -41,6 +42,7 @@ function shouldHideFriendshipAction(
 }
 
 export function FriendshipAction({ user, className }: FriendshipActionProps) {
+  const t = useTranslations('friends')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
@@ -77,7 +79,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           }
         >
           {pendingIcon ?? <UserCheckIcon data-icon="inline-start" />}
-          <span className="truncate">Принять</span>
+          <span className="truncate">{t('accept')}</span>
         </Button>
         <Button
           type="button"
@@ -90,7 +92,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           }
         >
           <XIcon data-icon="inline-start" />
-          <span className="truncate">Отклонить</span>
+          <span className="truncate">{t('decline')}</span>
         </Button>
       </div>
     )
@@ -107,7 +109,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           onClick={() => void run(() => sendFriendRequestToUser(token!, user))}
         >
           {pendingIcon ?? <UserPlusIcon data-icon="inline-start" />}
-          <span className="truncate">Добавить в друзья</span>
+          <span className="truncate">{t('add')}</span>
         </Button>
       </div>
     )
@@ -127,7 +129,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           }
         >
           {pendingIcon ?? <XIcon data-icon="inline-start" />}
-          <span className="truncate">Отменить заявку</span>
+          <span className="truncate">{t('cancelRequest')}</span>
         </Button>
       </div>
     )
@@ -145,7 +147,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           onClick={() => void run(() => removeFriend(token!, user._id))}
         >
           {pendingIcon ?? <UserMinusIcon data-icon="inline-start" />}
-          <span className="truncate">Удалить из друзей</span>
+          <span className="truncate">{t('remove')}</span>
         </Button>
       </div>
     )
@@ -163,7 +165,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           onClick={() => void run(() => unblockBlockedUser(token!, user._id))}
         >
           {pendingIcon ?? <ShieldOffIcon data-icon="inline-start" />}
-          <span className="truncate">Разблокировать</span>
+          <span className="truncate">{t('unblock')}</span>
         </Button>
       </div>
     )
@@ -173,6 +175,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
 }
 
 export function FriendshipContextMenuItems({ user }: { user: User }) {
+  const t = useTranslations('friends')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
@@ -203,7 +206,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
           }
         >
           <UserCheckIcon />
-          Принять заявку
+          {t('acceptRequest')}
         </ContextMenuItem>
         <ContextMenuItem
           disabled={disabled}
@@ -212,7 +215,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
           }
         >
           <XIcon />
-          Отклонить заявку
+          {t('declineRequest')}
         </ContextMenuItem>
       </>
     )
@@ -225,7 +228,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
         onSelect={() => void run(() => sendFriendRequestToUser(token!, user))}
       >
         <UserPlusIcon />
-        Добавить в друзья
+        {t('add')}
       </ContextMenuItem>
     )
   }
@@ -239,7 +242,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
         }
       >
         <XIcon />
-        Отменить заявку
+        {t('cancelRequest')}
       </ContextMenuItem>
     )
   }
@@ -252,7 +255,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
         onSelect={() => void run(() => removeFriend(token!, user._id))}
       >
         <UserMinusIcon />
-        Удалить из друзей
+        {t('remove')}
       </ContextMenuItem>
     )
   }
@@ -264,7 +267,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
         onSelect={() => void run(() => unblockBlockedUser(token!, user._id))}
       >
         <ShieldOffIcon />
-        Разблокировать
+        {t('unblock')}
       </ContextMenuItem>
     )
   }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { ReplyIcon, SmilePlusIcon } from '#/components/icons'
 
 import { MessageActionsMenu } from '#/components/chat/message-actions-menu'
@@ -8,11 +9,9 @@ import { Button } from '#/components/ui/button'
 import { HOVER_BAR_REACTIONS } from '#/lib/reactions'
 import { cn } from '#/lib/utils'
 
-const toolbarButtonClass =
-  'size-8 shrink-0 rounded-md p-0 text-lg text-muted-foreground hover:bg-muted hover:text-foreground'
+const toolbarButtonClass = 'size-8 shrink-0 p-0 text-lg'
 
-const toolbarIconButtonClass =
-  'size-8 shrink-0 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground'
+const toolbarIconButtonClass = 'size-8 shrink-0'
 
 type MessageHoverToolbarProps = {
   message: Message
@@ -43,6 +42,7 @@ export function MessageHoverToolbar({
   onUnpin,
   onToggleReaction,
 }: MessageHoverToolbarProps) {
+  const t = useTranslations('chat')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const pinnedOpen = pickerOpen || menuOpen
@@ -71,7 +71,7 @@ export function MessageHoverToolbar({
           'bg-popover px-0.5 py-0.5 text-popover-foreground shadow-md',
         )}
         role="toolbar"
-        aria-label="Действия с сообщением"
+        aria-label={t('messageActions')}
       >
         {HOVER_BAR_REACTIONS.map((emoji) => {
           const active = currentUserId
@@ -82,11 +82,8 @@ export function MessageHoverToolbar({
             <Button
               key={emoji}
               type="button"
-              variant="ghost"
-              className={cn(
-                toolbarButtonClass,
-                active && 'bg-primary/15 ring-1 ring-primary/30',
-              )}
+              variant={active ? 'toolbar-active' : 'toolbar'}
+              className={toolbarButtonClass}
               title={emoji}
               onClick={() => onToggleReaction(emoji, active)}
             >
@@ -105,10 +102,10 @@ export function MessageHoverToolbar({
           trigger={
             <Button
               type="button"
-              variant="ghost"
+              variant="toolbar"
               size="icon"
               className={toolbarIconButtonClass}
-              title="Добавить реакцию"
+              title={t('addReaction')}
             >
               <SmilePlusIcon className="size-4" />
             </Button>
@@ -117,10 +114,10 @@ export function MessageHoverToolbar({
 
         <Button
           type="button"
-          variant="ghost"
+          variant="toolbar"
           size="icon"
           className={toolbarIconButtonClass}
-          title="Ответить"
+          title={t('reply')}
           onClick={onReply}
         >
           <ReplyIcon className="size-4" />

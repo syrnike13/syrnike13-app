@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { SuggestionProps } from '@tiptap/suggestion'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -93,6 +94,7 @@ export function MentionSuggestionMenu({
   anchorRef,
   surfaceClassName = 'bg-popover text-popover-foreground',
 }: MentionSuggestionMenuProps) {
+  const t = useTranslations('chat')
   const menuRef = useRef<HTMLDivElement>(null)
   const selectedItemRef = useRef<HTMLButtonElement>(null)
   const [coords, setCoords] = useState<{
@@ -174,7 +176,7 @@ export function MentionSuggestionMenu({
       ref={menuRef}
       id={id}
       role="listbox"
-      aria-label="Упоминания"
+      aria-label={t('mentions')}
       className={cn(
         'gradient-surface-solid pointer-events-auto fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
         surfaceClassName,
@@ -188,12 +190,12 @@ export function MentionSuggestionMenu({
       onMouseDown={(event) => event.preventDefault()}
     >
       {participantEntries.length > 0 ? (
-        <div role="group" aria-label="Участники">
+        <div role="group" aria-label={t('members')}>
           <div
             role="presentation"
             className="px-3 py-1.5 text-xs font-medium text-muted-foreground"
           >
-            Участники
+            {t('members')}
           </div>
           {participantEntries.map(renderEntry)}
         </div>
@@ -202,7 +204,7 @@ export function MentionSuggestionMenu({
       {otherEntries.length > 0 ? (
         <div
           role="group"
-          aria-label="Другие упоминания"
+          aria-label={t('otherMentions')}
           className={cn(
             participantEntries.length > 0 &&
               'mt-1 border-t border-border/20 pt-1',

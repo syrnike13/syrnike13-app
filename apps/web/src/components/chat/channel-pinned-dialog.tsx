@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { PinIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
@@ -36,6 +37,7 @@ export function ChannelPinnedDialog({
   users,
   triggerClassName,
 }: ChannelPinnedDialogProps) {
+  const t = useTranslations('chat')
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
@@ -78,37 +80,37 @@ export function ChannelPinnedDialog({
           variant="ghost"
           size="icon"
           className={cn('size-8', triggerClassName)}
-          title="Закреплённые сообщения"
+          title={t('pinnedTitle')}
         >
           <PinIcon className="size-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[80vh] max-w-lg flex-col gap-4">
         <DialogHeader>
-          <DialogTitle>Закреплённые сообщения</DialogTitle>
+          <DialogTitle>{t('pinnedTitle')}</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {pinnedQuery.isFetching ? (
-            <p className="text-sm text-muted-foreground">Загрузка…</p>
+            <p className="text-sm text-muted-foreground">{t('loading')}</p>
           ) : null}
           {pinnedQuery.isError ? (
             <p className="text-sm text-destructive">
               {pinnedQuery.error instanceof Error
                 ? pinnedQuery.error.message
-                : 'Не удалось загрузить'}
+                : t('loadError')}
             </p>
           ) : null}
           {!pinnedQuery.isFetching &&
           !pinnedQuery.isError &&
           messages.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Нет закреплённых сообщений
+              {t('noPinned')}
             </p>
           ) : null}
           {messages.map((message) => {
             const author = message.user ?? users[message.author]
             const name =
-              author?.display_name ?? author?.username ?? 'Неизвестный'
+              author?.display_name ?? author?.username ?? t('unknownAuthor')
 
             return (
               <article
@@ -147,7 +149,7 @@ export function ChannelPinnedDialog({
                     })}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground italic">[без текста]</p>
+                  <p className="text-muted-foreground italic">{t('noText')}</p>
                 )}
                 <Button
                   type="button"
@@ -160,18 +162,18 @@ export function ChannelPinnedDialog({
                         Effect.matchEffect({
                           onFailure: () =>
                             Effect.sync(() => {
-                              toast.error('Не удалось скопировать')
+                              toast.error(t('copyError'))
                             }),
                           onSuccess: () =>
                             Effect.sync(() => {
-                              toast.success('ID скопирован')
+                              toast.success(t('idCopied'))
                             }),
                         }),
                       ),
                     )
                   }}
                 >
-                  Копировать ID
+                  {t('copyId')}
                 </Button>
               </article>
             )
