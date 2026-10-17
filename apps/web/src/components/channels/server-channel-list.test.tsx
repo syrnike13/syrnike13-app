@@ -154,4 +154,31 @@ describe('ServerChannelList', () => {
     expect(mocks.editServer).toHaveBeenCalledOnce()
     expect(channelNames()).toEqual(['Beta', 'Alpha'])
   })
+
+  it('hides muted channels only while the hide toggle is on', () => {
+    render(
+      <ServerChannelList
+        serverId="server-a"
+        users={{}}
+        currentUserId="user-current"
+        unreads={{}}
+      />,
+    )
+    expect(channelNames()).toEqual(['Alpha', 'Beta'])
+
+    act(() => {
+      syncStore.setChannelMute('channel-b', 'forever')
+    })
+    expect(channelNames()).toEqual(['Alpha', 'Beta'])
+
+    act(() => {
+      syncStore.setHideMuted('server-a', true)
+    })
+    expect(channelNames()).toEqual(['Alpha'])
+
+    act(() => {
+      syncStore.setChannelMute('channel-b', null)
+    })
+    expect(channelNames()).toEqual(['Alpha', 'Beta'])
+  })
 })

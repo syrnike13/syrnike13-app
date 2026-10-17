@@ -251,4 +251,36 @@ describe('ServerHeaderMenu', () => {
       search: { tab: 'audit' },
     })
   })
+
+  it('stores the local server notification level from the menu', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Только @упоминания' }),
+    )
+
+    expect(syncStore.getState().notificationMutes.servers['server-1']).toBe(
+      'mentions',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ничего' }))
+
+    expect(syncStore.getState().notificationMutes.servers['server-1']).toBe(
+      'none',
+    )
+  })
+
+  it('toggles hiding muted channels from the menu', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Скрыть заглушённые каналы' }),
+    )
+
+    expect(syncStore.getState().notificationMutes.hideMuted['server-1']).toBe(
+      true,
+    )
+  })
 })

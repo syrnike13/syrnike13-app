@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
+import { isChannelMuted } from '#/features/notifications/channel-mute-store'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
@@ -37,12 +38,18 @@ vi.mock('@tanstack/react-router', () => ({
     children,
     onClick,
     params,
+    className,
   }: {
     children: ReactNode
     onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void
     params: { channelId: string }
+    className?: string
   }) => (
-    <a href={`/app/c/${params.channelId}`} onClick={onClick}>
+    <a
+      href={`/app/c/${params.channelId}`}
+      className={className}
+      onClick={onClick}
+    >
       {children}
     </a>
   ),
@@ -122,6 +129,44 @@ vi.mock('#/components/ui/context-menu', () => ({
   ContextMenuSeparator: () => null,
   ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
     <>{children}</>
+  ),
+  ContextMenuSub: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: ReactNode
+    value?: string
+    onValueChange?: (value: string) => void
+  }) => (
+    <div data-testid="level-group" data-value={value}>
+      {children}
+      {onValueChange ? (
+        <button type="button" onClick={() => onValueChange('none')}>
+          set-level-none
+        </button>
+      ) : null}
+    </div>
+  ),
+  ContextMenuRadioItem: ({
+    children,
+    value,
+  }: {
+    children: ReactNode
+    value: string
+  }) => (
+    <button type="button" data-value={value}>
+      {children}
+    </button>
   ),
 }))
 
@@ -665,5 +710,147 @@ describe('ChannelSidebarItem voice navigation', () => {
       )
     })
     expect(syncStore.getState().channels['text-general']).toBeUndefined()
+  })
+})
+
+describe('ChannelSidebarItem notification mutes', () => {
+  beforeEach(() => {
+    syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['text-general'],
+    })
+    upsertTextServerChannel()
+  })
+
+  afterEach(() => {
+    cleanup()
+    syncStore.reset()
+  })
+
+  function renderTextChannel() {
+    render(
+      <ChannelSidebarItem
+        channel={textServerChannel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+  }
+
+  it('mutes the channel for 15 minutes from the context menu', () => {
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'На 15 минут' }))
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(true)
+    // Вместо иконки мьюта строка канала просто приглушается прозрачностью.
+    expect(screen.getByRole('link').className).toContain('opacity-60')
+    expect(screen.queryByTitle('Канал заглушён')).toBeNull()
+  })
+
+  it('offers the three-hour mute duration', () => {
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'На 3 часа' }))
+
+    const mutedUntil =
+      syncStore.getState().notificationMutes.channels['text-general']
+        ?.mutedUntil
+    expect(typeof mutedUntil).toBe('number')
+    expect(
+      Math.abs(
+        (mutedUntil as number) - (Date.now() + 3 * 60 * 60 * 1000),
+      ),
+    ).toBeLessThan(5_000)
+  })
+
+  it('clears the mute from the row menu', () => {
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Включить оповещения канала/ }),
+    )
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(false)
+    expect(screen.getByRole('link').className).not.toContain('opacity-60')
+  })
+
+  it('offers the notification level menu for server channels', () => {
+    renderTextChannel()
+
+    expect(
+      screen.getByRole('button', { name: 'Только @упоминания' }),
+    ).toBeTruthy()
+  })
+
+  it('shows the current level under the notification settings item', () => {
+    syncStore.setChannelNotificationLevel('text-general', 'mentions')
+    renderTextChannel()
+
+    expect(
+      screen.getByText('Параметры уведомлений').closest('div')?.textContent,
+    ).toContain('Только @упоминания')
+  })
+
+  it('keeps the saved level visible while the channel is muted', () => {
+    syncStore.setChannelNotificationLevel('text-general', 'mentions')
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    // Мьют не подменяет уровень на «Ничего»: он показан отдельной строкой.
+    expect(
+      screen.getByTestId('level-group').getAttribute('data-value'),
+    ).toBe('mentions')
+    expect(
+      screen.getByRole('button', { name: /Включить оповещения канала/ }),
+    ).toBeTruthy()
+  })
+
+  it('falls back to the server level when the channel has no override', () => {
+    syncStore.setServerNotificationLevel('server-1', 'mentions')
+    renderTextChannel()
+
+    expect(
+      screen.getByTestId('level-group').getAttribute('data-value'),
+    ).toBe('mentions')
+  })
+
+  it('does not clear the mute when a notification level is picked', () => {
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'set-level-none' }))
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(true)
+    expect(
+      syncStore.getState().notificationMutes.channels['text-general'],
+    ).toEqual({ level: 'none', mutedUntil: 'forever' })
+  })
+
+  it('shows the mute end time next to the enable item', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date(2026, 9, 13, 12, 0, 0))
+      syncStore.setChannelMute('text-general', 55 * 60_000)
+      renderTextChannel()
+
+      expect(
+        screen.getByRole('button', {
+          name: /Заглушено до 13\.10, 12:55/,
+        }),
+      ).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

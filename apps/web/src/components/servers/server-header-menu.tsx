@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import {
+  CheckIcon,
   ChevronDownIcon,
   CopyIcon,
+  EyeOffIcon,
   FolderPlusIcon,
   LogOutIcon,
   PlusCircleIcon,
@@ -37,6 +39,11 @@ import { useAuth } from '#/features/auth/auth-context'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
+import {
+  NOTIFICATION_LEVELS,
+  isServerHidingMuted,
+  serverNotificationLevel,
+} from '#/features/notifications/channel-mute-store'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
@@ -91,6 +98,12 @@ export function ServerHeaderMenu({
   const isOwner = server?.owner === auth.user?._id
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
+  )
+  const serverLevel = useSyncStore((s) =>
+    serverNotificationLevel(s.notificationMutes, serverId),
+  )
+  const hideMuted = useSyncStore((s) =>
+    isServerHidingMuted(s.notificationMutes, serverId),
   )
   const menuPermissions = server
     ? getServerMenuPermissions(
@@ -274,6 +287,38 @@ export function ServerHeaderMenu({
               Создать категорию
             </ServerHeaderMenuItem>
           ) : null}
+          {/* Локальные настройки уведомлений: на сервер не уезжают. */}
+          <Separator className="my-1" />
+          <div className="px-2 pt-1 pb-1 text-xs font-medium text-muted-foreground">
+            Уведомления сервера
+          </div>
+          {NOTIFICATION_LEVELS.map((option) => (
+            <ServerHeaderMenuItem
+              key={option.value}
+              icon={
+                serverLevel === option.value ? (
+                  <CheckIcon className="size-4" />
+                ) : null
+              }
+              onClick={() =>
+                syncStore.setServerNotificationLevel(serverId, option.value)
+              }
+            >
+              {option.label}
+            </ServerHeaderMenuItem>
+          ))}
+          <ServerHeaderMenuItem
+            icon={
+              hideMuted ? (
+                <CheckIcon className="size-4" />
+              ) : (
+                <EyeOffIcon className="size-4" />
+              )
+            }
+            onClick={() => syncStore.setHideMuted(serverId, !hideMuted)}
+          >
+            Скрыть заглушённые каналы
+          </ServerHeaderMenuItem>
           {showAdminSection &&
           (menuPermissions?.leave || menuPermissions?.copyId) ? (
             <Separator className="my-1" />

@@ -12,6 +12,7 @@ import type {
   GatewayServerEvent as GatewayEvent,
 } from '@syrnike13/api-types/gateway-schema'
 
+import type { NotificationMuteState } from '#/features/notifications/channel-mute-store'
 import type {
   VoiceCallsByChannel,
   VoiceParticipantsByChannel,
@@ -77,4 +78,6 @@ export type SyncState = {
   voiceCalls: VoiceCallsByChannel
   /** In-memory call UI keys hidden by the current client session. */
   dismissedVoiceCallKeys: Record<string, true>
+  /** Локальные мьюты и уровни уведомлений (localStorage, не серверные). */
+  notificationMutes: NotificationMuteState
 }

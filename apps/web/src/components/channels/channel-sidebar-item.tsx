@@ -1,5 +1,6 @@
 import { Link, useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
+  BellIcon,
   CheckCheckIcon,
   HashIcon,
   HeadphonesIcon,
@@ -8,6 +9,7 @@ import {
   SettingsIcon,
   Trash2Icon,
   UsersIcon,
+  VolumeXIcon,
 } from '#/components/icons'
 import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
@@ -23,7 +25,12 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '#/components/ui/context-menu'
 import {
@@ -41,6 +48,17 @@ import { editServerMemberEffect } from '#/features/api/servers-api'
 import { deleteChannelEffect } from '#/features/api/channels-api'
 import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
+import {
+  MUTE_DURATIONS,
+  MUTE_FOREVER_LABEL,
+  NOTIFICATION_LEVELS,
+  formatMuteUntilLabel,
+  isChannelMuted,
+  notificationLevelLabel,
+  serverNotificationLevel,
+  type NotificationLevel,
+} from '#/features/notifications/channel-mute-store'
+import { useMuteCountdown } from '#/features/notifications/use-mute-countdown'
 import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   getChannelLabel,
@@ -63,6 +81,7 @@ import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobil
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
+  serverChannelServerId,
 } from '#/lib/channel-voice'
 import {
   canManageChannel,
@@ -90,6 +109,26 @@ type ChannelSidebarItemProps = {
   canInvite?: boolean
   dragHandleProps?: DraggableProvidedDragHandleProps
   dragging?: boolean
+}
+
+/** Пункт меню в две строки: название и подпись с текущим состоянием. */
+function MenuLabel({
+  title,
+  description,
+}: {
+  title: string
+  description?: string
+}) {
+  return (
+    <span className="flex min-w-0 flex-col text-left">
+      <span className="truncate">{title}</span>
+      {description ? (
+        <span className="truncate text-xs text-muted-foreground">
+          {description}
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 export function ChannelSidebarItem({
@@ -207,6 +246,22 @@ export function ChannelSidebarItem({
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
   )
+  // Локальные мьюты и уровни уведомлений (localStorage), не серверные настройки.
+  const notificationMutes = useSyncStore((s) => s.notificationMutes)
+  const muted = isChannelMuted(notificationMutes, channel._id)
+  const now = useMuteCountdown(muted)
+  const muteUntilLabel = formatMuteUntilLabel(
+    notificationMutes.channels[channel._id]?.mutedUntil,
+    now,
+  )
+  // Радио показывает сохранённый уровень канала, иначе — уровень сервера:
+  // активный мьют рисуется отдельной строкой и выбор уровня не снимает.
+  const channelServerId = serverChannelServerId(channel)
+  const notificationLevel =
+    notificationMutes.channels[channel._id]?.level ??
+    (channelServerId
+      ? serverNotificationLevel(notificationMutes, channelServerId)
+      : 'all')
   const voiceCall = useSyncStore((s) => s.voiceCalls[channel._id])
   const voiceCallRingingDismissed = useSyncStore((s) =>
     isVoiceCallRingingDismissed(voiceCall, s.dismissedVoiceCallKeys),
@@ -460,6 +515,8 @@ export function ChannelSidebarItem({
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
+            // Заглушённый канал приглушаем прозрачностью: отдельной иконки нет.
+            muted && 'opacity-60 transition-opacity hover:opacity-100',
           )}
           onClick={serverVoice ? handleVoiceChannelClick : undefined}
           {...(canManage && dragHandleProps ? dragHandleProps : {})}
@@ -557,6 +614,73 @@ export function ChannelSidebarItem({
           Приглашение
         </ContextMenuItem>
       ) : null}
+      {isServerChannel ? (
+        <>
+          <ContextMenuSeparator />
+          {muted ? (
+            <ContextMenuItem
+              onSelect={() => syncStore.setChannelMute(channel._id, null)}
+            >
+              <BellIcon className="size-3.5" />
+              <MenuLabel
+                title="Включить оповещения канала"
+                description={muteUntilLabel ?? undefined}
+              />
+            </ContextMenuItem>
+          ) : null}
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <VolumeXIcon className="size-3.5" />
+              {muted ? 'Изменить мьют' : 'Заглушить канал'}
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {MUTE_DURATIONS.map((option) => (
+                <ContextMenuItem
+                  key={option.id}
+                  onSelect={() =>
+                    syncStore.setChannelMute(channel._id, option.ms)
+                  }
+                >
+                  {option.label}
+                </ContextMenuItem>
+              ))}
+              <ContextMenuItem
+                onSelect={() =>
+                  syncStore.setChannelMute(channel._id, 'forever')
+                }
+              >
+                {MUTE_FOREVER_LABEL}
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <BellIcon className="size-3.5" />
+              <MenuLabel
+                title="Параметры уведомлений"
+                description={notificationLevelLabel(notificationLevel)}
+              />
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuRadioGroup
+                value={notificationLevel}
+                onValueChange={(value) =>
+                  syncStore.setChannelNotificationLevel(
+                    channel._id,
+                    value as NotificationLevel,
+                  )
+                }
+              >
+                {NOTIFICATION_LEVELS.map((option) => (
+                  <ContextMenuRadioItem key={option.value} value={option.value}>
+                    {option.label}
+                  </ContextMenuRadioItem>
+                ))}
+              </ContextMenuRadioGroup>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        </>
+      ) : null}
       {canManage && isServerChannel ? (
         <>
           <ContextMenuSeparator />
@@ -586,7 +710,10 @@ export function ChannelSidebarItem({
       {isServerChannel ? (
         <ContextMenu>
           <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-          <ContextMenuContent className="w-52">{menuItems}</ContextMenuContent>
+          {/* Ширина по содержимому: подписи в две строки не должны резаться. */}
+          <ContextMenuContent className="min-w-52">
+            {menuItems}
+          </ContextMenuContent>
         </ContextMenu>
       ) : (
         row

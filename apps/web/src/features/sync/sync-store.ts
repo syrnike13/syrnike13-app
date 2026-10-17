@@ -34,6 +34,20 @@ import {
 import { voiceCallUiKey } from './voice-call-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
 import { serverChannelServerId } from '#/lib/channel-voice'
+import {
+  emptyNotificationMutes,
+  hasExpiredMute,
+  loadNotificationMutes,
+  nextMuteExpiryAt,
+  normalizeNotificationMutes,
+  persistNotificationMutes,
+  withChannelMuteEntry,
+  withoutChannelMutes,
+  type ChannelMuteEntry,
+  type ChannelMuteExpiry,
+  type NotificationLevel,
+  type NotificationMuteState,
+} from '#/features/notifications/channel-mute-store'
 
 const ChannelSchema = Schema.declare<Channel>(
   (input): input is Channel => Schema.is(ApiSchema.Channel)(input),
@@ -67,6 +81,7 @@ function emptyState(): SyncState {
     voiceParticipants: {},
     voiceCalls: {},
     dismissedVoiceCallKeys: {},
+    notificationMutes: emptyNotificationMutes(),
   }
 }
 
@@ -77,6 +92,8 @@ const voiceCallExpiryTimers: Record<string, Fiber.Fiber<void, never>> = {}
 const GROUP_UNANSWERED_ACTIVE_MS = 10 * 60 * 1000
 let batchDepth = 0
 let batchHasChanges = false
+/** Один таймер на ближайшее истечение мьюта канала. */
+let muteExpiryTimer: ReturnType<typeof setTimeout> | null = null
 
 function emit() {
   if (batchDepth > 0) {
@@ -111,6 +128,40 @@ function setState(patch: Partial<SyncState>) {
   }
   state = next
   emit()
+}
+
+/**
+ * Мьюты живут локально: localStorage по ключу пользователя, не сервер.
+ * Таймер нужен, чтобы бейдж вернулся сам, без перезагрузки.
+ */
+function clearMuteExpiryTimer() {
+  if (muteExpiryTimer === null) return
+  clearTimeout(muteExpiryTimer)
+  muteExpiryTimer = null
+}
+
+function scheduleMuteExpiry() {
+  clearMuteExpiryTimer()
+
+  const expiresAt = nextMuteExpiryAt(state.notificationMutes)
+  if (expiresAt === null) return
+
+  muteExpiryTimer = setTimeout(() => {
+    muteExpiryTimer = null
+    syncStore.pruneExpiredMutes()
+    // Перепланируем всегда: следующий мьют мог остаться без таймера,
+    // если prune не изменил состояние.
+    scheduleMuteExpiry()
+  }, Math.max(0, expiresAt - Date.now() + 250))
+}
+
+function applyNotificationMutes(next: NotificationMuteState) {
+  const previous = state.notificationMutes
+  setState({ notificationMutes: next })
+  if (state.notificationMutes === previous) return
+
+  persistNotificationMutes(currentUserId, next)
+  scheduleMuteExpiry()
 }
 
 function clearVoiceCallExpiryTimer(channelId: string) {
@@ -410,13 +461,88 @@ export const syncStore = {
 
   reset() {
     clearVoiceCallExpiryTimers()
+    clearMuteExpiryTimer()
     currentUserId = undefined
     state = emptyState()
     emit()
   },
 
+  /** Смена аккаунта: мьюты читаются из своего localStorage-ключа. */
   setCurrentUserId(userId: string | undefined) {
+    if (currentUserId === userId) return
     currentUserId = userId
+    setState({ notificationMutes: loadNotificationMutes(userId) })
+    scheduleMuteExpiry()
+  },
+
+  /** Локальный мьют канала: `null` снимает мьют, `'forever'` — до выключения. */
+  setChannelMute(channelId: string, duration: ChannelMuteExpiry | null) {
+    const mutes = state.notificationMutes
+    const entry: ChannelMuteEntry = { ...mutes.channels[channelId] }
+
+    if (duration === null) {
+      delete entry.mutedUntil
+    } else {
+      entry.mutedUntil =
+        duration === 'forever' ? 'forever' : Date.now() + duration
+    }
+
+    applyNotificationMutes({
+      ...mutes,
+      channels: withChannelMuteEntry(mutes.channels, channelId, entry),
+    })
+  },
+
+  setChannelNotificationLevel(
+    channelId: string,
+    level: NotificationLevel | null,
+  ) {
+    const mutes = state.notificationMutes
+    const entry: ChannelMuteEntry = { ...mutes.channels[channelId] }
+
+    if (level === null) delete entry.level
+    else entry.level = level
+
+    applyNotificationMutes({
+      ...mutes,
+      channels: withChannelMuteEntry(mutes.channels, channelId, entry),
+    })
+  },
+
+  setServerNotificationLevel(serverId: string, level: NotificationLevel) {
+    const mutes = state.notificationMutes
+    const servers = { ...mutes.servers }
+
+    if (level === 'all') delete servers[serverId]
+    else servers[serverId] = level
+
+    applyNotificationMutes({ ...mutes, servers })
+  },
+
+  setHideMuted(serverId: string, hide: boolean) {
+    const mutes = state.notificationMutes
+    const hideMuted = { ...mutes.hideMuted }
+
+    if (hide) hideMuted[serverId] = true
+    else delete hideMuted[serverId]
+
+    applyNotificationMutes({ ...mutes, hideMuted })
+  },
+
+  /** «Снять все мьюты»: выбранные уровни уведомлений остаются. */
+  clearAllChannelMutes() {
+    const mutes = state.notificationMutes
+    applyNotificationMutes({
+      ...mutes,
+      channels: withoutChannelMutes(mutes.channels),
+    })
+  },
+
+  /** Истёкшие мьюты убирает таймер, а не только чтение. */
+  pruneExpiredMutes() {
+    const mutes = state.notificationMutes
+    if (!hasExpiredMute(mutes)) return
+    applyNotificationMutes(normalizeNotificationMutes(mutes))
   },
 
   setSelectedServerId(serverId: string | null) {

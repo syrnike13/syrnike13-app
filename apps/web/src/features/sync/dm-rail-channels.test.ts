@@ -2,6 +2,7 @@ import type { Channel } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
 import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
+import { emptyNotificationMutes } from '#/features/notifications/channel-mute-store'
 import { voiceCallUiKey } from './voice-call-utils'
 
 import { listVisibleDmRailChannels } from './selectors'
@@ -92,6 +93,7 @@ function state(
     voiceParticipants: {},
     voiceCalls: {},
     dismissedVoiceCallKeys: {},
+    notificationMutes: emptyNotificationMutes(),
     ...overrides,
   }
 }

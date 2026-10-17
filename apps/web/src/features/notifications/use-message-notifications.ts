@@ -3,8 +3,11 @@ import type { Message } from '@syrnike13/api-types'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
+import { resolveMessageNotificationLevel } from '#/features/notifications/channel-mute-store'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore } from '#/features/sync/sync-store'
+import { serverChannelServerId } from '#/lib/channel-voice'
+import { isMessageMentioningUser } from '#/lib/mentions'
 
 function canNotify() {
   return (
@@ -46,6 +49,30 @@ export function useMessageNotifications() {
       const author = syncStore.getState().users[message.author]
       if (author?.relationship === 'Blocked') return
 
+      // Локальный мьют и уровень уведомлений: 'none' молчит, 'mentions' — только по упоминанию.
+      const state = syncStore.getState()
+      const channel = state.channels[message.channel]
+      const currentUserId = auth.user?._id
+      // Роли и @online считаются у участника этого сервера: ключ member — сервер+пользователь.
+      const serverId = serverChannelServerId(channel)
+      // Пресенс свежее в синк-сторе (auth.user не обновляется на UserPresence).
+      const currentUser =
+        (currentUserId ? state.users[currentUserId] : undefined) ??
+        auth.user ??
+        undefined
+      const notificationLevel = resolveMessageNotificationLevel({
+        mutes: state.notificationMutes,
+        channel,
+        mentionsCurrentUser: isMessageMentioningUser(message, currentUserId, {
+          member:
+            serverId && currentUserId
+              ? state.members[`${serverId}:${currentUserId}`]
+              : undefined,
+          currentUser,
+        }),
+      })
+      if (notificationLevel === 'none') return
+
       if (
         document.hasFocus() &&
         activeChannelIdFromPath() === message.channel
@@ -57,7 +84,11 @@ export function useMessageNotifications() {
 
       const body =
         message.content?.trim().slice(0, 140) ||
-        (message.attachments?.length ? 'Вложение' : 'Сообщение')
+        (message.attachments?.length
+          ? 'Вложение'
+          : message.embeds?.length
+            ? 'Превью ссылки'
+            : 'Сообщение')
 
       const notification = new Notification(
         notificationTitle(message, auth.user?._id),
