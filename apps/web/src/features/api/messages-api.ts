@@ -8,6 +8,7 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
+import type { MessageSearchHas } from '#/features/search/search-query-parser'
 import { encodeReactionId } from '#/lib/reactions'
 
 import { apiRequestEffect } from '#/lib/api/client'
@@ -143,16 +144,32 @@ export function sendChannelMessage(
   )
 }
 
+export type MessageSearchRequest = {
+  /** Свободный текст без распознанных фильтров. */
+  query?: string
+  /** Только сообщения этого автора (id). */
+  from?: string
+  /** Только сообщения, упоминающие этого пользователя (id). */
+  mentions?: string
+  /** Только сообщения с таким содержимым. */
+  has?: MessageSearchHas
+  limit?: number
+}
+
 export const searchChannelMessagesEffect = Effect.fn('web.messages.search')(
   function*(
     token: string,
     channelId: string,
-    query: string,
-    limit = 25,
+    request: MessageSearchRequest,
   ) {
+    const query = request.query?.trim()
+
     const body: DataMessageSearch = {
-      query,
-      limit,
+      query: query ? query : undefined,
+      from: request.from,
+      mentions: request.mentions,
+      has: request.has,
+      limit: request.limit ?? 25,
       include_users: true,
     }
 

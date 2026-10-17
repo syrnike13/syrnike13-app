@@ -2075,6 +2075,12 @@ export interface components {
         members?: components["schemas"]["Member"][] | null;
       }>;
     /**
+     * @description Kinds of content a message can be filtered by
+     *
+     * Used by `has:` filters in message search.
+     */
+    MessageHas: "link" | "image" | "file" | "video";
+    /**
      * @description Message Sort
      *
      * Sort used for retrieving messages
@@ -2090,6 +2096,20 @@ export interface components {
       query?: string | null;
       /** @description Whether to only search for pinned messages, cannot be sent with `query`. */
       pinned?: boolean | null;
+      /**
+       * @description Only fetch messages sent by this user
+       *
+       * Takes a user id; unknown values simply match nothing.
+       */
+      from?: string | null;
+      /**
+       * @description Only fetch messages mentioning this user
+       *
+       * Takes a user id; unknown values simply match nothing.
+       */
+      mentions?: string | null;
+      /** @description Only fetch messages carrying this kind of content */
+      has?: components["schemas"]["MessageHas"] | null;
       /**
        * Format: int64
        * @description Maximum number of messages to fetch

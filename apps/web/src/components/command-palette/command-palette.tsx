@@ -163,7 +163,10 @@ export function CommandPalette() {
 
         const batches = yield* Effect.all(
           channelIds.map((channelId) =>
-            searchChannelMessagesEffect(token, channelId, trimmed, 8).pipe(
+            searchChannelMessagesEffect(token, channelId, {
+              query: trimmed,
+              limit: 8,
+            }).pipe(
               Effect.flatMap(({ messages, users }) =>
                 Effect.sync(() => {
                   syncStore.upsertUsers(users)

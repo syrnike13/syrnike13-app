@@ -3,10 +3,43 @@ use futures::future::try_join_all;
 use indexmap::IndexSet;
 use std::collections::HashMap;
 use std::time::SystemTime;
+use syrnike_models::v0::{Embed, MessageHas};
 use syrnike_result::Result;
 use ulid::Ulid;
 
 use super::AbstractMessages;
+
+/// Соответствует ли сообщение фильтру `has:` (зеркало выборки в MongoDB).
+fn message_has_content(message: &Message, has: &MessageHas) -> bool {
+    let embeds = message.embeds.as_deref().unwrap_or_default();
+    let attachments = message.attachments.as_deref().unwrap_or_default();
+    let has_embed_type = |kind: &str| {
+        embeds.iter().any(|embed| match embed {
+            Embed::Website(_) => kind == "Website",
+            Embed::Image(_) => kind == "Image",
+            Embed::Video(_) => kind == "Video",
+            Embed::Text(_) => kind == "Text",
+            Embed::None => false,
+        })
+    };
+
+    match has {
+        MessageHas::Link => has_embed_type("Website"),
+        MessageHas::Image => {
+            has_embed_type("Image")
+                || attachments
+                    .iter()
+                    .any(|file| matches!(file.metadata, crate::Metadata::Image { .. }))
+        }
+        MessageHas::File => !attachments.is_empty(),
+        MessageHas::Video => {
+            has_embed_type("Video")
+                || attachments
+                    .iter()
+                    .any(|file| matches!(file.metadata, crate::Metadata::Video { .. }))
+        }
+    }
+}
 
 #[async_trait]
 impl AbstractMessages for ReferenceDb {
@@ -44,6 +77,22 @@ impl AbstractMessages for ReferenceDb {
 
                 if let Some(author) = &query.filter.author {
                     if &message.author != author {
+                        return false;
+                    }
+                }
+
+                if let Some(mentions) = &query.filter.mentions {
+                    if !message
+                        .mentions
+                        .as_ref()
+                        .is_some_and(|list| list.contains(mentions))
+                    {
+                        return false;
+                    }
+                }
+
+                if let Some(has) = &query.filter.has {
+                    if !message_has_content(message, has) {
                         return false;
                     }
                 }

@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 59; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 60; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1662,6 +1662,47 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
                 .expect("Failed to backfill feedback author tag.");
         }
     };
+
+    if revision <= 59 {
+        info!("Running migration [revision 59 / 13-10-2026]: Add message search filter indexes.");
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "messages",
+                "indexes": [
+                    {
+                        "key": {
+                            "channel": 1_i32,
+                            "mentions": 1_i32
+                        },
+                        "name": "channel_mentions_compound"
+                    },
+                    {
+                        "key": {
+                            "channel": 1_i32,
+                            "author": 1_i32
+                        },
+                        "name": "channel_author_compound"
+                    },
+                    {
+                        "key": {
+                            "channel": 1_i32,
+                            "embeds.type": 1_i32
+                        },
+                        "name": "channel_embeds_type_compound"
+                    },
+                    {
+                        "key": {
+                            "channel": 1_i32,
+                            "attachments.metadata.type": 1_i32
+                        },
+                        "name": "channel_attachments_metadata_type_compound"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create message search filter indexes.");
+    }
 
     // Reminder to update LATEST_REVISION when adding new migrations.
     LATEST_REVISION.max(revision)
