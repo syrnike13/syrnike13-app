@@ -13,7 +13,7 @@ import {
 } from '#/components/layout/page'
 import { PlusIcon } from '#/components/icons'
 import { SearchField } from '#/components/search-field'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'

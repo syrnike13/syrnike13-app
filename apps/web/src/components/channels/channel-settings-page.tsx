@@ -17,8 +17,8 @@ import {
   channelSettingsSearch,
   clearChannelSettingsSearch,
 } from '#/lib/channel-settings-navigation'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { useAuth } from '#/features/auth/auth-context'

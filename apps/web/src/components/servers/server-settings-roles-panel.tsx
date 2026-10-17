@@ -34,7 +34,7 @@ import {
   useDraftRegistration,
   type DraftController,
 } from '#/components/settings/draft-controller-context'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -42,11 +42,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
   FloatingMenu,
   FloatingMenuItem,
-} from '#/components/ui/floating-menu'
+} from '@syrnike13/ui/primitives/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerRoleEffect,

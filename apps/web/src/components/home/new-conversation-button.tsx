@@ -6,22 +6,22 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/popover'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { createGroupChannelEffect } from '#/features/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'

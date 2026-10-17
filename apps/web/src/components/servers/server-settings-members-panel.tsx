@@ -9,7 +9,7 @@ import {
 } from '@syrnike13/ui/i18n'
 
 import { SearchIcon } from '#/components/icons'
-import { Input } from '#/components/ui/input'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import { useAuth } from '#/features/auth/auth-context'

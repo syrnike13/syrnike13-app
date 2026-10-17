@@ -23,8 +23,8 @@ import {
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
-} from '#/components/ui/context-menu'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/context-menu'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import {

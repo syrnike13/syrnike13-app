@@ -34,7 +34,7 @@
 | Уведомление | `toast` из `sonner` | свои всплывашки |
 | Строка списка | `ListItem` | `<button className="flex w-full … hover:bg-…">` |
 
-Каталог расширяется по мере переноса примитивов. До завершения миграции `apps/web/src/components/ui/*` — re-export шимы; новый код импортирует из `@syrnike13/ui`.
+Каталог расширяется по мере переноса примитивов. Приложения импортируют примитивы напрямую из `@syrnike13/ui/primitives/*`; app-local `components/ui` содержит только продуктовые обёртки (`fx-image`, `resizable`, `sonner`).
 
 ## Правила
 
@@ -52,7 +52,7 @@
 
 | Тип экрана | Эталон | Что правильно |
 | --- | --- | --- |
-| Раздел настроек | `apps/web/src/components/settings/settings-panels.tsx` (до миграции) | секции, загрузка/ошибка/пусто, `toast` по итогу |
+| Раздел настроек | `apps/web/src/components/settings/settings-panels.tsx` | секции, загрузка/ошибка/пусто, `toast` по итогу |
 | Чат/канал | `apps/web/src/components/chat/channel-view.tsx` | header + list + composer + sidebars |
 | Голос | `apps/web/src/components/voice/voice-stage-view.tsx` | stage/grid/filmstrip, контролы |
 | Auth | `apps/web/src/components/auth/auth-layout.tsx` | центрирование, тема, ошибки |

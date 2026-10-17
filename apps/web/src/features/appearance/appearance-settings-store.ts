@@ -10,7 +10,7 @@ import {
 } from '@syrnike13/platform'
 import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
-import { applyThemeToDocument } from '#/features/appearance/apply-theme'
+import { applyThemeToDocument } from '@syrnike13/ui/tokens'
 import {
   loadDesktopLocalSettingsEffect,
   updateDesktopLocalSettingsEffect,

@@ -6,8 +6,8 @@ import { DmChannelList } from '#/components/home/dm-channel-list'
 import { NewConversationButton } from '#/components/home/new-conversation-button'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 type HomeSidebarProps = {
   activeChannelId?: string

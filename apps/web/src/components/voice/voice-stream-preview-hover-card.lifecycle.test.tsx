@@ -20,7 +20,7 @@ vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
   recordDiagnosticEvent: vi.fn(),
 }))
 import { VoiceStreamPreviewHoverCard } from './voice-stream-preview-hover-card'
-import { PortalContainerProvider } from '#/components/ui/portal-container'
+import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
 
 const createUrl = vi.fn(() => 'blob:test-preview')
 const revokeUrl = vi.fn()

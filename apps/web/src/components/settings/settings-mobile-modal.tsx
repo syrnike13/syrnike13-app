@@ -21,8 +21,8 @@ import {
   resolveMobileSettingsStack,
   type MobileSettingsScreen,
 } from '#/components/settings/settings-nav-config'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   type SettingsSection,
   useSettingsModal,

@@ -7,7 +7,7 @@ import {
   AvatarBadge,
   AvatarFallback,
   AvatarImage,
-} from '#/components/ui/avatar'
+} from '@syrnike13/ui/primitives/avatar'
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import {
   presenceRingColorVar,

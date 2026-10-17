@@ -6,14 +6,14 @@ import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import { verifyAccountEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { clearPendingVerifyEmail } from '#/lib/auth-verify-email'

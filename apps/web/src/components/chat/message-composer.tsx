@@ -16,7 +16,7 @@ import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-s
 import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
 import {

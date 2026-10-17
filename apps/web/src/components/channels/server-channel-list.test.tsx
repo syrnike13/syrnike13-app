@@ -87,7 +87,7 @@ vi.mock('#/components/servers/create-channel-dialog', () => ({
   CreateChannelDialog: () => null,
 }))
 
-vi.mock('#/components/ui/floating-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/floating-menu', () => ({
   FloatingMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   FloatingMenuItem: ({ children }: { children: ReactNode }) => (
     <button type="button">{children}</button>

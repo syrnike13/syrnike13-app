@@ -12,7 +12,7 @@ import {
   AdminSectionHeader,
 } from '#/components/layout/page'
 import { Loader2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { fetchAdminDiagnosticReports } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'

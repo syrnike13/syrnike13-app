@@ -4,7 +4,7 @@ import type { ComponentProps, PropsWithChildren } from 'react'
 
 import { HomeIcon } from '#/components/icons'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
-import { Card } from '#/components/ui/card'
+import { Card } from '@syrnike13/ui/primitives/card'
 import { config as appConfig } from '#/lib/config'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'

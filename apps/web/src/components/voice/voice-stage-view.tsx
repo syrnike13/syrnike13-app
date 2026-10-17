@@ -21,7 +21,7 @@ import type {
   VoiceCallState,
 } from '#/features/sync/voice-types'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'

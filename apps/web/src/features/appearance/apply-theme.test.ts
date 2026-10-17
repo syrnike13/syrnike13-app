@@ -6,9 +6,9 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 import {
   applyThemeToDocument,
   readSystemPrefersDark,
-} from '#/features/appearance/apply-theme'
-import { THEME_TOKEN_KEYS } from '#/features/appearance/theme-tokens'
-import { THEME_SURFACE_VARIABLE_KEYS } from '#/features/appearance/theme-surfaces'
+} from '@syrnike13/ui/tokens'
+import { THEME_TOKEN_KEYS } from '@syrnike13/ui/tokens'
+import { THEME_SURFACE_VARIABLE_KEYS } from '@syrnike13/ui/tokens'
 
 describe('applyThemeToDocument', () => {
   beforeEach(() => {

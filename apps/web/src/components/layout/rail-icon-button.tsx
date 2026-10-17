@@ -13,14 +13,14 @@ import {
   railIconItemRowClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { Button } from '#/components/ui/button'
-import { Squircle } from '#/components/ui/squircle'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { cn } from '#/lib/utils'
 
 /**

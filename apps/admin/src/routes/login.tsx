@@ -5,9 +5,9 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
 

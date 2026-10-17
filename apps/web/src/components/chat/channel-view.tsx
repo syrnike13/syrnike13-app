@@ -16,7 +16,7 @@ import {
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import {

@@ -13,8 +13,8 @@ import {
   AdminStickyFooter,
 } from '#/components/layout/page'
 import { DownloadIcon, Loader2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Textarea } from '#/components/ui/textarea'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   downloadAdminDiagnosticReportEffect,
   fetchAdminDiagnosticReport,

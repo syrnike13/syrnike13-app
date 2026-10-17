@@ -3,7 +3,7 @@ import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
-import { Slider } from '#/components/ui/slider'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   voiceStagePopoverCheckboxClass,
   voiceStagePopoverHintClass,

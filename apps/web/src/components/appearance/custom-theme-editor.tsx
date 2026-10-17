@@ -7,11 +7,11 @@ import { useEffect, useState, type KeyboardEvent } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PlusIcon, Trash2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { Slider } from '#/components/ui/slider'
-import { themeGradientCss } from '#/features/appearance/theme-surfaces'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { Slider } from '@syrnike13/ui/primitives/slider'
+import { themeGradientCss } from '@syrnike13/ui/tokens'
 import { cn } from '#/lib/utils'
 
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i

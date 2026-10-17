@@ -8,15 +8,15 @@ import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/card'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { confirmPasswordResetEffect } from '#/features/api/account-api'
 import { resetPasswordSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'

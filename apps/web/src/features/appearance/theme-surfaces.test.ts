@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { getThemeById } from '#/features/appearance/theme-registry'
+import { getThemeById } from '@syrnike13/ui/tokens'
 import {
   buildSolidThemeSurfaceVariables,
   buildThemeSurfaceVariables,
   themeGradientCss,
   tintThemeTokensForGradient,
-} from '#/features/appearance/theme-surfaces'
+} from '@syrnike13/ui/tokens'
 
 const gradient = {
   colors: ['#5865F2', '#F4F4F5'],

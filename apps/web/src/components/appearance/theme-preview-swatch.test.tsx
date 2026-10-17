@@ -4,8 +4,8 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemePreviewSwatch } from '#/components/appearance/theme-preview-swatch'
-import { TooltipProvider } from '#/components/ui/tooltip'
-import { getThemeById } from '#/features/appearance/theme-registry'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
+import { getThemeById } from '@syrnike13/ui/tokens'
 
 afterEach(cleanup)
 

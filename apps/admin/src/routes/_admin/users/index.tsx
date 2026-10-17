@@ -15,7 +15,7 @@ import {
 } from '#/components/layout/page'
 import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { SearchField } from '#/components/search-field'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   assignAdminUserBadgeEffect,
   fetchAdminBadges,

@@ -2,13 +2,13 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import {
   isEmailVerificationEnabled,
   useSyrnikeConfig,

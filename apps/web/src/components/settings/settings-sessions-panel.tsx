@@ -9,7 +9,7 @@ import {
 } from '@syrnike13/ui/i18n'
 
 import { SettingsBlock } from '#/components/settings/settings-panels'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   deleteSessionEffect,

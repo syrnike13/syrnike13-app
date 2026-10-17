@@ -4,7 +4,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Loader2Icon } from '#/components/icons'
 import { AdminEmpty, AdminPage } from '#/components/layout/page'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { BadgeEditorPage } from '#/features/badges/badge-editor'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'

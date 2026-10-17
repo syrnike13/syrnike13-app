@@ -26,7 +26,7 @@ vi.mock('#/components/servers/server-header-menu', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/scroll-area', () => ({
+vi.mock('@syrnike13/ui/primitives/scroll-area', () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 

@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'

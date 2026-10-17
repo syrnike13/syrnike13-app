@@ -2,7 +2,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { SettingsIcon } from '#/components/icons'
 import { useMatch, useNavigate } from '@tanstack/react-router'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'

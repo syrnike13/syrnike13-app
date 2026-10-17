@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Gamepad2Icon } from '#/components/icons'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   FIRST_PARTY_CHANNEL_ACTIVITIES,
   type FirstPartyChannelActivity,

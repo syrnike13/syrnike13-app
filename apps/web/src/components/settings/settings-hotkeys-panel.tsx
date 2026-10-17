@@ -14,15 +14,15 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Switch } from '#/components/ui/switch'
+} from '@syrnike13/ui/primitives/select'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
 import {
   HOTKEY_ACTIONS,

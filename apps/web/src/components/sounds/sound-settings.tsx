@@ -10,8 +10,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/select'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   authorSoundPackOptions,
   isSoundAuthorPackId,

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'

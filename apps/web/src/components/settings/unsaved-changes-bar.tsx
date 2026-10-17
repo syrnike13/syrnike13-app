@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { cn } from '#/lib/utils'
 
 type ExitKind = 'save' | 'reset'

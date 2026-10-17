@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'

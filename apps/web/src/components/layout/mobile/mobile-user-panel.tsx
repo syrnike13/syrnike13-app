@@ -4,7 +4,7 @@ import { BellIcon, ChevronDownIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { selectHomeNotificationBadge } from '#/features/notifications/notification-selectors'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'

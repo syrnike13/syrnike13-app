@@ -2,7 +2,7 @@ import type { Message, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { useSyncStore } from '#/features/sync/sync-store'

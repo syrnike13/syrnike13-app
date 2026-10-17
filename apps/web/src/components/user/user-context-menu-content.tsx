@@ -22,7 +22,7 @@ import {
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import {
   Dialog,
   DialogContent,
@@ -30,11 +30,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Button } from '#/components/ui/button'
+} from '@syrnike13/ui/primitives/dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { FxImage } from '#/components/ui/fx-image'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { useAuth } from '#/features/auth/auth-context'
 import {

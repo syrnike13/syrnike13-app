@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { XIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'

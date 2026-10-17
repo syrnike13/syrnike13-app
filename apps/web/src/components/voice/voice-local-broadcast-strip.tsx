@@ -3,13 +3,13 @@ import type { AppIcon } from '#/components/icons'
 import { useMemo } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import {
   cameraBroadcastIcon,
   readCameraBroadcastLabel,

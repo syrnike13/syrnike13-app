@@ -7,14 +7,14 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import { SoundSettings } from '#/components/sounds/sound-settings'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchSyrnikeConfigEffect } from '#/features/api/config-api'

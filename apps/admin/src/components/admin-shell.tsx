@@ -15,7 +15,7 @@ import {
   UserSearchIcon,
 } from '#/components/icons'
 import { AccessDenied } from '#/components/access-denied'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'

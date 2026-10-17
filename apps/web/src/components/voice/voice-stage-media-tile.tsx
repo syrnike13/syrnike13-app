@@ -9,7 +9,7 @@ import {
 } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -18,8 +18,8 @@ import {
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/context-menu'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import { UserAvatar } from '#/components/user/user-avatar'
 import {
   VoiceOnAirBadge,

@@ -20,15 +20,15 @@ import { ProfileUnsavedChangesBar } from '#/components/settings/profile-unsaved-
 import { GENERAL_SETTINGS_NAV } from '#/components/settings/settings-nav-config'
 import { SettingsMobileModal } from '#/components/settings/settings-mobile-modal'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   type SettingsSection,
   useSettingsModal,

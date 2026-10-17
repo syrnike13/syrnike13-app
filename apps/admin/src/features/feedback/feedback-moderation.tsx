@@ -27,7 +27,7 @@ import {
   UserIcon,
   XIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -35,8 +35,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Select,
   SelectContent,
@@ -44,8 +44,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/select'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { SearchField } from '#/components/search-field'
 import { useAuth } from '#/features/auth/auth-context'
 import {

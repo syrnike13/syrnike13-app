@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react'
 
 import { SearchIcon } from '#/components/icons'
-import { Input } from '#/components/ui/input'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { cn } from '#/lib/utils'
 
 export function SearchField({

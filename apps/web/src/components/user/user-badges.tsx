@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { badgeIconSizeClass, type BadgeIconSize } from '#/lib/badge-icon'
 import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'

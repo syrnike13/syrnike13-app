@@ -5,14 +5,14 @@ import { Effect } from 'effect'
 import { Loader2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchPublicInvite,

@@ -1,13 +1,13 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { ThemePreviewSwatch } from '#/components/appearance/theme-preview-swatch'
-import { Badge } from '#/components/ui/badge'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
-import { readSystemPrefersDark } from '#/features/appearance/apply-theme'
+} from '@syrnike13/ui/primitives/tooltip'
+import { readSystemPrefersDark } from '@syrnike13/ui/tokens'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import { CUSTOM_GRADIENT_CONTROLS_ENABLED } from '#/features/appearance/appearance-feature-flags'
 

@@ -7,7 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 
 describe('DialogContent', () => {
   afterEach(() => {

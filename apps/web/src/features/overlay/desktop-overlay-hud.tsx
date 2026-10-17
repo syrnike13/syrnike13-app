@@ -2,7 +2,7 @@ import type { DesktopOverlayState } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HeadphoneOffIcon, MicOffIcon } from '#/components/icons'
-import { Avatar, AvatarFallback } from '#/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@syrnike13/ui/primitives/avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { cn } from '#/lib/utils'
 

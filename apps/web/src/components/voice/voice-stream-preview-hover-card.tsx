@@ -4,8 +4,8 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from '#/components/ui/hover-card'
-import { Button } from '#/components/ui/button'
+} from '@syrnike13/ui/primitives/hover-card'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { VoiceOnAirBadge } from './voice-participant-icons'
 import { useAuth } from '#/features/auth/auth-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'

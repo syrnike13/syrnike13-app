@@ -2,7 +2,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AdminStickyFooter } from '#/components/layout/page'
 import { Loader2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAdminDraftController } from '#/components/draft-controller-context'
 
 export function AdminUnsavedChangesBar({

@@ -17,12 +17,12 @@ import { toast } from 'sonner'
 import { messageDeepLink } from '#/lib/message-link'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 
 type MessageActionsMenuProps = {
   message: Message

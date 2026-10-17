@@ -12,17 +12,17 @@ import {
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
-import { Button } from '#/components/ui/button'
-import { Squircle } from '#/components/ui/squircle'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   isGroupInviteJoin,

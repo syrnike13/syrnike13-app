@@ -5,7 +5,7 @@ import {
   getThemeById,
   themeHasVariant,
   type ThemeVariant,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 

@@ -11,8 +11,8 @@ import {
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { ContextMenuItem } from '#/components/ui/context-menu'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { ContextMenuItem } from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   acceptIncomingFriendRequest,

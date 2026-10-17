@@ -14,26 +14,26 @@ import type {
   DesktopDisplayMediaSource,
 } from '@syrnike13/platform'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '#/components/ui/tabs'
+} from '@syrnike13/ui/primitives/tabs'
 import { usePlatform } from '#/platform/use-platform'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import {
   ScreenShareFpsOptions,
   ScreenShareResolutionOptions,

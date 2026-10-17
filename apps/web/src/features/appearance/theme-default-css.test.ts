@@ -4,12 +4,12 @@ import {
   DEFAULT_THEME_ID,
 } from '@syrnike13/platform'
 
-import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
+import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
 import {
   allThemeCssVariables,
   getThemeById,
   getThemeTokens,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 
 describe('getDefaultThemeCss', () => {
   it('emits default theme variables for :root and .dark', () => {

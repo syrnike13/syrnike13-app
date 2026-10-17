@@ -5,7 +5,7 @@ import { ReplyIcon, SmilePlusIcon } from '#/components/icons'
 
 import { MessageActionsMenu } from '#/components/chat/message-actions-menu'
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { HOVER_BAR_REACTIONS } from '#/lib/reactions'
 import { cn } from '#/lib/utils'
 

@@ -1,7 +1,7 @@
 import { Volume2Icon, VolumeXIcon } from '#/components/icons'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Slider } from '#/components/ui/slider'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   formatUserVolumeLabel,
   useVoiceListenerStore,

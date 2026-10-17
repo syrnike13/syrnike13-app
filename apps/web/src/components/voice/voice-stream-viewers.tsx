@@ -7,13 +7,13 @@ import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { cn } from '#/lib/utils'
 

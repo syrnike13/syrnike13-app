@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'

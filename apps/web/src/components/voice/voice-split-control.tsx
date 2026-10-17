@@ -5,8 +5,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { TooltipProvider } from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/popover'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { voiceStagePopoverMicSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'

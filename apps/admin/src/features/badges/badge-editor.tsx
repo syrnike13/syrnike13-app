@@ -21,7 +21,7 @@ import {
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -29,10 +29,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Switch } from '#/components/ui/switch'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Switch } from '@syrnike13/ui/primitives/switch'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   assignAdminUserBadgeEffect,
   createAdminBadgeEffect,

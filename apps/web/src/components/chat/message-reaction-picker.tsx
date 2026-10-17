@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { QUICK_REACTIONS } from '#/lib/reactions'
 import { cn } from '#/lib/utils'
 

@@ -1,7 +1,7 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { EyeIcon, FileIcon, Trash2Icon } from '#/components/icons'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { FxImage } from '#/components/ui/fx-image'
 import {
   stripSpoilerFilename,

@@ -8,7 +8,7 @@ import {
 import {
   Squircle,
   type SquircleRingOptions,
-} from '#/components/ui/squircle'
+} from '@syrnike13/ui/primitives/squircle'
 import { cn } from '#/lib/utils'
 
 type FloatingBarShellProps = {

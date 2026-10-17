@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { Label } from '#/components/ui/label'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { cn } from '#/lib/utils'
 
 export function FormField({

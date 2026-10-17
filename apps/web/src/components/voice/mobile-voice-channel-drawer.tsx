@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
-import { Drawer, DrawerContent } from '#/components/ui/drawer'
+import { Drawer, DrawerContent } from '@syrnike13/ui/primitives/drawer'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useAuth } from '#/features/auth/auth-context'

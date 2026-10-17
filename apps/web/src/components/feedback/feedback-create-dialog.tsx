@@ -37,17 +37,17 @@ import {
   UserIcon,
   WindowsIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   Select,
   SelectContent,
@@ -55,8 +55,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/select'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createFeedbackSuggestion,

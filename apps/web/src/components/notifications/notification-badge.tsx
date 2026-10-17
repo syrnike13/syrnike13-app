@@ -1,5 +1,5 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { Badge } from '#/components/ui/badge'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import { cn } from '#/lib/utils'
 

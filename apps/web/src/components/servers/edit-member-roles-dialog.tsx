@@ -10,9 +10,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 
 type EditMemberRolesDialogProps = {
   server: Server

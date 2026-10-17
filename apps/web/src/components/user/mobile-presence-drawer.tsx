@@ -7,7 +7,7 @@ import {
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
-} from '#/components/ui/drawer'
+} from '@syrnike13/ui/primitives/drawer'
 import { PresencePickerList } from '#/components/user/presence-picker-list'
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { cn } from '#/lib/utils'

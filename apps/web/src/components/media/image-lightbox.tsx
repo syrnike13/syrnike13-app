@@ -21,13 +21,13 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { attachmentOriginalUrl, attachmentPreviewUrl } from '#/lib/media'
 import { formatMessageTimestamp } from '#/lib/message-time'

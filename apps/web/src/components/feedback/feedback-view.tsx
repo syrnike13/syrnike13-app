@@ -30,14 +30,14 @@ import {
   RotateCcwIcon,
   SearchIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/popover'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   Select,
   SelectContent,
@@ -45,7 +45,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
+} from '@syrnike13/ui/primitives/select'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchFeedbackSuggestions,

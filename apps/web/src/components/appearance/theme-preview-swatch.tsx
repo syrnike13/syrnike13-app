@@ -6,14 +6,14 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
-import type { ThemeDefinition } from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/primitives/tooltip'
+import type { ThemeDefinition } from '@syrnike13/ui/tokens'
 import {
   previewVariantForTheme,
   themeGradientForPreview,
   themePreviewColors,
-} from '#/features/appearance/theme-registry'
-import { themeGradientCss } from '#/features/appearance/theme-surfaces'
+} from '@syrnike13/ui/tokens'
+import { themeGradientCss } from '@syrnike13/ui/tokens'
 import { cn } from '#/lib/utils'
 
 type ThemePreviewSwatchProps = {

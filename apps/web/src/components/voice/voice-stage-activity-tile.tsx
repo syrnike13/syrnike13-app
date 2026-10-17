@@ -7,14 +7,14 @@ import {
   Maximize2Icon,
 } from '#/components/icons'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import type { StageMediaTileVariant } from '#/components/voice/voice-stage-media-tile'
 import {
   getFirstPartyChannelActivity,

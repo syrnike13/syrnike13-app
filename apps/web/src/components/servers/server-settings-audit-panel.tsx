@@ -35,10 +35,10 @@ import {
   UserMinusIcon,
   UsersIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { FloatingMenu, FloatingMenuItem } from '#/components/ui/floating-menu'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { FloatingMenu, FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerAuditLog } from '#/features/api/servers-api'

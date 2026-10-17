@@ -16,7 +16,7 @@ import {
 import {
   applyThemeToDocument,
   readSystemPrefersDark,
-} from '#/features/appearance/apply-theme'
+} from '@syrnike13/ui/tokens'
 import { appearanceSettingsStore } from '#/features/appearance/appearance-settings-store'
 import {
   listThemes,
@@ -24,7 +24,7 @@ import {
   resolveThemeVariant,
   type ThemeDefinition,
   type ThemeVariant,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 
 type AppearanceContextValue = {
   settings: AppearanceSettings

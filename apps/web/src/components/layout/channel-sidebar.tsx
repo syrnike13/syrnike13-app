@@ -2,7 +2,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { ServerChannelList } from '#/components/channels/server-channel-list'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   listVisibleDmRailChannels,

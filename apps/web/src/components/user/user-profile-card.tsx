@@ -15,14 +15,14 @@ import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
-import { Button } from '#/components/ui/button'
-import { FloatingMenuItem } from '#/components/ui/floating-menu'
-import { Input } from '#/components/ui/input'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'

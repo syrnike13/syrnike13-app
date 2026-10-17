@@ -5,7 +5,7 @@ import { type ReactNode, useEffect } from 'react'
 
 import { RefreshIcon } from '#/components/icons'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'

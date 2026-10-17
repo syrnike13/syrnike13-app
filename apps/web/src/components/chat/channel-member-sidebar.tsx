@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   flattenMemberListSections,
   groupServerMembersForSidebar,

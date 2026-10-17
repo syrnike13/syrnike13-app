@@ -12,7 +12,7 @@ import {
   VideoOffIcon,
 } from '#/components/icons'
 
-import { TooltipProvider } from '#/components/ui/tooltip'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'

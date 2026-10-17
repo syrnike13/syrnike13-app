@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 
 export function AccessDenied() {

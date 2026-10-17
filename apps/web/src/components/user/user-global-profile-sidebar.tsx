@@ -21,13 +21,13 @@ import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-di
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { FloatingMenuItem } from '#/components/ui/floating-menu'
+} from '@syrnike13/ui/primitives/popover'
+import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'

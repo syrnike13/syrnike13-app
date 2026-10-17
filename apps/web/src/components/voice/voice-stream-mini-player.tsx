@@ -18,14 +18,14 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/popover'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { ScreenShareQualitySections } from '#/components/voice/voice-screen-share-quality'
 import {
   voiceStagePopoverContentClass,

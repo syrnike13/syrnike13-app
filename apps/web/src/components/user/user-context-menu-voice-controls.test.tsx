@@ -41,7 +41,7 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.editServerMember(...args),
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenuCheckboxItem: ({
     children,
     checked,
@@ -103,7 +103,7 @@ vi.mock('#/components/ui/context-menu', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/slider', () => ({
+vi.mock('@syrnike13/ui/primitives/slider', () => ({
   Slider: () => <input aria-label="voice volume" readOnly />,
 }))
 

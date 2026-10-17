@@ -3,7 +3,7 @@ import { Effect, Fiber } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import { useVoiceSession } from '#/features/voice/voice-session-context'

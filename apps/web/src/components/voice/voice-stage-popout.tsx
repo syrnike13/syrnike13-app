@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { PortalContainerProvider } from '#/components/ui/portal-container'
+import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
 
 type VoiceStagePopoutProps = {
   childWindow: Window

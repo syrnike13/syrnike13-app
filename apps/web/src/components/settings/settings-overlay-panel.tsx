@@ -12,7 +12,7 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
-import { Switch } from '#/components/ui/switch'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
 
 export function overlayStateNeedsSettingsReload(

@@ -1,5 +1,5 @@
 import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 type VoiceCallBannerProps = {
   title: string

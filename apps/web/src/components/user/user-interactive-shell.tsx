@@ -4,7 +4,7 @@ import type { User } from '@syrnike13/api-types'
 import {
   ContextMenu,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import { UserContextMenuContent } from '#/components/user/user-context-menu-content'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'

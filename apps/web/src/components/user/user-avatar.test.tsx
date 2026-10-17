@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 
-vi.mock('#/components/ui/avatar', () => ({
+vi.mock('@syrnike13/ui/primitives/avatar', () => ({
   Avatar: ({
     children,
     className,

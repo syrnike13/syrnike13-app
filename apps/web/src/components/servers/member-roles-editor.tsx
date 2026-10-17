@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
-import { Switch } from '#/components/ui/switch'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'

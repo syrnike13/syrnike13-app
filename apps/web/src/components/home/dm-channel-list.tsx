@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'

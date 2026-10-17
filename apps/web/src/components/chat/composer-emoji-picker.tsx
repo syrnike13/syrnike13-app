@@ -1,12 +1,12 @@
 import { SmileIcon } from '#/components/icons'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { listServerCustomEmojis } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { QUICK_REACTIONS } from '#/lib/reactions'

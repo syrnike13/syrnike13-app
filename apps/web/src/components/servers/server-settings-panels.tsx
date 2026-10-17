@@ -18,7 +18,7 @@ import { ServerSettingsMembersPanel } from '#/components/servers/server-settings
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
 import { useDraftRegistration } from '#/components/settings/draft-controller-context'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -26,25 +26,25 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '#/components/ui/dropdown-menu'
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { FxImage } from '#/components/ui/fx-image'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/select'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
 import {

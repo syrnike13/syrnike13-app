@@ -6,7 +6,7 @@ import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -14,18 +14,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Slider } from '#/components/ui/slider'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/select'
+import { Slider } from '@syrnike13/ui/primitives/slider'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import {
   useDraftRegistration,

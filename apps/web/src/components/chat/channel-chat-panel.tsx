@@ -10,7 +10,7 @@ import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import {
   editChannelMessageEffect,

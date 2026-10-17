@@ -27,7 +27,7 @@ import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import {
   FloatingMenu,
   FloatingMenuItem,
-} from '#/components/ui/floating-menu'
+} from '@syrnike13/ui/primitives/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'

@@ -12,7 +12,7 @@ import {
   getThemeTokens,
   resolveThemeVariant,
   themePreviewColors,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 
 const OKLCH_PATTERN = /^(oklch\([^)]+\)|rgb\([^)]+\))$/
 

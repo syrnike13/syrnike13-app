@@ -22,7 +22,7 @@ import {
   SERVER_SETTINGS_TABS,
   type ServerSettingsTab,
 } from '#/components/servers/server-settings-types'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -30,8 +30,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'

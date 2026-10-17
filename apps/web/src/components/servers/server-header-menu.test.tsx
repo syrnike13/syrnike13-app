@@ -44,7 +44,7 @@ vi.mock('#/components/servers/server-invite-dialog', () => ({
   ServerInviteDialog: () => null,
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({
     children,
     open,

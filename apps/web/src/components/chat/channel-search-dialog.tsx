@@ -6,13 +6,13 @@ import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
-import { Input } from '#/components/ui/input'
+import { Input } from '@syrnike13/ui/primitives/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/popover'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'

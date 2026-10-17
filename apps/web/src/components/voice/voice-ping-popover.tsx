@@ -3,13 +3,13 @@ import { Link } from '@tanstack/react-router'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { VoicePingChart } from '#/components/voice/voice-ping-chart'
 import {
   PopoverContent,
   PopoverHeader,
   PopoverTitle,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import {

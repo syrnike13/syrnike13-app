@@ -1,7 +1,7 @@
 import { ExternalLinkIcon } from '#/components/icons'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 type VoiceStagePopoutPlaceholderProps = {
   title: string

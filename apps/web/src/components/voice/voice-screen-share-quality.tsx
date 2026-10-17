@@ -10,7 +10,7 @@ import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import {
   voiceStagePopoverContentClass,
   voiceStagePopoverMenuItemClass,

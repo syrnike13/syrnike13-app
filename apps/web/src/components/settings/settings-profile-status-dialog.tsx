@@ -3,7 +3,7 @@ import type { User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PlusIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import { FxImage } from '#/components/ui/fx-image'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'

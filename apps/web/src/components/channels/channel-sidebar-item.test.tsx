@@ -103,7 +103,7 @@ vi.mock('#/components/voice/voice-channel-preview', () => ({
   VoiceChannelPreview: () => null,
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
   ContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -125,7 +125,7 @@ vi.mock('#/components/ui/context-menu', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({
     children,
     open,

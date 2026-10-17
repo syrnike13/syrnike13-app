@@ -17,15 +17,15 @@ import { toast } from 'sonner'
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
-import { FloatingMenuItem } from '#/components/ui/floating-menu'
-import { Input } from '#/components/ui/input'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/popover'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {

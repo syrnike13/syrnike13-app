@@ -9,8 +9,8 @@ import {
   SettingsToggleRow,
 } from '#/components/settings/settings-panels'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
-import { Button } from '#/components/ui/button'
-import { Switch } from '#/components/ui/switch'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import {
   Select,
   SelectContent,
@@ -18,8 +18,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/select'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   ensureMediaDevicePermissionEffect,
   useMediaDevices,

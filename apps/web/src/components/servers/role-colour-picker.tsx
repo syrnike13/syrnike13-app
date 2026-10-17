@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { CheckIcon, PencilIcon } from '#/components/icons'
 
-import { Label } from '#/components/ui/label'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 

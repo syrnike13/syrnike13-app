@@ -19,7 +19,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -27,13 +27,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { Separator } from '#/components/ui/separator'
+} from '@syrnike13/ui/primitives/popover'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'

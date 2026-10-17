@@ -1,6 +1,6 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { EyeIcon, EyeOffIcon } from '#/components/icons'
-import { Input } from '#/components/ui/input'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { cn } from '#/lib/utils'
 import { useState } from 'react'
 

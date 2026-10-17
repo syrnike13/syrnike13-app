@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { Input } from '#/components/ui/input'
-import { Textarea } from '#/components/ui/textarea'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 
 describe('form control surfaces', () => {
   it('assigns the shared gradient input surface to Input', () => {
