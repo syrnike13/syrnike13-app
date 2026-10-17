@@ -4,10 +4,9 @@ import { render, screen } from '@testing-library/react'
 import { expect, test } from 'vitest'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './accordion'
+import { Button } from './button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsible'
-import { IconButton } from './icon-button'
 import { Kbd } from './kbd'
-import { LayerCard, LayerCardPrimary, LayerCardSecondary } from './layer-card'
 import { Marker, MarkerContent, MarkerIcon } from './marker'
 import { Progress } from './progress'
 import { Skeleton } from './skeleton'
@@ -17,25 +16,21 @@ import { Toggle } from './toggle'
 test('renders the simple catalog primitives', () => {
   render(
     <div>
-      <IconButton aria-label="Закрыть">x</IconButton>
+      <Button aria-label="Закрыть">x</Button>
       <Kbd>Ctrl</Kbd>
-      <LayerCard>
-        <LayerCardPrimary>Заголовок</LayerCardPrimary>
-        <LayerCardSecondary>Описание</LayerCardSecondary>
-      </LayerCard>
       <Marker>
         <MarkerIcon>i</MarkerIcon>
         <MarkerContent>Маркер</MarkerContent>
       </Marker>
       <Progress value={42} aria-label="Загрузка" />
       <Skeleton data-testid="skeleton" />
-      <Spinner label="Загрузка" />
+      <Spinner aria-label="Загрузка" />
       <Toggle aria-label="Жирный">B</Toggle>
       <Collapsible>
         <CollapsibleTrigger>Открыть</CollapsibleTrigger>
         <CollapsibleContent>Содержимое</CollapsibleContent>
       </Collapsible>
-      <Accordion type="single" collapsible>
+      <Accordion multiple={false}>
         <AccordionItem value="a">
           <AccordionTrigger>Вопрос</AccordionTrigger>
           <AccordionContent>Ответ</AccordionContent>
@@ -46,7 +41,6 @@ test('renders the simple catalog primitives', () => {
 
   expect(screen.getByRole('button', { name: 'Закрыть' })).toBeInTheDocument()
   expect(screen.getByText('Ctrl')).toBeInTheDocument()
-  expect(screen.getByText('Заголовок')).toBeInTheDocument()
   expect(screen.getByText('Маркер')).toBeInTheDocument()
   expect(screen.getByRole('progressbar')).toBeInTheDocument()
   expect(screen.getByTestId('skeleton')).toBeInTheDocument()

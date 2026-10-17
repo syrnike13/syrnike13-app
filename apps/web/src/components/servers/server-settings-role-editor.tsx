@@ -353,21 +353,18 @@ export function ServerSettingsRoleEditor({
           </h2>
           {canEditRole ? (
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <PopoverTrigger asChild>
-                <Button
+              <PopoverTrigger render={<Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title={t('roleActions')}
-                >
+                  title={t('roleActions')} />}>
                   <MoreHorizontalIcon className="size-4" />
-                </Button>
-              </PopoverTrigger>
+                </PopoverTrigger>
               <PopoverContent className="w-48 p-1" align="end">
                 <Button
                   type="button"
-                  variant="destructive-ghost"
+                  variant="destructive"
                   className="h-9 w-full justify-start px-2 font-normal"
                   onClick={() => {
                     setMenuOpen(false)

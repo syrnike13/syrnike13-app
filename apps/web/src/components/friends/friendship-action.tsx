@@ -201,7 +201,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
       <>
         <ContextMenuItem
           disabled={disabled}
-          onSelect={() =>
+          onClick={() =>
             void run(() => acceptIncomingFriendRequest(token!, user._id, t))
           }
         >
@@ -210,7 +210,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
         </ContextMenuItem>
         <ContextMenuItem
           disabled={disabled}
-          onSelect={() =>
+          onClick={() =>
             void run(() => declineIncomingFriendRequest(token!, user._id, t))
           }
         >
@@ -225,7 +225,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() => void run(() => sendFriendRequestToUser(token!, user, t))}
+        onClick={() => void run(() => sendFriendRequestToUser(token!, user, t))}
       >
         <UserPlusIcon />
         {t('add')}
@@ -237,7 +237,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() =>
+        onClick={() =>
           void run(() => cancelOutgoingFriendRequest(token!, user._id, t))
         }
       >
@@ -252,7 +252,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
       <ContextMenuItem
         disabled={disabled}
         variant="destructive"
-        onSelect={() => void run(() => removeFriend(token!, user._id, t))}
+        onClick={() => void run(() => removeFriend(token!, user._id, t))}
       >
         <UserMinusIcon />
         {t('remove')}
@@ -264,7 +264,7 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() => void run(() => unblockBlockedUser(token!, user._id, t))}
+        onClick={() => void run(() => unblockBlockedUser(token!, user._id, t))}
       >
         <ShieldOffIcon />
         {t('unblock')}

@@ -77,16 +77,18 @@ function MiniControl({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          data-mini-control
-          aria-label={label}
-          className={miniIconButtonClass}
-          onClick={onClick}
-        >
-          {children}
-        </button>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            data-mini-control
+            aria-label={label}
+            className={miniIconButtonClass}
+            onClick={onClick}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -121,7 +123,9 @@ function MiniStreamVolumeSection({ userId }: { userId: string }) {
             max={VOICE_USER_VOLUME_MAX}
             step={0.1}
             value={[muted ? 0 : volume]}
-            onValueChange={([next]) => {
+            onValueChange={(value) => {
+              const next = typeof value === 'number' ? value : value[0]
+              if (next == null) return
               if (muted && next > 0) {
                 voiceListenerStore.setStreamMuted(userId, false)
               }
@@ -154,17 +158,14 @@ function MiniStreamSettings({
   return (
     <Popover onOpenChange={onOpenChange}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <button
+        <TooltipTrigger render={<span />}>
+          <PopoverTrigger render={<button
               type="button"
               data-mini-control
               aria-label={t('stream.settings')}
-              className={miniIconButtonClass}
-            >
+              className={miniIconButtonClass} />}>
               <Settings2Icon className="size-[1.125rem]" />
-            </button>
-          </PopoverTrigger>
+            </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>{t('stream.settings')}</TooltipContent>
       </Tooltip>
@@ -173,12 +174,10 @@ function MiniStreamSettings({
         side="top"
         align="end"
         sideOffset={8}
-        collisionPadding={8}
         className={cn(
           voiceStagePopoverContentClass,
           'z-[510] max-h-[min(70vh,32rem)] w-64 overflow-y-auto',
         )}
-        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
         {remoteUserId && showOwnQuality ? (

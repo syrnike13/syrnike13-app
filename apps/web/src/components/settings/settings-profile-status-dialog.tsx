@@ -123,7 +123,7 @@ export function SettingsProfileStatusDialog({
         <DialogFooter className="gap-2 sm:justify-between">
           <Button
             type="button"
-            variant="destructive-ghost"
+            variant="destructive"
             disabled={!canReset}
             onClick={handleReset}
           >

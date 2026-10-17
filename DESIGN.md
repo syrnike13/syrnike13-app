@@ -6,7 +6,7 @@
 
 - **Тёплый пиксельный**: скругления умеренные (`rounded-md`/`rounded-lg`), без squircle-идентичности; пиксельные детали — в логотипе, бейджах и декоративных элементах.
 - **Коралловый destructive, индиго primary**: бренд-цвета фиксированы и не участвуют в генерации тем.
-- **21 тема**: `syrnike`, `lug`, `iskra`, `matrix`, `monolit`, `pergament`, `grafit`, `kontrast`, 12 градиентных тем и кастомный градиент. Тема задаёт якоря, из которых выводятся семантические токены; названия и описания живут в `themes.<id>` каталогов `en`/`ru`.
+- **Prism-темы**: основная `monolit` и тёплая `glina` задаются только якорями Prism (`accent`, `background`, `foreground`, `contrast`) для light/dark. Все поверхности, бордеры, hover/selection и читаемые foregrounds генерирует Prism (ADR-0016); названия и описания живут в `themes.<id>` каталогов `en`/`ru`. Градиентные темы временно отключены до поддержки в Prism.
 - **Свет и тьма**: у каждой темы есть варианты `light`/`dark` (если поддерживаются). Переключение мгновенное, без вспышки: bootstrap-стиль в `__root` применяется до гидратации.
 - **Слои**: `background` → `card` → `popover`/`muted`; хром чата использует `shell-*`, оверлеи — `scrim`/`on-scrim`, медиа — `media-backdrop`/`on-media`.
 
@@ -22,6 +22,7 @@
 - Примитивы владеют фоном, рамкой, тенью, радиусом и состояниями. На месте вызова — только layout и текстовые токены.
 - Стеклянные/слоистые поверхности: `bg-card/50`, `bg-background/80`, `backdrop-blur-sm` только для плавающего хрома.
 - Разделители — `border-border/60`, не тени.
+- Структурные роли (`border`, `input-border`, `divider`, `sidebar-border`) генерирует Prism из якорей темы одним OKLab-шагом; вручную цвета бордеров не задаются. `--input` — поверхность поля, `--color-input` в Tailwind указывает на `--input-border`.
 - На медиа-поверхностях используйте `on-media` и `bg-media-backdrop`, а не `white`/`black`.
 
 ## Плотность и движение
@@ -47,7 +48,7 @@
 ## Контракты desktop
 
 - `.dark`, `data-theme`, `data-theme-gradient`, `.theme-surface-*`, `.gradient-surface-*`, `.shell-title-bar-drag/no-drag`, `data-overlay-panel`, `data-participant-*`, `data-slot="scroll-area-viewport"`, прозрачность overlay и popout-клонирование стилей не переименовывать.
-- Фон Electron — `#3d3a48` для темы `syrnike/dark`; проверяется contract-тестом.
+- Фон Electron — фиксированный `#3d3a48` (не зависит от выбранной темы); проверяется contract-тестом.
 - Оверлей: ширина панели 296px (18.5rem), прозрачные `html`/`body`, без фона панели.
 
 ## Проверка
@@ -60,4 +61,4 @@ pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build
 ```
 
-Визуально: 375px и desktop, light/dark/system, все 21 тема, `en`/`ru`, Electron-оверлей и popout.
+Визуально: 375px и desktop, light/dark/system, обе Prism-темы, `en`/`ru`, Electron-оверлей и popout.

@@ -32,7 +32,7 @@ import {
   railIconSquircleProps,
   railServerScrollAreaClass,
   railServerScrollContentClass,
-  shellLowestSurface,
+  shellNavSurface,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { useMediaQuery } from '#/hooks/use-media-query'
@@ -217,7 +217,7 @@ export function ServerRail({
           className={cn(
             'flex h-full w-18 shrink-0 flex-col items-center',
             'pt-1 pb-3',
-            shellLowestSurface,
+            shellNavSurface,
           )}
           style={railBottomReserveStyle}
         >
@@ -234,7 +234,7 @@ export function ServerRail({
       className={cn(
         'flex h-full w-18 shrink-0 flex-col',
         'pt-1 pb-3',
-        shellLowestSurface,
+        shellNavSurface,
       )}
       style={railBottomReserveStyle}
     >

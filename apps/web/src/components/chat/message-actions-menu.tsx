@@ -69,17 +69,14 @@ export function MessageActionsMenu({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
           className={cn('size-7', triggerClassName)}
-          title={t('more')}
-        >
+          title={t('more')} />}>
           <MoreHorizontalIcon className="size-3.5" />
-        </Button>
-      </PopoverTrigger>
+        </PopoverTrigger>
       <PopoverContent className="w-44 p-1" align="end">
         <Button
           type="button"

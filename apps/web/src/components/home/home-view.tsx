@@ -21,13 +21,13 @@ import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
-import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
-import { Input } from '@syrnike13/ui/primitives/input'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
@@ -143,27 +143,24 @@ function HomeFriendRow({
           </Button>
         ) : null}
         {token ? (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={rowIconActionClass}
-                title={t('more')}
-                aria-label={t('more')}
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="bottom"
-              align="end"
-              className="w-auto min-w-[11rem] p-1"
-              onOpenAutoFocus={(event) => event.preventDefault()}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className={rowIconActionClass}
+                  title={t('more')}
+                  aria-label={t('more')}
+                />
+              }
             >
+              <MoreHorizontalIcon className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-[11rem]">
               {user.relationship === 'Incoming' ? (
-                <FloatingMenuItem
+                <DropdownMenuItem
                   onClick={() => {
                     Effect.runFork(
                       declineIncomingFriendRequest(token, user._id, tf).pipe(
@@ -174,10 +171,10 @@ function HomeFriendRow({
                 >
                   <XIcon className="size-3.5" />
                   {t('declineRequest')}
-                </FloatingMenuItem>
+                </DropdownMenuItem>
               ) : null}
               {user.relationship === 'Outgoing' ? (
-                <FloatingMenuItem
+                <DropdownMenuItem
                   onClick={() => {
                     Effect.runFork(
                       cancelOutgoingFriendRequest(token, user._id, tf).pipe(
@@ -188,10 +185,10 @@ function HomeFriendRow({
                 >
                   <XIcon className="size-3.5" />
                   {t('cancelRequest')}
-                </FloatingMenuItem>
+                </DropdownMenuItem>
               ) : null}
               {user.relationship === 'Friend' ? (
-                <FloatingMenuItem
+                <DropdownMenuItem
                   onClick={() => {
                     Effect.runFork(
                       removeFriend(token, user._id, tf).pipe(Effect.ignore),
@@ -200,18 +197,18 @@ function HomeFriendRow({
                 >
                   <UserMinusIcon className="size-3.5" />
                   {t('removeFriend')}
-                </FloatingMenuItem>
+                </DropdownMenuItem>
               ) : null}
-              <FloatingMenuItem onClick={() => void copyUserId()}>
+              <DropdownMenuItem onClick={() => void copyUserId()}>
                 <CopyIcon className="size-3.5" />
                 {t('copyId')}
-              </FloatingMenuItem>
-              <FloatingMenuItem onClick={handleBlock}>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleBlock}>
                 <BanIcon className="size-3.5" />
                 {t('block')}
-              </FloatingMenuItem>
-            </PopoverContent>
-          </Popover>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
     </div>

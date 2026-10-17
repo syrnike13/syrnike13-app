@@ -39,12 +39,12 @@ export function splitControlMainButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerMainClass
         : success
           ? splitControlSuccessMainClass
-          : 'group-hover/media:bg-on-media/10 group-hover/media:text-on-media',
+          : 'group-hover/media:bg-accent group-hover/media:text-foreground',
     )
   }
 
@@ -64,12 +64,12 @@ export function splitControlChevronButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerChevronClass
         : success
           ? splitControlSuccessChevronClass
-          : 'group-hover/media:bg-on-media/[0.06] group-hover/media:text-on-media',
+          : 'group-hover/media:bg-accent group-hover/media:text-foreground',
     )
   }
 
@@ -103,18 +103,15 @@ function SplitControlChevron({
   return (
     <Popover>
       <VoiceControlTooltip title={title}>
-        <PopoverTrigger asChild>
-          <button
+        <PopoverTrigger render={<button
             type="button"
             aria-label={title}
             aria-disabled={disabled}
-            className={splitControlChevronButtonClass(surface, segmentState)}
-          >
+            className={splitControlChevronButtonClass(surface, segmentState)} />}>
             <ChevronDownIcon
               className={surface === 'panel' ? 'size-3' : 'size-3.5'}
             />
-          </button>
-        </PopoverTrigger>
+          </PopoverTrigger>
       </VoiceControlTooltip>
       <PopoverContent
         align="start"
@@ -125,7 +122,6 @@ function SplitControlChevron({
           voiceStagePopoverMicSettingsClass,
           surface === 'panel' && 'z-[200]',
         )}
-        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {popoverContent}
       </PopoverContent>
@@ -157,7 +153,7 @@ export function VoiceSplitControl({
   const segmentState = { danger, success }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className="group/media flex items-center gap-px">
         <VoiceControlTooltip title={mainTitle}>
           <button

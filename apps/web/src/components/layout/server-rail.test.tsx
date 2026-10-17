@@ -180,21 +180,17 @@ describe('ServerRail', () => {
 
     renderRail()
 
-    fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
-      pointerType: 'mouse',
-    })
+    const demoTooltipTrigger = screen.getByRole('link', { name: 'Demo' })
+    fireEvent.pointerEnter(demoTooltipTrigger, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(demoTooltipTrigger)
 
     await waitFor(() => {
-      const tooltip = screen.getByRole('tooltip')
-      const tooltipContent = document.querySelector(
+      const tooltipContent = document.querySelector<HTMLElement>(
         '[data-slot="tooltip-content"]',
       )
-      expect(tooltip.textContent).toBe('Demo')
+      expect(tooltipContent).toBeTruthy()
+      expect(tooltipContent?.textContent).toBe('Demo')
       expect(tooltipContent?.className).toContain('font-black')
-      expect(tooltipContent?.firstElementChild?.className).toContain('w-max')
-      expect(tooltipContent?.firstElementChild?.className).not.toContain(
-        'min-w-32',
-      )
     })
   })
 
@@ -293,9 +289,8 @@ describe('ServerRail', () => {
       'На сервере демонстрируют экран',
     )
 
-    fireEvent.pointerMove(serverLink, {
-      pointerType: 'mouse',
-    })
+    fireEvent.pointerEnter(serverLink, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(serverLink)
 
     await waitFor(() => {
       const tooltipContent = document.querySelector<HTMLElement>(

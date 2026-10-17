@@ -38,7 +38,7 @@ describe('applyThemeToDocument', () => {
     })
     expect(variant).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.documentElement.dataset.theme).toBe('syrnike')
+    expect(document.documentElement.dataset.theme).toBe('monolit')
     expect(document.documentElement.dataset.themeGradient).toBe('none')
   })
 
@@ -48,7 +48,7 @@ describe('applyThemeToDocument', () => {
       themeId: 'unknown-theme',
     })
 
-    expect(document.documentElement.dataset.theme).toBe('syrnike')
+    expect(document.documentElement.dataset.theme).toBe('monolit')
   })
 
   it('writes css variables for active tokens', () => {
@@ -63,44 +63,10 @@ describe('applyThemeToDocument', () => {
     ).toBe(document.documentElement.style.getPropertyValue('--card'))
   })
 
-  it('applies custom gradient colors and marks their source', () => {
+  it('uses brand tokens when another theme is selected', () => {
     applyThemeToDocument({
       ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'gradient',
-      gradient: {
-        colors: ['#112233', '#AABBCC'],
-        angle: 45,
-        saturation: 80,
-      },
-    })
-
-    expect(document.documentElement.dataset.themeGradient).toBe('custom')
-    expect(
-      document.documentElement.style.getPropertyValue('--theme-backdrop'),
-    ).toBe('linear-gradient(45deg, #112233, #AABBCC)')
-  })
-
-  it('ignores a stored gradient while a solid theme is active', () => {
-    applyThemeToDocument({
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'lug',
-      gradient: {
-        colors: ['#112233', '#AABBCC'],
-        angle: 45,
-        saturation: 80,
-      },
-    })
-
-    expect(document.documentElement.dataset.themeGradient).toBe('none')
-    expect(
-      document.documentElement.style.getPropertyValue('--theme-backdrop'),
-    ).toBe(document.documentElement.style.getPropertyValue('--background'))
-  })
-
-  it('uses syrnike brand tokens when another theme is selected', () => {
-    applyThemeToDocument({
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'lug',
+      themeId: 'glina',
       colorMode: 'light',
     })
     const style = document.documentElement.style

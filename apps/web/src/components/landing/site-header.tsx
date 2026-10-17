@@ -29,7 +29,7 @@ export function SiteHeader() {
         to="/app"
         search={{ tab: 'online' }}
         className={cn(
-          buttonVariants({ variant: 'inverse', size: 'sm' }),
+          buttonVariants({ variant: 'secondary', size: 'sm' }),
           'rounded-full px-4',
         )}
       >

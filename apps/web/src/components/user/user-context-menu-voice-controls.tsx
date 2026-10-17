@@ -17,6 +17,7 @@ import {
 } from '#/components/icons'
 import {
   ContextMenuCheckboxItem,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
@@ -201,9 +202,11 @@ export function UserContextMenuVoiceControls({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
-              {t('volume')}
-            </ContextMenuLabel>
+            <ContextMenuGroup>
+              <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
+                {t('volume')}
+              </ContextMenuLabel>
+            </ContextMenuGroup>
             <div className="flex items-center gap-2">
               <Slider
                 className="flex-1"
@@ -211,7 +214,9 @@ export function UserContextMenuVoiceControls({
                 max={VOICE_USER_VOLUME_MAX}
                 step={0.1}
                 value={[volume]}
-                onValueChange={([next]) => {
+                onValueChange={(value) => {
+                  const next = typeof value === 'number' ? value : value[0]
+                  if (next == null) return
                   voiceListenerStore.setUserVolume(userId, next)
                 }}
               />
@@ -221,9 +226,8 @@ export function UserContextMenuVoiceControls({
             </div>
           </div>
           <ContextMenuCheckboxItem
-            indicatorPosition="end"
             checked={muted}
-            onSelect={(event) => event.preventDefault()}
+            closeOnClick={false}
             onCheckedChange={(checked) => {
               voiceListenerStore.setUserMuted(userId, checked === true)
             }}
@@ -238,10 +242,9 @@ export function UserContextMenuVoiceControls({
           {canServerMute ? (
             <ContextMenuCheckboxItem
               className={destructiveVoiceActionClassName}
-              indicatorPosition="end"
               checked={serverMuted}
               disabled={pendingAction !== null}
-              onSelect={(event) => event.preventDefault()}
+              closeOnClick={false}
               onCheckedChange={(checked) => {
                 void editTargetMember(
                   'mute',
@@ -257,10 +260,9 @@ export function UserContextMenuVoiceControls({
           {canServerDeafen ? (
             <ContextMenuCheckboxItem
               className={destructiveVoiceActionClassName}
-              indicatorPosition="end"
               checked={serverDeafened}
               disabled={pendingAction !== null}
-              onSelect={(event) => event.preventDefault()}
+              closeOnClick={false}
               onCheckedChange={(checked) => {
                 void editTargetMember(
                   'deafen',
@@ -290,7 +292,7 @@ export function UserContextMenuVoiceControls({
                     <ContextMenuItem
                       key={channel._id}
                       disabled={pendingAction !== null}
-                      onSelect={() => {
+                      onClick={() => {
                         void editTargetMember(
                           'move',
                           { voice_channel: channel._id },
@@ -310,7 +312,7 @@ export function UserContextMenuVoiceControls({
               className={voiceActionClassName}
               variant="destructive"
               disabled={pendingAction !== null}
-              onSelect={() => {
+              onClick={() => {
                 void editTargetMember(
                   'disconnect',
                   { remove: ['VoiceChannel'] },

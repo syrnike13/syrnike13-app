@@ -13,9 +13,18 @@ import {
   AdminSection,
   AdminSectionHeader,
 } from '#/components/layout/page'
-import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
-import { SearchField } from '#/components/search-field'
+import {
+  Loader2Icon,
+  PlusIcon,
+  SearchIcon,
+  XIcon,
+} from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import {
   assignAdminUserBadgeEffect,
   fetchAdminBadges,
@@ -137,12 +146,16 @@ function UsersPage() {
   return (
     <AdminPage title={t('title')}>
       <form onSubmit={submit} className="mb-5 flex flex-col gap-2 sm:flex-row">
-        <SearchField
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('searchPlaceholder')}
-          className="flex-1"
-        />
+        <InputGroup className="flex-1">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+          />
+        </InputGroup>
         <Button
           type="submit"
           size="sm"

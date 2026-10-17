@@ -1,25 +1,21 @@
-import type * as React from 'react'
+import { cn } from "../../lib/cn"
 
-import { cn } from '../../lib/cn'
+import { IconPlaceholder } from "../icon-placeholder"
 
-type SpinnerProps = React.ComponentProps<'span'> & {
-  label?: string
-}
-
-function Spinner({ className, label, ...props }: SpinnerProps) {
+function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
   return (
-    <span
+    <IconPlaceholder
+      lucide="Loader2Icon"
+      tabler="IconLoader"
+      hugeicons="Loading03Icon"
+      phosphor="SpinnerIcon"
+      remixicon="RiLoaderLine"
       data-slot="spinner"
       role="status"
-      aria-label={label}
-      className={cn(
-        'inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent text-muted-foreground',
-        className,
-      )}
+      aria-label="Loading"
+      className={cn("size-4 animate-spin", className)}
       {...props}
-    >
-      {label ? <span className="sr-only">{label}</span> : null}
-    </span>
+    />
   )
 }
 

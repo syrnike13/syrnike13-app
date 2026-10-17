@@ -14,7 +14,6 @@ import { grantAllAuthorizationForTest } from '#/features/authorization/authoriza
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
-const contextMenuPreventDefaultMock = vi.hoisted(() => vi.fn())
 const serverApiMocks = vi.hoisted(() => ({
   banServerMember: vi.fn(),
   editServerMember: vi.fn(),
@@ -98,21 +97,19 @@ vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
     children,
     className,
     disabled,
-    onSelect,
+    onClick,
     ...props
   }: {
     children: ReactNode
     className?: string
     disabled?: boolean
-    onSelect?: (event: { preventDefault: () => void }) => void
+    onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   }) => (
     <button
       type="button"
       className={className}
       disabled={disabled}
-      onClick={() =>
-        onSelect?.({ preventDefault: contextMenuPreventDefaultMock })
-      }
+      onClick={onClick}
       {...props}
     >
       {children}
@@ -200,7 +197,6 @@ describe('UserContextMenuContent', () => {
           catch: (cause) => cause,
         }).pipe(Effect.as(directMessageChannel)),
     )
-    contextMenuPreventDefaultMock.mockClear()
     voiceJoinMock.mockResolvedValue(true)
     serverApiMocks.banServerMember.mockReturnValue(Effect.void)
     serverApiMocks.editServerMember.mockReturnValue(
@@ -378,7 +374,6 @@ describe('UserContextMenuContent', () => {
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /Member/ }))
-    expect(contextMenuPreventDefaultMock).toHaveBeenCalled()
 
     await waitFor(() => {
       expect(serverApiMocks.editServerMember).toHaveBeenCalledWith(

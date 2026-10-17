@@ -29,7 +29,7 @@ export function NotificationBadge({
   if (mode === 'dot') {
     return (
       <Badge
-        variant="contrast"
+        variant="destructive"
         aria-label={countLabel}
         className={cn(
           'pointer-events-none size-2 min-w-0 shrink-0 p-0',
@@ -43,7 +43,7 @@ export function NotificationBadge({
 
   return (
     <Badge
-      variant="contrast"
+      variant="destructive"
       aria-label={countLabel}
       className={cn(
         'pointer-events-none h-4 min-w-4 px-1 text-[0.625rem] leading-none',

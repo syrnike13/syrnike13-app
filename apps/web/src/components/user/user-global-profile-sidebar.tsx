@@ -23,11 +23,11 @@ import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
-import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
@@ -344,28 +344,29 @@ export function UserGlobalProfileSidebar({
                   {isFriend ? <span className="truncate">{t('message')}</span> : null}
                 </Button>
               ) : null}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={profileIconActionClass}
-                    disabled={actionsDisabled}
-                    title={t('more')}
-                    aria-label={t('more')}
-                  >
-                    <MoreHorizontalIcon className="size-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={profileIconActionClass}
+                      disabled={actionsDisabled}
+                      title={t('more')}
+                      aria-label={t('more')}
+                    />
+                  }
+                >
+                  <MoreHorizontalIcon className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
                   side="top"
                   align="end"
-                  className="z-[310] w-auto min-w-[11rem] p-1"
-                  onOpenAutoFocus={(e) => e.preventDefault()}
+                  className="z-[310] w-auto min-w-[11rem]"
                 >
                   {user.relationship === 'Incoming' ? (
-                    <FloatingMenuItem
+                    <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
                           declineIncomingFriendRequest(token!, user._id, tf),
@@ -374,10 +375,10 @@ export function UserGlobalProfileSidebar({
                     >
                       <XIcon className="size-3.5" />
                       {t('declineRequest')}
-                    </FloatingMenuItem>
+                    </DropdownMenuItem>
                   ) : null}
                   {user.relationship === 'Outgoing' ? (
-                    <FloatingMenuItem
+                    <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
                           cancelOutgoingFriendRequest(token!, user._id, tf),
@@ -386,25 +387,25 @@ export function UserGlobalProfileSidebar({
                     >
                       <XIcon className="size-3.5" />
                       {t('cancelRequest')}
-                    </FloatingMenuItem>
+                    </DropdownMenuItem>
                   ) : null}
-                  <FloatingMenuItem onClick={onCopyId}>
+                  <DropdownMenuItem onClick={onCopyId}>
                     <CopyIcon className="size-3.5" />
                     {t('copyId')}
-                  </FloatingMenuItem>
+                  </DropdownMenuItem>
                   {user.relationship === 'Blocked' ? (
-                    <FloatingMenuItem onClick={onUnblock}>
+                    <DropdownMenuItem onClick={onUnblock}>
                       <BanIcon className="size-3.5" />
                       {t('unblock')}
-                    </FloatingMenuItem>
+                    </DropdownMenuItem>
                   ) : (
-                    <FloatingMenuItem onClick={onBlock}>
+                    <DropdownMenuItem onClick={onBlock}>
                       <BanIcon className="size-3.5" />
                       {t('block')}
-                    </FloatingMenuItem>
+                    </DropdownMenuItem>
                   )}
-                </PopoverContent>
-              </Popover>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </div>

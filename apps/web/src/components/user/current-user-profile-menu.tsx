@@ -115,10 +115,10 @@ export function CurrentUserProfileMenu({
               <UserAvatar
                 user={user}
                 className="size-20"
-                fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-card"
+                fallbackClassName="size-20 text-xl ring-[6px] ring-popover bg-card"
                 animated="always"
                 showPresence
-                presenceRingClassName="border-card"
+                presenceRingClassName="border-popover"
               />
               <span
                 aria-hidden

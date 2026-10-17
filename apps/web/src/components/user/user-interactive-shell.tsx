@@ -61,7 +61,7 @@ export function UserInteractiveShell({
         }}
         onOpenGlobalProfile={openGlobalProfile}
       >
-        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuTrigger render={children} />
       </UserProfilePopover>
       <UserContextMenuContent
         user={user}

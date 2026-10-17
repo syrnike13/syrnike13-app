@@ -9,38 +9,47 @@
 
 @source '../../../packages/ui/src';
 
-/* Dark palette from apps/web (.dark) — admin is dark-only */
+/* Fallback до applyThemeToDocument: Prism monolit dark + brand overrides. */
 :root,
 .dark {
-  --background: oklch(0.3225 0.0107 278.2517);
-  --foreground: oklch(1 0 0);
-  --surface: oklch(0.3225 0.0107 278.2517);
-  --surface-foreground: oklch(1 0 0);
-  --card: oklch(0.3502 0.0122 279.2835);
-  --card-foreground: oklch(1 0 0);
-  --popover: oklch(0.3502 0.0122 279.2835);
-  --popover-foreground: oklch(1 0 0);
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #18181a;
+  --card-foreground: #fafafa;
+  --popover: #1f1f22;
+  --popover-foreground: #fafafa;
   --primary: oklch(0.5774 0.2091 273.8504);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.3779 0.0118 285.8207);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.3066 0.0108 278.2166);
-  --muted-foreground: oklch(0.723 0.0087 278.582);
-  --accent: oklch(0.4074 0.0134 280.1154);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.8004 0.1141 23.185);
+  --secondary: #232326;
+  --secondary-foreground: #fafafa;
+  --muted: #1a1a1c;
+  --muted-foreground: #a8a8a9;
+  --accent: #2a2a2c;
+  --accent-foreground: #fafafa;
+  --hover: #323234;
+  --hover-foreground: #fafafa;
+  --selection: #2c2c2e;
+  --selection-foreground: #fafafa;
+  --destructive: oklch(0.7040 0.1910 22.2160);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.369 0.0103 278.3345);
-  --input: oklch(0.3066 0.0108 278.2166);
+  --destructive-contrast: oklch(63.7% 0.237 25.331);
+  --border: #2c2c2e;
+  --input: #18181a;
+  --input-border: #2c2c2e;
+  --divider: #2c2c2e;
+  --shell-divider: #2c2c2e;
   --ring: oklch(0.5774 0.2091 273.8504);
-  --sidebar: oklch(0.2981 0.0091 276.8201);
-  --sidebar-foreground: oklch(0.6876 0.0102 279.6082);
-  --sidebar-primary: oklch(0.3804 0.0102 278.3511);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.3309 0.0087 285.9137);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.3494 0.0087 276.903);
-  --sidebar-ring: oklch(0.7151 0.1523 235.2888);
+  --surface-raised: #121214;
+  --surface-raised-foreground: #fafafa;
+  --disabled-foreground: #858586;
+  --sidebar: #141416;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #fafafa;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #323234;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #2c2c2e;
+  --sidebar-ring: #fafafa;
   --success: oklch(0.9075 0.0946 165.054);
   --warning: oklch(0.8757 0.0979 83.6546);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
@@ -59,8 +68,6 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-surface-foreground: var(--surface-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -73,10 +80,20 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-hover: var(--hover);
+  --color-hover-foreground: var(--hover-foreground);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
-  --color-input: var(--input);
+  /* Prism separates the input surface (`--input`) from its outline. */
+  --color-input: var(--input-border);
+  --color-input-border: var(--input-border);
+  --color-divider: var(--divider);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-foreground: var(--surface-raised-foreground);
+  --color-disabled-foreground: var(--disabled-foreground);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);

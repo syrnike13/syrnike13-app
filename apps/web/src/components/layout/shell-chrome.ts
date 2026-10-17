@@ -4,7 +4,7 @@ import type { DesktopOs } from '@syrnike13/platform'
 export const shellNavSurface =
   'theme-surface-navigation gradient-surface-navigation text-foreground' as const
 
-/** Самый лёгкий слой каркаса: системный хром и рельс серверов. */
+/** Самый нижний слой приложения: фон под колонками и плавающими панелями. */
 export const shellLowestSurface =
   'theme-surface-lowest gradient-surface-lowest text-foreground' as const
 

@@ -42,7 +42,6 @@ import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
   channelMaxUsers,
-  DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
   MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
   MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 } from '#/lib/channel-audio-bitrate'
@@ -424,22 +423,8 @@ export function ChannelSettingsOverviewPanel({
               min={MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
               max={MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
               step={1}
-              checkpoints={[
-                {
-                  value: MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
-                  label: String(MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS),
-                },
-                {
-                  value: DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
-                  label: `${DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}kbps`,
-                },
-                {
-                  value: MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
-                  label: String(MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS),
-                },
-              ]}
-              tooltipContent={(value) => `${value} kbps`}
-              onValueChange={([next]) => {
+              onValueChange={(value) => {
+                const next = typeof value === 'number' ? value : value[0]
                 if (next == null) return
                 setAudioBitrateKbps(next)
               }}
@@ -459,14 +444,8 @@ export function ChannelSettingsOverviewPanel({
               min={0}
               max={99}
               step={1}
-              checkpoints={[
-                { value: 0, label: '∞' },
-                { value: 99, label: '99' },
-              ]}
-              tooltipContent={(value) =>
-                value <= 0 ? t('unlimited') : String(value)
-              }
-              onValueChange={([next]) => {
+              onValueChange={(value) => {
+                const next = typeof value === 'number' ? value : value[0]
                 if (next == null) return
                 setMaxUsers(maxUsersFromSliderValue(next))
               }}

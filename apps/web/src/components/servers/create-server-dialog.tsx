@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactElement } from 'react'
 import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon } from '#/components/icons'
@@ -35,7 +35,7 @@ import { syncStore } from '#/features/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {
-  trigger?: ReactNode
+  trigger?: ReactElement
 }
 
 export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
@@ -179,21 +179,23 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Squircle asChild {...railIconSquircleProps}>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className={cn(railIconButtonClass, railIconIdleClass)}
-              title={t('triggerAria')}
-            >
-              <PlusIcon className={railGlyphClass} />
-            </Button>
-          </Squircle>
-        )}
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          trigger ?? (
+            <Squircle asChild {...railIconSquircleProps}>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={cn(railIconButtonClass, railIconIdleClass)}
+                title={t('triggerAria')}
+              >
+                <PlusIcon className={railGlyphClass} />
+              </Button>
+            </Squircle>
+          )
+        }
+      />
       <DialogContent>
         {mode === 'create' ? (
           <>

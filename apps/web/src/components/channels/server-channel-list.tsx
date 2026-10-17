@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
   type ReactNode,
 } from 'react'
 import type { User } from '@syrnike13/api-types'
@@ -25,9 +24,11 @@ import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import {
-  FloatingMenu,
-  FloatingMenuItem,
-} from '@syrnike13/ui/primitives/floating-menu'
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
@@ -92,9 +93,6 @@ function ServerChannelListFrame({
   const t = useTranslations('channels')
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
-  const [emptyMenu, setEmptyMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  )
   const rootRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
@@ -114,50 +112,28 @@ function ServerChannelListFrame({
     return () => observer.disconnect()
   }, [])
 
-  function handleEmptyContextMenu(event: MouseEvent<HTMLDivElement>) {
-    if (!canManage) return
-    event.preventDefault()
-    setEmptyMenu({ x: event.clientX, y: event.clientY })
-  }
-
   return (
     <>
       <div ref={rootRef} className="flex min-h-full flex-col p-2">
         <div className="shrink-0">{children}</div>
         {canManage ? (
-          <div
-            className="min-h-8 flex-1"
-            aria-hidden
-            onContextMenu={handleEmptyContextMenu}
-          />
+          <ContextMenu>
+            <ContextMenuTrigger
+              render={<div className="min-h-8 flex-1" aria-hidden />}
+            />
+            <ContextMenuContent>
+              <ContextMenuItem onClick={() => setCreateChannelOpen(true)}>
+                <PlusCircleIcon className="size-3.5" />
+                {t('createChannel')}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => setCreateCategoryOpen(true)}>
+                <FolderPlusIcon className="size-3.5" />
+                {t('createCategory.title')}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         ) : null}
       </div>
-
-      <FloatingMenu
-        open={emptyMenu !== null}
-        x={emptyMenu?.x ?? 0}
-        y={emptyMenu?.y ?? 0}
-        onClose={() => setEmptyMenu(null)}
-      >
-        <FloatingMenuItem
-          onClick={() => {
-            setEmptyMenu(null)
-            setCreateChannelOpen(true)
-          }}
-        >
-          <PlusCircleIcon className="size-3.5" />
-          {t('createChannel')}
-        </FloatingMenuItem>
-        <FloatingMenuItem
-          onClick={() => {
-            setEmptyMenu(null)
-            setCreateCategoryOpen(true)
-          }}
-        >
-          <FolderPlusIcon className="size-3.5" />
-          {t('createCategory.title')}
-        </FloatingMenuItem>
-      </FloatingMenu>
 
       {canManage ? (
         <>

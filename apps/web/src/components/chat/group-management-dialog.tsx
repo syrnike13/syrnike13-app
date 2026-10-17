@@ -370,18 +370,15 @@ function GroupManagementDialogContent({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
+      <DialogTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
           className="size-8"
           title={t('settings')}
-          aria-label={t('settings')}
-        >
+          aria-label={t('settings')} />}>
           <SettingsIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
+        </DialogTrigger>
       <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{t('settings')}</DialogTitle>

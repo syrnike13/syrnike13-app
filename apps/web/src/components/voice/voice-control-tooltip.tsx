@@ -22,13 +22,14 @@ export function VoiceControlTooltip({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={cn('inline-flex', wrapperClassName)}>{children}</span>
+      <TooltipTrigger
+        render={<span className={cn('inline-flex', wrapperClassName)} />}
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent
         side="top"
         sideOffset={8}
-        collisionPadding={8}
         className={contentClassName}
       >
         {content ?? title}

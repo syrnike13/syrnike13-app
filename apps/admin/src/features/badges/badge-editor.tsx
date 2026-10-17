@@ -7,7 +7,6 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { BadgeIcon } from '#/components/badge-icon'
-import { FormField } from '#/components/form-field'
 import { IconDropzone } from '#/components/icon-dropzone'
 import {
   AdminPage,
@@ -30,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Field, FieldLabel } from '@syrnike13/ui/primitives/field'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
@@ -248,7 +248,8 @@ export function BadgeEditorPage({
         <div className="grid gap-5 lg:grid-cols-[1fr_16rem]">
           <AdminSection className="p-4 sm:p-5">
             <div className="grid gap-4">
-              <FormField label={t('name')}>
+              <Field>
+                <FieldLabel>{t('name')}</FieldLabel>
                 <Input
                   value={form.name}
                   onChange={(e) => {
@@ -263,8 +264,9 @@ export function BadgeEditorPage({
                     }))
                   }}
                 />
-              </FormField>
-              <FormField label="Slug">
+              </Field>
+              <Field>
+                <FieldLabel>Slug</FieldLabel>
                 <Input
                   value={form.slug}
                   className="font-mono"
@@ -273,16 +275,18 @@ export function BadgeEditorPage({
                     setForm({ ...form, slug: e.target.value })
                   }}
                 />
-              </FormField>
-              <FormField label={t('description')}>
+              </Field>
+              <Field>
+                <FieldLabel>{t('description')}</FieldLabel>
                 <Textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
                 />
-              </FormField>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label={t('order')}>
+                <Field>
+                  <FieldLabel>{t('order')}</FieldLabel>
                   <Input
                     value={form.displayOrder}
                     inputMode="numeric"
@@ -291,7 +295,7 @@ export function BadgeEditorPage({
                       setForm({ ...form, displayOrder: e.target.value })
                     }
                   />
-                </FormField>
+                </Field>
                 <div className="space-y-3 pt-1">
                   <SwitchRow
                     label={t('visible')}

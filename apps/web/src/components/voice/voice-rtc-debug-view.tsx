@@ -69,7 +69,7 @@ export function VoiceRtcDebugView() {
   const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
-    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background text-foreground lg:flex-row">
+    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-card text-card-foreground lg:flex-row">
       <aside className="gradient-surface-navigation shrink-0 border-b border-border bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-60 lg:border-r lg:border-b-0 lg:px-5 lg:py-8">
         <div className="mb-4 lg:mb-6">
           <h1 className="text-lg font-bold leading-none">{t('debug.title')}</h1>

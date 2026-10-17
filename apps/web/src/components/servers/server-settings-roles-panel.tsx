@@ -44,9 +44,11 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import {
-  FloatingMenu,
-  FloatingMenuItem,
-} from '@syrnike13/ui/primitives/floating-menu'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerRoleEffect,
@@ -123,10 +125,6 @@ function SortableRoleListItem({
   onDelete: () => void
 }) {
   const t = useTranslations('servers.roles')
-  const [menuPosition, setMenuPosition] = useState<{
-    x: number
-    y: number
-  } | null>(null)
   const {
     attributes,
     listeners,
@@ -195,45 +193,30 @@ function SortableRoleListItem({
         </span>
       ) : null}
       {canDelete ? (
-        <>
-          <button
-            type="button"
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={t('roleActions', { name: role.name })}
-            aria-haspopup="menu"
-            aria-expanded={menuPosition ? true : undefined}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelect()
-              const rect = event.currentTarget.getBoundingClientRect()
-              setMenuPosition({
-                x: Math.max(8, rect.right - 192),
-                y: rect.bottom + 4,
-              })
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={t('roleActions', { name: role.name })}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelect()
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+              />
+            }
           >
             <MoreHorizontalIcon className="size-4" />
-          </button>
-          <FloatingMenu
-            open={Boolean(menuPosition)}
-            x={menuPosition?.x ?? 0}
-            y={menuPosition?.y ?? 0}
-            onClose={() => setMenuPosition(null)}
-            className="w-48"
-          >
-            <FloatingMenuItem
-              destructive
-              onClick={() => {
-                setMenuPosition(null)
-                onDelete()
-              }}
-            >
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
               <Trash2Icon className="size-4" />
               {t('deleteRole')}
-            </FloatingMenuItem>
-          </FloatingMenu>
-        </>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </div>
   )

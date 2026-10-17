@@ -8,8 +8,8 @@ import {
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
 import {
   voiceStagePopoverContentClass,
@@ -283,38 +283,34 @@ export function StreamSettingsSubmenu({
   }
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
-          onPointerEnter={show}
-          onPointerLeave={scheduleClose}
-          onFocus={show}
-          onClick={show}
-        >
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {hint ? (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {hint}
-            </span>
-          ) : null}
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </PopoverAnchor>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
+            onPointerEnter={show}
+            onPointerLeave={scheduleClose}
+            onFocus={show}
+          />
+        }
+      >
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {hint ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+        ) : null}
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
       <PopoverContent
         role="menu"
         side={side}
         align="start"
         sideOffset={6}
-        collisionPadding={8}
         data-mini-control
         className={cn(voiceStagePopoverContentClass, 'z-[520] w-60 p-1')}
         onPointerEnter={cancelClose}
         onPointerLeave={scheduleClose}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {children}
       </PopoverContent>

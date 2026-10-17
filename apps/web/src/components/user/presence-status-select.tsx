@@ -36,15 +36,13 @@ export function PresenceStatusSelect({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
+      <PopoverTrigger render={<button
           type="button"
           disabled={isPending}
           data-state={open ? 'open' : 'closed'}
           className={cn(profileMenuRowClass, className)}
           aria-haspopup="listbox"
-          aria-expanded={open}
-        >
+          aria-expanded={open} />}>
           <span
             className={cn(
               'size-3 shrink-0 rounded-full',
@@ -63,15 +61,12 @@ export function PresenceStatusSelect({
             className="size-4 shrink-0 opacity-50 transition-opacity group-hover:opacity-90 group-data-[state=open]:opacity-90"
             aria-hidden
           />
-        </button>
-      </PopoverTrigger>
+        </PopoverTrigger>
       <PopoverContent
         side="right"
         align="start"
         sideOffset={6}
-        collisionPadding={12}
         className="z-[250] w-52 p-1"
-        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {PRESENCE_OPTIONS.map((option) => {
           const selected = option.value === current.value

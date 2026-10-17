@@ -102,7 +102,7 @@ export function RailIconButton<TTo extends string>(
   } as UseLinkPropsOptions<RegisteredRouter, string, TTo, string, ''>)
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delay={0}>
       <Tooltip>
         <div className={railIconItemRowClass}>
           {/* key сбрасывает DOM: иначе idle opacity-0 + transition «съедает» unread */}
@@ -112,20 +112,22 @@ export function RailIconButton<TTo extends string>(
             unread={unread}
           />
           <Squircle asChild {...railIconSquircleProps}>
-            <TooltipTrigger asChild>
-              <a
-                {...anchorProps}
-                className={cn(
-                  buttonVariants({
-                    variant: active ? 'default' : 'ghost',
-                    size: 'icon',
-                  }),
-                  railIconButtonClass,
-                  !active && railIconIdleClass,
-                )}
-              >
-                {children}
-              </a>
+            <TooltipTrigger
+              render={
+                <a
+                  {...anchorProps}
+                  className={cn(
+                    buttonVariants({
+                      variant: active ? 'default' : 'ghost',
+                      size: 'icon',
+                    }),
+                    railIconButtonClass,
+                    !active && railIconIdleClass,
+                  )}
+                />
+              }
+            >
+              {children}
             </TooltipTrigger>
           </Squircle>
         </div>

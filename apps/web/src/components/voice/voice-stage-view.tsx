@@ -739,7 +739,7 @@ export function VoiceStageView({
         {onClose ? (
           <Button
             type="button"
-            variant="media-ghost"
+            variant="ghost"
             size="icon"
             className="size-9 shrink-0"
             aria-label={t('actions.minimize')}
@@ -870,7 +870,7 @@ export function VoiceStageView({
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
             type="button"
-            variant={chatOpen ? 'media-ghost-active' : 'media-ghost'}
+            variant={chatOpen ? 'secondary' : 'ghost'}
             size="icon"
             className="size-9 shrink-0"
             title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}

@@ -67,7 +67,7 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
               <Button
                 key={p}
                 type="button"
-                variant="outline-ghost"
+                variant="outline"
                 size="xs"
                 onClick={() => onSwitchPlatform(p)}
                 className="gap-1.5 rounded-full"

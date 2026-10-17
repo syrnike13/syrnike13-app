@@ -103,38 +103,18 @@
       "send": "Отправить"
     },
     "appearance": {
-      "gradientTitle": "Настройка градиента",
-      "gradientDescription": "Один градиент проходит через всё приложение, а поверхности автоматически сохраняют контраст.",
       "themes": "Темы",
       "displayMode": "Режим отображения",
       "lightDark": "Светлая / тёмная",
       "colorModeHint": "Как отображать выбранную палитру",
-      "colorModeUnavailable": "Для этой палитры доступен только один режим",
       "modes": {
         "light": "Светлая",
         "dark": "Тёмная",
         "system": "Системная"
       },
       "groups": {
-        "solid": "Обычные",
-        "gradient": "Градиентные"
-      },
-      "beta": "БЕТА",
-      "betaAria": "Бета: функционал находится в разработке",
-      "betaTooltip": "Функционал находится в разработке",
-      "previewAria": "Предпросмотр градиента",
-      "colors": "Цвета",
-      "addColor": "Добавить цвет",
-      "angle": "Направление градиента",
-      "saturation": "Насыщенность цвета",
-      "surprise": "Удивите меня",
-      "resetPalette": "Сбросить к палитре",
-      "editColor": "Изменить цвет {index}",
-      "color": "Цвет {index}",
-      "hexColor": "HEX цвета {index}",
-      "removeColor": "Удалить цвет {index}",
-      "removeColorTitle": "Удалить цвет",
-      "lastColorHint": "Нужен хотя бы один цвет"
+        "solid": "Обычные"
+      }
     },
     "voice": {
       "camera": "Камера",
@@ -529,89 +509,13 @@
   },
   "themes": {
     "ariaLabel": "Тема «{name}»",
-    "syrnike": {
-      "name": "Сырники",
-      "description": "Базовая фирменная тема"
-    },
-    "lug": {
-      "name": "Луг",
-      "description": "Мягкая зелёная палитра"
-    },
-    "iskra": {
-      "name": "Искра",
-      "description": "Контрастные красные акценты"
-    },
-    "matrix": {
-      "name": "Матрица",
-      "description": "Терминальная зелёная палитра"
-    },
     "monolit": {
       "name": "Монолит",
       "description": "Нейтральная монохромная палитра"
     },
-    "pergament": {
-      "name": "Пергамент",
-      "description": "Тёплые кремовые тона"
-    },
-    "grafit": {
-      "name": "Графит",
-      "description": "Нейтральная серая палитра с холодным оттенком"
-    },
-    "kontrast": {
-      "name": "Контраст",
-      "description": "Резкий чёрно-белый контраст с зелёным акцентом"
-    },
-    "gradient-twilight": {
-      "name": "Сумерки",
-      "description": "Холодный индиго с тёплым закатом"
-    },
-    "gradient-aurora": {
-      "name": "Аврора",
-      "description": "Глубокий синий, бирюза и фиолетовый"
-    },
-    "gradient-sunset": {
-      "name": "Закат",
-      "description": "Коралловый свет на фиолетовом фоне"
-    },
-    "gradient-ocean": {
-      "name": "Океан",
-      "description": "Глубокий синий и чистая бирюза"
-    },
-    "gradient-orchid": {
-      "name": "Орхидея",
-      "description": "Лиловый свет с розовым акцентом"
-    },
-    "gradient-northern-lights": {
-      "name": "Сияние",
-      "description": "Изумрудный свет на ночном небе"
-    },
-    "gradient-mango": {
-      "name": "Манго",
-      "description": "Солнечный жёлтый, апельсин и коралл"
-    },
-    "gradient-sakura": {
-      "name": "Сакура",
-      "description": "Нежный розовый и прохладная сирень"
-    },
-    "gradient-midnight": {
-      "name": "Полночь",
-      "description": "Тёмный индиго с электрическим синим"
-    },
-    "gradient-mint": {
-      "name": "Мята",
-      "description": "Свежая мята с небесно-голубым"
-    },
-    "gradient-ember": {
-      "name": "Жар",
-      "description": "Алый огонь и тёплый янтарь"
-    },
-    "gradient-dunes": {
-      "name": "Дюны",
-      "description": "Песочные тона с мягким кораллом"
-    },
-    "gradient": {
-      "name": "Свой градиент",
-      "description": "Настраиваемая многослойная тема"
+    "glina": {
+      "name": "Глина",
+      "description": "Тёплая терракотовая палитра"
     }
   },
   "feedback": {
@@ -781,7 +685,7 @@
         "members": "Управление участниками ({count})"
       },
       "editTitle": "Редактирование роли — {name}",
-      "roleActions": "Действия с ролью",
+      "roleActions": "Действия роли {name}",
       "sectionsAria": "Разделы редактирования роли",
       "required": " (обязательно)",
       "name": "Название",
@@ -798,7 +702,6 @@
       "createRole": "Создать роль",
       "noRoles": "Нет ролей",
       "viewOnly": "Только просмотр",
-      "roleActions": "Действия роли {name}",
       "deleteRole": "Удалить роль",
       "deleteRoleTitle": "Удалить роль «{name}»?",
       "deleteRoleDescription": "Участники потеряют эту роль. Это действие необратимо.",
@@ -1011,8 +914,8 @@
       "deleteServer": "Удалить сервер",
       "serverDeleted": "Сервер удалён",
       "deleteError": "Не удалось удалить сервер",
-      "deleteTitle": "Удалить сервер «{name}»?",
-      "deleteDescription": "Сервер, каналы и участники будут удалены для всех. Это действие невозможно отменить.",
+      "deleteTitle": "Удалить emoji :{name}:?",
+      "deleteDescription": "Emoji исчезнет с сервера и из новых сообщений.",
       "close": "Закрыть",
       "save": "Сохранить",
       "profileTitle": "Профиль сервера",
@@ -1061,8 +964,6 @@
       "loading": "Загрузка…",
       "noEmoji": "Нет серверных emoji",
       "delete": "Удалить",
-      "deleteTitle": "Удалить emoji :{name}:?",
-      "deleteDescription": "Emoji исчезнет с сервера и из новых сообщений.",
       "cancel": "Отмена",
       "deleteEmoji": "Удалить emoji"
     }

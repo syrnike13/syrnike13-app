@@ -1,4 +1,10 @@
 /* Shared design-system styles. */
+@import './shadcn.css';
+
+@utility cn-font-heading {
+  font-family: var(--font-display);
+}
+
 @theme inline {
   --color-success: var(--success);
   --color-warning: var(--warning);

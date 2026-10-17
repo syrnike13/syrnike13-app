@@ -110,19 +110,23 @@ vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ),
   ContextMenuItem: ({
     children,
-    onSelect,
+    onClick,
   }: {
     children: ReactNode
-    onSelect?: () => void
+    onClick?: () => void
   }) => (
-    <button type="button" onClick={() => onSelect?.()}>
+    <button type="button" onClick={onClick}>
       {children}
     </button>
   ),
   ContextMenuSeparator: () => null,
-  ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  ContextMenuTrigger: ({
+    children,
+    render,
+  }: {
+    children?: ReactNode
+    render?: ReactNode
+  }) => <>{render ?? children}</>,
 }))
 
 vi.mock('@syrnike13/ui/primitives/dialog', () => ({

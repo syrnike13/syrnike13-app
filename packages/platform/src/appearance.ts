@@ -36,7 +36,7 @@ export const AppearanceSettingsSchema = Schema.Struct({
   gradient: Schema.Union([AppearanceGradientSettingsSchema, Schema.Null]),
 })
 
-export const DEFAULT_THEME_ID = 'syrnike'
+export const DEFAULT_THEME_ID = 'monolit'
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   themeId: DEFAULT_THEME_ID,

@@ -237,7 +237,8 @@ export function VoiceStageMicSettingsMenuContent() {
           min={0}
           max={100}
           step={1}
-          onValueChange={([value]) => {
+          onValueChange={(next) => {
+            const value = typeof next === 'number' ? next : next[0]
             if (value == null) return
             voicePreferenceStore.setOutputVolume(sliderToOutputVolume(value))
           }}
@@ -319,7 +320,8 @@ export function VoiceSoundSettingsMenuContent() {
           min={0}
           max={100}
           step={1}
-          onValueChange={([value]) => {
+          onValueChange={(next) => {
+            const value = typeof next === 'number' ? next : next[0]
             if (value == null) return
             voicePreferenceStore.setOutputVolume(sliderToOutputVolume(value))
           }}

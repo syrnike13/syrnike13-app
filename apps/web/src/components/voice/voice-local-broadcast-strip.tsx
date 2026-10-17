@@ -69,20 +69,22 @@ function BroadcastStrip({
           {sourceLabel}
         </p>
 
-        <TooltipProvider delayDuration={300}>
+        <TooltipProvider delay={300}>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="quiet"
-                className="size-8 shrink-0"
-                disabled={disabled}
-                onClick={onStop}
-              >
-                <StopIcon className="size-4" />
-                <span className="sr-only">{stopTitle}</span>
-              </Button>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 shrink-0"
+                  disabled={disabled}
+                  onClick={onStop}
+                />
+              }
+            >
+              <StopIcon className="size-4" />
+              <span className="sr-only">{stopTitle}</span>
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={8}>
               {stopTitle}

@@ -65,26 +65,28 @@ export function DesktopUpdateTitleBarButton({
     : t('downloading', { percent: Math.round(state.percent) })
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={tooltip}
-            disabled={!ready}
-            className={cn(
-              'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
-              'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
-              'disabled:pointer-events-none disabled:opacity-50',
-              shellTitleBarNoDragClass,
-              className,
-            )}
-            onClick={() => {
-              if (ready) desktop.updates.install()
-            }}
-          >
-            <DownloadIcon className="size-4" aria-hidden />
-          </button>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={tooltip}
+              disabled={!ready}
+              className={cn(
+                'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
+                'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
+                'disabled:pointer-events-none disabled:opacity-50',
+                shellTitleBarNoDragClass,
+                className,
+              )}
+              onClick={() => {
+                if (ready) desktop.updates.install()
+              }}
+            />
+          }
+        >
+          <DownloadIcon className="size-4" aria-hidden />
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
           {tooltip}

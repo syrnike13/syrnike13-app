@@ -246,8 +246,7 @@ export function CommandPalette() {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder={t('placeholder')}
-            variant="borderless"
-            className="h-12 flex-1 px-0 [&::-webkit-search-cancel-button]:hidden"
+            className="h-12 flex-1 [&::-webkit-search-cancel-button]:hidden"
           />
           <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground sm:inline">
             Esc

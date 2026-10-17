@@ -119,24 +119,18 @@ export function VoiceParticipantIcons({
       ) : null}
       {muted && !listenerMuted ? (
         <MicOffIcon
-          className={cn(
-            'size-3.5',
-            serverMuted ? 'text-chart-2' : 'text-primary-foreground',
-          )}
+          className={cn('size-3.5', serverMuted && 'text-chart-2')}
           aria-hidden
         />
       ) : null}
       {deafened ? (
         <HeadphoneOffIcon
-          className={cn(
-            'size-3.5',
-            serverDeafened ? 'text-chart-2' : 'text-muted-foreground',
-          )}
+          className={cn('size-3.5', serverDeafened && 'text-chart-2')}
           aria-hidden
         />
       ) : null}
       {camera ? (
-        <VideoIcon className="size-3.5 text-muted-foreground" aria-hidden />
+        <VideoIcon className="size-3.5" aria-hidden />
       ) : null}
     </span>
   )

@@ -14,6 +14,7 @@ import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
@@ -66,7 +67,7 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-on-media/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-on-media/20'
+  'h-auto rounded-md border border-border bg-card font-medium text-card-foreground shadow-sm transition-colors hover:bg-hover'
 
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
@@ -354,8 +355,7 @@ export function StageMediaTile({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <article
+      <ContextMenuTrigger render={<article
           role="button"
           tabIndex={0}
           className={cn(
@@ -385,8 +385,7 @@ export function StageMediaTile({
               event.preventDefault()
               onFocus(item.id)
             }
-          }}
-        >
+          }} />}>
           {hasVideo && item.track ? (
             variant === 'strip' ? (
               <div className={stripMediaClipClass}>
@@ -523,16 +522,15 @@ export function StageMediaTile({
               )}
             />
           ) : null}
-        </article>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-64 border-on-media/10 bg-muted text-foreground">
-        <ContextMenuItem onSelect={() => onFocus(item.id)}>
+        </ContextMenuTrigger>
+      <ContextMenuContent className="z-[420] min-w-64 border-on-media/10">
+        <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
           {t('actions.focus')}
         </ContextMenuItem>
         {item.kind === 'screen' ? (
           <ContextMenuItem
-            onSelect={() =>
+            onClick={() =>
               onSetSubscribed(item.id, item.subscribed === false)
             }
           >
@@ -546,9 +544,8 @@ export function StageMediaTile({
         ) : null}
         <ContextMenuSeparator />
         <ContextMenuCheckboxItem
-          indicatorPosition="end"
           checked={muted}
-          onSelect={(event) => event.preventDefault()}
+          closeOnClick={false}
           onCheckedChange={(checked) => {
             if (isScreen) {
               voiceListenerStore.setStreamMuted(item.userId, checked === true)
@@ -564,9 +561,11 @@ export function StageMediaTile({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          <ContextMenuLabel className="px-0 pb-2 text-xs text-on-media/70">
-            {isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
-          </ContextMenuLabel>
+          <ContextMenuGroup>
+            <ContextMenuLabel className="px-0 pb-2 text-xs text-on-media/70">
+              {isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
+            </ContextMenuLabel>
+          </ContextMenuGroup>
           <div className="flex items-center gap-2">
             <Slider
               className="flex-1"
@@ -574,7 +573,9 @@ export function StageMediaTile({
               max={VOICE_USER_VOLUME_MAX}
               step={0.1}
               value={[volume]}
-              onValueChange={([next]) => {
+              onValueChange={(value) => {
+                const next = typeof value === 'number' ? value : value[0]
+                if (next == null) return
                 if (isScreen) {
                   voiceListenerStore.setStreamVolume(item.userId, next)
                 } else {

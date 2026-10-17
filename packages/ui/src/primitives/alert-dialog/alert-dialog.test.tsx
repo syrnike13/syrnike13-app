@@ -18,9 +18,7 @@ import {
 test('opens the confirmation dialog and exposes both actions', async () => {
   render(
     <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button>Удалить</Button>
-      </AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button />}>Удалить</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogTitle>Удалить канал?</AlertDialogTitle>
         <AlertDialogDescription>Действие необратимо.</AlertDialogDescription>

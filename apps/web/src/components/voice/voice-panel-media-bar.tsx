@@ -133,7 +133,7 @@ export function VoicePanelMediaBar() {
   })
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
         <PanelMediaButton
           title={cameraControl.title}

@@ -89,7 +89,7 @@ export function MobileShell() {
       {showChatFullscreen ? (
         <div
           className={cn(
-            'flex min-h-0 flex-1 flex-col',
+            'theme-surface-content gradient-surface-content flex min-h-0 flex-1 flex-col text-card-foreground',
             !isProfileRoute && 'pt-[env(safe-area-inset-top)]',
           )}
         >

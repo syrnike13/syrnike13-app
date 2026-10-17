@@ -152,17 +152,14 @@ export function NewConversationButton() {
   return (
     <>
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <Button
+        <PopoverTrigger render={<Button
             type="button"
             variant="ghost"
             size="icon"
             className="size-8 shrink-0"
-            title={t('title')}
-          >
+            title={t('title')} />}>
             <PlusIcon className="size-4" />
-          </Button>
-        </PopoverTrigger>
+          </PopoverTrigger>
         <PopoverContent align="end" className="w-52 p-1">
           <button
             type="button"

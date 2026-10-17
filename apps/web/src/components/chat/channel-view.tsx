@@ -29,7 +29,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from '#/components/ui/resizable'
+} from '@syrnike13/ui/primitives/resizable'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { VoiceCallBanner } from '#/components/voice/voice-call-banner'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'

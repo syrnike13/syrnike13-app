@@ -91,7 +91,7 @@ export function MobileUserPanel() {
 
           <Button
             type="button"
-            variant="floating"
+            variant="ghost"
             size="icon"
             className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full"
             title={t('notifications')}

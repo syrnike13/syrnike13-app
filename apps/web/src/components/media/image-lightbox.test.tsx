@@ -89,7 +89,7 @@ describe('ImageLightbox', () => {
       }),
     )
 
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything())
   })
 
   it('closes when clicking the empty backdrop, but not the image', () => {

@@ -167,10 +167,6 @@ export function VoiceStageInviteTile({
         'flex flex-col items-center justify-center gap-2 border border-dashed border-on-media/15 bg-muted/80 p-4 text-center',
         compact && 'gap-1.5 p-3',
       )}
-      style={{
-        backgroundImage:
-          'linear-gradient(to bottom right, rgb(43 45 49 / 0.95), rgb(35 36 40 / 0.95))',
-      }}
     >
       <p className="text-sm font-medium text-foreground">
         {t('actions.inviteFriends')}

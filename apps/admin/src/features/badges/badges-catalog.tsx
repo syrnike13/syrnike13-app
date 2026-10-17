@@ -11,9 +11,13 @@ import {
   AdminPage,
   AdminSection,
 } from '#/components/layout/page'
-import { PlusIcon } from '#/components/icons'
-import { SearchField } from '#/components/search-field'
+import { PlusIcon, SearchIcon } from '#/components/icons'
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -73,12 +77,16 @@ export function BadgesCatalogPage() {
       }
     >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <SearchField
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('searchPlaceholder')}
-          className="sm:max-w-xs"
-        />
+        <InputGroup className="sm:max-w-xs">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+          />
+        </InputGroup>
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((item) => (
             <button

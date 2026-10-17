@@ -110,33 +110,34 @@ export function ChannelSearchDialog({
     })
   }
 
+  const triggerElement =
+    variant === 'strip' ? (
+      <button
+        type="button"
+        className={cn(
+          'gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
+          stripClassName,
+        )}
+      >
+        <SearchIcon className="size-4 shrink-0" />
+        <span className="truncate">{t('search')}</span>
+      </button>
+    ) : (
+      <button
+        type="button"
+        className={cn(
+          'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+          triggerClassName,
+        )}
+        title={t('searchMessages')}
+      >
+        <SearchIcon className="size-4" />
+      </button>
+    )
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        {variant === 'strip' ? (
-          <button
-            type="button"
-            className={cn(
-              'gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
-              stripClassName,
-            )}
-          >
-            <SearchIcon className="size-4 shrink-0" />
-            <span className="truncate">{t('search')}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={cn(
-              'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
-              triggerClassName,
-            )}
-            title={t('searchMessages')}
-          >
-            <SearchIcon className="size-4" />
-          </button>
-        )}
-      </PopoverTrigger>
+      <PopoverTrigger render={triggerElement} />
       <PopoverContent
         align="end"
         side="bottom"

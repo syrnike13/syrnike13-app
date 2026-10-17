@@ -353,7 +353,6 @@ export function FeedbackCreateDialog({
                         <SelectValue placeholder={t('chooseArea')} />
                       </SelectTrigger>
                       <SelectContent
-                        position="popper"
                         side="bottom"
                         align="start"
                         sideOffset={8}
@@ -388,7 +387,6 @@ export function FeedbackCreateDialog({
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent
-                        position="popper"
                         side="bottom"
                         align="start"
                         sideOffset={8}

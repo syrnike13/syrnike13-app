@@ -2,11 +2,10 @@ import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { cn } from '#/lib/utils'
 
 /**
- * Поверхность поповеров на голосовой сцене — темнее обычного `popover`,
- * ближе к панели контролов (`#1e1f22`), но через токен темы.
+ * Поверхность поповеров на голосовой сцене — Prism-роль `popover`.
  */
 const voiceStagePopoverSurfaceClass =
-  'border-border bg-sidebar text-popover-foreground shadow-xl ring-1 ring-shell-divider'
+  'border-border bg-popover text-popover-foreground shadow-xl ring-1 ring-shell-divider'
 
 /** Общий контейнер поповеров на голосовой сцене (поверх дефолтного PopoverContent). */
 export const voiceStagePopoverContentClass = cn(

@@ -80,7 +80,12 @@ function DeviceSelectField({
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
-      <Select value={selectValue} onValueChange={onChange}>
+      <Select
+        value={selectValue}
+        onValueChange={(deviceId) => {
+          if (deviceId != null) onChange(deviceId)
+        }}
+      >
         <SelectTrigger aria-label={label} className="w-full">
           <SelectValue placeholder={ts('defaultOption')} />
         </SelectTrigger>
@@ -124,7 +129,8 @@ function VolumeSliderField({
         min={0}
         max={100}
         step={1}
-        onValueChange={([next]) => {
+        onValueChange={(value) => {
+          const next = typeof value === 'number' ? value : value[0]
           if (next == null) return
           onChange(sliderToVolume(next))
         }}

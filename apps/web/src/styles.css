@@ -50,11 +50,21 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-hover: var(--hover);
+  --color-hover-foreground: var(--hover-foreground);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-contrast: var(--destructive-contrast);
   --color-border: var(--border);
-  --color-input: var(--input);
+  /* Prism separates the input surface (`--input`) from its outline. */
+  --color-input: var(--input-border);
+  --color-input-border: var(--input-border);
+  --color-divider: var(--divider);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-foreground: var(--surface-raised-foreground);
+  --color-disabled-foreground: var(--disabled-foreground);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);

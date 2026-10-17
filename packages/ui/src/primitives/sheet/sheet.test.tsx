@@ -9,9 +9,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from './index'
 test('opens a sheet from its trigger', async () => {
   render(
     <Sheet>
-      <SheetTrigger asChild>
-        <Button>Открыть</Button>
-      </SheetTrigger>
+      <SheetTrigger render={<Button />}>Открыть</SheetTrigger>
       <SheetContent>
         <SheetTitle>Панель</SheetTitle>
         Содержимое панели

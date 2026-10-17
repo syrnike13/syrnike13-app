@@ -24,6 +24,7 @@ import {
   CheckIcon,
   GitMergeIcon,
   Loader2Icon,
+  SearchIcon,
   UserIcon,
   XIcon,
 } from '#/components/icons'
@@ -38,6 +39,11 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -46,7 +52,6 @@ import {
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
-import { SearchField } from '#/components/search-field'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   approveFeedback,
@@ -733,12 +738,17 @@ function DuplicatePicker({
         </p>
       </div>
 
-      <SearchField
-        value={searchValue}
-        aria-label={t('duplicateSearchAria')}
-        placeholder={t('duplicateSearchPlaceholder')}
-        onChange={(event) => onSearchChange(event.target.value)}
-      />
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon />
+        </InputGroupAddon>
+        <InputGroupInput
+          value={searchValue}
+          aria-label={t('duplicateSearchAria')}
+          placeholder={t('duplicateSearchPlaceholder')}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+      </InputGroup>
 
       <CandidateGroup label={t('suggestions')}>
         {catalogIsLoading ? (
@@ -1096,7 +1106,7 @@ function PublishedFeedbackEditor({
             <SelectTrigger id={`status-${suggestion._id}`} className="w-full">
               <SelectValue placeholder={t('statusPlaceholder')} />
             </SelectTrigger>
-            <SelectContent position="popper" side="bottom" align="start" sideOffset={0}>
+            <SelectContent side="bottom" align="start" sideOffset={0}>
               <SelectGroup>
                 {FEEDBACK_PRODUCT_STATUSES.map((item) => (
                   <SelectItem key={item.value} value={item.value}>

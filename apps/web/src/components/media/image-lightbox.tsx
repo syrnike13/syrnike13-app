@@ -92,7 +92,7 @@ function LightboxTooltip({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger render={children} />
       <TooltipContent side={side} sideOffset={8}>
         {label}
       </TooltipContent>
@@ -232,17 +232,15 @@ export function ImageLightbox({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        themedSurface={false}
-        overlayClassName="bg-media-backdrop/85"
         className={cn(
           'fixed inset-0 top-0 left-0 z-[300] flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
           'rounded-none border-none bg-transparent p-0 shadow-none outline-none sm:max-w-none',
-          'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100',
+          'data-closed:fade-out-0 data-open:fade-in-0',
         )}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
 
-        <TooltipProvider delayDuration={300}>
+        <TooltipProvider delay={300}>
           {author ? (
             <div
               className="absolute top-5 left-4 z-10 flex max-w-[min(20rem,calc(100vw-8rem))] items-center gap-3"
@@ -322,8 +320,7 @@ export function ImageLightbox({
             </LightboxTooltip>
           </div>
 
-          <DialogClose asChild>
-            <button
+          <DialogClose render={<button
               type="button"
               aria-label={t('closeViewer')}
               className={cn(
@@ -331,11 +328,9 @@ export function ImageLightbox({
                 lightboxChromeClass,
                 'transition-colors hover:bg-on-media/15 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none',
               )}
-              onClick={stopBubble}
-            >
+              onClick={stopBubble} />}>
               <XIcon className="size-5" aria-hidden />
-            </button>
-          </DialogClose>
+            </DialogClose>
 
           {hasGallery ? (
             <>

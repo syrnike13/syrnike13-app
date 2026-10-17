@@ -28,16 +28,25 @@ describe('appearance settings store', () => {
   })
 
   it('persists theme changes to localStorage on web', () => {
-    appearanceSettingsStore.setThemeId('lug')
-    expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain('lug')
-    expect(appearanceSettingsStore.getState().themeId).toBe('lug')
+    appearanceSettingsStore.setThemeId('glina')
+    expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain('glina')
+    expect(appearanceSettingsStore.getState().themeId).toBe('glina')
+  })
+
+  it('falls back to monolit for a removed theme id', () => {
+    localStorage.setItem(
+      APPEARANCE_STORAGE_KEY,
+      JSON.stringify({ themeId: 'lug', colorMode: 'dark', gradient: null }),
+    )
+
+    expect(readStoredAppearanceSettings().themeId).toBe('monolit')
   })
 
   it('migrates legacy next-themes storage key', () => {
     localStorage.clear()
     localStorage.setItem('theme', 'light')
     expect(readStoredAppearanceSettings()).toEqual({
-      themeId: 'syrnike',
+      themeId: 'monolit',
       colorMode: 'light',
       gradient: null,
     })
@@ -81,7 +90,7 @@ describe('appearance settings store', () => {
     })
   })
 
-  it('defaults to syrnike dark when storage is empty', () => {
+  it('defaults to monolit dark when storage is empty', () => {
     expect(readStoredAppearanceSettings()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
 

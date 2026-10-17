@@ -118,7 +118,7 @@ export function AdminStickyFooter({
   if (!visible) return null
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-[var(--page-padding-x)] mt-5 border-t border-border/60 bg-surface/95 px-[var(--page-padding-x)] py-3 backdrop-blur-sm">
+    <div className="sticky bottom-0 z-10 -mx-[var(--page-padding-x)] mt-5 border-t border-border/60 bg-background/95 px-[var(--page-padding-x)] py-3 backdrop-blur-sm">
       <div className="flex w-full flex-wrap items-center justify-between gap-2">{children}</div>
     </div>
   )

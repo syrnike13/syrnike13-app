@@ -5,8 +5,8 @@ import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { EyeIcon } from '#/components/icons'
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
 import {
   Tooltip,
@@ -83,18 +83,24 @@ function StreamViewerCount({
   const t = useTranslations('voice')
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            className={cn(viewerChipClass, 'gap-1 px-1.5 py-0.5 text-xs', className)}
-            aria-label={streamViewersSummary(viewers, t)}
-          >
-            <EyeIcon className="size-3 shrink-0" aria-hidden />
-            <span className="tabular-nums" aria-hidden>
-              {viewers.length}
-            </span>
-          </div>
+        <TooltipTrigger
+          render={
+            <div
+              className={cn(
+                viewerChipClass,
+                'gap-1 px-1.5 py-0.5 text-xs',
+                className,
+              )}
+              aria-label={streamViewersSummary(viewers, t)}
+            />
+          }
+        >
+          <EyeIcon className="size-3 shrink-0" aria-hidden />
+          <span className="tabular-nums" aria-hidden>
+            {viewers.length}
+          </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="z-[420]">
           {streamViewersSummary(viewers, t)}
@@ -143,47 +149,50 @@ function StreamViewerAvatars({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <button
-          type="button"
-          className={cn(viewerChipClass, 'p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
-          aria-label={streamViewersSummary(viewers, t)}
-          onMouseEnter={show}
-          onMouseLeave={scheduleClose}
-          onFocus={show}
-          onBlur={scheduleClose}
-          onClick={(event) => {
-            event.stopPropagation()
-            setOpen((value) => !value)
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <span className="flex -space-x-1.5">
-            {visible.map((viewer) => (
-              <UserAvatar
-                key={viewer.id}
-                user={viewer.user}
-                className="size-6 ring-2 ring-background"
-                fallbackClassName="size-6 text-[0.625rem]"
-                showPresence={false}
-                animated="never"
-              />
-            ))}
-            {hiddenCount > 0 ? (
-              <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
-                {`+${hiddenCount}`}
-              </span>
-            ) : null}
-          </span>
-        </button>
-      </PopoverAnchor>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              viewerChipClass,
+              'p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              className,
+            )}
+            aria-label={streamViewersSummary(viewers, t)}
+            onMouseEnter={show}
+            onMouseLeave={scheduleClose}
+            onFocus={show}
+            onBlur={scheduleClose}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          />
+        }
+      >
+        <span className="flex -space-x-1.5">
+          {visible.map((viewer) => (
+            <UserAvatar
+              key={viewer.id}
+              user={viewer.user}
+              className="size-6 ring-2 ring-background"
+              fallbackClassName="size-6 text-[0.625rem]"
+              showPresence={false}
+              animated="never"
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
+              {`+${hiddenCount}`}
+            </span>
+          ) : null}
+        </span>
+      </PopoverTrigger>
       <PopoverContent
         side="top"
         align="end"
         className="z-[420] w-56 p-2"
         onMouseEnter={show}
         onMouseLeave={scheduleClose}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        initialFocus={false}
         onClick={(event) => event.stopPropagation()}
       >
         <p className="px-1 pb-1.5 text-xs font-semibold uppercase text-muted-foreground">

@@ -130,7 +130,7 @@ export function VoiceParticipantRow({
         className={cn(
           'min-w-0 flex-1 truncate',
           voiceElsewhere ? 'font-normal' : 'font-medium',
-          isSpeaking ? 'text-on-media' : 'text-muted-foreground',
+          isSpeaking ? 'text-foreground' : 'text-muted-foreground',
         )}
       >
         {displayName}

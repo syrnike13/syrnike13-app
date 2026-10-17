@@ -50,7 +50,7 @@ export function MobileProfilePage() {
   })
 
   return (
-    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 flex-1 flex-col">
       <ScrollArea className="min-h-0 flex-1">
         <CurrentUserProfileMenu
           user={user}
@@ -62,7 +62,7 @@ export function MobileProfilePage() {
                 to="/m"
                 search={{ tab: 'online' }}
                 className={cn(
-                  buttonVariants({ variant: 'scrim', size: 'icon' }),
+                  buttonVariants({ variant: 'secondary', size: 'icon' }),
                   'size-10 rounded-full',
                 )}
                 aria-label={t('close')}
@@ -72,7 +72,7 @@ export function MobileProfilePage() {
               </Link>
               <Button
                 type="button"
-                variant="scrim"
+                variant="secondary"
                 size="icon"
                 className="size-10 rounded-full"
                 aria-label={t('settings')}

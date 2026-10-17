@@ -255,10 +255,10 @@ export function ChannelSettingsPage({
 
   return (
     <div
-      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-background"
+      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground"
       style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
     >
-      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-muted/40">
+      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
         <div
           className="ml-auto flex h-full min-w-0 flex-col"
           style={{ width: SETTINGS_NAV_WIDTH }}
@@ -352,7 +352,7 @@ export function ChannelSettingsPage({
       <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 sm:right-6 lg:right-8">
         <Button
           type="button"
-          variant="floating-outline"
+          variant="outline"
           size="icon"
           className="size-9 rounded-full"
           onClick={closeSettings}

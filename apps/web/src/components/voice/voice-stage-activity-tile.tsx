@@ -85,8 +85,7 @@ export function VoiceStageActivityTile({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <article
+      <ContextMenuTrigger render={<article
           data-testid="voice-stage-activity-tile"
           data-activity-id={item.instance.id}
           className={cn(
@@ -95,8 +94,7 @@ export function VoiceStageActivityTile({
               variant !== 'fullscreen' &&
               'hover:border-primary/50',
             variant === 'fullscreen' && 'rounded-none border-0',
-          )}
-        >
+          )} />}>
           {variant === 'strip' ? (
             <button
               type="button"
@@ -140,7 +138,7 @@ export function VoiceStageActivityTile({
           {variant !== 'strip' ? (
             <Button
               type="button"
-              variant="floating-outline"
+              variant="outline"
               size="icon"
               className="absolute top-2 right-2 z-20 size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               title={
@@ -169,10 +167,9 @@ export function VoiceStageActivityTile({
               </span>
             </div>
           ) : null}
-        </article>
-      </ContextMenuTrigger>
+        </ContextMenuTrigger>
       <ContextMenuContent className="z-[420] min-w-56">
-        <ContextMenuItem onSelect={() => onFocus(item.id)}>
+        <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
           {variant === 'focus'
             ? t('actions.returnToGrid')
@@ -181,7 +178,7 @@ export function VoiceStageActivityTile({
         {joined ? (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={leave}>
+            <ContextMenuItem variant="destructive" onClick={leave}>
               <LogOutIcon />
               {t('activity.leave')}
             </ContextMenuItem>

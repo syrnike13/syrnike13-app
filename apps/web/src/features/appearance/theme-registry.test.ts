@@ -4,45 +4,50 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 
 import {
   BRAND_LOCKED_THEME_TOKEN_KEYS,
+  BRAND_THEME_TOKENS,
   THEME_CATALOG,
   THEME_TOKEN_KEYS,
-  applyBrandLockedThemeTokens,
   getThemeById,
   getThemeSurfaceVariables,
   getThemeTokens,
+  previewVariantForTheme,
   resolveThemeVariant,
   themePreviewColors,
 } from '@syrnike13/ui/tokens'
 
-const OKLCH_PATTERN = /^(oklch\([^)]+\)|rgb\([^)]+\))$/
-
 describe('theme registry', () => {
-  it('contains the default syrnike theme', () => {
-    expect(getThemeById('syrnike').id).toBe('syrnike')
-    expect(getThemeById('missing')).toEqual(getThemeById('syrnike'))
+  it('contains the default monolit theme', () => {
+    expect(getThemeById('monolit').id).toBe('monolit')
+    expect(getThemeById('missing')).toEqual(getThemeById('monolit'))
   })
 
-  it('defines complete token sets for every theme variant', () => {
+  it('defines Prism anchors for both modes in every theme', () => {
+    expect(THEME_CATALOG.map((theme) => theme.id)).toEqual(['monolit', 'glina'])
+    expect(THEME_CATALOG.some((theme) => theme.id.startsWith('gradient'))).toBe(
+      false,
+    )
+
     for (const theme of THEME_CATALOG) {
-      for (const tokens of Object.values(theme.variants)) {
-        expect(tokens).toBeDefined()
-        for (const key of THEME_TOKEN_KEYS) {
-          expect(tokens?.[key], `${theme.id} missing ${key}`).toBeTruthy()
-        }
+      for (const variant of ['light', 'dark'] as const) {
+        const anchors = theme.anchors[variant]
+        expect(anchors.background, `${theme.id}/${variant}`).toMatch(
+          /^#[0-9a-f]{6}$/,
+        )
+        expect(anchors.foreground).toMatch(/^#[0-9a-f]{6}$/)
+        expect(anchors.accent).toMatch(/^#[0-9a-f]{6}$/)
       }
     }
   })
 
-  it('uses oklch or rgb color syntax for color tokens', () => {
+  it('generates every semantic token for every theme variant', () => {
     for (const theme of THEME_CATALOG) {
-      for (const tokens of Object.values(theme.variants)) {
-        if (!tokens) continue
+      for (const variant of ['light', 'dark'] as const) {
+        const tokens = getThemeTokens(
+          { ...DEFAULT_APPEARANCE_SETTINGS, themeId: theme.id, colorMode: variant },
+          variant === 'dark',
+        )
         for (const key of THEME_TOKEN_KEYS) {
-          if (key.startsWith('scrollbar')) {
-            expect(tokens[key]).toMatch(/^rgb\(/)
-            continue
-          }
-          expect(tokens[key], `${theme.id}.${key}`).toMatch(OKLCH_PATTERN)
+          expect(tokens[key], `${theme.id}/${variant}/${key}`).toBeTruthy()
         }
       }
     }
@@ -63,121 +68,53 @@ describe('theme registry', () => {
     ).toBe('light')
   })
 
-  it('forces matrix to dark regardless of color mode', () => {
-    expect(
-      resolveThemeVariant(
-        { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'matrix', colorMode: 'light' },
-        false,
-      ),
-    ).toBe('dark')
-  })
-
-  it('keeps the solid palettes and exposes the gradient presets', () => {
-    expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
-      'syrnike',
-      'lug',
-      'iskra',
-      'matrix',
-      'monolit',
-      'pergament',
-      'grafit',
-      'kontrast',
-      'gradient-twilight',
-      'gradient-aurora',
-      'gradient-sunset',
-      'gradient-ocean',
-      'gradient-orchid',
-      'gradient-northern-lights',
-      'gradient-mango',
-      'gradient-sakura',
-      'gradient-midnight',
-      'gradient-mint',
-      'gradient-ember',
-      'gradient-dunes',
-      'gradient',
-    ])
-    expect(getThemeById('syrnike').kind).toBe('solid')
-    expect(getThemeById('gradient').kind).toBe('gradient')
-    expect(getThemeById('gradient').customizable).toBe(true)
-  })
-
-  it('keeps brand-locked tokens from syrnike for every theme', () => {
-    const syrnikeLight = getThemeById('syrnike').variants.light!
-    const syrnikeDark = getThemeById('syrnike').variants.dark!
-
+  it('keeps brand-locked tokens fixed for every theme', () => {
     for (const theme of THEME_CATALOG) {
-      if (theme.variants.light) {
-        const resolved = applyBrandLockedThemeTokens(theme.variants.light, 'light')
+      for (const variant of ['light', 'dark'] as const) {
+        const tokens = getThemeTokens(
+          { ...DEFAULT_APPEARANCE_SETTINGS, themeId: theme.id, colorMode: variant },
+          variant === 'dark',
+        )
         for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
-          expect(resolved[key], `${theme.id} light ${key}`).toBe(syrnikeLight[key])
+          expect(tokens[key], `${theme.id}/${variant}/${key}`).toBe(
+            BRAND_THEME_TOKENS[variant][key],
+          )
         }
       }
-      if (theme.variants.dark) {
-        const resolved = applyBrandLockedThemeTokens(theme.variants.dark, 'dark')
-        for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
-          expect(resolved[key], `${theme.id} dark ${key}`).toBe(syrnikeDark[key])
-        }
-      }
     }
   })
 
-  it('resolves lug theme with syrnike brand tokens via getThemeTokens', () => {
-    const tokens = getThemeTokens(
-      { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'lug', colorMode: 'light' },
-      false,
-    )
-    const syrnikeLight = getThemeById('syrnike').variants.light!
-    for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
-      expect(tokens[key]).toBe(syrnikeLight[key])
-    }
-    expect(tokens.background).toBe(getThemeById('lug').variants.light!.background)
-  })
-
-  it('tints tokens and builds gradient surfaces only for gradient themes', () => {
-    const gradientSettings = {
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'gradient',
-      colorMode: 'dark' as const,
-    }
-    const tokens = getThemeTokens(gradientSettings, true)
-    const surfaces = getThemeSurfaceVariables(gradientSettings, true)
-
-    expect(tokens.background).toContain('color-mix(in oklab')
-    expect(surfaces['theme-backdrop']).toContain('linear-gradient')
-
-    const solidSettings = {
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'lug',
-      colorMode: 'dark' as const,
-    }
-    const solidTokens = getThemeTokens(solidSettings, true)
-    const solidSurfaces = getThemeSurfaceVariables(solidSettings, true)
-    expect(solidSurfaces['theme-backdrop']).toBe(solidTokens.background)
-    expect(solidSurfaces['theme-surface-content']).toBe(solidTokens.card)
-  })
-
-  it('keeps preset gradients independent from custom gradient settings', () => {
+  it('derives surfaces from Prism roles', () => {
     const settings = {
       ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'gradient-aurora',
+      themeId: 'glina',
       colorMode: 'dark' as const,
-      gradient: {
-        colors: ['#112233', '#AABBCC'],
-        angle: 45,
-        saturation: 80,
-      },
     }
+    const tokens = getThemeTokens(settings, true)
+    const surfaces = getThemeSurfaceVariables(settings, true)
 
-    expect(getThemeSurfaceVariables(settings, true)['theme-backdrop']).toBe(
-      'linear-gradient(120deg, #163A72, #267F72, #59388E)',
-    )
+    expect(surfaces['theme-backdrop']).toBe(tokens.background)
+    expect(surfaces['theme-surface-content']).toBe(tokens.card)
+    expect(surfaces['theme-surface-raised']).toBe(tokens['surface-raised'])
+    expect(surfaces['theme-surface-input']).toBe(tokens.input)
+    expect(surfaces['theme-surface-solid']).toBe(tokens.popover)
   })
 
-  it('uses catalog palette colors in theme picker previews (not brand-locked)', () => {
-    const lug = themePreviewColors(getThemeById('lug'), 'dark')
-    const iskra = themePreviewColors(getThemeById('iskra'), 'dark')
-    expect(lug.primary).toBe(getThemeById('lug').variants.dark!.primary)
-    expect(iskra.primary).toBe(getThemeById('iskra').variants.dark!.primary)
-    expect(lug.primary).not.toBe(iskra.primary)
+  it('keeps picker previews on the generated accent before brand lock', () => {
+    const monolit = themePreviewColors(getThemeById('monolit'), 'dark')
+    const glina = themePreviewColors(getThemeById('glina'), 'dark')
+
+    expect(monolit.primary).not.toBe(glina.primary)
+    expect(glina.primary).not.toBe(BRAND_THEME_TOKENS.dark.primary)
+  })
+
+  it('previews inactive themes in the preferred mode', () => {
+    expect(
+      previewVariantForTheme(
+        getThemeById('glina'),
+        { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'monolit' },
+        true,
+      ),
+    ).toBe('dark')
   })
 })

@@ -499,7 +499,7 @@ function DisplaySourceTile({
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
             <span
               aria-hidden="true"
-              className={buttonVariants({ size: 'sm', variant: 'inverse' })}
+              className={buttonVariants({ size: 'sm', variant: 'secondary' })}
             >
               {submitting ? (
                 <Loader2Icon
@@ -561,25 +561,21 @@ function ScreenSharePickerSettings({
   const quality = useScreenShareQuality()
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger render={<Button
           type="button"
           variant="outline"
           size="icon"
           aria-label={t('sharePicker.streamSettings')}
           title={t('sharePicker.streamSettings')}
           disabled={disabled}
-          className="group/gear cursor-pointer disabled:cursor-not-allowed"
-        >
+          className="group/gear cursor-pointer disabled:cursor-not-allowed" />}>
           <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[state=open]/gear:rotate-90 motion-reduce:transition-none" />
-        </Button>
-      </PopoverTrigger>
+        </PopoverTrigger>
       <PopoverContent
         side="top"
         align="end"
         sideOffset={8}
         className={cn(voiceStagePopoverContentClass, 'w-64')}
-        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex flex-col gap-0.5">
           <StreamSettingsSubmenu

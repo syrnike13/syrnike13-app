@@ -20,7 +20,7 @@ const focusStageFadeSlideClass =
   'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-on-media/10 bg-card px-2 text-sm font-medium text-primary-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-card px-2 text-sm font-medium text-card-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
@@ -162,26 +162,28 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                   voiceStageChromeMotion(chromeVisible, 'bottom'),
                 )}
               >
-                <TooltipProvider delayDuration={300}>
+                <TooltipProvider delay={300}>
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={voiceStageStripToggleButtonClass}
-                        aria-label={
-                          stripCollapsed
-                            ? t('actions.showParticipants')
-                            : t('actions.hideParticipants')
-                        }
-                        onClick={toggleStrip}
-                      >
-                        {stripCollapsed ? (
-                          <ChevronUpIcon className="size-3.5 shrink-0" />
-                        ) : (
-                          <ChevronDownIcon className="size-3.5 shrink-0" />
-                        )}
-                        <UsersIcon className="size-3.5 shrink-0" />
-                      </button>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          className={voiceStageStripToggleButtonClass}
+                          aria-label={
+                            stripCollapsed
+                              ? t('actions.showParticipants')
+                              : t('actions.hideParticipants')
+                          }
+                          onClick={toggleStrip}
+                        />
+                      }
+                    >
+                      {stripCollapsed ? (
+                        <ChevronUpIcon className="size-3.5 shrink-0" />
+                      ) : (
+                        <ChevronDownIcon className="size-3.5 shrink-0" />
+                      )}
+                      <UsersIcon className="size-3.5 shrink-0" />
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={8}>
                       {stripCollapsed

@@ -1,3 +1,4 @@
+import type { PrismTuningPatch } from './prism'
 import {
   allThemeCssVariables,
   getThemeById,
@@ -17,27 +18,27 @@ export function readSystemPrefersDark(): boolean {
 export function applyThemeToDocument(
   settings: ThemeSettings,
   prefersDark = readSystemPrefersDark(),
+  tuning?: PrismTuningPatch,
 ) {
   if (typeof document === 'undefined') return resolveThemeVariant(settings, prefersDark)
 
   const variant = resolveThemeVariant(settings, prefersDark)
   const theme = getThemeById(settings.themeId)
-  const tokens = getThemeTokens(settings, prefersDark)
+  const tokens = getThemeTokens(settings, prefersDark, tuning)
   const root = document.documentElement
 
   root.classList.toggle('dark', variant === 'dark')
+  root.style.colorScheme = variant
+  root.dataset.stylePreset = 'prism'
+  root.dataset.themeMode = settings.colorMode
+  root.dataset.themeResolved = variant
   root.dataset.theme = theme.id
-  root.dataset.themeGradient =
-    theme.kind === 'gradient'
-      ? theme.customizable && settings.gradient
-        ? 'custom'
-        : 'preset'
-      : 'none'
+  root.dataset.themeGradient = 'none'
 
   const variables = {
     ...allThemeCssVariables(tokens),
     ...allThemeSurfaceCssVariables(
-      getThemeSurfaceVariables(settings, prefersDark),
+      getThemeSurfaceVariables(settings, prefersDark, tuning),
     ),
   }
   for (const [name, value] of Object.entries(variables)) {

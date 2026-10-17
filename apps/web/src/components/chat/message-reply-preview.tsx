@@ -191,7 +191,7 @@ export function ComposerReplyBanner({
 
         <Button
           type="button"
-          variant="icon-ghost"
+          variant="ghost"
           size="icon"
           className="size-6 shrink-0"
           onClick={onClear}

@@ -3,13 +3,15 @@
 import { render, screen } from '@testing-library/react'
 import { expect, test } from 'vitest'
 
-import { Field } from './index'
+import { Field, FieldDescription, FieldError, FieldLabel } from './index'
 import { Input } from '../input'
 
-test('links the label to the control and shows a hint', () => {
+test('links the label to the control and shows a description', () => {
   render(
-    <Field label="Имя" hint="Как к вам обращаться">
-      <Input />
+    <Field>
+      <FieldLabel htmlFor="field-name">Имя</FieldLabel>
+      <Input id="field-name" />
+      <FieldDescription>Как к вам обращаться</FieldDescription>
     </Field>,
   )
 
@@ -17,13 +19,14 @@ test('links the label to the control and shows a hint', () => {
   expect(screen.getByText('Как к вам обращаться')).toBeInTheDocument()
 })
 
-test('shows an error instead of the hint', () => {
+test('shows field errors', () => {
   render(
-    <Field label="Имя" hint="Подсказка" error="Обязательное поле">
-      <Input />
+    <Field data-invalid="true">
+      <FieldLabel htmlFor="field-error-name">Имя</FieldLabel>
+      <Input id="field-error-name" aria-invalid />
+      <FieldError>Обязательное поле</FieldError>
     </Field>,
   )
 
   expect(screen.getByRole('alert')).toHaveTextContent('Обязательное поле')
-  expect(screen.queryByText('Подсказка')).not.toBeInTheDocument()
 })

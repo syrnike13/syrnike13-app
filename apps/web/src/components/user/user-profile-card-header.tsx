@@ -228,11 +228,11 @@ export function UserProfileCardHeader({
                       : layout === 'compact'
                         ? 'size-14 text-base ring-4'
                         : 'size-20 text-xl ring-[6px]',
-                    'ring-muted bg-muted',
+                    'ring-popover bg-muted',
                   )}
                   animated="always"
                   showPresence
-                  presenceRingClassName="border-muted"
+                  presenceRingClassName="border-popover"
                 />
                 <span
                   aria-hidden
@@ -256,11 +256,11 @@ export function UserProfileCardHeader({
                   : layout === 'compact'
                     ? 'size-14 text-base ring-4'
                     : 'size-20 text-xl ring-[6px]',
-                'ring-muted bg-muted',
+                'ring-popover bg-muted',
               )}
               animated="always"
               showPresence
-              presenceRingClassName="border-muted"
+              presenceRingClassName="border-popover"
             />
           )}
         </div>

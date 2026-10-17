@@ -70,7 +70,7 @@ export function MessageHoverToolbar({
           'gradient-surface-floating flex items-center gap-0.5 rounded-lg border border-border',
           'bg-popover px-0.5 py-0.5 text-popover-foreground shadow-md',
         )}
-        role="toolbar"
+        role="ghost"
         aria-label={t('messageActions')}
       >
         {HOVER_BAR_REACTIONS.map((emoji) => {
@@ -82,7 +82,7 @@ export function MessageHoverToolbar({
             <Button
               key={emoji}
               type="button"
-              variant={active ? 'toolbar-active' : 'toolbar'}
+              variant={active ? 'secondary' : 'ghost'}
               className={toolbarButtonClass}
               title={emoji}
               onClick={() => onToggleReaction(emoji, active)}
@@ -102,7 +102,7 @@ export function MessageHoverToolbar({
           trigger={
             <Button
               type="button"
-              variant="toolbar"
+              variant="ghost"
               size="icon"
               className={toolbarIconButtonClass}
               title={t('addReaction')}
@@ -114,7 +114,7 @@ export function MessageHoverToolbar({
 
         <Button
           type="button"
-          variant="toolbar"
+          variant="ghost"
           size="icon"
           className={toolbarIconButtonClass}
           title={t('reply')}

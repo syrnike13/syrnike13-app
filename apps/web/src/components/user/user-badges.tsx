@@ -50,14 +50,16 @@ export function UserBadges({
 
           return (
             <Tooltip key={badge._id}>
-              <TooltipTrigger asChild>
-                <span
-                  className="inline-flex shrink-0 items-center justify-center"
-                  aria-label={badge.name}
-                  tabIndex={0}
-                >
-                  <BadgeIconImage src={iconUrl} size={size} />
-                </span>
+              <TooltipTrigger
+                render={
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center"
+                    aria-label={badge.name}
+                    tabIndex={0}
+                  />
+                }
+              >
+                <BadgeIconImage src={iconUrl} size={size} />
               </TooltipTrigger>
               <TooltipContent
                 side="top"

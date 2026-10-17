@@ -30,18 +30,15 @@ export function ComposerEmojiPicker({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
           className={triggerClassName ?? 'size-9 shrink-0'}
           disabled={disabled}
-          title="Emoji"
-        >
+          title="Emoji" />}>
           <SmileIcon className="size-4" />
-        </Button>
-      </PopoverTrigger>
+        </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">
           Emoji

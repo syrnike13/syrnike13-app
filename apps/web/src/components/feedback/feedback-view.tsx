@@ -267,7 +267,7 @@ export function FeedbackView({
               <SelectTrigger aria-label={t('sortAria')} size="sm" className="w-32 sm:w-36">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={4}>
+              <SelectContent side="bottom" align="start" sideOffset={4}>
                 <SelectGroup>
                   <SelectItem value="popular">{t('sortPopular')}</SelectItem>
                   <SelectItem value="new">{t('sortNew')}</SelectItem>
@@ -276,13 +276,11 @@ export function FeedbackView({
             </Select>
 
             <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-              <PopoverTrigger asChild>
-                <Button
+              <PopoverTrigger render={<Button
                   type="button"
                   variant={filtersOpen ? 'secondary' : 'outline'}
                   size="sm"
-                  className="h-9 shrink-0"
-                >
+                  className="h-9 shrink-0" />}>
                   <FilterIcon className="size-4" data-icon="inline-start" />
                   {t('filters')}
                   {activeFilterCount > 0 ? (
@@ -290,8 +288,7 @@ export function FeedbackView({
                       {activeFilterCount}
                     </span>
                   ) : null}
-                </Button>
-              </PopoverTrigger>
+                </PopoverTrigger>
               <PopoverContent
                 align="end"
                 className="flex max-h-[70vh] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0"

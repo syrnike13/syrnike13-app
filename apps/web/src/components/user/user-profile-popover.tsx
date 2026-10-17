@@ -12,46 +12,6 @@ import {
 } from '#/components/user/user-profile-card'
 import { cn } from '#/lib/utils'
 
-function focusOutsideRelatedTarget(event: unknown): EventTarget | null {
-  if (!event || typeof event !== 'object') return null
-
-  if (
-    'detail' in event &&
-    event.detail &&
-    typeof event.detail === 'object' &&
-    'originalEvent' in event.detail &&
-    event.detail.originalEvent instanceof FocusEvent
-  ) {
-    const fromOriginal = event.detail.originalEvent.relatedTarget
-    if (fromOriginal != null) return fromOriginal
-  }
-
-  if ('relatedTarget' in event) {
-    const relatedTarget = event.relatedTarget
-    return relatedTarget == null || relatedTarget instanceof EventTarget
-      ? (relatedTarget ?? null)
-      : null
-  }
-
-  return null
-}
-
-function shouldKeepProfilePopoverOpen(event: unknown): boolean {
-  const relatedTarget = focusOutsideRelatedTarget(event)
-  if (relatedTarget == null) {
-    return true
-  }
-
-  if (!(relatedTarget instanceof Element)) {
-    return false
-  }
-
-  return Boolean(
-    relatedTarget.closest('[data-slot="dialog-content"]') ||
-      relatedTarget.closest('[data-slot="dialog-overlay"]'),
-  )
-}
-
 function isRoleDialogTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   return Boolean(
@@ -87,34 +47,31 @@ export function UserProfilePopover({
   const setOpen = onOpenChangeProp ?? setOpenInternal
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
+    <Popover
+      open={open}
+      onOpenChange={(next, details) => {
+        if (
+          !next &&
+          details.reason === 'outside-press' &&
+          isRoleDialogTarget(details.event.target as EventTarget | null)
+        ) {
+          details.cancel()
+          return
+        }
+        setOpen(next)
+      }}
+    >
+      <PopoverTrigger render={children} />
       <PopoverContent
         side={side}
         align={align}
         sideOffset={8}
-        collisionPadding={16}
         className={cn(
-          'z-[200] w-[min(340px,calc(100vw-1rem))] overflow-hidden border-0 bg-muted p-0 text-foreground shadow-xl ring-1 ring-border',
+          'z-[200] w-[min(340px,calc(100vw-1rem))] overflow-hidden border-0 bg-popover p-0 text-popover-foreground shadow-xl ring-1 ring-border',
           className,
         )}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onCloseAutoFocus={(event) => event.preventDefault()}
-        onFocusOutside={(event) => {
-          if (shouldKeepProfilePopoverOpen(event)) {
-            event.preventDefault()
-          }
-        }}
-        onInteractOutside={(event) => {
-          if (isRoleDialogTarget(event.target)) {
-            event.preventDefault()
-          }
-        }}
-        onPointerDownOutside={(event) => {
-          if (isRoleDialogTarget(event.target)) {
-            event.preventDefault()
-          }
-        }}
+        initialFocus={false}
+        finalFocus={false}
       >
         <UserProfileCard
           user={user}

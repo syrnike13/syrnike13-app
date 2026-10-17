@@ -82,12 +82,12 @@ export function MobileVoiceChannelDrawer() {
   return (
     <Drawer
       open={open}
+      showSwipeHandle={!fullscreen}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) closeVoiceChannelDrawer()
       }}
     >
       <DrawerContent
-        showHandle={!fullscreen}
         className={cn(
           fullscreen
             ? 'inset-0 top-0 h-[100dvh] max-h-[100dvh] rounded-none border-0 pb-0'
@@ -120,7 +120,7 @@ export function MobileVoiceChannelDrawer() {
             {chatOpen ? (
               <div
                 className={cn(
-                  'gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider bg-background',
+                  'theme-surface-content gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider text-card-foreground',
                   fullscreen ? 'flex-1' : 'flex-1',
                 )}
               >

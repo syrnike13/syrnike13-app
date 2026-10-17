@@ -53,7 +53,9 @@ vi.mock('@syrnike13/ui/primitives/dialog', () => ({
     open?: boolean
   }) => (open ? <>{children}</> : null),
   DialogContent: ({ children }: { children: ReactNode }) => (
-    <div role="dialog">{children}</div>
+    <div role="dialog" data-slot="dialog-content">
+      {children}
+    </div>
   ),
   DialogDescription: ({ children }: { children: ReactNode }) => (
     <p>{children}</p>
@@ -181,7 +183,14 @@ describe('ServerHeaderMenu', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
 
-    const dialog = screen.getByRole('dialog')
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="dialog-content"]'),
+      ).toBeTruthy()
+    })
+    const dialog = document.querySelector<HTMLElement>(
+      '[data-slot="dialog-content"]',
+    )!
     expect(dialog.textContent).toContain('Server')
 
     fireEvent.click(
@@ -213,7 +222,14 @@ describe('ServerHeaderMenu', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
 
-    const dialog = screen.getByRole('dialog')
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="dialog-content"]'),
+      ).toBeTruthy()
+    })
+    const dialog = document.querySelector<HTMLElement>(
+      '[data-slot="dialog-content"]',
+    )!
     expect(dialog.textContent).toContain('Server')
 
     fireEvent.click(

@@ -295,7 +295,7 @@ export function ChannelSettingsWebhooksPanel({
             {t('empty')}
           </p>
         ) : (
-          <TooltipProvider delayDuration={300}>
+          <TooltipProvider delay={300}>
             <div className="flex flex-col gap-2">
               {sortedWebhooks.map((webhook) => {
                 const url = buildWebhookUrl(webhook)
@@ -363,21 +363,23 @@ export function ChannelSettingsWebhooksPanel({
                     )}
                     <div className="flex shrink-0 items-center gap-1">
                       <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t('renameAria', { name: webhook.name })}
-                            disabled={
-                              editingId === webhook.id ||
-                              deletingId === webhook.id ||
-                              savingId === webhook.id
-                            }
-                            onClick={() => beginRename(webhook)}
-                          >
-                            <PencilIcon className="size-4" />
-                          </Button>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t('renameAria', { name: webhook.name })}
+                              disabled={
+                                editingId === webhook.id ||
+                                deletingId === webhook.id ||
+                                savingId === webhook.id
+                              }
+                              onClick={() => beginRename(webhook)}
+                            />
+                          }
+                        >
+                          <PencilIcon className="size-4" />
                         </TooltipTrigger>
                         <TooltipContent side="top" sideOffset={6}>
                           {t('rename')}
@@ -385,16 +387,18 @@ export function ChannelSettingsWebhooksPanel({
                       </Tooltip>
                       {url ? (
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t('copyUrlAria', { name: webhook.name })}
-                              onClick={() => void copyWebhookUrl(webhook)}
-                            >
-                              <CopyIcon className="size-4" />
-                            </Button>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t('copyUrlAria', { name: webhook.name })}
+                                onClick={() => void copyWebhookUrl(webhook)}
+                              />
+                            }
+                          >
+                            <CopyIcon className="size-4" />
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={6}>
                             {t('copyUrl')}
@@ -402,20 +406,22 @@ export function ChannelSettingsWebhooksPanel({
                         </Tooltip>
                       ) : null}
                       <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t('deleteAria', { name: webhook.name })}
-                            disabled={
-                              deletingId === webhook.id ||
-                              savingId === webhook.id
-                            }
-                            onClick={() => setWebhookPendingDeletion(webhook)}
-                          >
-                            <Trash2Icon className="size-4" />
-                          </Button>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t('deleteAria', { name: webhook.name })}
+                              disabled={
+                                deletingId === webhook.id ||
+                                savingId === webhook.id
+                              }
+                              onClick={() => setWebhookPendingDeletion(webhook)}
+                            />
+                          }
+                        >
+                          <Trash2Icon className="size-4" />
                         </TooltipTrigger>
                         <TooltipContent side="top" sideOffset={6}>
                           {t('delete')}

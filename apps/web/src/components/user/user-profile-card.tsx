@@ -16,13 +16,13 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
-import { Input } from '@syrnike13/ui/primitives/input'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -170,7 +170,7 @@ export function UserProfileCard({
               {canAddFriend ? (
                 <Button
                   type="button"
-                  variant="scrim-icon"
+                  variant="secondary"
                   size="icon"
                   disabled={busy}
                   title={t('addFriend')}
@@ -258,42 +258,43 @@ function UserProfileCardBannerMenu({
   const t = useTranslations('users')
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="scrim-icon"
-          size="icon"
-          disabled={disabled}
-          title={t('more')}
-          aria-label={t('profileActions')}
-          className="size-8"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontalIcon className="size-4" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            disabled={disabled}
+            title={t('more')}
+            aria-label={t('profileActions')}
+            className="size-8"
+            onClick={(event) => event.stopPropagation()}
+          />
+        }
+      >
+        <MoreHorizontalIcon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         side="bottom"
         align="end"
-        className="z-[220] w-auto min-w-[12rem] p-1"
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        className="z-[220] w-auto min-w-[12rem]"
       >
         {canViewProfile ? (
-          <FloatingMenuItem onClick={onViewProfile}>
+          <DropdownMenuItem onClick={onViewProfile}>
             <UserIcon className="size-3.5" />
             {t('viewProfile')}
-          </FloatingMenuItem>
+          </DropdownMenuItem>
         ) : null}
-        <FloatingMenuItem onClick={onBlock} destructive>
+        <DropdownMenuItem variant="destructive" onClick={onBlock}>
           <BanIcon className="size-3.5" />
           {t('block')}
-        </FloatingMenuItem>
-        <FloatingMenuItem onClick={onCopyUserId}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onCopyUserId}>
           <CopyIcon className="size-3.5" />
           {t('copyUserId')}
-        </FloatingMenuItem>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

@@ -82,7 +82,7 @@ function ensurePopoutDocument(childWindow: Window) {
         height: 100%;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: var(--media-backdrop);
       }
       html, body {
         display: flex;

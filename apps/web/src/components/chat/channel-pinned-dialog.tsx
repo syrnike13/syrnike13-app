@@ -74,17 +74,14 @@ export function ChannelPinnedDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
+      <DialogTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
           className={cn('size-8', triggerClassName)}
-          title={t('pinnedTitle')}
-        >
+          title={t('pinnedTitle')} />}>
           <PinIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
+        </DialogTrigger>
       <DialogContent className="flex max-h-[80vh] max-w-lg flex-col gap-4">
         <DialogHeader>
           <DialogTitle>{t('pinnedTitle')}</DialogTitle>

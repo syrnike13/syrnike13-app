@@ -650,9 +650,9 @@ export function MessageRow({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuTrigger render={row} />
       <ContextMenuContent className="w-36">
-        <ContextMenuItem onSelect={() => onReply(message)}>
+        <ContextMenuItem onClick={() => onReply(message)}>
           <ReplyIcon className="size-4" />
           {t('reply')}
         </ContextMenuItem>

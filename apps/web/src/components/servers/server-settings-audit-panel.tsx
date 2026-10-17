@@ -20,7 +20,6 @@ import type { AppIcon } from '#/components/icons'
 import {
   BanIcon,
   ChevronDownIcon,
-  ChevronUpIcon,
   CircleCheckIcon,
   HashIcon,
   InfoIcon,
@@ -36,7 +35,12 @@ import {
   UsersIcon,
 } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { FloatingMenu, FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -59,11 +63,6 @@ type AuditLabelContext = {
 }
 
 type AuditChanges = ServerAuditLogEntry['changes']
-
-type MenuPosition = {
-  x: number
-  y: number
-}
 
 type ActionPresentation = {
   icon: AppIcon
@@ -350,14 +349,6 @@ function changeFieldLabel(key: string, t: Translator) {
   return t.has(path) ? t(path) : key.replaceAll('_', ' ')
 }
 
-function menuPositionFromButton(button: HTMLButtonElement): MenuPosition {
-  const rect = button.getBoundingClientRect()
-  return {
-    x: Math.max(8, rect.left),
-    y: rect.bottom + 4,
-  }
-}
-
 function iconToneClass(tone: ActionPresentation['tone']) {
   switch (tone) {
     case 'green':
@@ -394,72 +385,59 @@ function AuditActionFilter({
   onChange: (value: AuditActionType | '') => void
 }) {
   const t = useTranslations('audit')
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
   const selected = value ? ACTION_PRESENTATION[value] : null
   const SelectedIcon = selected?.icon
 
   return (
     <div className="space-y-1.5">
       <Label>{t('filters.actions')}</Label>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        aria-haspopup="menu"
-        aria-expanded={menuPosition ? true : undefined}
-        onClick={(event) => {
-          const nextPosition = menuPositionFromButton(event.currentTarget)
-          setMenuPosition((current) => current ? null : nextPosition)
-        }}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          {SelectedIcon ? (
-            <SelectedIcon
-              className={cn('size-4 shrink-0', iconToneClass(selected.tone))}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
-          ) : (
-            <SettingsIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate">
-            {value ? t(`actions.${value}`) : t('filters.allActions')}
-          </span>
-        </span>
-        {menuPosition ? (
-          <ChevronUpIcon className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      <FloatingMenu
-        open={Boolean(menuPosition)}
-        x={menuPosition?.x ?? 0}
-        y={menuPosition?.y ?? 0}
-        onClose={() => setMenuPosition(null)}
-        className="max-h-80 w-64 overflow-y-auto"
-      >
-        <FloatingMenuItem
-          onClick={() => {
-            onChange('')
-            setMenuPosition(null)
-          }}
+          }
         >
-          <SettingsIcon className="size-4 text-muted-foreground" />
-          {t('filters.allActions')}
-        </FloatingMenuItem>
-        {AUDIT_ACTIONS.map((action) => {
-          return (
-            <FloatingMenuItem
-              key={action}
-              onClick={() => {
-                onChange(action)
-                setMenuPosition(null)
-              }}
-            >
-              <AuditActionIcon action={action} />
-              <span className="truncate">{t(`actions.${action}`)}</span>
-            </FloatingMenuItem>
-          )
-        })}
-      </FloatingMenu>
+          <span className="flex min-w-0 items-center gap-2">
+            {SelectedIcon ? (
+              <SelectedIcon
+                className={cn('size-4 shrink-0', iconToneClass(selected.tone))}
+              />
+            ) : (
+              <SettingsIcon className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate">
+              {value ? t(`actions.${value}`) : t('filters.allActions')}
+            </span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
+          <DropdownMenuItem
+            onClick={() => {
+              onChange('')
+            }}
+          >
+            <SettingsIcon className="size-4 text-muted-foreground" />
+            {t('filters.allActions')}
+          </DropdownMenuItem>
+          {AUDIT_ACTIONS.map((action) => {
+            return (
+              <DropdownMenuItem
+                key={action}
+                onClick={() => {
+                  onChange(action)
+                }}
+              >
+                <AuditActionIcon action={action} />
+                <span className="truncate">{t(`actions.${action}`)}</span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
@@ -474,7 +452,6 @@ function AuditUserFilter({
   onChange: (userId: string) => void
 }) {
   const t = useTranslations('audit')
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
   const [query, setQuery] = useState('')
   const selected = value ? users.find((user) => user._id === value) : undefined
   const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU')
@@ -488,83 +465,71 @@ function AuditUserFilter({
   return (
     <div className="space-y-1.5">
       <Label>{t('filters.users')}</Label>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        aria-haspopup="menu"
-        aria-expanded={menuPosition ? true : undefined}
-        onClick={(event) => {
-          const nextPosition = menuPositionFromButton(event.currentTarget)
-          setMenuPosition((current) => current ? null : nextPosition)
-        }}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          {selected ? (
-            <UserAvatar user={selected} className="size-5 shrink-0" />
-          ) : (
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate">
-            {selected
-              ? userLabel(selected, selected._id)
-              : t('filters.allUsers')}
-          </span>
-        </span>
-        {menuPosition ? (
-          <ChevronUpIcon className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      <FloatingMenu
-        open={Boolean(menuPosition)}
-        x={menuPosition?.x ?? 0}
-        y={menuPosition?.y ?? 0}
-        onClose={() => setMenuPosition(null)}
-        className="max-h-80 w-[16.25rem] overflow-y-auto"
-      >
-        <div className="sticky top-0 z-10 bg-popover p-1">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              placeholder={t('filters.searchUser')}
-              className="h-8 pl-8"
-              onChange={(event) => setQuery(event.target.value)}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
-          </div>
-        </div>
-        <FloatingMenuItem
-          onClick={() => {
-            onChange('')
-            setQuery('')
-            setMenuPosition(null)
-          }}
+          }
         >
-          <UsersIcon className="size-4 text-muted-foreground" />
-          {t('filters.allUsers')}
-        </FloatingMenuItem>
-        {visibleUsers.map((user) => (
-          <FloatingMenuItem
-            key={user._id}
+          <span className="flex min-w-0 items-center gap-2">
+            {selected ? (
+              <UserAvatar user={selected} className="size-5 shrink-0" />
+            ) : (
+              <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate">
+              {selected
+                ? userLabel(selected, selected._id)
+                : t('filters.allUsers')}
+            </span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="max-h-80 w-[16.25rem] overflow-y-auto">
+          <div className="sticky top-0 z-10 bg-popover p-1">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                placeholder={t('filters.searchUser')}
+                className="h-8 pl-8"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+          </div>
+          <DropdownMenuItem
             onClick={() => {
-              onChange(user._id)
+              onChange('')
               setQuery('')
-              setMenuPosition(null)
             }}
           >
-            <UserAvatar user={user} className="size-5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">
-              {userLabel(user, user._id)}
-            </span>
-          </FloatingMenuItem>
-        ))}
-        {visibleUsers.length === 0 ? (
-          <p className="px-2 py-2 text-sm text-muted-foreground">
-            {t('filters.noUsers')}
-          </p>
-        ) : null}
-      </FloatingMenu>
+            <UsersIcon className="size-4 text-muted-foreground" />
+            {t('filters.allUsers')}
+          </DropdownMenuItem>
+          {visibleUsers.map((user) => (
+            <DropdownMenuItem
+              key={user._id}
+              onClick={() => {
+                onChange(user._id)
+                setQuery('')
+              }}
+            >
+              <UserAvatar user={user} className="size-5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                {userLabel(user, user._id)}
+              </span>
+            </DropdownMenuItem>
+          ))}
+          {visibleUsers.length === 0 ? (
+            <p className="px-2 py-2 text-sm text-muted-foreground">
+              {t('filters.noUsers')}
+            </p>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

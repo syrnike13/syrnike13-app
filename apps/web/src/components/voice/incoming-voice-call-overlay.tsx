@@ -134,7 +134,7 @@ export function IncomingVoiceCallOverlay({
         <Button
           type="button"
           size="sm"
-          variant="success"
+          variant="default"
           className="flex-1"
           onClick={() => {
             Effect.runFork(

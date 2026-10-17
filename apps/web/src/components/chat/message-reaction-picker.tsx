@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactElement } from 'react'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -39,7 +39,7 @@ export function MessageReactionPicker({
   onOpenChange,
   align = 'end',
 }: {
-  trigger: ReactNode
+  trigger: ReactElement
   onPick: (emoji: string) => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -47,7 +47,7 @@ export function MessageReactionPicker({
 }) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverTrigger render={trigger} />
       <PopoverContent className={cn('w-auto p-2')} align={align}>
         <MessageReactionPickerContent onPick={onPick} />
       </PopoverContent>

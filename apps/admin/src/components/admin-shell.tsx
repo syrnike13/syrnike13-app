@@ -110,7 +110,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
         </div>
       </aside>
 
-      <main className="admin-scroll min-w-0 flex-1 overflow-y-auto bg-surface">
+      <main className="admin-scroll min-w-0 flex-1 overflow-y-auto bg-background">
         {children ?? <Outlet />}
       </main>
     </div>

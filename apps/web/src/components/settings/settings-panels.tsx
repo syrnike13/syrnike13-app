@@ -17,11 +17,8 @@ import { SettingsProfilePanel } from '#/components/settings/settings-profile-pan
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
-import { CustomThemeEditor } from '#/components/appearance/custom-theme-editor'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
 import { useAppearance } from '#/features/appearance/appearance-context'
-import { CUSTOM_GRADIENT_CONTROLS_ENABLED } from '#/features/appearance/appearance-feature-flags'
-import { getThemeById, themeSupportsColorMode } from '@syrnike13/ui/tokens'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
@@ -343,49 +340,20 @@ export function SettingsAccountPanel() {
 
 export function SettingsAppearancePanel() {
   const t = useTranslations('settings.appearance')
-  const {
-    gradientCustomized,
-    previewGradient,
-    resolvedGradient,
-    setColorMode,
-    setGradient,
-    settings,
-  } = useAppearance()
-  const activeTheme = getThemeById(settings.themeId)
-  const supportsColorMode = themeSupportsColorMode(activeTheme)
+  const { setColorMode, settings } = useAppearance()
 
   return (
     <div className="space-y-6">
-      {CUSTOM_GRADIENT_CONTROLS_ENABLED &&
-      activeTheme.kind === 'gradient' &&
-      activeTheme.customizable ? (
-        <SettingsBlock
-          title={t('gradientTitle')}
-          description={t('gradientDescription')}
-        >
-          <CustomThemeEditor
-            gradient={resolvedGradient}
-            customized={gradientCustomized}
-            onPreview={previewGradient}
-            onChange={setGradient}
-          />
-        </SettingsBlock>
-      ) : null}
       <SettingsBlock title={t('themes')}>
         <ThemePickerGrid />
       </SettingsBlock>
       <SettingsBlock title={t('displayMode')}>
         <SettingsRow
           label={t('lightDark')}
-          hint={
-            supportsColorMode
-              ? t('colorModeHint')
-              : t('colorModeUnavailable')
-          }
+          hint={t('colorModeHint')}
         >
           <ColorModeSegment
             value={settings.colorMode}
-            disabled={!supportsColorMode}
             onChange={setColorMode}
           />
         </SettingsRow>

@@ -2,8 +2,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { FxImage } from '#/components/ui/fx-image'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import {
-  getThemeById,
-  themeHasVariant,
+  getThemeTokens,
   type ThemeVariant,
 } from '@syrnike13/ui/tokens'
 import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
@@ -21,9 +20,10 @@ function chatPaletteFromTheme(
   variant: ThemeVariant,
   label: string,
 ) {
-  const theme = getThemeById(themeId)
-  const tokens = theme.variants[variant]
-  if (!tokens) return null
+  const tokens = getThemeTokens(
+    { themeId, colorMode: variant },
+    variant === 'dark',
+  )
   return {
     id: variant,
     label,
@@ -41,15 +41,12 @@ export function RoleColourPreview({
 }: RoleColourPreviewProps) {
   const t = useTranslations('servers.roles')
   const { settings } = useAppearance()
-  const theme = getThemeById(settings.themeId)
   const displayName = name.trim() || t('newRole')
   const roleStyle = roleColourStyle(colour.trim() || null)
 
-  const palettes = (['light', 'dark'] as const).flatMap((variant) => {
-    if (!themeHasVariant(theme, variant)) return []
+  const palettes = (['light', 'dark'] as const).map((variant) => {
     const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
-    const palette = chatPaletteFromTheme(settings.themeId, variant, label)
-    return palette ? [palette] : []
+    return chatPaletteFromTheme(settings.themeId, variant, label)
   })
 
   return (

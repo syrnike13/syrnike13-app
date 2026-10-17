@@ -214,10 +214,7 @@ describe('desktop screen share picker paging UI', () => {
       'screen:1',
     ))
     expect(getDisplaySourceVisual).not.toHaveBeenCalledWith('picker-1', 'window:2')
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Приложения/ }), {
-      button: 0,
-      ctrlKey: false,
-    })
+    fireEvent.click(screen.getByRole('tab', { name: /Приложения/ }))
     await waitFor(() => expect(getDisplaySourceVisual).toHaveBeenCalledWith(
       'picker-1',
       'window:2',

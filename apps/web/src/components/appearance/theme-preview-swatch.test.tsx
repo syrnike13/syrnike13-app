@@ -16,7 +16,7 @@ describe('ThemePreviewSwatch', () => {
     render(
       <TooltipProvider>
         <ThemePreviewSwatch
-          theme={getThemeById('syrnike')}
+          theme={getThemeById('monolit')}
           active
           settings={DEFAULT_APPEARANCE_SETTINGS}
           prefersDark
@@ -25,18 +25,18 @@ describe('ThemePreviewSwatch', () => {
       </TooltipProvider>,
     )
 
-    const swatch = screen.getByRole('button', { name: 'Тема «Сырники»' })
+    const swatch = screen.getByRole('button', { name: 'Тема «Монолит»' })
     expect(swatch.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(swatch)
     expect(onSelect).toHaveBeenCalledOnce()
   })
 
-  it('renders a configured gradient inside a compact swatch', () => {
+  it('renders a Prism palette preview inside a compact swatch', () => {
     render(
       <TooltipProvider>
         <ThemePreviewSwatch
-          theme={getThemeById('gradient-twilight')}
+          theme={getThemeById('glina')}
           active={false}
           settings={DEFAULT_APPEARANCE_SETTINGS}
           prefersDark
@@ -45,7 +45,7 @@ describe('ThemePreviewSwatch', () => {
       </TooltipProvider>,
     )
 
-    const swatch = screen.getByRole('button', { name: 'Тема «Сумерки»' })
+    const swatch = screen.getByRole('button', { name: 'Тема «Глина»' })
     const preview = swatch.firstElementChild as HTMLElement
 
     expect(swatch.getAttribute('aria-pressed')).toBe('false')

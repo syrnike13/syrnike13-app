@@ -546,16 +546,16 @@ export function ChannelSidebarItem({
 
   const menuItems = (
     <>
-      <ContextMenuItem onSelect={() => void markRead()}>
+      <ContextMenuItem onClick={() => void markRead()}>
         <CheckCheckIcon className="size-3.5" />
         {t('markRead')}
       </ContextMenuItem>
-      <ContextMenuItem onSelect={() => void copyLink()}>
+      <ContextMenuItem onClick={() => void copyLink()}>
         <LinkIcon className="size-3.5" />
         {t('copyLink')}
       </ContextMenuItem>
       {channel.channel_type === 'TextChannel' && canInvite ? (
-        <ContextMenuItem onSelect={() => void createInvite()}>
+        <ContextMenuItem onClick={() => void createInvite()}>
           <LinkIcon className="size-3.5" />
           {t('invite')}
         </ContextMenuItem>
@@ -563,7 +563,7 @@ export function ChannelSidebarItem({
       {canManage && isServerChannel ? (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={openChannelSettings}>
+          <ContextMenuItem onClick={openChannelSettings}>
             <SettingsIcon className="size-3.5" />
             {t('channelSettings')}
           </ContextMenuItem>
@@ -574,7 +574,7 @@ export function ChannelSidebarItem({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => setDeleteDialogOpen(true)}
+            onClick={() => setDeleteDialogOpen(true)}
           >
             <Trash2Icon className="size-3.5" />
             {t('deleteChannel')}
@@ -588,7 +588,7 @@ export function ChannelSidebarItem({
     <>
       {isServerChannel ? (
         <ContextMenu>
-          <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+          <ContextMenuTrigger render={row} />
           <ContextMenuContent className="w-52">{menuItems}</ContextMenuContent>
         </ContextMenu>
       ) : (

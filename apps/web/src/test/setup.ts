@@ -17,6 +17,10 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn()
 }
 
+if (typeof Element !== 'undefined' && !Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = () => []
+}
+
 if (typeof window !== 'undefined') {
   if (!window.matchMedia) {
     Object.defineProperty(window, 'matchMedia', {
@@ -42,5 +46,19 @@ if (typeof window !== 'undefined') {
     }
 
     globalThis.ResizeObserver = ResizeObserverStub
+  }
+
+  if (!globalThis.IntersectionObserver) {
+    class IntersectionObserverStub {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return []
+      }
+    }
+
+    globalThis.IntersectionObserver =
+      IntersectionObserverStub as unknown as typeof IntersectionObserver
   }
 }

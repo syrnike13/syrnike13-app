@@ -1,3 +1,6 @@
+import type { PrismTokens } from './prism'
+import type { ThemeVariant } from './types'
+
 export const THEME_TOKEN_KEYS = [
   'background',
   'foreground',
@@ -13,11 +16,16 @@ export const THEME_TOKEN_KEYS = [
   'muted-foreground',
   'accent',
   'accent-foreground',
+  'hover',
+  'hover-foreground',
+  'selection',
+  'selection-foreground',
   'destructive',
   'destructive-foreground',
   'destructive-contrast',
   'border',
   'input',
+  'input-border',
   'ring',
   'chart-1',
   'chart-2',
@@ -32,6 +40,10 @@ export const THEME_TOKEN_KEYS = [
   'sidebar-accent-foreground',
   'sidebar-border',
   'shell-divider',
+  'divider',
+  'surface-raised',
+  'surface-raised-foreground',
+  'disabled-foreground',
   'sidebar-ring',
   'scrollbar-thumb',
   'scrollbar-thumb-hover',
@@ -40,7 +52,7 @@ export const THEME_TOKEN_KEYS = [
 export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number]
 export type ThemeTokens = Record<ThemeTokenKey, string>
 
-/** Не меняются при смене темы — всегда из палитры СЫРНИКИ (light/dark). */
+/** Brand colors never come from the theme anchors; they are fixed exceptions. */
 export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
   'primary',
   'primary-foreground',
@@ -55,81 +67,47 @@ export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
   'chart-5',
 ] as const satisfies readonly ThemeTokenKey[]
 
-export type ThemeSemanticPalette = {
-  background: string
-  foreground: string
-  card: string
-  primary: string
-  primaryForeground: string
-  secondary: string
-  secondaryForeground: string
-  muted: string
-  mutedForeground: string
-  accent: string
-  accentForeground: string
-  destructive: string
-  destructiveForeground: string
-  destructiveContrast: string
-  border: string
-  input: string
-  ring: string
-  chart1: string
-  chart2: string
-  chart3: string
-  chart4: string
-  chart5: string
-  sidebar: string
-  sidebarForeground: string
-  sidebarPrimary: string
-  sidebarPrimaryForeground: string
-  sidebarAccent: string
-  sidebarAccentForeground: string
-  sidebarBorder: string
-  shellDivider: string
-  sidebarRing: string
-  scrollbarThumb: string
-  scrollbarThumbHover: string
+type BrandTokens = Pick<
+  ThemeTokens,
+  (typeof BRAND_LOCKED_THEME_TOKEN_KEYS)[number]
+>
+
+const BRAND_PRIMARY = 'oklch(0.5774 0.2091 273.8504)'
+const BRAND_DESTRUCTIVE = 'oklch(0.7040 0.1910 22.2160)'
+
+export const BRAND_THEME_TOKENS: Record<ThemeVariant, BrandTokens> = {
+  light: {
+    primary: BRAND_PRIMARY,
+    'primary-foreground': 'oklch(1 0 0)',
+    destructive: BRAND_DESTRUCTIVE,
+    'destructive-foreground': 'oklch(1 0 0)',
+    'destructive-contrast': 'oklch(0.5156 0.1810 22.5393)',
+    ring: BRAND_PRIMARY,
+    'chart-1': 'oklch(0.8092 0.1122 345.1956)',
+    'chart-2': 'oklch(0.8757 0.0979 83.6546)',
+    'chart-3': 'oklch(0.9075 0.0946 165.0540)',
+    'chart-4': 'oklch(0.8406 0.0699 242.1914)',
+    'chart-5': 'oklch(0.7865 0.1232 309.4396)',
+  },
+  dark: {
+    primary: BRAND_PRIMARY,
+    'primary-foreground': 'oklch(1 0 0)',
+    destructive: BRAND_DESTRUCTIVE,
+    'destructive-foreground': 'oklch(1 0 0)',
+    'destructive-contrast': 'oklch(63.7% 0.237 25.331)',
+    ring: BRAND_PRIMARY,
+    'chart-1': 'oklch(0.8092 0.1122 345.1956)',
+    'chart-2': 'oklch(0.8757 0.0979 83.6546)',
+    'chart-3': 'oklch(0.9075 0.0946 165.0540)',
+    'chart-4': 'oklch(0.8406 0.0699 242.1914)',
+    'chart-5': 'oklch(0.7865 0.1232 309.4396)',
+  },
 }
 
-export type ShadcnColorVariables = {
-  background: string
-  foreground: string
-  card: string
-  cardForeground: string
-  popover: string
-  popoverForeground: string
-  primary: string
-  primaryForeground: string
-  secondary: string
-  secondaryForeground: string
-  muted: string
-  mutedForeground: string
-  accent: string
-  accentForeground: string
-  destructive: string
-  destructiveForeground: string
-  destructiveContrast: string
-  border: string
-  input: string
-  ring: string
-  chart1: string
-  chart2: string
-  chart3: string
-  chart4: string
-  chart5: string
-  sidebar: string
-  sidebarForeground: string
-  sidebarPrimary: string
-  sidebarPrimaryForeground: string
-  sidebarAccent: string
-  sidebarAccentForeground: string
-  sidebarBorder: string
-  sidebarRing: string
-  shellDivider?: string
-}
-
-function scrollbarTokens(isDark: boolean): Pick<ThemeTokens, 'scrollbar-thumb' | 'scrollbar-thumb-hover'> {
-  return isDark
+function scrollbarTokens(
+  variant: ThemeVariant,
+): Pick<ThemeTokens, 'scrollbar-thumb' | 'scrollbar-thumb-hover'> {
+  return variant === 'dark'
     ? {
         'scrollbar-thumb': 'rgb(255 255 255 / 0.22)',
         'scrollbar-thumb-hover': 'rgb(255 255 255 / 0.38)',
@@ -140,87 +118,49 @@ function scrollbarTokens(isDark: boolean): Pick<ThemeTokens, 'scrollbar-thumb' |
       }
 }
 
-export function createThemeTokens(
-  colors: ShadcnColorVariables,
-  isDark: boolean,
-): ThemeTokens {
-  const shellDivider = colors.shellDivider ?? colors.border
-  return {
-    background: colors.background,
-    foreground: colors.foreground,
-    card: colors.card,
-    'card-foreground': colors.cardForeground,
-    popover: colors.popover,
-    'popover-foreground': colors.popoverForeground,
-    primary: colors.primary,
-    'primary-foreground': colors.primaryForeground,
-    secondary: colors.secondary,
-    'secondary-foreground': colors.secondaryForeground,
-    muted: colors.muted,
-    'muted-foreground': colors.mutedForeground,
-    accent: colors.accent,
-    'accent-foreground': colors.accentForeground,
-    destructive: colors.destructive,
-    'destructive-foreground': colors.destructiveForeground,
-    'destructive-contrast': colors.destructiveContrast,
-    border: colors.border,
-    input: colors.input,
-    ring: colors.ring,
-    'chart-1': colors.chart1,
-    'chart-2': colors.chart2,
-    'chart-3': colors.chart3,
-    'chart-4': colors.chart4,
-    'chart-5': colors.chart5,
-    sidebar: colors.sidebar,
-    'sidebar-foreground': colors.sidebarForeground,
-    'sidebar-primary': colors.sidebarPrimary,
-    'sidebar-primary-foreground': colors.sidebarPrimaryForeground,
-    'sidebar-accent': colors.sidebarAccent,
-    'sidebar-accent-foreground': colors.sidebarAccentForeground,
-    'sidebar-border': colors.sidebarBorder,
-    'shell-divider': shellDivider,
-    'sidebar-ring': colors.sidebarRing,
-    ...scrollbarTokens(isDark),
-  }
+function prismValue(tokens: PrismTokens, name: string): string {
+  return tokens[`--${name}` as keyof PrismTokens] ?? ''
 }
 
-export function buildThemeTokens(palette: ThemeSemanticPalette): ThemeTokens {
+/** Adapter from Prism's semantic roles to the app's stable CSS contract. */
+export function prismTokensToThemeTokens(
+  tokens: PrismTokens,
+  variant: ThemeVariant,
+): ThemeTokens {
   return {
-    background: palette.background,
-    foreground: palette.foreground,
-    card: palette.card,
-    'card-foreground': palette.foreground,
-    popover: palette.card,
-    'popover-foreground': palette.foreground,
-    primary: palette.primary,
-    'primary-foreground': palette.primaryForeground,
-    secondary: palette.secondary,
-    'secondary-foreground': palette.secondaryForeground,
-    muted: palette.muted,
-    'muted-foreground': palette.mutedForeground,
-    accent: palette.accent,
-    'accent-foreground': palette.accentForeground,
-    destructive: palette.destructive,
-    'destructive-foreground': palette.destructiveForeground,
-    'destructive-contrast': palette.destructiveContrast,
-    border: palette.border,
-    input: palette.input,
-    ring: palette.ring,
-    'chart-1': palette.chart1,
-    'chart-2': palette.chart2,
-    'chart-3': palette.chart3,
-    'chart-4': palette.chart4,
-    'chart-5': palette.chart5,
-    sidebar: palette.sidebar,
-    'sidebar-foreground': palette.sidebarForeground,
-    'sidebar-primary': palette.sidebarPrimary,
-    'sidebar-primary-foreground': palette.sidebarPrimaryForeground,
-    'sidebar-accent': palette.sidebarAccent,
-    'sidebar-accent-foreground': palette.sidebarAccentForeground,
-    'sidebar-border': palette.sidebarBorder,
-    'shell-divider': palette.shellDivider,
-    'sidebar-ring': palette.sidebarRing,
-    'scrollbar-thumb': palette.scrollbarThumb,
-    'scrollbar-thumb-hover': palette.scrollbarThumbHover,
+    background: prismValue(tokens, 'background'),
+    foreground: prismValue(tokens, 'foreground'),
+    card: prismValue(tokens, 'card'),
+    'card-foreground': prismValue(tokens, 'card-foreground'),
+    popover: prismValue(tokens, 'popover'),
+    'popover-foreground': prismValue(tokens, 'popover-foreground'),
+    ...BRAND_THEME_TOKENS[variant],
+    secondary: prismValue(tokens, 'secondary'),
+    'secondary-foreground': prismValue(tokens, 'secondary-foreground'),
+    muted: prismValue(tokens, 'muted'),
+    'muted-foreground': prismValue(tokens, 'muted-foreground'),
+    accent: prismValue(tokens, 'accent'),
+    'accent-foreground': prismValue(tokens, 'accent-foreground'),
+    hover: prismValue(tokens, 'hover'),
+    'hover-foreground': prismValue(tokens, 'hover-foreground'),
+    selection: prismValue(tokens, 'selection'),
+    'selection-foreground': prismValue(tokens, 'selection-foreground'),
+    border: prismValue(tokens, 'border'),
+    input: prismValue(tokens, 'input'),
+    'input-border': prismValue(tokens, 'input-border'),
+    sidebar: prismValue(tokens, 'sidebar'),
+    'sidebar-foreground': prismValue(tokens, 'sidebar-foreground'),
+    'sidebar-primary': prismValue(tokens, 'sidebar-primary'),
+    'sidebar-primary-foreground': prismValue(tokens, 'sidebar-primary-foreground'),
+    'sidebar-accent': prismValue(tokens, 'sidebar-accent'),
+    'sidebar-accent-foreground': prismValue(tokens, 'sidebar-accent-foreground'),
+    'sidebar-border': prismValue(tokens, 'sidebar-border'),
+    'shell-divider': prismValue(tokens, 'divider'),
+    divider: prismValue(tokens, 'divider'),
+    'surface-raised': prismValue(tokens, 'surface-raised'),
+    'surface-raised-foreground': prismValue(tokens, 'surface-raised-foreground'),
+    'disabled-foreground': prismValue(tokens, 'disabled-foreground'),
+    'sidebar-ring': prismValue(tokens, 'sidebar-ring'),
+    ...scrollbarTokens(variant),
   }
 }

@@ -89,7 +89,7 @@ export function VoiceConnectionStrip() {
   )
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
     <div
       className={cn('px-2 pt-2 pb-1', !connected && 'animate-pulse')}
     >
@@ -100,21 +100,18 @@ export function VoiceConnectionStrip() {
             title={pingLabel}
             contentClassName={pingTooltipClass}
           >
-              <PopoverTrigger asChild>
-                <button
+              <PopoverTrigger render={<button
                   type="button"
                   className={cn(
                     'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
                     status.iconBg,
                   )}
-                  aria-label={`${pingLabel}. ${t('openStats')}`}
-                >
+                  aria-label={`${pingLabel}. ${t('openStats')}`} />}>
                   <SignalIcon
                     className={cn('size-4', status.icon)}
                     aria-hidden
                   />
-                </button>
-              </PopoverTrigger>
+                </PopoverTrigger>
             </VoiceControlTooltip>
             <VoicePingPopoverContent />
           </Popover>
@@ -154,7 +151,7 @@ export function VoiceConnectionStrip() {
         <Button
           type="button"
           size="icon"
-          variant="destructive-ghost"
+          variant="destructive"
           className="size-8 shrink-0"
           aria-label={t('disconnect')}
           onClick={voice.leave}

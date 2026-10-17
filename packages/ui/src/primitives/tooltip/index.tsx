@@ -1,94 +1,68 @@
-import * as React from "react"
-import { Tooltip as TooltipPrimitive } from "radix-ui"
+// design-allow-file arbitrary-radius: literal shadcn base-nova source
+"use client"
 
-import { usePortalContainer } from "../portal-container"
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "../../lib/cn"
 
-/** Tooltips must render above dialogs, popovers, and other overlays. */
-const tooltipLayerClass = "z-[9999]"
+import { usePortalContainer } from "../portal-container"
 
 function TooltipProvider({
-  delayDuration = 0,
+  delay = 0,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+}: TooltipPrimitive.Provider.Props) {
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
-      delayDuration={delayDuration}
+      delay={delay}
       {...props}
     />
   )
 }
 
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
-/**
- * Radix opens tooltips on ANY focus event: mouse click, programmatic focus
- * (e.g. dialog auto-focus on open/close), and window refocus after
- * minimize/Alt-Tab. Only keyboard focus (`:focus-visible`) should open the
- * tooltip. Radix skips its internal focus handler when the event is
- * default-prevented (composeEventHandlers), so we preventDefault here.
- */
-function suppressNonKeyboardFocus(event: React.FocusEvent<HTMLElement>) {
-  const target = event.target
-  if (!(target instanceof HTMLElement)) {
-    event.preventDefault()
-    return
-  }
-  try {
-    if (!target.matches(":focus-visible")) {
-      event.preventDefault()
-    }
-  } catch {
-    // Environments without :focus-visible support (older jsdom) keep the
-    // previous behavior and allow focus-opened tooltips.
-  }
-}
-
-function TooltipTrigger({
-  onFocus,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return (
-    <TooltipPrimitive.Trigger
-      data-slot="tooltip-trigger"
-      {...props}
-      onFocus={(event) => {
-        onFocus?.(event)
-        if (!event.defaultPrevented) {
-          suppressNonKeyboardFocus(event)
-        }
-      }}
-    />
-  )
+function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
 function TooltipContent({
   className,
-  sideOffset = 0,
+  side = "top",
+  sideOffset = 4,
+  align = "center",
+  alignOffset = 0,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: TooltipPrimitive.Popup.Props &
+  Pick<
+    TooltipPrimitive.Positioner.Props,
+    "align" | "alignOffset" | "side" | "sideOffset"
+  >) {
   const portalContainer = usePortalContainer()
 
   return (
     <TooltipPrimitive.Portal container={portalContainer ?? undefined}>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
+      <TooltipPrimitive.Positioner
+        align={align}
+        alignOffset={alignOffset}
+        side={side}
         sideOffset={sideOffset}
-        className={cn(
-          "gradient-surface-solid w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md border border-border bg-popover px-3 py-1.5 text-xs text-balance text-popover-foreground shadow-md fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
-          className,
-          tooltipLayerClass,
-        )}
-        {...props}
+        className="isolate z-50"
       >
-        {children}
-      </TooltipPrimitive.Content>
+        <TooltipPrimitive.Popup
+          data-slot="tooltip-content"
+          className={cn(
+            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground data-[side=bottom]:top-1 data-[side=inline-end]:top-1/2! data-[side=inline-end]:-left-1 data-[side=inline-end]:-translate-y-1/2 data-[side=inline-start]:top-1/2! data-[side=inline-start]:-right-1 data-[side=inline-start]:-translate-y-1/2 data-[side=left]:top-1/2! data-[side=left]:-right-1 data-[side=left]:-translate-y-1/2 data-[side=right]:top-1/2! data-[side=right]:-left-1 data-[side=right]:-translate-y-1/2 data-[side=top]:-bottom-2.5" />
+        </TooltipPrimitive.Popup>
+      </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
   )
 }

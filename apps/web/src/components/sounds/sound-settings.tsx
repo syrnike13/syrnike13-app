@@ -73,7 +73,8 @@ export function SoundSettings() {
           max={100}
           step={1}
           disabled={!preferences.enabled}
-          onValueChange={([next]) => {
+          onValueChange={(value) => {
+            const next = typeof value === 'number' ? value : value[0]
             if (next == null) return
             soundPreferenceStore.setVolume(sliderToVolume(next))
           }}
@@ -96,7 +97,8 @@ export function SoundSettings() {
               max={100}
               step={1}
               disabled={!preferences.enabled}
-              onValueChange={([next]) => {
+              onValueChange={(value) => {
+                const next = typeof value === 'number' ? value : value[0]
                 if (next == null) return
                 soundPreferenceStore.setEventVolume(
                   event.id,

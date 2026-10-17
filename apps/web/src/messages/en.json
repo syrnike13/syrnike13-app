@@ -103,38 +103,18 @@
       "send": "Send"
     },
     "appearance": {
-      "gradientTitle": "Gradient settings",
-      "gradientDescription": "One gradient runs through the whole app while surfaces keep contrast automatically.",
       "themes": "Themes",
       "displayMode": "Display mode",
       "lightDark": "Light / dark",
       "colorModeHint": "How to display the selected palette",
-      "colorModeUnavailable": "Only one mode is available for this palette",
       "modes": {
         "light": "Light",
         "dark": "Dark",
         "system": "System"
       },
       "groups": {
-        "solid": "Solid",
-        "gradient": "Gradient"
-      },
-      "beta": "BETA",
-      "betaAria": "Beta: the feature is in development",
-      "betaTooltip": "The feature is in development",
-      "previewAria": "Gradient preview",
-      "colors": "Colors",
-      "addColor": "Add color",
-      "angle": "Gradient direction",
-      "saturation": "Color saturation",
-      "surprise": "Surprise me",
-      "resetPalette": "Reset to palette",
-      "editColor": "Change color {index}",
-      "color": "Color {index}",
-      "hexColor": "HEX color {index}",
-      "removeColor": "Remove color {index}",
-      "removeColorTitle": "Remove color",
-      "lastColorHint": "At least one color is required"
+        "solid": "Solid"
+      }
     },
     "voice": {
       "camera": "Camera",
@@ -529,89 +509,13 @@
   },
   "themes": {
     "ariaLabel": "Theme “{name}”",
-    "syrnike": {
-      "name": "Syrniki",
-      "description": "Signature brand theme"
-    },
-    "lug": {
-      "name": "Meadow",
-      "description": "Soft green palette"
-    },
-    "iskra": {
-      "name": "Spark",
-      "description": "Bold red accents"
-    },
-    "matrix": {
-      "name": "Matrix",
-      "description": "Terminal green palette"
-    },
     "monolit": {
       "name": "Monolith",
       "description": "Neutral monochrome palette"
     },
-    "pergament": {
-      "name": "Parchment",
-      "description": "Warm cream tones"
-    },
-    "grafit": {
-      "name": "Graphite",
-      "description": "Neutral gray palette with a cool tint"
-    },
-    "kontrast": {
-      "name": "Contrast",
-      "description": "Stark black-and-white contrast with a green accent"
-    },
-    "gradient-twilight": {
-      "name": "Twilight",
-      "description": "Cool indigo with a warm sunset"
-    },
-    "gradient-aurora": {
-      "name": "Aurora",
-      "description": "Deep blue, teal and violet"
-    },
-    "gradient-sunset": {
-      "name": "Sunset",
-      "description": "Coral light on a violet backdrop"
-    },
-    "gradient-ocean": {
-      "name": "Ocean",
-      "description": "Deep blue and clear teal"
-    },
-    "gradient-orchid": {
-      "name": "Orchid",
-      "description": "Lilac light with a pink accent"
-    },
-    "gradient-northern-lights": {
-      "name": "Northern Lights",
-      "description": "Emerald light in the night sky"
-    },
-    "gradient-mango": {
-      "name": "Mango",
-      "description": "Sunny yellow, orange and coral"
-    },
-    "gradient-sakura": {
-      "name": "Sakura",
-      "description": "Soft pink and cool lilac"
-    },
-    "gradient-midnight": {
-      "name": "Midnight",
-      "description": "Dark indigo with electric blue"
-    },
-    "gradient-mint": {
-      "name": "Mint",
-      "description": "Fresh mint with sky blue"
-    },
-    "gradient-ember": {
-      "name": "Ember",
-      "description": "Scarlet fire and warm amber"
-    },
-    "gradient-dunes": {
-      "name": "Dunes",
-      "description": "Sand tones with soft coral"
-    },
-    "gradient": {
-      "name": "Custom gradient",
-      "description": "Customizable layered theme"
+    "glina": {
+      "name": "Clay",
+      "description": "Warm terracotta palette"
     }
   },
   "feedback": {
@@ -781,7 +685,7 @@
         "members": "Member management ({count})"
       },
       "editTitle": "Editing role — {name}",
-      "roleActions": "Role actions",
+      "roleActions": "Actions for role {name}",
       "sectionsAria": "Role editing sections",
       "required": " (required)",
       "name": "Name",
@@ -798,7 +702,6 @@
       "createRole": "Create role",
       "noRoles": "No roles",
       "viewOnly": "View only",
-      "roleActions": "Actions for role {name}",
       "deleteRole": "Delete role",
       "deleteRoleTitle": "Delete the role “{name}”?",
       "deleteRoleDescription": "Members will lose this role. This action is irreversible.",
@@ -1011,8 +914,8 @@
       "deleteServer": "Delete server",
       "serverDeleted": "Server deleted",
       "deleteError": "Could not delete the server",
-      "deleteTitle": "Delete the server “{name}”?",
-      "deleteDescription": "The server, channels and members will be deleted for everyone. This action cannot be undone.",
+      "deleteTitle": "Delete emoji :{name}:?",
+      "deleteDescription": "The emoji will disappear from the server and from new messages.",
       "close": "Close",
       "save": "Save",
       "profileTitle": "Server profile",
@@ -1061,8 +964,6 @@
       "loading": "Loading…",
       "noEmoji": "No server emoji",
       "delete": "Delete",
-      "deleteTitle": "Delete emoji :{name}:?",
-      "deleteDescription": "The emoji will disappear from the server and from new messages.",
       "cancel": "Cancel",
       "deleteEmoji": "Delete emoji"
     }

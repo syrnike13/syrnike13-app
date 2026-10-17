@@ -47,20 +47,17 @@ vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
     checked,
     disabled,
     onCheckedChange,
-    onSelect,
   }: {
     children: ReactNode
     checked?: boolean
     disabled?: boolean
     onCheckedChange?: (checked: boolean) => void
-    onSelect?: (event: { preventDefault: () => void }) => void
   }) => (
     <button
       type="button"
       aria-pressed={checked === true}
       disabled={disabled}
       onClick={() => {
-        onSelect?.({ preventDefault: vi.fn() })
         onCheckedChange?.(!(checked === true))
       }}
     >
@@ -70,15 +67,18 @@ vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenuItem: ({
     children,
     disabled,
-    onSelect,
+    onClick,
   }: {
     children: ReactNode
     disabled?: boolean
-    onSelect?: () => void
+    onClick?: () => void
   }) => (
-    <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
+    <button type="button" disabled={disabled} onClick={() => onClick?.()}>
       {children}
     </button>
+  ),
+  ContextMenuGroup: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
   ),
   ContextMenuLabel: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>

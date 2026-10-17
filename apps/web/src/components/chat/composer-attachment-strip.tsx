@@ -123,7 +123,7 @@ function ComposerAttachmentTile({
         <div className="absolute -top-2 -right-1 z-10 flex items-center gap-0.5 rounded-md bg-popover p-0.5 text-popover-foreground shadow-md">
           <Button
             type="button"
-            variant={isSpoiler ? 'tile-action-primary' : 'tile-action'}
+            variant={isSpoiler ? 'ghost' : 'ghost'}
             size="icon"
             className="size-7"
             onClick={onToggleSpoiler}
@@ -139,7 +139,7 @@ function ComposerAttachmentTile({
           </Button>
           <Button
             type="button"
-            variant="tile-action-destructive"
+            variant="destructive"
             size="icon"
             className="size-7"
             disabled={removeDisabled}

@@ -9,11 +9,11 @@ test('toggles between checked and unchecked', () => {
   render(<Checkbox aria-label="Согласие" />)
 
   const checkbox = screen.getByRole('checkbox', { name: 'Согласие' })
-  expect(checkbox).toHaveAttribute('data-state', 'unchecked')
+  expect(checkbox).not.toBeChecked()
 
   fireEvent.click(checkbox)
-  expect(checkbox).toHaveAttribute('data-state', 'checked')
+  expect(checkbox).toBeChecked()
 
   fireEvent.click(checkbox)
-  expect(checkbox).toHaveAttribute('data-state', 'unchecked')
+  expect(checkbox).not.toBeChecked()
 })

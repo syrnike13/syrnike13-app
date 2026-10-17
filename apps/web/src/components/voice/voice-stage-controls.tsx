@@ -89,16 +89,16 @@ const EMPTY_VIEW_SESSIONS: readonly VoiceStageViewSession[] = []
 const ignoreViewSessionExit = () => undefined
 
 const stageControlGroupClass =
-  'flex items-center gap-0.5 rounded-lg border border-on-media/10 bg-card p-1.5'
+  'flex items-center gap-0.5 rounded-lg border border-border bg-card p-1.5'
 
 const stageControlIconClass =
-  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
+  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
 const stageControlNeutralMainGroupHoverClass =
-  'group-hover/media:bg-on-media/10 group-hover/media:text-on-media'
+  'group-hover/media:bg-accent group-hover/media:text-foreground'
 
 const stageControlNeutralChevronGroupHoverClass =
-  'group-hover/media:bg-on-media/[0.06] group-hover/media:text-on-media'
+  'group-hover/media:bg-accent group-hover/media:text-foreground'
 
 /** Мьют: яркая красная иконка, полупрозрачный красный фон. */
 const stageControlDangerMainClass = splitControlDangerMainClass
@@ -113,7 +113,7 @@ const stageControlSuccessChevronClass =
   'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
 
 const stageControlHighlightClass =
-  'bg-on-media/15 text-on-media hover:bg-on-media/20'
+  'bg-accent text-accent-foreground hover:bg-hover'
 
 /** Отдельные кнопки в средней группе (не split media). */
 const stageControlDangerStandaloneClass = splitControlDangerStandaloneClass
@@ -130,14 +130,14 @@ function stageIconButtonClass({
     'rounded-md',
     danger && stageControlDangerStandaloneClass,
     highlight && !danger && stageControlHighlightClass,
-    !danger && !highlight && 'text-on-media/80 hover:bg-on-media/10 hover:text-on-media',
+    !danger && !highlight && 'text-muted-foreground hover:bg-accent hover:text-foreground',
   )
 }
 
 const stageControlMediaMainClass = 'rounded-l-md rounded-r-none'
 
 const stageControlChevronClass =
-  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
+  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
 function stageMediaSegmentButtonClass(
   segment: 'main' | 'chevron',
@@ -181,28 +181,30 @@ export function VoiceStagePopoutButton({
   const t = useTranslations('voice')
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
+        <TooltipTrigger
+          render={
+            <span
+              className={cn(
+                'inline-flex self-center',
+                disabled && 'cursor-not-allowed',
+              )}
+            />
+          }
+        >
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            aria-label={t('actions.stageInWindow')}
             className={cn(
-              'inline-flex self-center',
-              disabled && 'cursor-not-allowed',
+              'flex size-9 shrink-0 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-40',
+              active ? 'text-on-media' : 'text-on-media/60 hover:text-on-media',
             )}
           >
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onClick}
-              aria-label={t('actions.stageInWindow')}
-              className={cn(
-                'flex size-9 shrink-0 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-40',
-                active ? 'text-on-media' : 'text-on-media/60 hover:text-on-media',
-              )}
-            >
-              <ExternalLinkIcon className="size-5" />
-            </button>
-          </span>
+            <ExternalLinkIcon className="size-5" />
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
           {t('actions.stageInWindow')}
@@ -227,28 +229,30 @@ export function VoiceStageFullscreenButton({
     : t('actions.enterFullscreen')
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={cn(
-              'inline-flex self-center',
-              disabled && 'cursor-not-allowed',
-            )}
-          >
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onClick}
-              className="flex size-9 shrink-0 items-center justify-center text-on-media/60 transition-colors hover:text-on-media disabled:pointer-events-none disabled:opacity-40"
-            >
-              {active ? (
-                <Minimize2Icon className="size-5" />
-              ) : (
-                <Maximize2Icon className="size-5" />
+        <TooltipTrigger
+          render={
+            <span
+              className={cn(
+                'inline-flex self-center',
+                disabled && 'cursor-not-allowed',
               )}
-            </button>
-          </span>
+            />
+          }
+        >
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className="flex size-9 shrink-0 items-center justify-center text-on-media/60 transition-colors hover:text-on-media disabled:pointer-events-none disabled:opacity-40"
+          >
+            {active ? (
+              <Minimize2Icon className="size-5" />
+            ) : (
+              <Maximize2Icon className="size-5" />
+            )}
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
           {label}
@@ -399,7 +403,7 @@ export function VoiceStageControls({
           <Button
             type="button"
             size="lg"
-            variant="media-outline"
+            variant="outline"
             className="rounded-full px-6"
             onClick={onDeclineIncomingCall}
           >
@@ -497,13 +501,13 @@ function VoiceStageMobileDrawerControlBar({
   const barClass =
     'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-background/95 p-2 shadow-lg ring-1 ring-on-media/10'
   const sideButtonClass =
-    'flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-primary-foreground transition-colors hover:bg-accent disabled:opacity-50'
+    'flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-accent disabled:opacity-50'
 
   if (!inCall && !connecting) {
     const joinButton = (
       <Button
         type="button"
-        variant="success"
+        variant="default"
         className="h-11 min-w-0 flex-1 rounded-full px-4 text-sm font-semibold"
         onClick={onJoin}
       >
@@ -537,7 +541,7 @@ function VoiceStageMobileDrawerControlBar({
           <>
             <Button
               type="button"
-              variant="media-outline"
+              variant="outline"
               className="h-11 shrink-0 rounded-full px-4"
               onClick={onDeclineIncomingCall}
             >
@@ -568,7 +572,7 @@ function VoiceStageMobileDrawerControlBar({
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className={barClass}>
         <div className="flex min-w-0 flex-1 items-center justify-between gap-1">
           <MobileDrawerIconButton
@@ -676,11 +680,11 @@ function MobileDrawerIconButton({
         aria-disabled={disabled}
         onClick={disabled ? undefined : onClick}
         className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-full text-on-media/85 transition-colors',
+          'flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors',
           danger && 'bg-destructive/20 text-destructive',
           success && 'bg-chart-3/20 text-chart-3',
-          highlight && !danger && !success && 'bg-on-media/15 text-on-media',
-          !danger && !success && !highlight && 'bg-muted hover:bg-accent',
+          highlight && !danger && !success && 'bg-accent text-accent-foreground',
+          !danger && !success && !highlight && 'bg-muted text-foreground hover:bg-accent',
           disabled && 'opacity-50',
         )}
       >
@@ -712,7 +716,7 @@ function VoiceStageOverlayControlBar({
   const t = useTranslations('voice')
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
     <div className="flex items-stretch gap-2">
       <div className={stageControlGroupClass}>
         <VoiceMicSplitControl
@@ -883,8 +887,7 @@ function VoiceStageExitControl({
     <DropdownMenu>
       <div className="flex shrink-0 items-stretch gap-px">
         {mainButton}
-        <DropdownMenuTrigger asChild>
-          <button
+        <DropdownMenuTrigger render={<button
             type="button"
             aria-label={t('actions.chooseEndAction')}
             title={t('actions.chooseEndAction')}
@@ -897,11 +900,9 @@ function VoiceStageExitControl({
                 (compact
                   ? 'h-8 w-6 rounded-r-full'
                   : 'h-11 w-7 rounded-r-full'),
-            )}
-          >
+            )} />}>
             <ChevronDownIcon className="size-4" />
-          </button>
-        </DropdownMenuTrigger>
+          </DropdownMenuTrigger>
       </div>
       <DropdownMenuContent
         side="top"
@@ -917,7 +918,7 @@ function VoiceStageExitControl({
             return (
               <DropdownMenuItem
                 key={session.id}
-                onSelect={() => onExitSession(session)}
+                onClick={() => onExitSession(session)}
               >
                 <span
                   className="inline-flex size-4 shrink-0"
@@ -1058,10 +1059,10 @@ function LegacyControlBar({
   )
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
     <div
       className={cn(
-        'flex items-center gap-1 rounded-full bg-muted p-1.5 shadow-lg ring-1 ring-on-media/10',
+        'flex items-center gap-1 rounded-full bg-muted p-1.5 shadow-lg ring-1 ring-border',
         compact && 'p-0.5',
       )}
     >
@@ -1161,29 +1162,29 @@ function StageViewSettings({
       ? t('actions.more')
       : t('actions.sceneSettings')
 
+  const triggerElement = overlay ? (
+    <button
+      type="button"
+      title={title}
+      className={stageIconButtonClass({})}
+    >
+      {icon}
+    </button>
+  ) : (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      title={title}
+      className={cn('rounded-full', compact ? 'size-8' : 'size-11')}
+    >
+      {icon}
+    </Button>
+  )
+
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        {overlay ? (
-          <button
-            type="button"
-            title={title}
-            className={stageIconButtonClass({})}
-          >
-            {icon}
-          </button>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            variant="media-ghost"
-            title={title}
-            className={cn('rounded-full', compact ? 'size-8' : 'size-11')}
-          >
-            {icon}
-          </Button>
-        )}
-      </PopoverTrigger>
+      <PopoverTrigger render={triggerElement} />
       <PopoverContent
         align="center"
         data-voice-stage-popover
@@ -1268,7 +1269,7 @@ function LegacyControlButton({
       <Button
         type="button"
         size="icon"
-        variant={active ? 'tile-action-destructive' : 'media-ghost'}
+        variant={active ? 'destructive' : 'ghost'}
         aria-disabled={isDisabled}
         onClick={isDisabled ? undefined : onClick}
         className={cn(

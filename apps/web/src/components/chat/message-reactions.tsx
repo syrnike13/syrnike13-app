@@ -56,7 +56,7 @@ export function MessageReactions({
           <Button
             key={emoji}
             type="button"
-            variant={active ? 'reaction-active' : 'outline'}
+            variant={active ? 'secondary' : 'outline'}
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
             onClick={() => onToggle(emoji, active)}

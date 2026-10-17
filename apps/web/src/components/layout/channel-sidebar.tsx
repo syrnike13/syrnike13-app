@@ -110,7 +110,7 @@ export function ChannelSidebar({
             unreads={unreads}
           />
         ) : (
-          <div className="min-h-[var(--radix-scroll-area-viewport-height,100%)] p-2">
+          <div className="min-h-full p-2">
             {dmChannels.length === 0 ? (
               <p className="px-2 py-4 text-xs text-muted-foreground">
                 Нет доступных каналов

@@ -177,8 +177,7 @@ export function ServerHeaderMenu({
   return (
     <>
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <button
+        <PopoverTrigger render={<button
             type="button"
             className={cn(
               'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent',
@@ -189,8 +188,7 @@ export function ServerHeaderMenu({
                   ? 'bg-background/60 backdrop-blur-sm'
                   : 'bg-accent'),
             )}
-            aria-expanded={menuOpen}
-          >
+            aria-expanded={menuOpen} />}>
             <span className="min-w-0 flex-1 truncate text-sm font-black">
               {serverName}
             </span>
@@ -200,12 +198,11 @@ export function ServerHeaderMenu({
                 menuOpen && 'rotate-180',
               )}
             />
-          </button>
-        </PopoverTrigger>
+          </PopoverTrigger>
         <PopoverContent
           align="start"
           sideOffset={4}
-          className="w-[var(--radix-popover-trigger-width)] p-1"
+          className="w-(--anchor-width) p-1"
         >
           {menuPermissions?.invite ? (
             <ServerHeaderMenuItem

@@ -185,15 +185,13 @@ function ServerProfilePreview({
       <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {t('preview')}
       </p>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
+          <DropdownMenuTrigger render={<button
               type="button"
               aria-label={t('bannerMenuAria')}
               disabled={saving}
-              className="group/banner relative block h-28 w-full cursor-pointer overflow-hidden bg-linear-to-br from-primary/30 via-accent to-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
-            >
+              className="group/banner relative block h-28 w-full cursor-pointer overflow-hidden bg-linear-to-br from-primary/30 via-accent to-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default" />}>
               {bannerUrl ? (
                 <FxImage
                   src={bannerUrl}
@@ -209,13 +207,12 @@ function ServerProfilePreview({
                 <PencilIcon className="size-4" />
                 {t('edit')}
               </span>
-            </button>
-          </DropdownMenuTrigger>
+            </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="bottom">
             <DropdownMenuGroup>
               <DropdownMenuItem
                 aria-label={t('uploadBanner')}
-                onSelect={onUploadBanner}
+                onClick={onUploadBanner}
                 disabled={saving}
               >
                 {t('upload')}
@@ -223,7 +220,7 @@ function ServerProfilePreview({
               {bannerRemoved ? (
                 <DropdownMenuItem
                   aria-label={t('restoreBanner')}
-                  onSelect={onRestoreBanner}
+                  onClick={onRestoreBanner}
                   disabled={saving}
                 >
                   {t('restore')}
@@ -233,7 +230,7 @@ function ServerProfilePreview({
                   aria-label={t('removeBanner')}
                   variant="destructive"
                   disabled={saving || !bannerUrl}
-                  onSelect={onRemoveBanner}
+                  onClick={onRemoveBanner}
                 >
                   <Trash2Icon />
                   {t('remove')}
@@ -246,13 +243,11 @@ function ServerProfilePreview({
         <div className="relative px-4 pb-5 pt-11">
           <div className="absolute -top-8 left-4 z-10">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
+              <DropdownMenuTrigger render={<button
                   type="button"
                   aria-label={t('iconMenuAria')}
                   disabled={saving}
-                  className="group/icon relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-4 border-card bg-primary text-xl font-semibold text-primary-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                >
+                  className="group/icon relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-4 border-card bg-primary text-xl font-semibold text-primary-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default" />}>
                   {iconUrl ? (
                     <FxImage
                       src={iconUrl}
@@ -269,13 +264,12 @@ function ServerProfilePreview({
                   >
                     <PencilIcon className="size-4" />
                   </span>
-                </button>
-              </DropdownMenuTrigger>
+                </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="right">
                 <DropdownMenuGroup>
                   <DropdownMenuItem
                     aria-label={t('uploadIcon')}
-                    onSelect={onUploadIcon}
+                    onClick={onUploadIcon}
                     disabled={saving}
                   >
                     {t('upload')}
@@ -283,7 +277,7 @@ function ServerProfilePreview({
                   {iconRemoved ? (
                     <DropdownMenuItem
                       aria-label={t('restoreIcon')}
-                      onSelect={onRestoreIcon}
+                      onClick={onRestoreIcon}
                       disabled={saving}
                     >
                       {t('restore')}
@@ -293,7 +287,7 @@ function ServerProfilePreview({
                       aria-label={t('removeIcon')}
                       variant="destructive"
                       disabled={saving || !iconUrl}
-                      onSelect={onRemoveIcon}
+                      onClick={onRemoveIcon}
                     >
                       <Trash2Icon />
                       {t('remove')}
@@ -701,7 +695,9 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
           <Select
             value={systemMessagesChannelId}
             disabled={saving}
-            onValueChange={setSystemMessagesChannelId}
+            onValueChange={(value) => {
+              if (value != null) setSystemMessagesChannelId(value)
+            }}
           >
             <SelectTrigger
               id="server-system-messages-channel"

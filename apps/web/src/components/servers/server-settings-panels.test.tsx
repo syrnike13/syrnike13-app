@@ -135,24 +135,22 @@ function textChannel(
 }
 
 async function chooseSystemMessageChannel(label: string) {
-  fireEvent.pointerDown(screen.getByLabelText('Канал системных сообщений'), {
-    button: 0,
-    ctrlKey: false,
-    pointerId: 1,
-    pointerType: 'mouse',
-  })
-  fireEvent.click(await screen.findByRole('option', { name: label }))
+  fireEvent.mouseDown(
+    screen.getByLabelText('Канал системных сообщений'),
+    { button: 0, ctrlKey: false },
+  )
+  const option = await screen.findByRole('option', { name: label })
+  fireEvent.pointerDown(option)
+  fireEvent.click(option)
 }
 
 async function chooseServerMediaAction(
   triggerName: string,
   actionName: string,
 ) {
-  fireEvent.pointerDown(screen.getByRole('button', { name: triggerName }), {
+  fireEvent.mouseDown(screen.getByRole('button', { name: triggerName }), {
     button: 0,
     ctrlKey: false,
-    pointerId: 1,
-    pointerType: 'mouse',
   })
   fireEvent.click(await screen.findByRole('menuitem', { name: actionName }))
 }

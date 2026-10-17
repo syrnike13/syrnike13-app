@@ -6,7 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
 } from 'react'
 import type { DataEditUser, FieldsUser, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
@@ -683,22 +683,22 @@ function ProfileMediaContextMenu({
   onEdit,
   onRemove,
 }: {
-  children: ReactNode
+  children: ReactElement
   editLabel: string
   removeLabel: string
   disabled: boolean
   onEdit: () => void
   onRemove?: () => void
 }) {
+  if (disabled) return children
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild disabled={disabled}>
-        {children}
-      </ContextMenuTrigger>
+      <ContextMenuTrigger render={children} />
       <ContextMenuContent>
-        <ContextMenuItem onSelect={onEdit}>{editLabel}</ContextMenuItem>
+        <ContextMenuItem onClick={onEdit}>{editLabel}</ContextMenuItem>
         {onRemove ? (
-          <ContextMenuItem variant="destructive" onSelect={onRemove}>
+          <ContextMenuItem variant="destructive" onClick={onRemove}>
             {removeLabel}
           </ContextMenuItem>
         ) : null}

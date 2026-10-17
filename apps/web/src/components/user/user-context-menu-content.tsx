@@ -225,7 +225,7 @@ function UserRolesContextMenuSub({
                   disabled &&
                   'data-[disabled]:bg-accent/45 data-[disabled]:opacity-100',
               )}
-              onSelect={(event) => {
+              onClick={(event) => {
                 event.preventDefault()
                 if (!disabled) void toggleRole(role._id, !assigned)
               }}
@@ -510,22 +510,22 @@ export function UserContextMenuContent({
           moveVoiceChannels={moveVoiceChannels}
         />
       ) : null}
-      <ContextMenuItem onSelect={() => onOpenProfile?.()}>
+      <ContextMenuItem onClick={() => onOpenProfile?.()}>
         <UserIcon />
         {t('openProfile')}
       </ContextMenuItem>
       {isSelf ? (
-        <ContextMenuItem onSelect={() => openSettings('account')}>
+        <ContextMenuItem onClick={() => openSettings('account')}>
           <SettingsIcon />
           {t('accountSettings')}
         </ContextMenuItem>
       ) : canDirectMessage ? (
         <>
-          <ContextMenuItem onSelect={() => void openDm()}>
+          <ContextMenuItem onClick={() => void openDm()}>
             <MessageCircleIcon />
             {t('sendMessage')}
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => void startDirectCall()}>
+          <ContextMenuItem onClick={() => void startDirectCall()}>
             <HeadphonesIcon />
             {t(directCallAction)}
           </ContextMenuItem>
@@ -541,7 +541,7 @@ export function UserContextMenuContent({
           token={token}
         />
       ) : null}
-      <ContextMenuItem onSelect={() => void copyUserId()}>
+      <ContextMenuItem onClick={() => void copyUserId()}>
         <CopyIcon />
         {t('copyId')}
       </ContextMenuItem>
@@ -551,7 +551,7 @@ export function UserContextMenuContent({
           {canKick ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={(event) => {
+              onClick={(event) => {
                 event.preventDefault()
                 setKickDialogOpen(true)
               }}
@@ -563,7 +563,7 @@ export function UserContextMenuContent({
           {canBan ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={(event) => {
+              onClick={(event) => {
                 event.preventDefault()
                 setBanDialogOpen(true)
               }}
@@ -579,7 +579,7 @@ export function UserContextMenuContent({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => void handleBlock()}
+            onClick={() => void handleBlock()}
           >
             <BanIcon />
             {t('block')}
