@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -27,6 +28,9 @@ void inboundNetworkDiagnostics() {
     report.inbound.removed_samples_for_acceleration = 6;
     report.inbound.jitter_buffer_delay = 0.5;
     report.inbound.jitter_buffer_emitted_count = 10;
+    report.inbound.bytes_received = 1000;
+    report.inbound.total_samples_received = 4800;
+    report.received.jitter = concealed / 1000.0;
     return livekit::RtcStats{report};
   };
   livekit::RtcInboundRtpStats video{};
@@ -63,6 +67,9 @@ void inboundNetworkDiagnostics() {
       metric(metrics.screen_audio, "removed_samples_for_acceleration") == 6 &&
       metric(metrics.screen_audio, "jitter_buffer_delay") == 0.5 &&
       metric(metrics.screen_audio, "jitter_buffer_emitted_count") == 10, "audio SDK stats projection");
+  require(metric(metrics.microphone, "bytes_received") == 2000 &&
+      metric(metrics.microphone, "total_samples_received") == 9600 &&
+      std::abs(metric(metrics.microphone, "jitter_max_ms") - 12) < 1e-9, "audio throughput and jitter aggregation");
   require(metric(metrics.microphone, "unmapped_streams") == 1 && metric(metrics.screen_audio, "unmapped_streams") == 1,
       "unknown audio must be visible but not misattributed");
   require(metric(metrics.video, "packets_lost") == 7 && metric(metrics.video, "frames_dropped") == 8 &&
@@ -75,6 +82,63 @@ void inboundNetworkDiagnostics() {
       "room stats diagnostics must remain bounded and mark truncation");
   require(metric(inboundNetworkObservation({}, {}, 2000, true).microphone, "reports_truncated") == 1,
       "publication truncation must be visible");
+}
+void transportNetworkDiagnostics() {
+  const auto metric = [](const auto& values, std::string_view name) {
+    const auto found = std::find_if(values.begin(), values.end(), [&](const auto& value) { return value.name == name; });
+    require(found != values.end(), "transport metric missing");
+    return found->value;
+  };
+  require(metric(transportNetworkMetrics({}, 7), "ping_ms") == -1 &&
+      metric(transportNetworkMetrics({}, 7), "bytes_sent") == -1 &&
+      metric(transportNetworkMetrics({}, 7), "sampled_at_ms") == 7, "empty stats report missing values");
+  livekit::SessionStats stats;
+  livekit::RtcTransportStats publisher_transport{};
+  publisher_transport.transport.bytes_sent = 1000;
+  publisher_transport.transport.bytes_received = 100;
+  publisher_transport.transport.packets_sent = 10;
+  publisher_transport.transport.packets_received = 1;
+  publisher_transport.transport.selected_candidate_pair_id = "pub-pair";
+  livekit::RtcCandidatePairStats other_pair{};
+  other_pair.rtc.id = "stale";
+  other_pair.candidate_pair.current_round_trip_time = 0.9;
+  livekit::RtcCandidatePairStats publisher_pair{};
+  publisher_pair.rtc.id = "pub-pair";
+  publisher_pair.candidate_pair.current_round_trip_time = 0.042;
+  publisher_pair.candidate_pair.available_outgoing_bitrate = 2'000'000;
+  livekit::RtcOutboundRtpStats audio{};
+  audio.stream.kind = "audio";
+  audio.sent.packets_sent = 500;
+  audio.sent.bytes_sent = 40'000;
+  livekit::RtcOutboundRtpStats video{};
+  video.stream.kind = "video";
+  video.sent.packets_sent = 9000;
+  livekit::RtcRemoteInboundRtpStats remote{};
+  remote.stream.kind = "audio";
+  remote.received.packets_lost = 5;
+  remote.received.jitter = 0.004;
+  remote.remote_inbound.fraction_lost = 0.02;
+  remote.remote_inbound.round_trip_time = 0.05;
+  stats.publisher_stats = {livekit::RtcStats{publisher_transport}, livekit::RtcStats{other_pair},
+      livekit::RtcStats{publisher_pair}, livekit::RtcStats{audio}, livekit::RtcStats{video}, livekit::RtcStats{remote}};
+  livekit::RtcTransportStats subscriber_transport{};
+  subscriber_transport.transport.bytes_received = 5000;
+  subscriber_transport.transport.packets_received = 50;
+  stats.subscriber_stats = {livekit::RtcStats{subscriber_transport}};
+  const auto metrics = transportNetworkMetrics(stats, 99);
+  require(std::abs(metric(metrics, "ping_ms") - 42) < 1e-9, "ping comes from the selected publisher candidate pair");
+  require(metric(metrics, "available_outgoing_bitrate") == 2'000'000, "available outgoing bitrate");
+  require(metric(metrics, "bytes_sent") == 1000 && metric(metrics, "bytes_received") == 5100 &&
+      metric(metrics, "packets_received") == 51, "transport counters sum both peer connections");
+  require(metric(metrics, "audio_packets_sent") == 500 && metric(metrics, "audio_bytes_sent") == 40'000,
+      "only outgoing audio counts as voice");
+  require(metric(metrics, "audio_remote_packets_lost") == 5 && metric(metrics, "audio_remote_fraction_lost") == 0.02 &&
+      std::abs(metric(metrics, "audio_remote_rtt_ms") - 50) < 1e-9 &&
+      std::abs(metric(metrics, "audio_remote_jitter_ms") - 4) < 1e-9,
+      "SFU-reported outgoing audio quality");
+  livekit::SessionStats listen_only;
+  listen_only.publisher_stats = {livekit::RtcStats{remote}};
+  require(std::abs(metric(transportNetworkMetrics(listen_only, 1), "ping_ms") - 50) < 1e-9, "RTCP RTT is the ping fallback");
 }
 template <typename Predicate>
 void await(Predicate predicate, const char* message) {
@@ -232,6 +296,7 @@ void run(bool test_thumbnails) {
 int main(int argc, char** argv) {
   try {
     inboundNetworkDiagnostics();
+    transportNetworkDiagnostics();
     run(argc == 2 && std::string_view(argv[1]) == "--thumbnails");
     std::cout << "product runtime lifecycle passed\n";
     return 0;

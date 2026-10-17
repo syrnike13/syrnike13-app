@@ -91,11 +91,41 @@ pub enum ClientMessage {
         channel_id: String,
         request: ChannelActivityRequest,
     },
+    /// Screen shares the user watches in its current voice channel
+    VoiceWatchUpdate {
+        watching: Vec<String>,
+    },
+    /// The user stopped their own camera or screen share on purpose
+    VoiceMediaStopped {
+        source: VoiceMediaSource,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceMediaSource {
+    Camera,
+    Screen,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ChannelActivityRequest, ClientMessage, VoiceStateUpdateRequest};
+
+    #[test]
+    fn voice_media_stopped_deserializes() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "VoiceMediaStopped",
+            "source": "screen"
+        }))
+        .expect("voice media stopped deserializes");
+        assert!(matches!(
+            message,
+            ClientMessage::VoiceMediaStopped {
+                source: super::VoiceMediaSource::Screen
+            }
+        ));
+    }
 
     #[test]
     fn voice_state_update_deserializes_refresh_request() {
@@ -129,6 +159,20 @@ mod tests {
                 connection_epoch: "epoch-1".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn voice_watch_update_deserializes_watch_list() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "VoiceWatchUpdate",
+            "watching": ["owner-1"]
+        }))
+        .expect("voice watch update deserializes");
+
+        let ClientMessage::VoiceWatchUpdate { watching } = message else {
+            panic!("expected VoiceWatchUpdate");
+        };
+        assert_eq!(watching, vec!["owner-1".to_string()]);
     }
 
     #[test]

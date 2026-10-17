@@ -39,6 +39,19 @@ import {
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import { applyStageScreenPublicationSubscription } from '#/features/voice/voice-stage-subscription'
 
+// livekit.TrackSource.MICROPHONE in the LiveKit signal protocol.
+const MICROPHONE_TRACK_SOURCE = 2
+
+function localMicrophonePublishAllowed(room: Room) {
+  const permissions = room.localParticipant.permissions
+  if (!permissions) return true
+  if (!permissions.canPublish) return false
+  return (
+    permissions.canPublishSources.length === 0 ||
+    permissions.canPublishSources.includes(MICROPHONE_TRACK_SOURCE)
+  )
+}
+
 type ActiveBrowserVoice = {
   lease: VoiceLease
   room: Room
@@ -317,6 +330,18 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         if (!this.desired?.serverMuted) this.requestMediaReconcile()
       },
     )
+    // Server unmute restores the SFU permission over the signal connection,
+    // which may land after the authority snapshot that cleared serverMuted.
+    // Republish once LiveKit confirms the restored permission.
+    room.on(
+      RoomEvent.ParticipantPermissionsChanged,
+      (_previous: unknown, participant: unknown) => {
+        if (this.active !== active || participant !== room.localParticipant) {
+          return
+        }
+        this.requestMediaReconcile()
+      },
+    )
     room.on(
       RoomEvent.TrackPublished,
       (publication: RemoteTrackPublication) => {
@@ -433,10 +458,15 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     ) {
       return
     }
-    let fiber: Fiber.Fiber<void, never>
+    // A reconcile without async work finishes inside runFork, before the
+    // fiber is assigned. Never install a finished fiber as the running one,
+    // or every later reconcile request is dropped.
+    let fiber: Fiber.Fiber<void, never> | null = null
+    let settled = false
     const reconcile = this.reconcileMediaLoop().pipe(
       Effect.ensuring(
         Effect.sync(() => {
+          settled = true
           if (this.mediaReconcile === fiber) {
             this.mediaReconcile = null
           }
@@ -451,7 +481,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       ),
     )
     fiber = this.effectRuntime.runFork(reconcile)
-    this.mediaReconcile = fiber
+    if (!settled) this.mediaReconcile = fiber
   }
 
   private reconcileMediaLoop() {
@@ -513,6 +543,13 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       if (!publication) {
         if (desired.serverMuted) {
           this.emitMedia(active, 'microphone', { state: 'muted' })
+          this.syncLocalSpeaking(active, desired)
+          return
+        }
+        if (!localMicrophonePublishAllowed(active.room)) {
+          // LiveKit rejects the publication until the permission update
+          // arrives; ParticipantPermissionsChanged reconciles again.
+          this.emitMedia(active, 'microphone', { state: 'starting' })
           this.syncLocalSpeaking(active, desired)
           return
         }

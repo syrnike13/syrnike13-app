@@ -18,6 +18,7 @@ import {
   VoiceDirector,
   createInactiveMediaSnapshot,
   type VoiceCommand,
+  type VoiceMediaState,
   type VoiceSnapshot,
 } from '@syrnike13/platform'
 import { Effect, Fiber, Schedule } from 'effect'
@@ -90,6 +91,7 @@ import {
 import {
   setVoiceStageMediaPublicationSubscribed,
   type VoiceStageMediaItem,
+  type VoiceStageMediaTrack,
 } from '#/features/voice/voice-context'
 import {
   buildStageItems,
@@ -110,16 +112,24 @@ import {
   type VoicePingSample,
 } from '#/features/voice/voice-ping-history'
 import { playUiSound } from '#/features/sounds/sound-player'
+import type { SoundEventId } from '#/features/sounds/sound-events'
 import {
-  SCREEN_VIEWER_SOUND_TOPIC,
-  createScreenViewerSoundPayload,
-  screenViewerSoundEventFromData,
-  screenViewerWatchNotification,
-} from '#/features/voice/voice-screen-viewer-sounds'
-import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
+  normalizeWatchedOwnerIds,
+  sameWatchedOwnerIds,
+  streamViewerSnapshot,
+  streamViewerTransitionSound,
+  type StreamViewerSnapshot,
+} from '#/features/voice/stream-viewers'
+import { eventsGateway } from '#/features/events/gateway'
+import {
+  createVoiceMediaLiveness,
+  voiceSnapshotTransitionSounds,
+} from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
 import { enqueueAutomaticDiagnosticIncident } from '#/features/diagnostics/automatic-diagnostic-incidents'
+import { useVoiceStagePresentation } from './use-voice-stage-presentation'
+import { useStreamPreviewUpload } from './use-stream-preview-upload'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -152,9 +162,19 @@ const INITIAL_SNAPSHOT: VoiceSnapshot = {
   speakingUserIds: [],
 }
 
+const DEVICE_FALLBACK_WARNINGS: Partial<Record<string, string>> = {
+  output_device_fallback:
+    'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.',
+  microphone_device_fallback:
+    'Выбранный микрофон недоступен. Используем микрофон по умолчанию.',
+}
+
 let remoteAudioCommandRevision = 0
 // Coalesces slider drags into at most one native mix update per interval.
 const REMOTE_AUDIO_PUBLISH_INTERVAL_MS = 40
+
+/** Сколько ждать перед звуком остановки стрима/камеры (см. playTransitionSound). */
+const MEDIA_STOP_SOUND_GRACE_MS = 2_000
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
@@ -206,6 +226,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
   const pendingScreenWatchIdsRef = useRef(new Set<string>())
+  /** Пользователь сам выключил стрим/камеру: звук и флаг на сервере — сразу. */
+  const intentionalMediaStopRef = useRef({ screen_share: false, camera: false })
   const screenRepublishGraceTimersRef = useRef(
     new Map<string, ReturnType<typeof setTimeout>>(),
   )
@@ -249,7 +271,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ),
     )
   }, [desktop])
-  const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
   const voicePreferences = useVoicePreferences()
@@ -258,6 +279,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     : screenQuality(voicePreferences.screenShareQuality).fps
   const localScreenPreviewActive = snapshot.screen.state === 'starting' ||
     snapshot.screen.state === 'running'
+  const screenMedia = useRestartAwareMediaState(snapshot.screen.state)
+  const cameraMedia = useRestartAwareMediaState(snapshot.camera.state)
 
   useEffect(() => {
     if (!desktop) return
@@ -286,6 +309,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stageFullscreen,
   ])
 
+  // Снимаем спрос на превью только при размонтировании. Если держать fps в
+  // зависимостях, смена FPS стрима сначала выключала превью, а следующий
+  // эффект тут же включал его снова — локальный стрим мигал.
+  const localScreenPreviewFpsRef = useRef(localScreenPreviewFps)
+  localScreenPreviewFpsRef.current = localScreenPreviewFps
   useEffect(() => {
     if (!desktop) return
     return () => {
@@ -296,13 +324,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               demanded: false,
               width: 1280,
               height: 720,
-              fps: localScreenPreviewFps,
+              fps: localScreenPreviewFpsRef.current,
             }),
           catch: (cause) => cause,
         }).pipe(Effect.ignore),
       )
     }
-  }, [desktop, localScreenPreviewFps])
+  }, [desktop])
 
   const inputDevices = useMediaDevices('audioinput')
   const videoDevices = useMediaDevices('videoinput')
@@ -322,14 +350,48 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     screenRepublishGraceTimersRef.current.clear()
     clientRef.current = client
     let previousSnapshot = client.snapshot()
+    const mediaLiveness = createVoiceMediaLiveness(previousSnapshot)
     setSnapshot(previousSnapshot)
     setRoom(client.room())
+    // Пересборка стрима/камеры при смене качества может провести медиа через
+    // «выключено» на долю секунды. Звук остановки ждёт, и если медиа за это
+    // время вернулось, не играют ни «остановлено», ни «запущено».
+    const pendingStopSounds = new Map<string, ReturnType<typeof setTimeout>>()
+    const playTransitionSound = (sound: SoundEventId) => {
+      const [kind, phase] = sound.split('.')
+      if (phase === 'stopped' && (kind === 'screen_share' || kind === 'camera')) {
+        if (intentionalMediaStopRef.current[kind]) {
+          intentionalMediaStopRef.current[kind] = false
+          clearTimeout(pendingStopSounds.get(kind))
+          pendingStopSounds.delete(kind)
+          playUiSound(sound)
+          return
+        }
+        const previousTimer = pendingStopSounds.get(kind)
+        if (previousTimer) clearTimeout(previousTimer)
+        pendingStopSounds.set(
+          kind,
+          setTimeout(() => {
+            pendingStopSounds.delete(kind)
+            playUiSound(sound)
+          }, MEDIA_STOP_SOUND_GRACE_MS),
+        )
+        return
+      }
+      if (phase === 'started' && pendingStopSounds.has(kind)) {
+        clearTimeout(pendingStopSounds.get(kind))
+        pendingStopSounds.delete(kind)
+        return
+      }
+      playUiSound(sound)
+    }
     const unsubscribeSnapshot = client.subscribe((nextSnapshot) => {
       for (const sound of voiceSnapshotTransitionSounds(
         previousSnapshot,
         nextSnapshot,
+        mediaLiveness,
       )) {
-        playUiSound(sound)
+        playTransitionSound(sound)
       }
       previousSnapshot = nextSnapshot
       setSnapshot(nextSnapshot)
@@ -339,6 +401,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     return () => {
       unsubscribeSnapshot()
+      for (const timer of pendingStopSounds.values()) clearTimeout(timer)
+      pendingStopSounds.clear()
       unsubscribeRoom()
       if (clientRef.current === client) clientRef.current = null
       Effect.runFork(client.disposeEffect())
@@ -445,7 +509,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         screenRepublishGraceTimersRef.current.delete(mediaId)
         if (!pendingScreenWatchIdsRef.current.delete(mediaId)) return
         watchedScreenViewerChannelsRef.current.delete(mediaId)
-        notifiedScreenViewerIdsRef.current.delete(mediaId)
         setRoomRevision((revision) => revision + 1)
       }, 5_000)
       screenRepublishGraceTimersRef.current.set(mediaId, timer)
@@ -532,109 +595,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [cancelScreenRepublishGrace, preserveScreenWatchDuringRepublish, room])
 
-  const publishScreenViewerSound = useCallback(
-    (activeRoom: Room, screenOwnerId: string, action: 'join' | 'leave') => {
-      const owner = Array.from(activeRoom.remoteParticipants.values()).find(
-        (participant) => baseVoiceIdentity(participant.identity) === screenOwnerId,
-      )
-      if (!owner) return false
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () =>
-            activeRoom.localParticipant.publishData(
-              createScreenViewerSoundPayload({ action, screenOwnerId }),
-              {
-                reliable: true,
-                destinationIdentities: [owner.identity],
-                topic: SCREEN_VIEWER_SOUND_TOPIC,
-              },
-            ),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              if (import.meta.env.DEV) {
-                console.warn(
-                  'Failed to publish screen viewer sound intent',
-                  error,
-                )
-              }
-            }),
-          ),
-        ),
-      )
-      return true
-    },
-    [],
-  )
-
-  const updateScreenViewerNotification = useCallback(
-    (
-      activeRoom: Room,
-      mediaId: string,
-      screenOwnerId: string,
-      subscribed: boolean,
-    ) => {
-      const watched = notifiedScreenViewerIdsRef.current
-      const action = screenViewerWatchNotification({
-        isLocal:
-          screenOwnerId === auth.user?._id ||
-          screenOwnerId === baseVoiceIdentity(activeRoom.localParticipant.identity),
-        wasWatching: watched.has(mediaId),
-        subscribed,
-      })
-      if (!action) return
-      const published = publishScreenViewerSound(
-        activeRoom,
-        screenOwnerId,
-        action,
-      )
-      if (subscribed && published) watched.add(mediaId)
-      if (!subscribed) watched.delete(mediaId)
-    },
-    [auth.user?._id, publishScreenViewerSound],
-  )
-
-  useEffect(() => {
-    if (!room) return
-    const onDataReceived = (
-      payload: Uint8Array,
-      participant?: { identity: string },
-      _kind?: unknown,
-      topic?: string,
-    ) => {
-      const sound = screenViewerSoundEventFromData({
-        payload,
-        topic,
-        senderIdentity: participant?.identity,
-        currentUserId: auth.user?._id,
-      })
-      if (sound) playUiSound(sound)
-    }
-    room.on(RoomEvent.DataReceived, onDataReceived)
-    return () => {
-      room.off(RoomEvent.DataReceived, onDataReceived)
-      for (const mediaId of notifiedScreenViewerIdsRef.current) {
-        const screenOwnerId = stageScreenMediaUserId(mediaId)
-        if (screenOwnerId) {
-          publishScreenViewerSound(room, screenOwnerId, 'leave')
-        }
-      }
-      notifiedScreenViewerIdsRef.current.clear()
-    }
-  }, [auth.user?._id, publishScreenViewerSound, room])
-
-  useEffect(() => {
-    if (!room || snapshot.connection !== 'connected') return
-    for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
-      if (targetChannelId !== snapshot.membershipChannelId) continue
-      const screenOwnerId = stageScreenMediaUserId(mediaId)
-      if (screenOwnerId) {
-        updateScreenViewerNotification(room, mediaId, screenOwnerId, true)
-      }
-    }
-  }, [room, roomRevision, snapshot, updateScreenViewerNotification])
-
   useEffect(() => {
     if (
       (snapshot.connection === 'disconnected' || snapshot.connection === 'failed') &&
@@ -689,18 +649,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ? `${mediaFailure?.[0]}:${error.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousMediaFailureRef.current) {
-      if (error?.code === 'output_device_fallback') {
-        toast.warning(desktop
-          ? 'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.'
-          : error.message)
+      // A fallback keeps media working on the default device: warn the user,
+      // but it is not a failure worth an automatic report.
+      const fallback = DEVICE_FALLBACK_WARNINGS[error?.code ?? '']
+      if (fallback) {
+        toast.warning(desktop ? fallback : error?.message ?? fallback)
       } else if (!desktop) {
         // Desktop path failures already have localized, actionable runtime banners.
         toast.error(error?.message ?? 'Медиа недоступно')
       }
-      if (auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
+      if (!fallback && auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
           area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
-          severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
+          severity: 'error',
           triggerCode: error.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
         })
@@ -750,7 +711,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       removedWatch =
         watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
-      notifiedScreenViewerIdsRef.current.delete(mediaId)
     }
     if (removedWatch) {
       setRoomRevision((revision) => revision + 1)
@@ -815,6 +775,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const toggleCamera = useCallback(() => {
     const enabled =
       snapshot.camera.state === 'off' || snapshot.camera.state === 'failed'
+    intentionalMediaStopRef.current.camera = !enabled
+    if (!enabled) {
+      eventsGateway.send({ type: 'VoiceMediaStopped', source: 'camera' })
+    }
     void dispatchVoice({
       type: 'setCamera',
       enabled,
@@ -823,31 +787,39 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [dispatchVoice, snapshot.camera.state])
 
+  const openDesktopDisplayPicker = useCallback(() => {
+    if (!desktop) return
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () =>
+          desktop.media.openDisplayPicker(
+            readVoicePreferences().screenShareAudio,
+          ),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось открыть выбор демонстрации',
+            )
+          }),
+        ),
+      ),
+    )
+  }, [desktop])
+
   const toggleScreenShare = useCallback(() => {
     if (snapshot.screen.state === 'running' || snapshot.screen.state === 'starting') {
+      intentionalMediaStopRef.current.screen_share = true
+      eventsGateway.send({ type: 'VoiceMediaStopped', source: 'screen' })
       void dispatchVoice({ type: 'setScreen', enabled: false })
       return
     }
+    intentionalMediaStopRef.current.screen_share = false
     if (desktop) {
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () =>
-            desktop.media.openDisplayPicker(
-              readVoicePreferences().screenShareAudio,
-            ),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось открыть выбор демонстрации',
-              )
-            }),
-          ),
-        ),
-      )
+      openDesktopDisplayPicker()
       return
     }
     const prefs = readVoicePreferences()
@@ -857,7 +829,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       audioEnabled: prefs.screenShareAudio,
       ...screenQuality(prefs.screenShareQuality),
     })
-  }, [desktop, dispatchVoice, snapshot.screen.state])
+  }, [desktop, dispatchVoice, openDesktopDisplayPicker, snapshot.screen.state])
 
   const setSelfMonitoringActive = useCallback(
     (active: boolean) => {
@@ -872,6 +844,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       : snapshot.connection === 'connecting' || snapshot.connection === 'recovering'
         ? snapshot.intentChannelId
         : null
+
+  const presentation = useVoiceStagePresentation(channelId)
+  const sessionStageMounted = presentation.mountedStageChannelIds.includes(
+    channelId ?? '',
+  )
+  useEffect(() => {
+    if (!sessionStageMounted && !presentation.popoutWindow)
+      setStageFullscreen(false)
+  }, [sessionStageMounted, presentation.popoutWindow])
 
   useEffect(() => {
     setActivityLauncherOpen(false)
@@ -934,7 +915,50 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [channelId, roomRevision],
   )
 
-  const stageMediaItems = useMemo(() => {
+  const watchedOwnerIds = useMemo(
+    () =>
+      normalizeWatchedOwnerIds(
+        viewedRemoteScreenIds.flatMap(
+          (mediaId) => stageScreenMediaUserId(mediaId) ?? [],
+        ),
+      ),
+    [viewedRemoteScreenIds],
+  )
+  const serverWatchedOwnerIds = participants.find(
+    (participant) => participant.id === auth.user?._id,
+  )?.watching
+
+  // The server holds who watches which stream, so every client derives the
+  // same viewer lists. Resent until the echoed voice state matches.
+  useEffect(() => {
+    if (status !== 'connected' || !serverWatchedOwnerIds) return
+    if (sameWatchedOwnerIds(serverWatchedOwnerIds, watchedOwnerIds)) return
+    eventsGateway.sendReliable(
+      { type: 'VoiceWatchUpdate', watching: watchedOwnerIds },
+      'voice-watch',
+    )
+  }, [serverWatchedOwnerIds, status, watchedOwnerIds])
+
+  const streamViewers = useMemo(
+    () =>
+      streamViewerSnapshot({
+        channelId: status === 'connected' ? channelId : null,
+        currentUserId: auth.user?._id ?? null,
+        participants,
+        watchedOwnerIds,
+      }),
+    [auth.user?._id, channelId, participants, status, watchedOwnerIds],
+  )
+  const previousStreamViewersRef = useRef<StreamViewerSnapshot | null>(null)
+  useEffect(() => {
+    const previous = previousStreamViewersRef.current
+    previousStreamViewersRef.current = streamViewers
+    if (!previous) return
+    const sound = streamViewerTransitionSound(previous, streamViewers)
+    if (sound) playUiSound(sound)
+  }, [streamViewers])
+
+  const builtStageMediaItems = useMemo(() => {
     const watchedRemoteScreenIds = new Set(viewedRemoteScreenIds)
     const items = buildStageItems({
       room: room
@@ -977,7 +1001,72 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setNativeVideoDemand,
     viewedRemoteScreenIds,
   ])
-  stageMediaItemsRef.current = stageMediaItems
+  // Своя трансляция пересобирается (смена качества): показываем загрузку на превью.
+  const localScreenRestarting =
+    screenMedia.live && snapshot.screen.state === 'starting'
+  const stageMediaItems = useHeldRemoteScreenTracks(
+    builtStageMediaItems,
+    localScreenRestarting,
+  )
+  // Screen ownership and subscriptions are independent of the stage's display filters.
+  const builtStreamMediaItems = useMemo(
+    () =>
+      buildStageItems({
+        room: room
+          ? createStageRoomFromLiveKit(
+              room,
+              browserSubscriptionErrorsRef.current,
+            )
+          : null,
+        participants,
+        currentUserId: auth.user?._id ?? null,
+        filters: {
+          showOwnStream: true,
+          showRemoteStreams: true,
+          showParticipantsWithoutMedia: false,
+        },
+        watchedRemoteScreenIds: new Set(viewedRemoteScreenIds),
+        nativeTracks: nativeVideoTracks,
+        nativePublications: nativeVideoPublications,
+        localScreenPreview:
+          desktop && localScreenPreviewActive && auth.user?._id
+            ? {
+                userId: auth.user._id,
+                track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
+              }
+            : null,
+        setNativeDemand: setNativeVideoDemand,
+      }).filter((item) => item.kind === 'screen'),
+    [
+      room,
+      roomRevision,
+      participants,
+      auth.user?._id,
+      viewedRemoteScreenIds,
+      nativeVideoTracks,
+      nativeVideoPublications,
+      desktop,
+      localScreenPreviewActive,
+      setNativeVideoDemand,
+    ],
+  )
+  const streamMediaItems = useHeldRemoteScreenTracks(
+    builtStreamMediaItems,
+    localScreenRestarting,
+  )
+  stageMediaItemsRef.current = [
+    ...stageMediaItems,
+    ...streamMediaItems.filter(
+      (item) => !stageMediaItems.some((visible) => visible.id === item.id),
+    ),
+  ]
+  const localPreviewTrack =
+    streamMediaItems.find((item) => item.isLocal)?.track ?? null
+  useStreamPreviewUpload(
+    screenMedia.live ? channelId : null,
+    auth.session?.token,
+    localPreviewTrack,
+  )
 
   useEffect(() => {
     if (!desktop) {
@@ -1079,7 +1168,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       removedWatch =
         watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
-      notifiedScreenViewerIdsRef.current.delete(mediaId)
     }
     if (removedWatch) {
       setRoomRevision((revision) => revision + 1)
@@ -1109,6 +1197,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setRtcDebugHistory([])
       return
     }
+    let rtcSampleFailureLogged = false
     const collectSample = desktop
       ? Effect.tryPromise({
           try: () => desktop.voice.getTelemetry(),
@@ -1173,7 +1262,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
         }),
       ),
-      Effect.catch(() => Effect.void),
+      // A failing sample must not stop the poller, but it must not be silent:
+      // a contract mismatch here once left every network panel empty.
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          if (rtcSampleFailureLogged) return
+          rtcSampleFailureLogged = true
+          console.warn('[voice] RTC telemetry sample failed', cause)
+        }),
+      ),
     )
     const fiber = Effect.runFork(
       sample.pipe(
@@ -1197,10 +1294,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const setFocusedMediaId = useCallback((mediaId: string | null) => {
-    setFocusedMediaIdState(mediaId)
-    if (mediaId) setStageFocusNonce((nonce) => nonce + 1)
-  }, [])
+  const setFocusedMediaId = useCallback(
+    (mediaId: string | null) => {
+      const item = stageMediaItemsRef.current.find(
+        (candidate) => candidate.id === mediaId,
+      )
+      if (item?.kind === 'screen') {
+        setStageMediaFilters((filters) => {
+          if (item.isLocal ? filters.showOwnStream : filters.showRemoteStreams)
+            return filters
+          return item.isLocal
+            ? { ...filters, showOwnStream: true }
+            : { ...filters, showRemoteStreams: true }
+        })
+      }
+      setFocusedMediaIdState(mediaId)
+      if (mediaId) setStageFocusNonce((nonce) => nonce + 1)
+    },
+    [setStageMediaFilters],
+  )
 
   const watchParticipantScreenShare = useCallback(
     async (targetChannelId: string, userId: string) => {
@@ -1217,28 +1329,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           return
         }
       }
-      const activeRoom = clientRef.current?.room()
-      const currentSnapshot = clientRef.current?.snapshot()
-      if (
-        activeRoom &&
-        currentSnapshot?.connection === 'connected' &&
-        currentSnapshot.membershipChannelId === targetChannelId
-      ) {
-        updateScreenViewerNotification(
-          activeRoom,
-          mediaId,
-          userId,
-          true,
-        )
-      }
       setFocusedMediaId(mediaId)
     },
-    [channelId, join, setFocusedMediaId, status, updateScreenViewerNotification],
+    [channelId, join, setFocusedMediaId, status],
   )
 
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
-      const item = stageMediaItems.find((candidate) => candidate.id === mediaId)
+      const item = stageMediaItemsRef.current.find(
+        (candidate) => candidate.id === mediaId,
+      )
       const screenUserId = stageScreenMediaUserId(mediaId)
       if (item?.kind === 'screen') {
         const action = setStageScreenSubscription(item, subscribed)
@@ -1254,9 +1354,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             watchedScreenViewerChannelsRef.current.delete(item.id)
             pendingScreenWatchIdsRef.current.delete(item.id)
           }
-          if (room) {
-            updateScreenViewerNotification(room, item.id, item.userId, subscribed)
-          }
         }
       } else if (screenUserId) {
         if (subscribed && channelId) {
@@ -1267,14 +1364,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           watchedScreenViewerChannelsRef.current.delete(mediaId)
           pendingScreenWatchIdsRef.current.delete(mediaId)
         }
-        if (room) {
-          updateScreenViewerNotification(
-            room,
-            mediaId,
-            screenUserId,
-            subscribed,
-          )
-        }
       } else {
         setVoiceStageMediaPublicationSubscribed(
           item?.publication,
@@ -1283,14 +1372,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       setRoomRevision((revision) => revision + 1)
     },
-    [
-      cancelScreenRepublishGrace,
-      channelId,
-      dispatchVoice,
-      room,
-      stageMediaItems,
-      updateScreenViewerNotification,
-    ],
+    [cancelScreenRepublishGrace, channelId, dispatchVoice],
   )
 
   const sessionValue = useMemo<VoiceSessionContextValue>(
@@ -1327,20 +1409,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       micIssue,
       mediaAvailability,
-      cameraEnabled: snapshot.camera.state === 'running',
-      screenShareEnabled: snapshot.screen.state === 'running',
-      screenShareStarting: snapshot.screen.state === 'starting',
+      cameraEnabled: cameraMedia.live,
+      screenShareEnabled: screenMedia.live,
+      screenShareStarting: screenMedia.starting,
       toggleCamera,
       toggleScreenShare,
+      changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
       setSelfMonitoringActive,
       getNativeMicrophonePreviewTrack: () => null,
     }),
     [
+      desktop,
+      openDesktopDisplayPicker,
       mediaAvailability,
       micIssue,
       setSelfMonitoringActive,
-      snapshot.camera.state,
-      snapshot.screen.state,
+      cameraMedia.live,
+      screenMedia.live,
+      screenMedia.starting,
       toggleCamera,
       toggleScreenShare,
     ],
@@ -1350,6 +1436,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       stageChannelId: channelId,
       stageMediaItems,
+      streamMediaItems,
+      ...presentation,
       viewedRemoteScreenIds,
       focusedMediaId,
       setFocusedMediaId,
@@ -1374,6 +1462,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       stageFullscreen,
       stageMediaFilters,
       stageMediaItems,
+      streamMediaItems,
+      presentation,
       viewedRemoteScreenIds,
       watchParticipantScreenShare,
     ],
@@ -1626,4 +1716,88 @@ function screenQuality(quality: string) {
 function subscriptionFailureDetail(reason: unknown) {
   if (reason == null) return ''
   return reason instanceof Error ? reason.message : String(reason)
+}
+
+/**
+ * Смена разрешения/FPS пересобирает публикацию: движок проводит уже идущий
+ * стрим через `running → starting → running`. Для интерфейса это не выключение
+ * и не новый запуск — плашка трансляции, кнопки и превью не должны мигать.
+ */
+function useRestartAwareMediaState(state: VoiceMediaState) {
+  const wasLiveRef = useRef(false)
+  if (state === 'running') wasLiveRef.current = true
+  else if (state !== 'starting') wasLiveRef.current = false
+  const restarting = state === 'starting' && wasLiveRef.current
+  return {
+    live: state === 'running' || restarting,
+    starting: state === 'starting' && !restarting,
+  }
+}
+
+/** How long a watched remote stream may lack its track while it republishes. */
+const REMOTE_SCREEN_TRACK_HOLD_MS = 3_000
+
+/**
+ * A quality change republishes the streamer's screen track: for a moment the
+ * watched item has no track, then a new one. Keep showing the last track (its
+ * last frame) for that gap instead of flashing the «connecting» placeholder.
+ * A stream that really stops disappears from the list and is not held.
+ */
+function useHeldRemoteScreenTracks(
+  items: VoiceStageMediaItem[],
+  localScreenRestarting: boolean,
+): VoiceStageMediaItem[] {
+  const heldRef = useRef(
+    new Map<string, { track: VoiceStageMediaTrack; missingSince: number | null }>(),
+  )
+  const [expiryTick, setExpiryTick] = useState(0)
+  const { result, nextExpiry } = useMemo(() => {
+    const now = Date.now()
+    const held = heldRef.current
+    const present = new Set<string>()
+    let nextExpiry: number | null = null
+    const result = items.map((item) => {
+      if (item.kind === 'screen' && item.isLocal) {
+        return localScreenRestarting && item.track
+          ? { ...item, track: { ...item.track, reconnecting: true } }
+          : item
+      }
+      if (item.kind !== 'screen') return item
+      present.add(item.id)
+      if (item.track) {
+        held.set(item.id, { track: item.track, missingSince: null })
+        return item
+      }
+      const entry = held.get(item.id)
+      if (!entry || item.subscribed === false || item.error) {
+        held.delete(item.id)
+        return item
+      }
+      entry.missingSince ??= now
+      const expiresAt = entry.missingSince + REMOTE_SCREEN_TRACK_HOLD_MS
+      if (now >= expiresAt) {
+        held.delete(item.id)
+        return item
+      }
+      nextExpiry = nextExpiry === null ? expiresAt : Math.min(nextExpiry, expiresAt)
+      return {
+        ...item,
+        track: { ...entry.track, reconnecting: true },
+        live: true,
+      }
+    })
+    for (const id of [...held.keys()]) if (!present.has(id)) held.delete(id)
+    return { result, nextExpiry }
+    // expiryTick re-evaluates held tracks once their grace runs out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, localScreenRestarting, expiryTick])
+  useEffect(() => {
+    if (nextExpiry === null) return
+    const timer = setTimeout(
+      () => setExpiryTick((tick) => tick + 1),
+      Math.max(0, nextExpiry - Date.now()) + 10,
+    )
+    return () => clearTimeout(timer)
+  }, [nextExpiry])
+  return result
 }

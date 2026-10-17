@@ -24,6 +24,7 @@ use syrnike_result::{create_error, Result, ToSyrnikeError};
 pub mod call_lifecycle;
 mod join;
 mod session;
+pub mod stream_preview;
 mod voice_client;
 pub use crate::events::client::{VoiceCameraProfile, VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
@@ -477,11 +478,14 @@ pub async fn delete_voice_state(
     user_id: &str,
 ) -> Result<Option<String>> {
     let Some(mut session) = get_current_voice_session(user_id).await? else {
+        // Atomically remove thumbnails whose stream authority expired.
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     };
 
     if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
     {
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     }
 
@@ -499,6 +503,7 @@ pub async fn delete_voice_state_for_session(
     session_id: &str,
 ) -> Result<Option<String>> {
     let Some(mut session) = get_current_voice_session(user_id).await? else {
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     };
 
@@ -541,6 +546,7 @@ pub async fn delete_channel_voice_state(
     pipeline.srem(voice_active_channels_key(), &channel.id);
 
     for user_id in user_ids {
+        pipeline.del(stream_preview::stream_preview_key(&channel.id, user_id));
         if let Some(mut session) = get_current_voice_session(user_id).await? {
             if same_voice_channel(&session.channel, channel) {
                 let operation_id = session.operation_id.clone();
@@ -573,6 +579,7 @@ pub async fn delete_channel_voice_state_for_room(
     let mut deleted_sessions = Vec::new();
     for user_id in user_ids {
         let Some(mut session) = get_current_voice_session(user_id).await? else {
+            stream_preview::prune_stream_preview(&channel.id, user_id).await?;
             continue;
         };
         if same_voice_channel(&session.channel, channel)
@@ -585,6 +592,8 @@ pub async fn delete_channel_voice_state_for_room(
             if delete_current_voice_session(&session).await? {
                 deleted_sessions.push((user_id.clone(), operation_id));
             }
+        } else {
+            stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         }
     }
     Ok(Some(deleted_sessions))
@@ -710,6 +719,80 @@ pub async fn update_client_voice_flags(
     }
 
     Err(create_error!(NotConnected))
+}
+
+/// Upper bound on screen shares one participant can declare as watched.
+pub const MAX_WATCHED_SCREENS: usize = 25;
+
+/// Sorted, deduplicated watch list without the viewer itself.
+pub fn normalize_watched_screens(user_id: &str, watching: Vec<String>) -> Vec<String> {
+    let mut watching: Vec<String> = watching
+        .into_iter()
+        .filter(|owner_id| !owner_id.is_empty() && owner_id.len() <= 64 && owner_id != user_id)
+        .collect();
+    watching.sort_unstable();
+    watching.dedup();
+    watching.truncate(MAX_WATCHED_SCREENS);
+    watching
+}
+
+/// Replaces the screen shares the user's active voice session watches.
+/// Returns the channel and the new state when the stored state changed.
+pub async fn update_watched_screens(
+    user_id: &str,
+    watching: Vec<String>,
+) -> Result<Option<(String, UserVoiceState)>> {
+    let watching = normalize_watched_screens(user_id, watching);
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Ok(None);
+        };
+        if previous.state != VoiceSessionState::Active || previous.watching == watching {
+            return Ok(None);
+        }
+
+        let mut next = previous.clone();
+        next.watching = watching.clone();
+        next.version += 1;
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(Some((
+                next.channel.id.clone(),
+                next.voice_state(Timestamp::UNIX_EPOCH),
+            )));
+        }
+    }
+
+    Ok(None)
+}
+
+/// The user stopped their camera/screen share on purpose: clear the flag now
+/// instead of waiting for the LiveKit unpublish webhook (which is deferred so a
+/// quality-change republish does not flash the flag off and on).
+pub async fn clear_voice_media_track(
+    user_id: &str,
+    source: crate::events::server::VoiceMediaSource,
+) -> Result<Option<(String, UserVoiceState)>> {
+    let track = match source {
+        crate::events::server::VoiceMediaSource::Camera => TrackSource::Camera,
+        crate::events::server::VoiceMediaSource::Screen => TrackSource::ScreenShare,
+    };
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Ok(None);
+        };
+        let mut next = previous.clone();
+        if next.set_track_state(false, track as i32) != VoiceSessionTransition::Applied {
+            return Ok(None);
+        }
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(Some((
+                next.channel.id.clone(),
+                next.voice_state(Timestamp::UNIX_EPOCH),
+            )));
+        }
+    }
+
+    Ok(None)
 }
 
 pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceState) {
@@ -1723,6 +1806,34 @@ mod tests {
     use syrnike_permissions::{ChannelPermission, PermissionValue};
 
     #[test]
+    fn normalize_watched_screens_sorts_dedups_and_drops_self() {
+        let watching = super::normalize_watched_screens(
+            "viewer",
+            vec![
+                "owner-b".to_string(),
+                "viewer".to_string(),
+                String::new(),
+                "owner-a".to_string(),
+                "owner-b".to_string(),
+                "x".repeat(65),
+            ],
+        );
+
+        assert_eq!(watching, vec!["owner-a".to_string(), "owner-b".to_string()]);
+    }
+
+    #[test]
+    fn normalize_watched_screens_caps_the_list() {
+        let watching = super::normalize_watched_screens(
+            "viewer",
+            (0..40).map(|index| format!("owner-{index:02}")).collect(),
+        );
+
+        assert_eq!(watching.len(), super::MAX_WATCHED_SCREENS);
+        assert_eq!(watching.first().map(String::as_str), Some("owner-00"));
+    }
+
+    #[test]
     fn consistent_voice_node_requires_one_shared_node() {
         assert_eq!(
             super::consistent_voice_node(std::iter::empty::<&str>()),
@@ -2128,6 +2239,7 @@ mod tests {
             server_deafened: false,
             screensharing: true,
             camera: false,
+            watching: Vec::new(),
             version: 7,
             joined_at: Some(joined_at),
             created_at: Timestamp::UNIX_EPOCH,
@@ -2226,6 +2338,7 @@ mod tests {
             server_deafened: false,
             screensharing: true,
             camera: false,
+            watching: Vec::new(),
             version: 7,
             joined_at: Some(now),
             created_at: Timestamp::UNIX_EPOCH,

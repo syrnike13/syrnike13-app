@@ -25,6 +25,18 @@ export function attachmentOriginalUrl(file: OriginalMediaFile) {
   return `${config.mediaUrl}/${file.tag}/${file._id}/${filename}`
 }
 
+/**
+ * Внешний медиа-URL из embed (og:image/og:video) — через прокси january:
+ * чужие CDN отдают 403 на hotlink. Относительные и data-URL не трогаем.
+ */
+export function embedMediaUrl(url: string) {
+  const value = url.trim()
+  if (!/^https?:\/\//i.test(value)) return value
+
+  const base = config.proxyUrl.replace(/\/+$/, '')
+  return `${base}/proxy?url=${encodeURIComponent(value)}`
+}
+
 export function isImageFile(file: File) {
   return file.metadata.type === 'Image'
 }

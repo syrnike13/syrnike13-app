@@ -78,6 +78,56 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(registry.getLocalScreenPreviewConsumerCount()).toBe(0)
   })
 
+  it('keeps local demand and frames flowing to the mini player after the stage detaches', () => {
+    const registry = new NativeVideoRegistry()
+    const stage = canvasStub()
+    const mini = canvasStub()
+    const capture = canvasStub()
+    const adapter = registry.getLocalScreenPreviewTrack()
+    const detachStage = adapter.attachCanvas(stage.canvas)
+    const detachMini = adapter.attachCanvas(mini.canvas)
+    const onFrame = vi.fn(() => {
+      expect(capture.drawImage).toHaveBeenCalledOnce()
+    })
+    const detachCapture = adapter.attachCanvas(capture.canvas, undefined, {
+      backingSize: { width: 480, height: 270 },
+      onFrame,
+    })
+    expect(registry.getLocalScreenPreviewConsumerCount()).toBe(3)
+    detachStage()
+    const frame = new FakeVideoFrame(1920, 1080)
+    deliver(registry, frameMessage(1, 1, frame))
+    runtimeWindow.flushAnimationFrames()
+    expect(stage.drawImage).not.toHaveBeenCalled()
+    expect(mini.drawImage).toHaveBeenCalledOnce()
+    expect(capture.drawImage).toHaveBeenCalledWith(frame, 0, 0, 480, 270)
+    expect(onFrame).toHaveBeenCalledOnce()
+    expect(frame.close).toHaveBeenCalledOnce()
+    detachMini()
+    expect(registry.getLocalScreenPreviewConsumerCount()).toBe(1)
+    detachCapture()
+    expect(registry.getLocalScreenPreviewConsumerCount()).toBe(0)
+  })
+
+  it('uses explicit backing bounds without layout or DPR and stops drawing on detach', () => {
+    runtimeWindow.devicePixelRatio = 3
+    const registry = new NativeVideoRegistry()
+    const capture = sizedCanvasStub(0, 0)
+    const detach = registry
+      .getLocalScreenPreviewTrack()
+      .attachCanvas(capture.canvas, undefined, {
+        backingSize: { width: 480, height: 270 },
+      })
+    const frame = new FakeVideoFrame(1080, 1920)
+    deliver(registry, frameMessage(1, 1, frame))
+    runtimeWindow.flushAnimationFrames()
+    expect(capture.canvas).toMatchObject({ width: 152, height: 270 })
+    detach()
+    deliver(registry, frameMessage(1, 2, new FakeVideoFrame(1080, 1920)))
+    runtimeWindow.flushAnimationFrames()
+    expect(capture.drawImage).toHaveBeenCalledOnce()
+  })
+
   it('copies a frame into every mounted canvas and closes the source immediately', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, frameMessage(1, 1, new FakeVideoFrame()))
@@ -881,6 +931,7 @@ function createRuntimeWindow() {
   const callbacks = new Map<number, FrameRequestCallback>()
   return {
     location: { origin: 'https://app.test' },
+    devicePixelRatio: 1,
     syrnikeDesktop: {
       media: {
         replayRemoteVideoPublications: vi.fn(async () => undefined),

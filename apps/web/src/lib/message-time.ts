@@ -49,18 +49,27 @@ function isSystemMessage(message: { system?: unknown }) {
 }
 
 /**
- * Следующее сообщение в «хвосте» группы: тот же автор подряд, без системных и без цитаты-ответа.
+ * Следующее сообщение в «хвосте» группы: тот же автор подряд, без системных, без цитаты-ответа
+ * и без embed. Embed — блочный элемент: схлопнутая строка прилипает к карточке
+ * и теряет автора, поэтому группа рвётся и до, и после неё.
  * (Разделитель даты сбрасывает previous в message-feed.)
  */
+type CompactableMessage = {
+  author: string
+  system?: unknown
+  replies?: readonly unknown[] | null
+  embeds?: readonly unknown[] | null
+}
+
 export function shouldCompactMessage(
-  previous:
-    | { author: string; system?: unknown; replies?: readonly unknown[] | null }
-    | undefined,
-  current: { author: string; system?: unknown; replies?: readonly unknown[] | null },
+  previous: CompactableMessage | undefined,
+  current: CompactableMessage,
 ): boolean {
   if (!previous) return false
   if (previous.author !== current.author) return false
   if (isSystemMessage(previous) || isSystemMessage(current)) return false
   if (current.replies?.length) return false
+  if (current.embeds?.length) return false
+  if (previous.embeds?.length) return false
   return true
 }

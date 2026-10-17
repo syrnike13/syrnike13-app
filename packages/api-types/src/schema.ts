@@ -4,6 +4,14 @@
  */
 
 export interface paths {
+  "/channels/{target}/voice/stream-preview": {
+    /** Upload a WebP or JPEG image (maximum 262144 bytes). Requires an active screensharing session in this channel. Expires after 10 minutes and is deleted on stream end or leave. */
+    put: operations["voice_stream_preview_put_preview"];
+  };
+  "/channels/{target}/voice/stream-preview/{user_id}": {
+    /** Requires ViewChannel permission. Returns no-store image bytes without subscribing to the stream. */
+    get: operations["voice_stream_preview_get_preview"];
+  };
   "/": {
     /** Fetch the server configuration for this syrnike13 instance. */
     get: operations["root_root"];
@@ -3521,6 +3529,60 @@ export interface components {
 }
 
 export interface operations {
+  /** Upload a WebP or JPEG image (maximum 262144 bytes). Requires an active screensharing session in this channel. Expires after 10 minutes and is deleted on stream end or leave. */
+  voice_stream_preview_put_preview: {
+    parameters: {
+      path: {
+        target: string;
+      };
+    };
+    responses: {
+      /** Preview stored */
+      204: never;
+      /** Invalid image or inactive screensharing session */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "image/webp": string;
+        "image/jpeg": string;
+      };
+    };
+  };
+  /** Requires ViewChannel permission. Returns no-store image bytes without subscribing to the stream. */
+  voice_stream_preview_get_preview: {
+    parameters: {
+      path: {
+        target: string;
+        user_id: string;
+      };
+    };
+    responses: {
+      /** Stream preview image */
+      200: {
+        headers: {
+          "Cache-Control"?: string;
+          "X-Stream-Preview-Updated-At"?: string;
+        };
+        content: {
+          "image/webp": string;
+          "image/jpeg": string;
+        };
+      };
+      /** Preview unavailable */
+      404: unknown;
+      /** An error occurred */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   /** Fetch the server configuration for this syrnike13 instance. */
   root_root: {
     responses: {

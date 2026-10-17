@@ -337,6 +337,27 @@ describe('RemoteAudioMixer', () => {
     ])
   })
 
+  it('keeps screen-share audio audible while deafened', () => {
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.addTrack({
+      trackId: 'pub-stream',
+      userId: 'remote-user',
+      source: 'stream',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(true)
+
+    expect(mixer.debugSnapshot()).toMatchObject([
+      { trackId: 'pub-mic', gain: 0 },
+      { trackId: 'pub-stream', gain: 1 },
+    ])
+  })
+
   it('restores original track when removed', () => {
     const track = createTrack()
     mixer.addTrack({

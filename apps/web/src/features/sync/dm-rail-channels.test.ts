@@ -17,6 +17,7 @@ function voiceParticipant(id: string) {
     server_muted: false,
     server_deafened: false,
     screensharing: false,
+    watching: [],
     camera: false,
     version: 1,
   }

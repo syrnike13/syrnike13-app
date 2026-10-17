@@ -24,6 +24,8 @@ flowchart LR
 
 1. Apply control changes: subscribe/unsubscribe, create/destroy SDK readers,
    volumes and mutes, deafen, the selected device (or the multimedia default).
+   Deafen silences microphones only; screen-share audio stays audible and is
+   controlled by its own stream mute and volume.
    Listener volume and mute are keyed by user id and apply to every Room
    identity (`voice:v1|engine|instance|epoch|operation|userId`) of that user.
    A changed gain ramps across one 10 ms frame instead of stepping.

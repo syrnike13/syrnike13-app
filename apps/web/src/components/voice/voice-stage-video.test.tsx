@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
@@ -34,7 +34,7 @@ function nativeTrackStub(trackSid = 'local-screen:session') {
       _trackId: string,
       _canvas: HTMLCanvasElement,
       _onSizeChange?: (size: { width: number; height: number }) => void,
-      _options?: { fit?: 'contain' | 'cover' },
+      _options?: { fit?: 'contain' | 'cover'; onFrame?: () => void },
     ) => detach,
   )
   const registry = { attachCanvas } as unknown as NativeVideoRegistry
@@ -129,7 +129,7 @@ describe('VoiceStageVideo', () => {
       'local-screen:session',
       canvas,
       expect.any(Function),
-      { fit: 'cover' },
+      expect.objectContaining({ fit: 'cover' }),
     )
     const sizeListener = attachCanvas.mock.calls[0][2]
     sizeListener?.({ width: 1920, height: 1080 })
@@ -162,5 +162,52 @@ describe('VoiceStageVideo', () => {
     expect(second.attachCanvas).toHaveBeenCalledOnce()
     view.unmount()
     expect(second.detach).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the previous frame on screen until the replacement draws', () => {
+    const first = nativeTrackStub('remote-screen:first')
+    const second = nativeTrackStub('remote-screen:second')
+    const view = render(
+      <VoiceStageVideo
+        mediaId="remote-user:screen"
+        track={{ backend: 'native', track: first.track }}
+      />,
+    )
+    const oldCanvas = document.querySelector('canvas')!
+    view.rerender(
+      <VoiceStageVideo
+        mediaId="remote-user:screen"
+        track={{ backend: 'native', track: second.track }}
+      />,
+    )
+    expect(document.querySelectorAll('canvas')).toHaveLength(2)
+    expect(oldCanvas.isConnected).toBe(true)
+    expect(screen.getByRole('status').textContent).toContain('Переключение качества')
+
+    const options = second.attachCanvas.mock.calls[0][3]
+    act(() => options?.onFrame?.())
+    expect(oldCanvas.isConnected).toBe(false)
+    expect(document.querySelectorAll('canvas')).toHaveLength(1)
+    expect(screen.queryByRole('status')).toBeNull()
+    view.unmount()
+  })
+
+  it('shows the loading overlay while the stream is switching quality', () => {
+    const { track } = nativeTrackStub('remote-screen:held')
+    const view = render(
+      <VoiceStageVideo
+        mediaId="remote-user:screen"
+        track={{ backend: 'native', track, reconnecting: true }}
+      />,
+    )
+    expect(screen.getByRole('status')).toBeTruthy()
+    view.rerender(
+      <VoiceStageVideo
+        mediaId="remote-user:screen"
+        track={{ backend: 'native', track }}
+      />,
+    )
+    expect(screen.queryByRole('status')).toBeNull()
+    view.unmount()
   })
 })

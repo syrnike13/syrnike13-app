@@ -10,6 +10,7 @@ import {
   type MediaDesiredStateAccepted,
   type MediaEngineSnapshot,
   type MediaInventory,
+  type MediaLifecycleDiagnosticEvent,
   type MediaLifecycleEvent,
   type MediaLifecycleReady,
 } from '../media-runtime/contract'
@@ -41,6 +42,7 @@ class Runtime {
   readonly states = new Set<(snapshot: MediaRuntimeSupervisorSnapshot) => void>()
   readonly events = new Set<(event: MediaLifecycleEvent) => void>()
   readonly snapshots = new Set<(snapshot: MediaEngineSnapshot) => void>()
+  readonly diagnostics = new Set<(event: MediaLifecycleDiagnosticEvent) => void>()
   current: MediaEngineSnapshot = {
     engineState: 'running', acceptedRevision: null, desiredState: null,
     roomState: 'off', tracks: createInactiveMediaPaths(),
@@ -57,6 +59,8 @@ class Runtime {
   onStateChange(listener: (snapshot: MediaRuntimeSupervisorSnapshot) => void) { this.states.add(listener); return () => this.states.delete(listener) }
   onEvent(listener: (event: MediaLifecycleEvent) => void) { this.events.add(listener); return () => this.events.delete(listener) }
   onSnapshot(listener: (snapshot: MediaEngineSnapshot) => void) { this.snapshots.add(listener); return () => this.snapshots.delete(listener) }
+  onDiagnostic(listener: (event: MediaLifecycleDiagnosticEvent) => void) { this.diagnostics.add(listener); return () => this.diagnostics.delete(listener) }
+  diagnostic(event: MediaLifecycleDiagnosticEvent) { for (const listener of this.diagnostics) listener(event) }
   async start() {
     if (this.status !== 'ready') {
       this.status = 'ready'
@@ -122,6 +126,59 @@ function speakingInventory(revision: number, speaking: boolean, activeSpeakers: 
 }
 
 describe('NativeRtcEngineAdapterV2', () => {
+  it('exposes Room network telemetry only while connected', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    expect(adapter.telemetry()).toBeNull()
+    await join(runtime, adapter)
+    expect(adapter.telemetry()).toBeNull()
+    runtime.diagnostic({
+      sequence: 1, timestampMs: 1_700_000_000_000, component: 'network', operation: 'sample',
+      code: 'transport_network_metrics',
+      metrics: [{ name: 'sampled_at_ms', value: 1 }, { name: 'ping_ms', value: 37 },
+        { name: 'bytes_sent', value: 100 }, { name: 'bytes_received', value: 200 }],
+    })
+    expect(adapter.telemetry()).toMatchObject({
+      timestamp: 1_700_000_000_000, transport: { pingMs: 37, bytesSent: 100, bytesReceived: 200 },
+      outbound: [], inbound: [],
+    })
+    void adapter.disconnect('leave').catch(() => undefined)
+    expect(adapter.telemetry()).toBeNull()
+  })
+
+  it('keeps the microphone warm across a move and releases it on leave', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await join(runtime, adapter)
+    const revision = runtime.current.acceptedRevision!
+    runtime.current = {
+      ...runtime.current,
+      tracks: { ...runtime.current.tracks, microphone: { revision, state: 'muted', warning: false } },
+    }
+
+    const applyDesiredState = runtime.applyDesiredState.bind(runtime)
+    runtime.applyDesiredState = async (value) => {
+      const accepted = await applyDesiredState(value)
+      if (value.microphone.state === 'warm') {
+        runtime.current = {
+          ...runtime.current,
+          tracks: { ...runtime.current.tracks, microphone: { revision: value.revision, state: 'muted', warning: false } },
+        }
+      }
+      return accepted
+    }
+
+    await adapter.disconnect('move')
+    expect(runtime.applied.at(-1)).toMatchObject({ room: null, microphone: { state: 'warm' } })
+
+    await join(runtime, adapter)
+    expect(runtime.applied.at(-1)?.microphone.state).toBe('on')
+
+    await adapter.disconnect('leave')
+    expect(runtime.applied.at(-1)).toMatchObject({ room: null, microphone: { state: 'off' } })
+    await adapter.dispose()
+  })
+
   it('projects local and remote speaking and clears local activity on mute and disconnect', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

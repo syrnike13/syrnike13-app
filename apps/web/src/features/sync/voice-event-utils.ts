@@ -14,6 +14,7 @@ type RawUserVoiceState = Partial<
     | 'server_deafened'
     | 'screensharing'
     | 'camera'
+    | 'watching'
     | 'version'
   >
 > & {
@@ -24,6 +25,7 @@ type RawUserVoiceState = Partial<
   server_deafened?: unknown
   screensharing?: unknown
   camera?: unknown
+  watching?: unknown
   version?: unknown
   user?: string
   user_id?: string
@@ -55,6 +57,11 @@ function parseVersion(value: unknown) {
   return 0
 }
 
+function parseWatching(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter((id): id is string => typeof id === 'string')
+}
+
 /** API/WS иногда отдают 0/1 или строки — не через `Boolean("false")`. */
 export function parseVoiceFlag(value: unknown, defaultValue: boolean) {
   if (value === true || value === 1) return true
@@ -83,6 +90,7 @@ export function normalizeUserVoiceState(
     server_deafened: parseVoiceFlag(raw.server_deafened, false),
     screensharing: Boolean(raw.screensharing ?? false),
     camera: Boolean(raw.camera ?? false),
+    watching: parseWatching(raw.watching),
     version: parseVersion(raw.version),
   }
 }

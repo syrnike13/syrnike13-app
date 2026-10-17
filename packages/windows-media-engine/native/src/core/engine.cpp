@@ -1115,11 +1115,13 @@ private:
         emit("remote_audio", "remote_audio_output_metrics", media.remote_audio_output_metrics);
         emit("remote_video", "remote_video_metrics", media.remote_video_metrics);
         emit("remote_video", "remote_video_lifecycle_metrics", media.remote_video_lifecycle_metrics);
+        // Ping/throughput drive the live connection panel: every second.
+        emit("network", "transport_network_metrics", media.transport_network_metrics);
         if (telemetry_now >= next_network_diagnostic_) {
           emit("remote_audio", "remote_microphone_network_metrics", media.remote_microphone_network_metrics);
           emit("remote_audio", "remote_screen_audio_network_metrics", media.remote_screen_audio_network_metrics);
           emit("remote_video", "remote_video_network_metrics", media.remote_video_network_metrics);
-          next_network_diagnostic_ = telemetry_now + std::chrono::seconds{5};
+          next_network_diagnostic_ = telemetry_now + std::chrono::seconds{2};
         }
       }
     }

@@ -339,6 +339,42 @@ describe('GatewayVoiceAuthorityAdapter', () => {
     adapter.dispose()
   })
 
+  it('projects an exact moderator disconnect directive', () => {
+    const transport = new FakeTransport()
+    const adapter = new GatewayVoiceAuthorityAdapter({ transport })
+    const listener = vi.fn()
+    adapter.subscribe(listener)
+
+    transport.event({
+      type: 'VoiceAuthorityDisconnect',
+      from: {
+        operation_id: 'voice-op-a',
+        channel_id: 'channel-a',
+        rtc_engine: 'windows_native',
+        client_instance_id: 'client-a',
+        connection_epoch: 'epoch-a',
+      },
+    })
+    expect(listener).toHaveBeenCalledWith({
+      type: 'forcedDisconnect',
+      from: {
+        operationId: 'voice-op-a',
+        channelId: 'channel-a',
+        rtcEngine: 'windows_native',
+        clientInstanceId: 'client-a',
+        connectionEpoch: 'epoch-a',
+      },
+    })
+
+    listener.mockClear()
+    transport.event({
+      type: 'VoiceAuthorityDisconnect',
+      from: { operation_id: 'missing-exact-fields' },
+    })
+    expect(listener).not.toHaveBeenCalled()
+    adapter.dispose()
+  })
+
   it('aborts a pending reservation without accepting a late credential', async () => {
     const transport = new FakeTransport()
     const adapter = new GatewayVoiceAuthorityAdapter({ transport })

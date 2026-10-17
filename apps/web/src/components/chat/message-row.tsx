@@ -11,6 +11,7 @@ import {
 import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageAttachments } from '#/components/chat/message-attachments'
+import { MessageEmbeds, visibleEmbeds } from '#/components/chat/message-embeds'
 import { MessageReactions } from '#/components/chat/message-reactions'
 import {
   ContextMenu,
@@ -369,8 +370,12 @@ export function MessageRow({
   const own = message.author === currentUserId
   const hasContent = Boolean(message.content?.trim())
   const hasAttachments = Boolean(message.attachments?.length)
+  const embeds = useMemo(() => visibleEmbeds(message.embeds), [message.embeds])
+  const hasEmbeds = embeds.length > 0
+  /** Строку с embed не схлопываем, даже если лента пометила её продолжением группы. */
+  const isCompact = compact && !hasEmbeds
   const replyId = message.replies?.[0]
-  const showReplyQuote = Boolean(replyId && !compact)
+  const showReplyQuote = Boolean(replyId && !isCompact)
   const edited = Boolean(
     (message as Message & { edited?: string | null }).edited,
   )
@@ -434,7 +439,7 @@ export function MessageRow({
       data-message-id={message._id}
       className={cn(
         'group relative -mx-4 flex items-start hover:bg-muted/40',
-        compact
+        isCompact
           ? cn('min-h-[1.375rem] py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
           : cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
         highlighted && 'bg-primary/10 hover:bg-primary/15',
@@ -443,7 +448,7 @@ export function MessageRow({
           'bg-chart-2/10 hover:bg-chart-2/15',
       )}
     >
-      {compact ? (
+      {isCompact ? (
         <time
           dateTime={formatMessageTimestamp(createdAt)}
           className={MESSAGE_COMPACT_TIME_CLASS}
@@ -452,7 +457,7 @@ export function MessageRow({
         </time>
       ) : null}
 
-      {!compact ? (
+      {!isCompact ? (
       <div
         className={cn(
           MESSAGE_AVATAR_COLUMN,
@@ -501,7 +506,7 @@ export function MessageRow({
           />
         ) : null}
 
-        {!compact ? (
+        {!isCompact ? (
           <header className="mb-0.5 flex min-h-5 items-baseline gap-2 leading-snug">
             {authorUser ? (
               <MessageAuthorProfileTrigger
@@ -559,7 +564,7 @@ export function MessageRow({
             message={message}
             channelId={channelId}
             own={own}
-            compact={compact}
+            compact={isCompact}
             currentUserId={currentUserId}
             onReply={() => onReply(message)}
             onEdit={onEdit ? () => onEdit(message) : undefined}
@@ -588,7 +593,8 @@ export function MessageRow({
               }}
             />
           ) : null}
-          {!hasContent && !hasAttachments ? (
+          {hasEmbeds ? <MessageEmbeds embeds={embeds} /> : null}
+          {!hasContent && !hasAttachments && !hasEmbeds ? (
             <p className="text-xs text-muted-foreground italic">
               [системное сообщение]
             </p>

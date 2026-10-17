@@ -49,6 +49,7 @@ void identityAndDefaults() {
   require(!registry.resolve({AudioDirection::input, first_id}), "Removed explicit device resolved");
   require(registry.resolve({AudioDirection::input, {}})->endpoint_id == L"input-b", "Default did not move");
   require(!registry.resolve({AudioDirection::output, second_id}), "Direction identity crossed");
+  require(registry.status() == AudioRegistryStatus::ready, "A missing device was reported as a failed device list");
   source.devices->push_back({L"input-a", AudioDirection::input, "Renamed", false});
   const auto replugged = registry.refresh();
   require(replugged.devices.back().id == first_id, "Replug changed opaque identity");
@@ -58,6 +59,8 @@ void identityAndDefaults() {
           "Enumeration failure disappeared");
   require(registry.refresh().revision == failed.revision, "Repeated failure advanced revision");
   require(!registry.resolve({AudioDirection::input, {}}), "Failed refresh resolved stale default");
+  require(registry.status() == AudioRegistryStatus::enumeration_failed,
+          "A failed device list was indistinguishable from a missing device");
 }
 void boundsAndRollback() {
   auto fake = std::make_unique<FakeEnumerator>();

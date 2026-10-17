@@ -400,11 +400,11 @@ export function ChannelSettingsPermissionsPanel({
 
             <div className="space-y-1 pt-3">
               <p className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                РЈС‡Р°СЃС‚РЅРёРєРё
+                Участники
               </p>
               {members.length === 0 ? (
                 <p className="px-1 text-sm text-muted-foreground">
-                  РќРµС‚ СѓС‡Р°СЃС‚РЅРёРєРѕРІ
+                  Нет участников
                 </p>
               ) : (
                 members.map((entry) => {

@@ -7,9 +7,89 @@ vi.mock('#/lib/config', () => ({
   },
 }))
 
-import { ApiError, ApiNetworkError, apiRequest } from './client'
+import { ApiError, ApiNetworkError, apiBlobRequest, apiRequest } from './client'
 
 describe('apiRequest', () => {
+  it('classifies image-body read failures without losing their cause', async () => {
+    const cause = new Error('image body interrupted')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const response = new Response(null)
+        vi.spyOn(response, 'blob').mockRejectedValue(cause)
+        return response
+      }),
+    )
+    await expect(apiBlobRequest('/preview')).rejects.toMatchObject({
+      name: 'ApiNetworkError',
+      message: 'Не удалось прочитать ответ API',
+      cause,
+    })
+  })
+
+  it('keeps cancellation attached while an image response body is still loading', async () => {
+    let requestSignal: AbortSignal | null | undefined
+    let body: ReadableStreamDefaultController<Uint8Array> | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        body = controller
+      },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, options: RequestInit) => {
+        requestSignal = options.signal
+        options.signal?.addEventListener('abort', () =>
+          body?.error(new DOMException('Aborted', 'AbortError')),
+        )
+        return new Response(stream, {
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      }),
+    )
+    const controller = new AbortController()
+    const request = apiBlobRequest('/preview', { signal: controller.signal })
+    await vi.waitFor(() => expect(requestSignal).toBeTruthy())
+    controller.abort()
+    await expect(request).rejects.toBeDefined()
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
+  it('uploads an image as raw authenticated bytes rather than JSON', async () => {
+    const image = new Blob(['image bytes'], { type: 'image/webp' })
+    const fetchMock = vi.fn(
+      async (_url: string, _options: RequestInit) =>
+        new Response(null, { status: 204 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await apiRequest('/channels/voice/voice/stream-preview', Schema.Void, {
+      method: 'PUT',
+      token: 'session',
+      body: image,
+    })
+    const options = fetchMock.mock.calls[0][1]
+    expect(options.body).toBe(image)
+    const headers = new Headers(options.headers)
+    expect(headers.get('Content-Type')).toBe('image/webp')
+    expect(headers.get('X-Session-Token')).toBe('session')
+  })
+
+  it('fetches binary previews and treats a missing preview as an empty state', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('image bytes', {
+          headers: { 'Content-Type': 'image/webp' },
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const image = await apiBlobRequest('/preview', { token: 'session' })
+    expect(image?.type).toBe('image/webp')
+    expect(await image?.text()).toBe('image bytes')
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }))
+    expect(await apiBlobRequest('/preview')).toBeNull()
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }))
+    await expect(apiBlobRequest('/preview')).rejects.toBeInstanceOf(ApiError)
+  })
   afterEach(() => {
     vi.unstubAllGlobals()
   })

@@ -50,6 +50,8 @@ export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
 export function feedItemEstimateHeight(item: MessageFeedItem): number {
   if (item.type === 'date') return 52
   if (item.message.system?.type === 'call_started') return 104
+  // Карточка embed выше обычной строки; точную высоту даст measureElement.
+  if (item.type === 'message' && item.message.embeds?.length) return 240
   if (item.type === 'message' && item.message.replies?.[0] && !item.compact) {
     return 92
   }

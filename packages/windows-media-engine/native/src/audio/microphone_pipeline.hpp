@@ -11,7 +11,8 @@ struct MicrophoneDemand {
   bool needed() const noexcept { return warm || publication || meter; }
 };
 enum class MicrophonePipelineFailure {
-  none, invalid_state, input_unavailable, capture_failed, command_timeout, stop_timeout, cancelled
+  none, invalid_state, input_unavailable, capture_failed, command_timeout, stop_timeout, cancelled,
+  device_list_unavailable
 };
 struct MicrophonePipelineStats {
   MicrophoneDemand demand;

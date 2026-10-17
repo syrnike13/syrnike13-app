@@ -3,6 +3,8 @@ import { PhoneOffIcon, SignalIcon } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
 import { Popover, PopoverTrigger } from '#/components/ui/popover'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoicePingPopoverContent } from '#/components/voice/voice-ping-popover'
 import { formatVoicePingLabel } from '#/features/voice/voice-ping'
 import { useAuth } from '#/features/auth/auth-context'
@@ -17,6 +19,9 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
+
+/** Компактная подсказка пинга, как в Discord. */
+const pingTooltipClass = 'px-2 py-1 text-[11px] leading-none font-medium'
 
 const VOICE_STATUS_CONNECTED = {
   accent: 'text-chart-3',
@@ -78,40 +83,50 @@ export function VoiceConnectionStrip() {
   )
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div
       className={cn('px-2 pt-2 pb-1', !connected && 'animate-pulse')}
     >
       <div className="flex items-center gap-2">
         {connected ? (
           <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
-                  status.iconBg,
-                )}
-                title={pingLabel}
-                aria-label={`${pingLabel}. Открыть статистику подключения`}
-              >
-                <SignalIcon
-                  className={cn('size-4', status.icon)}
-                  aria-hidden
-                />
-              </button>
-            </PopoverTrigger>
+            <VoiceControlTooltip
+            title={pingLabel}
+            contentClassName={pingTooltipClass}
+          >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
+                    status.iconBg,
+                  )}
+                  aria-label={`${pingLabel}. Открыть статистику подключения`}
+                >
+                  <SignalIcon
+                    className={cn('size-4', status.icon)}
+                    aria-hidden
+                  />
+                </button>
+              </PopoverTrigger>
+            </VoiceControlTooltip>
             <VoicePingPopoverContent />
           </Popover>
         ) : (
-          <div
-            className={cn(
-              'flex size-8 shrink-0 cursor-default items-center justify-center rounded-md',
-              status.iconBg,
-            )}
+          <VoiceControlTooltip
             title={pingLabel}
+            contentClassName={pingTooltipClass}
           >
-            <SignalIcon className={cn('size-4', status.icon)} aria-hidden />
-          </div>
+            <div
+              className={cn(
+                'flex size-8 shrink-0 cursor-default items-center justify-center rounded-md',
+                status.iconBg,
+              )}
+              aria-label={pingLabel}
+            >
+              <SignalIcon className={cn('size-4', status.icon)} aria-hidden />
+            </div>
+          </VoiceControlTooltip>
         )}
 
         <div className="min-w-0 flex-1">
@@ -129,18 +144,20 @@ export function VoiceConnectionStrip() {
           </Link>
         </div>
 
+        <VoiceControlTooltip title="Отключиться от голоса">
         <Button
           type="button"
           size="icon"
           variant="ghost"
           className="size-8 shrink-0 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          title="Отключиться от голоса"
+          aria-label="Отключиться от голоса"
           onClick={voice.leave}
         >
           <PhoneOffIcon className="size-4" />
-          <span className="sr-only">Отключиться</span>
         </Button>
+        </VoiceControlTooltip>
       </div>
     </div>
+    </TooltipProvider>
   )
 }

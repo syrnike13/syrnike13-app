@@ -71,6 +71,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 3,
       },
     ]
@@ -237,6 +238,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 1,
       },
     })
@@ -252,6 +254,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 1,
       },
     })
@@ -281,6 +284,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 1,
       },
     })
@@ -299,6 +303,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 3,
       },
     })
@@ -326,6 +331,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 3,
     })
     syncStore.handleGatewayEvent({
@@ -342,6 +348,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 3,
       },
     })
@@ -370,6 +377,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 3,
     })
     syncStore.handleGatewayEvent({
@@ -386,6 +394,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 1,
       },
     })
@@ -416,6 +425,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 3,
       },
     })
@@ -441,6 +451,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 5,
     })
 
@@ -456,6 +467,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 3,
       },
     })
@@ -478,6 +490,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 5,
     })
     syncStore.handleGatewayEvent({
@@ -492,6 +505,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 4,
       },
     })
@@ -517,6 +531,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 5,
     })
 
@@ -535,6 +550,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
+        watching: [],
         version: 5,
       },
     })
@@ -1057,6 +1073,7 @@ describe('syncStore server events', () => {
               server_muted: false,
               server_deafened: false,
               screensharing: false,
+              watching: [],
               camera: false,
               version: 1,
             },

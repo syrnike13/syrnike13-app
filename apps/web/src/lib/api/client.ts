@@ -70,7 +70,10 @@ export const apiRequestEffect = Effect.fn('api.request')(
     const headers = new Headers(initHeaders)
 
     if (body !== undefined && !headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json')
+      headers.set(
+        'Content-Type',
+        body instanceof Blob ? body.type : 'application/json',
+      )
     }
 
     if (token) {
@@ -82,7 +85,12 @@ export const apiRequestEffect = Effect.fn('api.request')(
         const response = await fetch(`${config.apiUrl}${path}`, {
           ...init,
           headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
+          body:
+            body === undefined
+              ? undefined
+              : body instanceof Blob
+                ? body
+                : JSON.stringify(body),
           signal,
         })
         try {
@@ -170,6 +178,46 @@ export function apiRequest<
   const { signal, ...effectOptions } = options
   return Effect.runPromise(
     apiRequestEffect(path, responseSchema, effectOptions),
+    signal ? { signal } : undefined,
+  )
+}
+
+export function apiBlobRequest(path: string, options: ApiRequestOptions = {}) {
+  const { signal, token, headers: initHeaders, ...init } = options
+  const headers = new Headers(initHeaders)
+  if (token) headers.set('X-Session-Token', token)
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const { response, blob } = yield* Effect.tryPromise({
+        try: async (requestSignal) => {
+          const response = await fetch(`${config.apiUrl}${path}`, {
+            ...init,
+            body: undefined,
+            headers,
+            signal: requestSignal,
+          })
+          try {
+            return {
+              response,
+              blob: response.ok ? await response.blob() : null,
+            }
+          } catch (cause) {
+            throw new ApiResponseReadError(cause)
+          }
+        },
+        catch: (cause) =>
+          cause instanceof ApiResponseReadError
+            ? new ApiNetworkError('Не удалось прочитать ответ API', cause.cause)
+            : new ApiNetworkError('Не удалось подключиться к API', cause),
+      })
+      if (response.status === 404) return null
+      if (!response.ok) {
+        return yield* Effect.fail(
+          new ApiError(response.statusText, response.status),
+        )
+      }
+      return blob
+    }),
     signal ? { signal } : undefined,
   )
 }

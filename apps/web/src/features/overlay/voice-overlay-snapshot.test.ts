@@ -17,6 +17,7 @@ describe('buildVoiceOverlaySnapshot', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
           version: 1,
         },
         {
@@ -28,6 +29,7 @@ describe('buildVoiceOverlaySnapshot', () => {
           server_deafened: true,
           camera: false,
           screensharing: false,
+          watching: [],
           version: 1,
         },
       ],

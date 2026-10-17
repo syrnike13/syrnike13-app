@@ -46,6 +46,81 @@ fn forbidden_track_removal_identity(participant_identity: &str) -> &str {
     participant_identity
 }
 
+const TRACK_SOURCE_CAMERA: i32 = 1;
+/// How long an unpublished camera/screen track may be replaced by a new one
+/// (quality change) before the user's camera/screensharing flag is cleared.
+const VIDEO_REPUBLISH_GRACE: std::time::Duration = std::time::Duration::from_millis(4_000);
+
+fn is_republishable_video_source(track_source: i32) -> bool {
+    track_source == TRACK_SOURCE_CAMERA || track_source == TRACK_SOURCE_SCREEN_SHARE
+}
+
+/// Whether the participant already publishes another track of the same source,
+/// i.e. the unpublished track was replaced rather than stopped.
+fn participant_replaced_track(
+    participants: &[livekit_protocol::ParticipantInfo],
+    participant_identity: &str,
+    source: i32,
+    unpublished_sid: &str,
+) -> bool {
+    participants.iter().any(|participant| {
+        participant.identity == participant_identity
+            && participant
+                .tracks
+                .iter()
+                .any(|track| track.source == source && track.sid != unpublished_sid)
+    })
+}
+
+struct DeferredVideoUnpublish {
+    channel: UserVoiceChannel,
+    channel_id: String,
+    user_id: String,
+    participant_identity: String,
+    participant_id: String,
+    node: String,
+    source: i32,
+    track_sid: String,
+}
+
+impl DeferredVideoUnpublish {
+    async fn apply(self) -> Result<()> {
+        let voice_client = VoiceClient::from_syrnike_config().await;
+        if let Ok(Some(participants)) = voice_client
+            .list_room_participants(&self.node, &self.channel_id)
+            .await
+        {
+            if participant_replaced_track(
+                &participants,
+                &self.participant_identity,
+                self.source,
+                &self.track_sid,
+            ) {
+                log::debug!(
+                    "Video track {} of {} was republished in channel {}; keeping its flag.",
+                    self.track_sid,
+                    self.user_id,
+                    self.channel_id
+                );
+                return Ok(());
+            }
+        }
+
+        let state = update_voice_state_tracks_for_session(
+            &self.channel,
+            &self.user_id,
+            false,
+            self.source,
+            &self.participant_id,
+        )
+        .await?;
+        if let Some(state) = state {
+            publish_voice_state_snapshot(&self.channel_id, &state).await;
+        }
+        Ok(())
+    }
+}
+
 fn video_resolution_limit_for_track_source(
     limits: &syrnike_config::FeaturesLimits,
     track_source: i32,
@@ -468,6 +543,10 @@ pub async fn ingress(
                 }
                 return Ok(EmptyResponse);
             };
+            // The owning client finishes its join or move on this snapshot.
+            // Publish it before roster events and call bookkeeping so their
+            // latency does not hold the user in a connecting state.
+            publish_authoritative_voice_snapshot(user_id).await?;
             let operation_id = commit.operation_id;
             let voice_state = commit.voice_state;
             let retired_sessions = commit.retired_sessions;
@@ -517,7 +596,6 @@ pub async fn ingress(
             clear_call_notification_recipients(channel_id, user_id, &operation_id)
                 .await
                 .ok();
-            publish_authoritative_voice_snapshot(user_id).await?;
         }
         // User left a channel
         "participant_left" => {
@@ -694,6 +772,32 @@ pub async fn ingress(
             };
 
             let added = event.event == "track_published" || event.event == "track_unmuted";
+
+            // Changing stream quality republishes the video track: the old one is
+            // unpublished and a new one published right after. Clearing the flag at
+            // once makes every client flash "live" off/on and play stream sounds, and
+            // if LiveKit delivers the two webhooks out of order the flag stays wrong.
+            // Re-check the participant's tracks after a short grace period instead.
+            if event.event == "track_unpublished" && is_republishable_video_source(track.source) {
+                let deferred = DeferredVideoUnpublish {
+                    channel: channel.clone(),
+                    channel_id: channel_id.to_string(),
+                    user_id: user_id.to_string(),
+                    participant_identity: participant_identity.to_string(),
+                    participant_id: participant_id.to_string(),
+                    node: node.to_string(),
+                    source: track.source,
+                    track_sid: track.sid.clone(),
+                };
+                rocket::tokio::spawn(async move {
+                    rocket::tokio::time::sleep(VIDEO_REPUBLISH_GRACE).await;
+                    if let Err(error) = deferred.apply().await {
+                        log::warn!("Failed to apply deferred video unpublish: {error:?}");
+                    }
+                });
+                return Ok(EmptyResponse);
+            }
+
             let state = update_voice_state_tracks_for_session(
                 &channel,
                 user_id,
@@ -778,7 +882,8 @@ pub async fn ingress(
 #[cfg(test)]
 mod tests {
     use super::{
-        forbidden_track_removal_identity, room_metadata_from_webhook,
+        TRACK_SOURCE_CAMERA, TRACK_SOURCE_SCREEN_SHARE, forbidden_track_removal_identity,
+        is_republishable_video_source, participant_replaced_track, room_metadata_from_webhook,
         video_resolution_limit_for_track_source,
     };
     use std::collections::HashMap;
@@ -839,6 +944,33 @@ mod tests {
             video_resolution_limit_for_track_source(&test_limits(), 1),
             [1280, 720]
         );
+    }
+
+    #[test]
+    fn republished_video_track_keeps_its_flag() {
+        use livekit_protocol::{ParticipantInfo, TrackInfo};
+        let participant = |identity: &str, tracks: Vec<(i32, &str)>| ParticipantInfo {
+            identity: identity.to_string(),
+            tracks: tracks
+                .into_iter()
+                .map(|(source, sid)| TrackInfo {
+                    source,
+                    sid: sid.to_string(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let republished = [participant("alice", vec![(TRACK_SOURCE_SCREEN_SHARE, "TR_new")])];
+        assert!(participant_replaced_track(&republished, "alice", TRACK_SOURCE_SCREEN_SHARE, "TR_old"));
+        let stopped = [participant("alice", vec![(TRACK_SOURCE_CAMERA, "TR_cam")])];
+        assert!(!participant_replaced_track(&stopped, "alice", TRACK_SOURCE_SCREEN_SHARE, "TR_old"));
+        let stale = [participant("alice", vec![(TRACK_SOURCE_SCREEN_SHARE, "TR_old")])];
+        assert!(!participant_replaced_track(&stale, "alice", TRACK_SOURCE_SCREEN_SHARE, "TR_old"));
+        let other_user = [participant("bob", vec![(TRACK_SOURCE_SCREEN_SHARE, "TR_new")])];
+        assert!(!participant_replaced_track(&other_user, "alice", TRACK_SOURCE_SCREEN_SHARE, "TR_old"));
+        assert!(is_republishable_video_source(TRACK_SOURCE_CAMERA));
+        assert!(!is_republishable_video_source(2));
     }
 
     #[test]

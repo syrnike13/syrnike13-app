@@ -29,6 +29,7 @@ export const UserVoiceState = Schema.Struct({
   server_deafened: VoiceFlag,
   screensharing: VoiceFlag,
   camera: VoiceFlag,
+  watching: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   version: Schema.Union([Schema.Number, Schema.String]),
 })
 export type UserVoiceState = typeof UserVoiceState.Type

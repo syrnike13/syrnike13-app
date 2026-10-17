@@ -58,6 +58,34 @@ fn changes_persisted_member(data: &v0::DataMemberEdit) -> bool {
         || data.remove.contains(&FieldsMember::Avatar)
 }
 
+/// Enforce an authority directive that was already delivered to the owning
+/// client. The moderator's request does not wait for it: a compliant client
+/// leaves the old Room on its own, and removal only covers a client that does
+/// not.
+fn spawn_voice_transport_removal(
+    voice_client: &VoiceClient,
+    node: &str,
+    identity: String,
+    channel_id: String,
+    user_id: String,
+) -> Result<()> {
+    let voice_client = voice_client.detached_node(node)?;
+    let node = node.to_string();
+    async_std::task::spawn(async move {
+        // Let the directive reach the client before the forced removal.
+        async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+        let removal = async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.remove_user(&node, &identity, &channel_id),
+        )
+        .await;
+        if !matches!(removal, Ok(Ok(()))) {
+            warn!("Voice transport removal did not complete for user {user_id} after an authority directive");
+        }
+    });
+    Ok(())
+}
+
 async fn disconnect_member_from_voice(
     db: &Database,
     voice_client: &VoiceClient,
@@ -71,6 +99,20 @@ async fn disconnect_member_from_voice(
         .await?
         .filter(|session| session.channel.server_id.as_deref() == Some(server_id));
     if let Some(session) = active_session {
+        // The LiveKit removal alone looks like a lost connection to the client,
+        // which would recover into the channel again. Name the exact membership
+        // first so the owning client ends it instead.
+        EventV1::VoiceAuthorityDisconnect {
+            from: VoiceAuthorityMembershipClaim {
+                operation_id: session.operation_id.clone(),
+                channel_id: session.channel.id.clone(),
+                rtc_engine: session.rtc_engine,
+                client_instance_id: session.client_instance_id.clone(),
+                connection_epoch: session.connection_epoch.clone(),
+            },
+        }
+        .private(user_id.to_string())
+        .await;
         remove_user_from_voice_channel(&session.channel, user_id).await?;
         publish_authoritative_voice_snapshot(user_id).await?;
 
@@ -81,16 +123,13 @@ async fn disconnect_member_from_voice(
             &session.operation_id,
             &session.connection_epoch,
         );
-        let removal = async_std::future::timeout(
-            std::time::Duration::from_secs(2),
-            voice_client.remove_user(&session.node, &identity, &session.channel.id),
-        )
-        .await;
-        if !matches!(removal, Ok(Ok(()))) {
-            warn!(
-                "Voice transport removal did not complete for user {user_id} after authoritative disconnect"
-            );
-        }
+        spawn_voice_transport_removal(
+            voice_client,
+            &session.node,
+            identity,
+            session.channel.id.clone(),
+            user_id.to_string(),
+        )?;
     } else {
         // A cancelled pending join also changes authority even though it has no
         // committed roster entry to remove.
@@ -354,9 +393,11 @@ pub async fn edit(
     }
 
     if data.voice_channel.is_some() || data.remove.contains(&FieldsMember::VoiceChannel) {
+        let voice_channel_before =
+            get_user_voice_channel_in_server(&target_user.id, &server.id).await?;
         change_entries.push((
             "voice_channel",
-            audit_mutation::audit_change(None::<String>, data.voice_channel.clone())?,
+            audit_mutation::audit_change(voice_channel_before, data.voice_channel.clone())?,
         ));
     }
 
@@ -573,27 +614,22 @@ pub async fn edit(
                 .private(target_user.id.clone())
                 .await;
 
-                // Let the exact move directive reach the owning client before the
-                // old participant is forcibly removed. The client still performs
-                // break-before-make; removal is an administrative enforcement
-                // fallback for an unresponsive or non-compliant client.
-                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
-
-                let _ = async_std::future::timeout(
-                    std::time::Duration::from_secs(2),
-                    voice_client.remove_user(
-                        &old_node,
-                        &voice_participant_identity(
-                            &target_user.id,
-                            previous_session.rtc_engine,
-                            &previous_session.client_instance_id,
-                            &previous_operation_id,
-                            &previous_session.connection_epoch,
-                        ),
-                        &channel,
+                // The client still performs break-before-make; removal of the
+                // old participant is an administrative enforcement fallback for
+                // an unresponsive or non-compliant client.
+                spawn_voice_transport_removal(
+                    voice_client,
+                    &old_node,
+                    voice_participant_identity(
+                        &target_user.id,
+                        previous_session.rtc_engine,
+                        &previous_session.client_instance_id,
+                        &previous_operation_id,
+                        &previous_session.connection_epoch,
                     ),
-                )
-                .await;
+                    channel.clone(),
+                    target_user.id.clone(),
+                )?;
             };
         } else if voice_client.is_enabled() && should_sync_voice_permissions {
             let reconciliation = async {

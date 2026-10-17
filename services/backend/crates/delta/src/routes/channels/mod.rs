@@ -36,6 +36,7 @@ mod permissions_set_user;
 mod voice_call_cleanup;
 mod voice_cancel_call;
 mod voice_decline_call;
+mod voice_stream_preview;
 mod webhook_create;
 mod webhook_fetch_all;
 
@@ -88,6 +89,8 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         group_remove_member::remove_member,
         voice_cancel_call::cancel_call,
         voice_decline_call::decline_call,
+        voice_stream_preview::put_preview,
+        voice_stream_preview::get_preview,
         permissions_set::set_role_permissions,
         permissions_set_default::set_default_channel_permissions,
         permissions_set_user::set_user_permissions,

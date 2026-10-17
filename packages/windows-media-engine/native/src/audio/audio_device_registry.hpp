@@ -70,6 +70,9 @@ class AudioDeviceRegistry final {
   AudioDeviceSnapshot refresh();
   bool changed() const;
   std::optional<AudioEndpoint> resolve(const AudioDeviceIntent&) const;
+  // Not ready means the device list itself is unavailable, so an unresolved
+  // intent says nothing about whether the device exists.
+  AudioRegistryStatus status() const;
 
  private:
   void requireOwner() const;

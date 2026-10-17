@@ -18,7 +18,7 @@ struct InboundTrackSource {
   livekit::TrackSource source;
 };
 struct InboundNetworkObservation {
-  std::array<DiagnosticMetric, 13> microphone{}, screen_audio{};
+  std::array<DiagnosticMetric, 16> microphone{}, screen_audio{};
   std::array<DiagnosticMetric, 13> video{};
 };
 // Aggregate current subscribed RTP reports, not lifetime counters across track
@@ -28,6 +28,12 @@ struct InboundNetworkObservation {
 InboundNetworkObservation inboundNetworkObservation(
     std::span<const livekit::RtcStats> stats, std::span<const InboundTrackSource> tracks,
     std::uint64_t sampled_at_ms, bool publications_truncated = false);
+// Connection-level health for the voice UI (ping, throughput, outgoing loss as
+// reported back by the SFU). Missing values are -1; counters are cumulative.
+// sampled_at_ms is local steady-clock time and identifies one getStats result.
+using TransportNetworkMetrics = std::array<DiagnosticMetric, 14>;
+TransportNetworkMetrics transportNetworkMetrics(
+    const livekit::SessionStats& stats, std::uint64_t sampled_at_ms);
 // One instance per Room transport, surviving all track/profile replacements.
 // Sampling runs on the existing SDK lane, without an additional task/thread.
 class LiveKitNetworkSampler final : public livekit::RoomDelegate {
@@ -41,6 +47,7 @@ class LiveKitNetworkSampler final : public livekit::RoomDelegate {
   void sampleOnSdkLane(const std::shared_ptr<livekit::Room>& room) noexcept;
   [[nodiscard]] OutgoingNetworkObservation snapshot() const noexcept;
   [[nodiscard]] std::optional<InboundNetworkObservation> inboundSnapshot() const;
+  [[nodiscard]] std::optional<TransportNetworkMetrics> transportSnapshot() const;
  private:
   struct SubscribedTrack {
     std::string id, participant;
@@ -56,6 +63,7 @@ class LiveKitNetworkSampler final : public livekit::RoomDelegate {
   mutable std::mutex mutex_;
   OutgoingNetworkObservation observation_;
   std::optional<InboundNetworkObservation> inbound_observation_;
+  std::optional<TransportNetworkMetrics> transport_metrics_;
   std::weak_ptr<livekit::Room> subscribed_room_;
   std::vector<SubscribedTrack> subscribed_tracks_;
   bool tracks_truncated_ = false;

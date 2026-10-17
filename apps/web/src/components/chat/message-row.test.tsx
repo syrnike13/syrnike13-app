@@ -120,3 +120,79 @@ describe('MessageRow context menu', () => {
     expect(onReply).toHaveBeenCalledWith(message)
   })
 })
+
+describe('MessageRow embeds', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  function authorMessage(overrides: Partial<Message> = {}): Message {
+    return {
+      _id: MESSAGE_ID,
+      channel: CHANNEL_ID,
+      author: CALLER_ID,
+      ...overrides,
+    } as Message
+  }
+
+  function renderRow(message: Message, compact = false) {
+    return render(
+      <MessageRow
+        message={message}
+        channelId={CHANNEL_ID}
+        users={{ [CALLER_ID]: caller }}
+        emojis={{}}
+        messagesById={{ [message._id]: message }}
+        compact={compact}
+      />,
+    )
+  }
+
+  it('renders an embed instead of the system-message placeholder', () => {
+    renderRow(
+      authorMessage({
+        embeds: [
+          {
+            type: 'Image',
+            url: 'https://cdn.example.com/photo.jpg',
+            width: 800,
+            height: 600,
+            size: 'Large',
+          },
+        ],
+      }),
+    )
+
+    expect(screen.queryByText('[системное сообщение]')).toBeNull()
+    expect(screen.getByRole('img', { name: 'Изображение' })).toBeTruthy()
+  })
+
+  it('keeps the placeholder when there is nothing to render', () => {
+    renderRow(authorMessage({ content: '   ' }))
+
+    expect(screen.getByText('[системное сообщение]')).toBeTruthy()
+  })
+
+  it('renders text and embed together', () => {
+    renderRow(
+      authorMessage({
+        content: 'смотри',
+        embeds: [{ type: 'Text', title: 'Отчёт' }],
+      }),
+    )
+
+    expect(screen.getByText('смотри')).toBeTruthy()
+    expect(screen.getByText('Отчёт')).toBeTruthy()
+    expect(screen.queryByText('[системное сообщение]')).toBeNull()
+  })
+
+  it('does not collapse a compact row that carries an embed', () => {
+    renderRow(
+      authorMessage({ embeds: [{ type: 'Text', title: 'Отчёт' }] }),
+      true,
+    )
+
+    expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
+    expect(screen.getByText('Отчёт')).toBeTruthy()
+  })
+})
