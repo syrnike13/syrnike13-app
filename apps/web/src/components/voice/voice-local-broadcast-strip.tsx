@@ -1,6 +1,7 @@
 import { MonitorXIcon, VideoOffIcon } from '#/components/icons'
 import type { AppIcon } from '#/components/icons'
 import { useMemo } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -15,6 +16,7 @@ import {
   readDesktopScreenShareBroadcastSource,
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
+  screenShareBroadcastLabel,
 } from '#/features/voice/voice-broadcast-source'
 import { voiceStageMediaStreamTrack } from '#/features/voice/voice-context'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
@@ -73,8 +75,8 @@ function BroadcastStrip({
               <Button
                 type="button"
                 size="icon"
-                variant="ghost"
-                className="size-8 shrink-0 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                variant="quiet"
+                className="size-8 shrink-0"
                 disabled={disabled}
                 onClick={onStop}
               >
@@ -120,6 +122,7 @@ function useLocalScreenShareSource() {
 }
 
 function useLocalCameraSourceLabel() {
+  const t = useTranslations('voice')
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
 
@@ -130,11 +133,15 @@ function useLocalCameraSourceLabel() {
       (entry) => entry.isLocal && entry.kind === 'camera',
     )
 
-    return readCameraBroadcastLabel(voiceStageMediaStreamTrack(item?.track))
-  }, [voiceMedia.cameraEnabled, voiceStage.stageMediaItems])
+    return readCameraBroadcastLabel(
+      voiceStageMediaStreamTrack(item?.track),
+      t,
+    )
+  }, [t, voiceMedia.cameraEnabled, voiceStage.stageMediaItems])
 }
 
 export function VoiceScreenShareStrip() {
+  const t = useTranslations('voice')
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
   const source = useLocalScreenShareSource()
@@ -143,11 +150,11 @@ export function VoiceScreenShareStrip() {
 
   return (
     <BroadcastStrip
-      sourceLabel={source.label}
+      sourceLabel={screenShareBroadcastLabel(source.label, source.surface, t)}
       sourceIconDataUrl={source.appIconDataUrl}
       Icon={screenShareBroadcastIcon(source.surface)}
       StopIcon={MonitorXIcon}
-      stopTitle="Остановить демонстрацию"
+      stopTitle={t('actions.stopScreenShare')}
       disabled={voiceSession.status === 'connecting'}
       onStop={voiceMedia.toggleScreenShare}
     />
@@ -155,6 +162,7 @@ export function VoiceScreenShareStrip() {
 }
 
 export function VoiceCameraStrip() {
+  const t = useTranslations('voice')
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
   const sourceLabel = useLocalCameraSourceLabel()
@@ -166,7 +174,7 @@ export function VoiceCameraStrip() {
       sourceLabel={sourceLabel}
       Icon={cameraBroadcastIcon()}
       StopIcon={VideoOffIcon}
-      stopTitle="Выключить камеру"
+      stopTitle={t('actions.stopCamera')}
       disabled={voiceSession.status === 'connecting'}
       onStop={voiceMedia.toggleCamera}
     />

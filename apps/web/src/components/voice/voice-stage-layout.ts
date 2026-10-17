@@ -19,7 +19,7 @@ export const voiceStageControlsChromeTrailingClass =
   'flex items-stretch justify-end' as const
 
 /** Отступ контента: bottom-2 (8px) + высота панели (56px) + зазор 8px. */
-export const voiceStageContentBottomPadClass = 'pb-[72px]' as const
+export const voiceStageContentBottomPadClass = '-[4.5rem]' as const
 
 /**
  * Вертикальные отступы контента стейджа под оверлей шапки и панели управления.

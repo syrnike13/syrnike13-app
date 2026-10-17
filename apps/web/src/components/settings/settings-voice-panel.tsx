@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
 import { DesktopCameraProfileSchema } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   SettingsBlock,
@@ -25,9 +26,9 @@ import {
 } from '#/features/voice/use-media-devices'
 import {
   SCREEN_SHARE_CAPTURE_MODES,
-  SCREEN_SHARE_CAPTURE_MODE_LABELS,
+  SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS,
   SCREEN_SHARE_QUALITY_NAMES,
-  SCREEN_SHARE_QUALITY_LABELS,
+  SCREEN_SHARE_QUALITY_LABEL_KEYS,
   ScreenShareCaptureModeSchema,
   ScreenShareQualitySchema,
   NativeScreenShareProfileSchema,
@@ -153,6 +154,7 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 }
 
 export function SettingsVoicePanel() {
+  const t = useTranslations('voice')
   const prefs = useVoicePreferences()
   const { capabilities, os } = usePlatform()
   const { setSelfMonitoringActive } = useVoiceMedia()
@@ -429,7 +431,7 @@ export function SettingsVoicePanel() {
               <SelectContent>
                 {SCREEN_SHARE_QUALITY_NAMES.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {SCREEN_SHARE_QUALITY_LABELS[name]}
+                    {t(SCREEN_SHARE_QUALITY_LABEL_KEYS[name])}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -458,7 +460,7 @@ export function SettingsVoicePanel() {
               <SelectContent>
                 {SCREEN_SHARE_CAPTURE_MODES.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {SCREEN_SHARE_CAPTURE_MODE_LABELS[name]}
+                    {t(SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS[name])}
                   </SelectItem>
                 ))}
               </SelectContent>

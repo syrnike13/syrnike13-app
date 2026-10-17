@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -23,6 +24,7 @@ type IncomingVoiceCallOverlayProps = {
 export function IncomingVoiceCallOverlay({
   activeChannelId,
 }: IncomingVoiceCallOverlayProps) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
@@ -63,16 +65,16 @@ export function IncomingVoiceCallOverlay({
 
   const { call, channel, channelTitle, initiator } = incoming
   const initiatorName =
-    initiator?.display_name ??
-    initiator?.username ??
-    'Пользователь'
+    initiator?.display_name ?? initiator?.username ?? t('call.user')
   const token = auth.session?.token
   const title =
     channel.channel_type === 'DirectMessage'
-      ? 'Личный звонок'
-      : 'Групповой звонок'
+      ? t('call.direct')
+      : t('call.group')
   const declineLabel =
-    channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+    channel.channel_type === 'DirectMessage'
+      ? t('actions.decline')
+      : t('actions.hide')
 
   function declineIncomingCall() {
     if (channel.channel_type === 'DirectMessage') {
@@ -117,7 +119,7 @@ export function IncomingVoiceCallOverlay({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{title}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {initiatorName} звонит
+            {t('call.incoming', { name: initiatorName })}
           </p>
           {channel.channel_type !== 'DirectMessage' ? (
             <p className="truncate text-xs text-muted-foreground">
@@ -131,7 +133,8 @@ export function IncomingVoiceCallOverlay({
         <Button
           type="button"
           size="sm"
-          className="flex-1 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
+          variant="success"
+          className="flex-1"
           onClick={() => {
             Effect.runFork(
               Effect.tryPromise({
@@ -167,7 +170,7 @@ export function IncomingVoiceCallOverlay({
           }}
         >
           <HeadphonesIcon className="size-4" />
-          Ответить
+          {t('call.answer')}
         </Button>
         <Button
           type="button"

@@ -1,5 +1,6 @@
 import { ChevronDownIcon, ChevronUpIcon, UsersIcon } from '#/components/icons'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Tooltip,
@@ -19,7 +20,7 @@ const focusStageFadeSlideClass =
   'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-card px-2 text-sm font-medium text-primary-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-on-media/10 bg-card px-2 text-sm font-medium text-primary-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
@@ -55,6 +56,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
   chromeVisible,
   renderTile,
 }: VoiceStageFocusStageProps<TItem>) {
+  const t = useTranslations('voice')
   const layoutRef = useRef<HTMLDivElement>(null)
   const [streamAspectRatio, setStreamAspectRatio] = useState(
     DEFAULT_STREAM_ASPECT_RATIO,
@@ -168,8 +170,8 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                         className={voiceStageStripToggleButtonClass}
                         aria-label={
                           stripCollapsed
-                            ? 'Показать участников'
-                            : 'Убрать участников'
+                            ? t('actions.showParticipants')
+                            : t('actions.hideParticipants')
                         }
                         onClick={toggleStrip}
                       >
@@ -183,8 +185,8 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={8}>
                       {stripCollapsed
-                        ? 'Показать участников'
-                        : 'Убрать участников'}
+                        ? t('actions.showParticipants')
+                        : t('actions.hideParticipants')}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

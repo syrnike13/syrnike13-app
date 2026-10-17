@@ -44,6 +44,9 @@ vi.mock('#/platform/use-platform', () => ({
   }),
 }))
 
+import { createTranslator } from '@syrnike13/ui/i18n'
+
+import ru from '#/messages/ru.json'
 import {
   canRequestSourceAudio,
   DISPLAY_SOURCE_VISUAL_CONCURRENCY,
@@ -51,6 +54,8 @@ import {
   loadDisplaySourceVisualsEffect,
   sourceAudioLabel,
 } from './desktop-screen-share-picker'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 afterEach(() => {
   cleanup()
@@ -82,11 +87,11 @@ async function waitUntil(predicate: () => boolean) {
 
 describe('desktop screen share picker audio contract', () => {
   it('labels source-specific native audio modes', () => {
-    expect(sourceAudioLabel(source('screen'))).toBe(
+    expect(sourceAudioLabel(source('screen'), t)).toBe(
       'Системный звук без приложения',
     )
-    expect(sourceAudioLabel(source('game'))).toBe('Звук только игры')
-    expect(sourceAudioLabel(source('window'))).toBe('Звук только окна')
+    expect(sourceAudioLabel(source('game'), t)).toBe('Звук только игры')
+    expect(sourceAudioLabel(source('window'), t)).toBe('Звук только окна')
   })
 
   it('does not allow audio for sources without native audio support', () => {
@@ -95,7 +100,7 @@ describe('desktop screen share picker audio contract', () => {
       audioMode: 'none',
     })
 
-    expect(sourceAudioLabel(unavailableWindow)).toBe('Звук недоступен')
+    expect(sourceAudioLabel(unavailableWindow, t)).toBe('Звук недоступен')
     expect(canRequestSourceAudio(unavailableWindow)).toBe(false)
   })
 })

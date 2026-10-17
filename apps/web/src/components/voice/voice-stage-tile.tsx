@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -99,7 +100,7 @@ export function VoiceStageTile({
         </div>
       ) : null}
 
-      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
+      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-media-backdrop/55 px-1.5 py-0.5 text-xs font-medium text-on-media sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
@@ -120,13 +121,14 @@ export function VoiceStageInviteTile({
   channelId: string
   compact?: boolean
 }) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
 
   async function copyInvite() {
     if (!token) {
-      toast.error('Нет сессии')
+      toast.error(t('errors.noSession'))
       return
     }
     setBusy(true)
@@ -135,11 +137,13 @@ export function VoiceStageInviteTile({
         const invite = yield* createChannelInviteEffect(token, channelId, {})
         const code = '_id' in invite ? invite._id : ''
         if (!code) {
-          return yield* Effect.fail(new Error('Пустой код приглашения'))
+          return yield* Effect.fail(
+            new Error(t('errors.inviteEmpty')),
+          )
         }
         yield* writeClipboardTextEffect(inviteUrl(code))
         yield* Effect.sync(() =>
-          toast.success('Ссылка приглашения скопирована'),
+          toast.success(t('invite.copied')),
         )
       }).pipe(
         Effect.catch((error) =>
@@ -147,7 +151,7 @@ export function VoiceStageInviteTile({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось создать приглашение',
+                : t('errors.inviteCreate'),
             )
           }),
         ),
@@ -160,7 +164,7 @@ export function VoiceStageInviteTile({
     <article
       className={cn(
         TILE_SURFACE,
-        'flex flex-col items-center justify-center gap-2 border border-dashed border-white/15 bg-muted/80 p-4 text-center',
+        'flex flex-col items-center justify-center gap-2 border border-dashed border-on-media/15 bg-muted/80 p-4 text-center',
         compact && 'gap-1.5 p-3',
       )}
       style={{
@@ -168,9 +172,11 @@ export function VoiceStageInviteTile({
           'linear-gradient(to bottom right, rgb(43 45 49 / 0.95), rgb(35 36 40 / 0.95))',
       }}
     >
-      <p className="text-sm font-medium text-foreground">Позовите друзей</p>
-      <p className="max-w-[90%] text-[11px] leading-snug text-muted-foreground sm:text-xs">
-        Скопируйте ссылку-приглашение на сервер.
+      <p className="text-sm font-medium text-foreground">
+        {t('actions.inviteFriends')}
+      </p>
+      <p className="max-w-[90%] text-[0.6875rem] leading-snug text-muted-foreground sm:text-xs">
+        {t('actions.inviteDescription')}
       </p>
       <Button
         type="button"
@@ -180,7 +186,7 @@ export function VoiceStageInviteTile({
         disabled={busy}
         onClick={() => void copyInvite()}
       >
-        {busy ? 'Создание…' : 'Скопировать приглашение'}
+        {busy ? t('actions.creatingInvite') : t('actions.copyInvite')}
       </Button>
     </article>
   )

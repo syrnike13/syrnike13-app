@@ -1,3 +1,5 @@
+import type { Translator } from '@syrnike13/ui/i18n'
+
 type VoicePingRoom = {
   engine?: unknown
 }
@@ -61,8 +63,9 @@ export function getVoicePeerConnectionEntries(room: VoicePingRoom) {
 export function formatVoicePingLabel(
   pingMs: number | null,
   connected: boolean,
+  t: Translator,
 ) {
-  if (!connected) return 'Пинг: …'
-  if (pingMs == null) return 'Пинг: —'
-  return `Пинг: ${pingMs} мс`
+  if (!connected) return t('ping.connecting')
+  if (pingMs == null) return t('ping.unavailable')
+  return t('ping.value', { ms: pingMs })
 }

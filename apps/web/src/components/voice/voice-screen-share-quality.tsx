@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   ChevronRightIcon,
   MonitorUpIcon,
@@ -51,11 +52,17 @@ const RESOLUTION_ORDER: readonly StreamResolution[] = [
   'source',
 ]
 
-const RESOLUTION_LABELS: Record<StreamResolution, string> = {
-  '540p': '540p',
-  '720p': '720p',
-  '1080p': '1080p',
-  source: 'Источник',
+const RESOLUTION_LABELS: Record<Exclude<StreamResolution, 'source'>, string> =
+  {
+    '540p': '540p',
+    '720p': '720p',
+    '1080p': '1080p',
+  }
+
+function resolutionLabel(resolution: StreamResolution, t: Translator) {
+  return resolution === 'source'
+    ? t('sharePicker.source')
+    : RESOLUTION_LABELS[resolution]
 }
 
 const NATIVE_COMBOS: readonly QualityCombo[] = NATIVE_SCREEN_SHARE_PROFILES.map(
@@ -93,6 +100,7 @@ function closest<T>(items: readonly T[], distance: (item: T) => number) {
  * выбирается ближайшее доступное.
  */
 export function useScreenShareQuality() {
+  const t = useTranslations('voice')
   const { capabilities } = usePlatform()
   const prefs = useVoicePreferences()
   const native = capabilities.nativeScreenShare
@@ -123,8 +131,8 @@ export function useScreenShareQuality() {
     resolutions,
     fpsValues,
     resolutionLabel: (resolution: StreamResolution) =>
-      RESOLUTION_LABELS[resolution],
-    summary: `${RESOLUTION_LABELS[current.resolution]} · ${current.fps} FPS`,
+      resolutionLabel(resolution, t),
+    summary: `${resolutionLabel(current.resolution, t)} · ${current.fps} FPS`,
     setResolution: (resolution: StreamResolution) => {
       const candidates = combos.filter(
         (combo) => combo.resolution === resolution,
@@ -152,7 +160,7 @@ function RadioMark({ checked }: { checked: boolean }) {
     <span
       aria-hidden
       className={cn(
-        'flex size-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+        'flex -[1.125rem] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
         checked ? 'border-primary' : 'border-muted-foreground/60',
       )}
     >
@@ -196,13 +204,14 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export function ScreenShareFpsOptions() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label="Частота кадров">
+    <div role="group" aria-label={t('sharePicker.frameRate')}>
       {quality.fpsValues.map((fps) => (
         <RadioRow
           key={fps}
-          label={`${fps} кадров в секунду`}
+          label={t('sharePicker.fpsValue', { fps })}
           checked={quality.fps === fps}
           onSelect={() => quality.setFps(fps)}
         />
@@ -212,9 +221,10 @@ export function ScreenShareFpsOptions() {
 }
 
 export function ScreenShareResolutionOptions() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label="Разрешение">
+    <div role="group" aria-label={t('sharePicker.resolution')}>
       {quality.resolutions.map((resolution) => (
         <RadioRow
           key={resolution}
@@ -229,12 +239,13 @@ export function ScreenShareResolutionOptions() {
 
 /** Обе группы подряд: «Частота кадров» и «Разрешение». */
 export function ScreenShareQualitySections() {
+  const t = useTranslations('voice')
   return (
     <div className="flex flex-col">
-      <SectionTitle>Частота кадров</SectionTitle>
+      <SectionTitle>{t('sharePicker.frameRate')}</SectionTitle>
       <ScreenShareFpsOptions />
       <div className={cn(voiceStagePopoverSeparatorClass, 'my-1.5')} />
-      <SectionTitle>Разрешение</SectionTitle>
+      <SectionTitle>{t('sharePicker.resolution')}</SectionTitle>
       <ScreenShareResolutionOptions />
     </div>
   )
@@ -317,6 +328,7 @@ export function VoiceStreamSettingsMenuContent({
 }: {
   submenuSide?: 'left' | 'right'
 }) {
+  const t = useTranslations('voice')
   const voiceMedia = useVoiceMedia()
   const quality = useScreenShareQuality()
   const sharing = voiceMedia.screenShareEnabled || voiceMedia.screenShareStarting
@@ -333,7 +345,7 @@ export function VoiceStreamSettingsMenuContent({
             onClick={voiceMedia.toggleScreenShare}
           >
             <MonitorXIcon className="size-4 shrink-0" />
-            <span>Прекратить стрим</span>
+            <span>{t('actions.stopStream')}</span>
           </button>
           {voiceMedia.changeScreenShareSource ? (
             <button
@@ -342,14 +354,14 @@ export function VoiceStreamSettingsMenuContent({
               onClick={voiceMedia.changeScreenShareSource}
             >
               <MonitorUpIcon className="size-4 shrink-0" />
-              <span>Изменить источник</span>
+              <span>{t('actions.changeSource')}</span>
             </button>
           ) : null}
           <div className={voiceStagePopoverSeparatorClass} role="separator" />
         </>
       ) : null}
       <StreamSettingsSubmenu
-        label="Качество передачи"
+        label={t('sharePicker.qualityLabel')}
         hint={quality.summary}
         side={submenuSide}
       >

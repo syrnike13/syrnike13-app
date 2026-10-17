@@ -181,33 +181,42 @@ export type Translator = {
   raw: (key: string) => unknown
 }
 
+export function createTranslator(
+  messages: Messages,
+  locale: AppLocale,
+  namespace?: string,
+): Translator {
+  const resolve = (key: string) => (namespace ? `${namespace}.${key}` : key)
+
+  const translate = ((key: string, values: TranslateValues = {}) => {
+    const fullKey = resolve(key)
+    const message = getMessage(messages, fullKey)
+    return message === undefined
+      ? fullKey
+      : formatMessage(message, values, locale)
+  }) as Translator
+
+  translate.has = (key: string) =>
+    getMessage(messages, resolve(key)) !== undefined
+  translate.raw = (key: string) => {
+    let current: string | Messages | undefined = messages
+    for (const part of resolve(key).split('.')) {
+      if (!current || typeof current === 'string') return undefined
+      current = current[part]
+    }
+    return current
+  }
+
+  return translate
+}
+
 export function useTranslations(namespace?: string): Translator {
   const { locale, messages } = useLocaleContext()
 
-  return useMemo(() => {
-    const resolve = (key: string) =>
-      namespace ? `${namespace}.${key}` : key
-
-    const translate = ((key: string, values: TranslateValues = {}) => {
-      const fullKey = resolve(key)
-      const message = getMessage(messages, fullKey)
-      return message === undefined
-        ? fullKey
-        : formatMessage(message, values, locale)
-    }) as Translator
-
-    translate.has = (key: string) => getMessage(messages, resolve(key)) !== undefined
-    translate.raw = (key: string) => {
-      let current: string | Messages | undefined = messages
-      for (const part of resolve(key).split('.')) {
-        if (!current || typeof current === 'string') return undefined
-        current = current[part]
-      }
-      return current
-    }
-
-    return translate
-  }, [locale, messages, namespace])
+  return useMemo(
+    () => createTranslator(messages, locale, namespace),
+    [locale, messages, namespace],
+  )
 }
 
 export { mergeMessages }

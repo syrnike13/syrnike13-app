@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
 import { ScrollArea } from '#/components/ui/scroll-area'
@@ -27,15 +28,16 @@ import { cn } from '#/lib/utils'
 type DebugSection = 'general' | 'transport' | 'outgoing' | 'incoming' | 'screen'
 type MediaTab = 'audio' | 'video'
 
-const sections: Array<{ id: DebugSection; label: string }> = [
-  { id: 'general', label: 'General' },
-  { id: 'transport', label: 'Передача данных' },
-  { id: 'outgoing', label: 'Исходящие' },
-  { id: 'incoming', label: 'Входящие' },
-  { id: 'screen', label: 'Демонстрация экрана' },
+const sections: Array<{ id: DebugSection; labelKey: string }> = [
+  { id: 'general', labelKey: 'debug.general' },
+  { id: 'transport', labelKey: 'debug.transport' },
+  { id: 'outgoing', labelKey: 'debug.outgoing' },
+  { id: 'incoming', labelKey: 'debug.incoming' },
+  { id: 'screen', labelKey: 'debug.screenShare' },
 ]
 
 export function VoiceRtcDebugView() {
+  const t = useTranslations('voice')
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
   const voiceTelemetry = useVoiceTelemetry()
@@ -70,14 +72,16 @@ export function VoiceRtcDebugView() {
     <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background text-foreground lg:flex-row">
       <aside className="gradient-surface-navigation shrink-0 border-b border-border bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-60 lg:border-r lg:border-b-0 lg:px-5 lg:py-8">
         <div className="mb-4 lg:mb-6">
-          <h1 className="text-lg font-bold leading-none">RTC диагностика</h1>
+          <h1 className="text-lg font-bold leading-none">{t('debug.title')}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {voiceSession.status === 'connected' ? 'Подключено' : 'Отключено'}
+            {voiceSession.status === 'connected'
+              ? t('debug.connected')
+              : t('debug.disconnected')}
           </p>
         </div>
 
         <p className="mb-2 hidden text-xs font-bold uppercase text-muted-foreground lg:block">
-          Разделы
+          {t('debug.sections')}
         </p>
         <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
           {sections.map((item) => (
@@ -91,7 +95,7 @@ export function VoiceRtcDebugView() {
                   'bg-sidebar-accent text-sidebar-accent-foreground',
               )}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </nav>
@@ -140,12 +144,14 @@ function DebugSectionBody({
   participantCount: number
   stageMediaCount: number
 }) {
+  const t = useTranslations('voice')
+
   if (!snapshot) {
     return (
       <div className="rounded border border-dashed border-border px-6 py-12 text-center">
-        <h2 className="text-base font-bold">Собираем RTC stats</h2>
+        <h2 className="text-base font-bold">{t('debug.collectingTitle')}</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Первый снимок обычно появляется через секунду после открытия экрана.
+          {t('debug.collectingHint')}
         </p>
       </div>
     )
@@ -172,7 +178,7 @@ function DebugSectionBody({
   if (section === 'outgoing') {
     return (
       <RtpSection
-        title="Исходящие"
+        title={t('debug.outgoing')}
         streams={snapshot.outbound}
         history={history}
         direction="outbound"
@@ -183,7 +189,7 @@ function DebugSectionBody({
   if (section === 'incoming') {
     return (
       <RtpSection
-        title="Входящие"
+        title={t('debug.incoming')}
         streams={snapshot.inbound}
         history={history}
         direction="inbound"
@@ -211,6 +217,7 @@ function GeneralSection({
   participantCount: number
   stageMediaCount: number
 }) {
+  const t = useTranslations('voice')
   const quality = rtcConnectionQuality(snapshot)
   const rates = snapshot.rates
 
@@ -218,7 +225,9 @@ function GeneralSection({
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-foreground">Состояние соединения</h2>
+          <h2 className="text-lg font-bold text-foreground">
+            {t('debug.connectionState')}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {snapshot.source === 'windows_native'
               ? 'Windows native LiveKit runtime'
@@ -230,42 +239,44 @@ function GeneralSection({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <OverviewCard
-          label="Пинг"
+          label={t('debug.ping')}
           value={formatRtcMs(snapshot.transport.pingMs)}
           history={history}
           metric={(sample) => sample.transport.pingMs}
         />
         <OverviewCard
-          label="Потери пакетов"
+          label={t('debug.packetLoss')}
           value={formatRtcPercent(rates?.quality.packetLossPercent)}
           history={history}
           metric={(sample) => sample.rates?.quality.packetLossPercent}
         />
         <OverviewCard
-          label="Джиттер"
+          label={t('debug.jitter')}
           value={formatRtcMs(rates?.quality.jitterMs)}
           history={history}
           metric={(sample) => sample.rates?.quality.jitterMs}
         />
         <OverviewCard
-          label="Дроп кадров"
+          label={t('debug.frameDrop')}
           value={formatRtcPercent(rates?.quality.framesDroppedPercent)}
           detail={
             rates?.quality.framesDroppedPerSecond == null
               ? undefined
-              : `${rates.quality.framesDroppedPerSecond.toFixed(1)} кадр/с`
+              : t('debug.frameDropRate', {
+                  rate: rates.quality.framesDroppedPerSecond.toFixed(1),
+                })
           }
           history={history}
           metric={(sample) => sample.rates?.quality.framesDroppedPercent}
         />
         <OverviewCard
-          label="Входящий поток"
+          label={t('debug.incomingStream')}
           value={formatRtcBitrate(rates?.transport.inboundBitrate)}
           history={history}
           metric={(sample) => sample.rates?.transport.inboundBitrate}
         />
         <OverviewCard
-          label="Исходящий поток"
+          label={t('debug.outgoingStream')}
           value={formatRtcBitrate(rates?.transport.outboundBitrate)}
           history={history}
           metric={(sample) => sample.rates?.transport.outboundBitrate}
@@ -273,7 +284,7 @@ function GeneralSection({
       </div>
 
       <div className="mt-8">
-        <MetricGrid title="Сессия">
+        <MetricGrid title={t('debug.session')}>
           <MetricRow label="Voice Node" value={nodeName ?? '—'} />
           <MetricRow label="Channel" value={channelId ?? '—'} />
           <MetricRow label="Local Identity" value={localIdentity ?? '—'} />
@@ -284,11 +295,11 @@ function GeneralSection({
             value={snapshot.transport.selectedCandidatePairId ?? '—'}
           />
           <MetricRow
-            label="Скрытые аудиосэмплы"
+            label={t('debug.hiddenAudioSamples')}
             value={formatRtcPercent(rates?.quality.concealedAudioPercent)}
           />
           <MetricRow
-            label="Источник статистики"
+            label={t('debug.statsSource')}
             value={snapshot.source ?? 'web'}
           />
         </MetricGrid>
@@ -306,8 +317,10 @@ function TransportSection({
   history: readonly RtcDebugSnapshot[]
   nodeName: string | null
 }) {
+  const t = useTranslations('voice')
+
   return (
-    <MetricGrid title="Передача данных">
+    <MetricGrid title={t('debug.dataTransfer')}>
       <MetricRow
         label="Available Outgoing Bitrate"
         value={formatRtcBitrate(snapshot.transport.availableOutgoingBitrate)}
@@ -372,6 +385,7 @@ function RtpSection({
   history: readonly RtcDebugSnapshot[]
   direction: 'outbound' | 'inbound'
 }) {
+  const t = useTranslations('voice')
   const [tab, setTab] = useState<MediaTab>('audio')
   const filtered = streams.filter((stream) => stream.kind === tab)
 
@@ -380,7 +394,9 @@ function RtpSection({
       <SectionHeader title={title} />
       <MediaTabs value={tab} onChange={setTab} />
       {filtered.length === 0 ? (
-        <EmptyPanel text={`Нет ${tab === 'audio' ? 'audio' : 'video'} RTP streams.`} />
+        <EmptyPanel
+          text={tab === 'audio' ? t('debug.noAudioRtp') : t('debug.noVideoRtp')}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-x-8 gap-y-7 xl:grid-cols-2">
           {filtered.map((stream) => (
@@ -503,13 +519,14 @@ function ScreenShareSection({
   snapshot: RtcDebugSnapshot
   history: readonly RtcDebugSnapshot[]
 }) {
+  const t = useTranslations('voice')
   const screenShares = snapshot.screenShares
 
   return (
     <div>
-      <SectionHeader title="Демонстрация экрана" />
+      <SectionHeader title={t('debug.screenShare')} />
       {screenShares.length === 0 ? (
-        <EmptyPanel text="Активных screen share плиток нет." />
+        <EmptyPanel text={t('debug.noScreenShareTiles')} />
       ) : (
         <div className="grid grid-cols-1 gap-x-8 gap-y-7 xl:grid-cols-2">
           {screenShares.map((share) => (
@@ -695,6 +712,8 @@ function OverviewCard({
 }
 
 function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
+  const t = useTranslations('voice')
+
   return (
     <div
       className={cn(
@@ -719,12 +738,12 @@ function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
         aria-hidden
       />
       {quality === 'good'
-        ? 'Хорошее соединение'
+        ? t('debug.goodConnection')
         : quality === 'fair'
-          ? 'Нестабильное соединение'
+          ? t('debug.unstableConnection')
           : quality === 'poor'
-            ? 'Плохое соединение'
-            : 'Собираем данные'}
+            ? t('debug.poorConnection')
+            : t('debug.collecting')}
     </div>
   )
 }
@@ -822,11 +841,13 @@ function EmptyPanel({ text }: { text: string }) {
 }
 
 function DebugEmptyState() {
+  const t = useTranslations('voice')
+
   return (
     <div className="rounded border border-dashed border-border px-6 py-12 text-center">
-      <h2 className="text-base font-bold">Нет активного голосового подключения</h2>
+      <h2 className="text-base font-bold">{t('debug.noVoiceTitle')}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Подключись к voice channel, затем открой эту страницу ещё раз из ping UI.
+        {t('debug.noVoiceHint')}
       </p>
     </div>
   )

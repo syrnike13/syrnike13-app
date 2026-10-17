@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   Gamepad2Icon,
   Loader2Icon,
@@ -57,6 +58,7 @@ export function VoiceStageActivityTile({
   onFocus,
   onAspectRatioChange,
 }: VoiceStageActivityTileProps) {
+  const t = useTranslations('voice')
   const application = getFirstPartyChannelActivity(item.instance.application_id)
   const joined = item.instance.participant_ids.includes(currentUserId)
   const [joining, setJoining] = useState(false)
@@ -102,7 +104,7 @@ export function VoiceStageActivityTile({
             >
               <Gamepad2Icon className="size-6 text-primary" aria-hidden />
               <span className="max-w-full truncate text-xs font-semibold">
-                {application?.title ?? 'Активность'}
+                {application?.title ?? t('activity.title')}
               </span>
             </button>
           ) : joined && application ? (
@@ -137,12 +139,18 @@ export function VoiceStageActivityTile({
           {variant !== 'strip' ? (
             <Button
               type="button"
-              variant="secondary"
+              variant="floating-outline"
               size="icon"
-              className="absolute top-2 right-2 z-20 size-8 border border-border bg-card/90 text-card-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              title={variant === 'focus' ? 'Вернуть в сетку' : 'Сфокусировать'}
+              className="absolute top-2 right-2 z-20 size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              title={
+                variant === 'focus'
+                  ? t('actions.returnToGrid')
+                  : t('actions.focus')
+              }
               aria-label={
-                variant === 'focus' ? 'Вернуть в сетку' : 'Сфокусировать'
+                variant === 'focus'
+                  ? t('actions.returnToGrid')
+                  : t('actions.focus')
               }
               onClick={() => onFocus(item.id)}
             >
@@ -156,7 +164,7 @@ export function VoiceStageActivityTile({
             <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-[calc(100%-3.5rem)] items-center gap-1.5 rounded bg-card/90 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm">
               <Gamepad2Icon className="size-3.5 shrink-0 text-primary" />
               <span className="truncate">
-                {application?.title ?? 'Активность'}
+                {application?.title ?? t('activity.title')}
               </span>
             </div>
           ) : null}
@@ -165,14 +173,16 @@ export function VoiceStageActivityTile({
       <ContextMenuContent className="z-[420] min-w-56">
         <ContextMenuItem onSelect={() => onFocus(item.id)}>
           <Maximize2Icon />
-          {variant === 'focus' ? 'Вернуть в сетку' : 'Сфокусировать'}
+          {variant === 'focus'
+            ? t('actions.returnToGrid')
+            : t('actions.focus')}
         </ContextMenuItem>
         {joined ? (
           <>
             <ContextMenuSeparator />
             <ContextMenuItem variant="destructive" onSelect={leave}>
               <LogOutIcon />
-              Покинуть Активность
+              {t('activity.leave')}
             </ContextMenuItem>
           </>
         ) : null}
@@ -182,13 +192,15 @@ export function VoiceStageActivityTile({
 }
 
 function ActivityLoadingState() {
+  const t = useTranslations('voice')
+
   return (
     <div
       className="flex size-full items-center justify-center bg-background text-muted-foreground"
       role="status"
     >
       <Loader2Icon className="mr-2 size-5 animate-spin" />
-      Загружаем Активность…
+      {t('activity.loading')}
     </div>
   )
 }
@@ -206,6 +218,8 @@ function ActivityJoinState({
   error: ChannelActivityViewState['error']
   onJoin: () => void
 }) {
+  const t = useTranslations('voice')
+
   return (
     <div className="flex size-full flex-col items-center justify-center gap-3 bg-muted/40 p-5 text-center">
       <div className="flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
@@ -213,22 +227,24 @@ function ActivityJoinState({
       </div>
       <div>
         <h2 className="text-base font-semibold">
-          {application?.title ?? 'Неподдерживаемая Активность'}
+          {application?.title ?? t('activity.unsupported')}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {application
-            ? 'Участники голосового канала уже играют.'
-            : 'Обновите клиент, чтобы открыть это приложение.'}
+            ? t('activity.playing')
+            : t('activity.updateClient')}
         </p>
       </div>
       {application ? (
         <Button type="button" disabled={joining || !connected} onClick={onJoin}>
           {joining ? <Loader2Icon className="size-4 animate-spin" /> : null}
-          {joining ? 'Подключаем…' : 'Присоединиться'}
+          {joining ? t('activity.joining') : t('activity.join')}
         </Button>
       ) : null}
       {error ? (
-        <p className="text-xs text-destructive">Не удалось подключиться.</p>
+        <p className="text-xs text-destructive">
+          {t('activity.joinError')}
+        </p>
       ) : null}
     </div>
   )

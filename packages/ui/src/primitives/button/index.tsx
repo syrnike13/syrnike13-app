@@ -21,6 +21,17 @@ const buttonVariants = cva(
         "outline-ghost":
           "border border-border/50 bg-transparent text-muted-foreground hover:border-border hover:text-foreground",
         inverse: "bg-foreground text-background hover:opacity-90",
+        success: "bg-success text-on-solid hover:bg-success/90",
+        quiet:
+          "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        "destructive-ghost":
+          "text-muted-foreground hover:bg-destructive/15 hover:text-destructive",
+        "media-ghost":
+          "text-on-media/80 hover:bg-on-media/10 hover:text-on-media",
+        "media-ghost-active":
+          "bg-on-media/15 text-on-media hover:bg-on-media/20",
+        "media-outline":
+          "border border-on-media/20 bg-transparent text-on-media hover:bg-on-media/10",
         floating: "bg-background/60 text-foreground hover:bg-background/80",
         "floating-outline":
           "border border-border/60 bg-background/80 text-foreground shadow-sm backdrop-blur-sm hover:bg-background",

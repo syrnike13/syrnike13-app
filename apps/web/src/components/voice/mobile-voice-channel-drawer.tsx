@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
 import { Drawer, DrawerContent } from '#/components/ui/drawer'
@@ -23,6 +24,7 @@ import { cn } from '#/lib/utils'
  * в десктопной зоне `/app` компонент не появляется.
  */
 export function MobileVoiceChannelDrawer() {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const voice = useVoiceSession()
   const { channelId, openVoiceChannelDrawer, closeVoiceChannelDrawer } =
@@ -74,7 +76,7 @@ export function MobileVoiceChannelDrawer() {
   const title =
     channel && auth.user
       ? getChannelLabel(channel, users, auth.user._id)
-      : 'Голосовой канал'
+      : t('channel')
 
   return (
     <Drawer
@@ -110,7 +112,7 @@ export function MobileVoiceChannelDrawer() {
                 chatOpen={chatOpen}
                 onToggleChat={() => setChatOpen((value) => !value)}
                 mobileDrawer
-                joinButtonLabel="Войти в голос"
+                joinButtonLabel={t('actions.joinVoice')}
                 onClose={closeVoiceChannelDrawer}
               />
             </div>

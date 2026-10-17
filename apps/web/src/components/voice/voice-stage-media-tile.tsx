@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   Loader2Icon,
   Maximize2Icon,
@@ -65,14 +66,14 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-white/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-white/20'
+  'h-auto rounded-md border border-on-media/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-on-media/20'
 
 const screenStreamOwnerLabelClass =
-  'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
+  'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
 
 function screenStreamOwnerLabelPositionClass(variant: StageMediaTileVariant) {
   return variant === 'strip'
-    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-[10px] leading-tight'
+    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-[0.625rem] leading-tight'
     : 'bottom-2 left-2 px-2 py-1 text-xs'
 }
 
@@ -117,6 +118,8 @@ function UnsubscribedScreenStreamTile({
   onSubscribe: () => void
   hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -140,7 +143,7 @@ function UnsubscribedScreenStreamTile({
             onSubscribe()
           }}
         >
-          Смотреть
+          {t('actions.watch')}
         </Button>
       </div>
 
@@ -162,6 +165,8 @@ function LoadingScreenStreamTile({
   variant: StageMediaTileVariant
   hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -169,11 +174,11 @@ function LoadingScreenStreamTile({
       <div
         className="absolute inset-0 flex items-center justify-center p-3"
         role="status"
-        aria-label="Подключение к стриму"
+        aria-label={t('stage.streamConnecting')}
       >
         <Loader2Icon
           className={cn(
-            'animate-spin text-white/80',
+            'animate-spin text-on-media/80',
             variant === 'strip' ? 'size-5' : 'size-8',
           )}
           aria-hidden
@@ -198,6 +203,8 @@ function PausedScreenStreamTile({
   variant: StageMediaTileVariant
   hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -210,7 +217,7 @@ function PausedScreenStreamTile({
         role="status"
       >
         <PauseIcon className={variant === 'strip' ? 'size-4' : 'size-6'} aria-hidden />
-        <span>Трансляция на паузе</span>
+        <span>{t('stage.streamPaused')}</span>
       </div>
 
       <ScreenStreamOwnerLabel
@@ -235,6 +242,8 @@ function FailedScreenStreamTile({
   onRetry: () => void
   hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -256,7 +265,7 @@ function FailedScreenStreamTile({
             onRetry()
           }}
         >
-          Повторить
+          {t('actions.retry')}
         </Button>
       </div>
       <ScreenStreamOwnerLabel
@@ -281,6 +290,7 @@ export function StageMediaTile({
   onSetSubscribed,
   onStreamAspectRatioChange,
 }: StageMediaTileProps) {
+  const t = useTranslations('voice')
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_SCREEN_ASPECT_RATIO)
   const isScreen = item.kind === 'screen'
   const muted = useVoiceListenerStore((s) =>
@@ -311,7 +321,9 @@ export function StageMediaTile({
       : isScreen
         ? 'contain'
         : 'cover'
-  const mediaLabel = isScreen ? `Экран ${displayName}` : displayName
+  const mediaLabel = isScreen
+    ? t('stage.screenOf', { name: displayName })
+    : displayName
   const panelAspectRatio =
     isScreen && hasVideo ? aspectRatio : DEFAULT_SCREEN_ASPECT_RATIO
   const tileStyle = useMemo(
@@ -350,7 +362,7 @@ export function StageMediaTile({
             'group relative min-h-0 overflow-hidden rounded-md outline-none transition-[filter,box-shadow,opacity]',
             variant !== 'grid' &&
               variant !== 'strip' &&
-              'ring-offset-2 ring-offset-black',
+              'ring-offset-2 ring-offset-media-backdrop',
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
@@ -396,7 +408,7 @@ export function StageMediaTile({
           ) : isFailedScreen ? (
             <FailedScreenStreamTile
               displayName={displayName}
-              error={item.error ?? 'Не удалось подключиться к демонстрации'}
+              error={item.error ?? t('stage.screenShareError')}
               variant={variant}
               onRetry={() => onSetSubscribed(item.id, true)}
               hasViewers={hasViewers}
@@ -479,7 +491,7 @@ export function StageMediaTile({
           !isScreenPlaceholder ? (
             <div
               className={cn(
-                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',
+                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-media-backdrop/60 font-medium text-on-media',
                 variant === 'strip'
                   ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-xs leading-tight'
                   : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
@@ -513,10 +525,10 @@ export function StageMediaTile({
           ) : null}
         </article>
       </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-muted text-foreground">
+      <ContextMenuContent className="z-[420] min-w-64 border-on-media/10 bg-muted text-foreground">
         <ContextMenuItem onSelect={() => onFocus(item.id)}>
           <Maximize2Icon />
-          Сфокусировать
+          {t('actions.focus')}
         </ContextMenuItem>
         {item.kind === 'screen' ? (
           <ContextMenuItem
@@ -526,10 +538,10 @@ export function StageMediaTile({
           >
             <MonitorXIcon />
             {item.isLocal
-              ? 'Прекратить демонстрацию'
+              ? t('actions.stopScreenShare')
               : item.subscribed === false
-                ? 'Подключиться к стриму'
-                : 'Отключиться от просмотра'}
+                ? t('actions.connectStream')
+                : t('actions.disconnectStream')}
           </ContextMenuItem>
         ) : null}
         <ContextMenuSeparator />
@@ -545,15 +557,15 @@ export function StageMediaTile({
             }
           }}
         >
-          {isScreen ? 'Заглушить стрим' : 'Заглушить голос'}
+          {isScreen ? t('actions.muteStream') : t('actions.muteVoice')}
         </ContextMenuCheckboxItem>
         <div
           className="px-2 py-2"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          <ContextMenuLabel className="px-0 pb-2 text-xs text-white/70">
-            {isScreen ? 'Громкость стрима' : 'Громкость голоса'}
+          <ContextMenuLabel className="px-0 pb-2 text-xs text-on-media/70">
+            {isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
           </ContextMenuLabel>
           <div className="flex items-center gap-2">
             <Slider
@@ -570,7 +582,7 @@ export function StageMediaTile({
                 }
               }}
             />
-            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-white/70">
+            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-on-media/70">
               {formatUserVolumeLabel(volume)}
             </span>
           </div>

@@ -9,6 +9,8 @@ import {
   type VoiceSplitControlSurface,
 } from '#/components/voice/voice-split-control'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { microphoneMediaControlState } from '#/features/voice/voice-media-availability'
 
 export function VoiceMicSplitControl({
@@ -24,13 +26,17 @@ export function VoiceMicSplitControl({
   micMuted: boolean
   onToggleMic: () => void
 }) {
+  const t = useTranslations('voice.media')
   const voiceMedia = useVoiceMedia()
-  const { disabled, title } = microphoneMediaControlState({
-    availability: voiceMedia.mediaAvailability.microphone,
-    inVoice,
-    micMuted,
-    connecting,
-  })
+  const { disabled, title } = microphoneMediaControlState(
+    {
+      availability: voiceMedia.mediaAvailability.microphone,
+      inVoice,
+      micMuted,
+      connecting,
+    },
+    t,
+  )
 
   return (
     <VoiceSplitControl
@@ -38,7 +44,7 @@ export function VoiceMicSplitControl({
       danger={micMuted}
       disabled={disabled}
       mainTitle={title}
-      chevronTitle="Параметры микрофона"
+      chevronTitle={t('micSettings')}
       onMainClick={onToggleMic}
       popoverContent={
         surface === 'panel' ? (

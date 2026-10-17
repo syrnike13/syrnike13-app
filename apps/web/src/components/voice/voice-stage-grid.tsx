@@ -43,7 +43,7 @@ export function VoiceStageGrid<TItem extends VoiceStageGridItem>({
       className={cn(
         'relative mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col',
         layout.scroll
-          ? 'overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20'
+          ? 'overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20'
           : 'overflow-hidden',
       )}
     >

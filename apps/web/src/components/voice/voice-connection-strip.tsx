@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { PhoneOffIcon, SignalIcon } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
@@ -21,7 +22,8 @@ import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 /** Компактная подсказка пинга, как в Discord. */
-const pingTooltipClass = 'px-2 py-1 text-[11px] leading-none font-medium'
+const pingTooltipClass =
+  'px-2 py-1 text-[0.6875rem] leading-none font-medium'
 
 const VOICE_STATUS_CONNECTED = {
   accent: 'text-chart-3',
@@ -42,6 +44,8 @@ const VOICE_STATUS_FAILED = {
 } as const
 
 export function VoiceConnectionStrip() {
+  const t = useTranslations('voice')
+  const ts = useTranslations('voice.status')
   const auth = useAuth()
   const voice = useVoiceSession()
   const voiceTelemetry = useVoiceTelemetry()
@@ -60,7 +64,7 @@ export function VoiceConnectionStrip() {
   const channelLabel =
     channel && auth.user
       ? getChannelLabel(channel, users, auth.user._id)
-      : 'Голосовой канал'
+      : t('channel')
 
   const locationLabel = server
     ? `${channelLabel} / ${server.name}`
@@ -76,10 +80,11 @@ export function VoiceConnectionStrip() {
       : connected
         ? VOICE_STATUS_CONNECTED
         : VOICE_STATUS_CONNECTING
-  const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase)
+  const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase, ts)
   const pingLabel = formatVoicePingLabel(
     voiceTelemetry.voicePingMs,
     connected,
+    t,
   )
 
   return (
@@ -101,7 +106,7 @@ export function VoiceConnectionStrip() {
                     'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
                     status.iconBg,
                   )}
-                  aria-label={`${pingLabel}. Открыть статистику подключения`}
+                  aria-label={`${pingLabel}. ${t('openStats')}`}
                 >
                   <SignalIcon
                     className={cn('size-4', status.icon)}
@@ -144,13 +149,13 @@ export function VoiceConnectionStrip() {
           </Link>
         </div>
 
-        <VoiceControlTooltip title="Отключиться от голоса">
+        <VoiceControlTooltip title={t('disconnect')}>
         <Button
           type="button"
           size="icon"
-          variant="ghost"
-          className="size-8 shrink-0 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          aria-label="Отключиться от голоса"
+          variant="destructive-ghost"
+          className="size-8 shrink-0"
+          aria-label={t('disconnect')}
           onClick={voice.leave}
         >
           <PhoneOffIcon className="size-4" />

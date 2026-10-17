@@ -39,12 +39,12 @@ export function splitControlMainButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerMainClass
         : success
           ? splitControlSuccessMainClass
-          : 'group-hover/media:bg-white/10 group-hover/media:text-white',
+          : 'group-hover/media:bg-on-media/10 group-hover/media:text-on-media',
     )
   }
 
@@ -64,12 +64,12 @@ export function splitControlChevronButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-on-media/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerChevronClass
         : success
           ? splitControlSuccessChevronClass
-          : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
+          : 'group-hover/media:bg-on-media/[0.06] group-hover/media:text-on-media',
     )
   }
 

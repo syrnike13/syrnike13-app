@@ -1,6 +1,7 @@
 import { ChevronDownIcon, ChevronUpIcon, Volume2BoldIcon } from '#/components/icons'
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '#/components/ui/button'
 import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
@@ -23,6 +24,7 @@ type VoiceTextChannelDockProps = {
 }
 
 export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const voice = useVoiceSession()
   const prefix = useAppRoutePrefix()
@@ -52,8 +54,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
       <div className="flex items-center gap-2 px-3 py-2">
         <Volume2BoldIcon className="size-4 shrink-0 text-chart-3" />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
-          Голос · {participants.length}{' '}
-          {participants.length === 1 ? 'участник' : 'участника'}
+          {t('dock.title', { count: participants.length })}
         </p>
         <Button
           type="button"
@@ -63,7 +64,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           asChild
         >
           <Link to={`${prefix}/c/$channelId`} params={{ channelId }} search={{ m: undefined }}>
-            Открыть сцену
+            {t('dock.openStage')}
           </Link>
         </Button>
         <Button
@@ -71,7 +72,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           size="icon"
           variant="ghost"
           className="size-8 shrink-0"
-          title={expanded ? 'Свернуть' : 'Развернуть'}
+          title={expanded ? t('actions.collapse') : t('actions.expand')}
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? (
@@ -104,6 +105,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
                   participant.id,
                   users,
                   auth.user,
+                  t,
                 )}
                 dimmed={connecting && isSelf}
                 speaking={voice.speakingUserIds.has(participant.id)}

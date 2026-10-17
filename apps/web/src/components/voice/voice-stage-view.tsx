@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   MessageSquareIcon,
   ChevronDownIcon,
@@ -144,6 +145,7 @@ export function VoiceStageView({
   headerTrailing,
   popoutSurface = false,
 }: VoiceStageViewProps) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
@@ -193,7 +195,7 @@ export function VoiceStageView({
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const resolvedJoinLabel =
-    joinButtonLabel ?? (isDmVoiceStage ? 'Присоединиться' : undefined)
+    joinButtonLabel ?? (isDmVoiceStage ? t('actions.join') : undefined)
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
   const { popoutWindow, closeStagePopout: closePopout } = voiceStage
@@ -325,15 +327,15 @@ export function VoiceStageView({
     if (isVoiceStageActivityItem(focusedItem)) {
       return {
         user: undefined,
-        kindLabel: 'Активность',
+        kindLabel: t('stage.activity'),
         displayName:
           getFirstPartyChannelActivity(focusedItem.instance.application_id)
-            ?.title ?? 'Неизвестное приложение',
+            ?.title ?? t('stage.unknownApp'),
         showOnAir: false,
         showAvatar: false,
       }
     }
-    const kindLabel = stageMediaKindLabel(focusedItem.kind)
+    const kindLabel = stageMediaKindLabel(focusedItem.kind, t)
     if (!kindLabel) return null
 
     const isLocal = isVoiceLocalUserId(
@@ -352,12 +354,13 @@ export function VoiceStageView({
         focusedItem.userId,
         users,
         auth.user,
+        t,
       ),
       showOnAir:
         focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
       showAvatar: true,
     }
-  }, [auth.user, focusedItem, participantsById, users])
+  }, [auth.user, focusedItem, participantsById, t, users])
   const canToggleStageFullscreen =
     !mobileDrawer && (participants.length > 0 || stageItems.length > 0)
   const canInvite =
@@ -427,8 +430,9 @@ export function VoiceStageView({
   ])
 
   const resolveParticipantDisplayName = useCallback(
-    (userId: string) => voiceParticipantDisplayName(userId, users, auth.user),
-    [auth.user, users],
+    (userId: string) =>
+      voiceParticipantDisplayName(userId, users, auth.user, t),
+    [auth.user, t, users],
   )
 
   const streamViewersByOwner = useMemo(() => {
@@ -464,7 +468,7 @@ export function VoiceStageView({
                 label:
                   getFirstPartyChannelActivity(
                     activityStageItem.instance.application_id,
-                  )?.title ?? 'Неизвестное приложение',
+                  )?.title ?? t('stage.unknownApp'),
                 joined: activityStageItem.instance.participant_ids.includes(
                   currentUserId,
                 ),
@@ -475,6 +479,7 @@ export function VoiceStageView({
       activityStageItem,
       currentUserId,
       resolveParticipantDisplayName,
+      t,
       voiceStage.viewedRemoteScreenIds,
     ],
   )
@@ -565,6 +570,7 @@ export function VoiceStageView({
             item.userId,
             users,
             auth.user,
+            t,
           )}
           dimmed={connecting && isLocal}
           speaking={
@@ -588,6 +594,7 @@ export function VoiceStageView({
       inThisVoiceCall,
       participantsById,
       streamViewersByOwner,
+      t,
       users,
       voiceStage.setStageMediaSubscribed,
       voiceSession.speakingUserIds,
@@ -603,7 +610,7 @@ export function VoiceStageView({
       data-voice-stage-surface={presentation}
       className={cn(
         // VoiceStage is a media canvas: its surface stays black in every theme.
-        'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-black text-white',
+        'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-media-backdrop text-on-media',
         presentation === 'popout' && 'h-[100dvh] w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
@@ -631,7 +638,7 @@ export function VoiceStageView({
             fallback={
               <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
                 <Loader2Icon className="mr-2 size-5 animate-spin" />
-                Загружаем Активность…
+                {t('stage.loadingActivity')}
               </div>
             }
           >
@@ -656,7 +663,7 @@ export function VoiceStageView({
           ) : (
             <EmptyVoiceStage
               title={title}
-              joinLabel={resolvedJoinLabel ?? 'Войти'}
+              joinLabel={resolvedJoinLabel ?? t('actions.join')}
               onJoin={() => void voiceSession.join(channelId)}
             />
           )
@@ -667,9 +674,7 @@ export function VoiceStageView({
             users={users}
             currentUser={auth.user}
             displayName={resolveParticipantDisplayName}
-            joinLabel={
-              resolvedJoinLabel ?? 'Присоединиться к голосовому каналу'
-            }
+            joinLabel={resolvedJoinLabel ?? t('actions.joinChannel')}
             onJoin={() => void voiceSession.join(channelId)}
           />
         ) : focusedItem ? (
@@ -709,18 +714,18 @@ export function VoiceStageView({
       <header
         data-voice-stage-chrome
         className={cn(
-          'absolute inset-x-0 top-0 z-50 flex min-h-12 items-center gap-2 bg-gradient-to-b from-black via-black/80 to-transparent px-4 pt-1 pb-5',
+          'absolute inset-x-0 top-0 z-50 flex min-h-12 items-center gap-2 bg-gradient-to-b from-media-backdrop via-media-backdrop/80 to-transparent px-4 pt-1 pb-5',
           voiceStageChromeMotion(chromeVisible, 'top'),
         )}
       >
         {onClose ? (
           <Button
             type="button"
-            variant="ghost"
+            variant="media-ghost"
             size="icon"
-            className="size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white"
-            aria-label="Свернуть"
-            title="Свернуть"
+            className="size-9 shrink-0"
+            aria-label={t('actions.minimize')}
+            title={t('actions.minimize')}
             onClick={onClose}
           >
             <ChevronDownIcon className="size-5" />
@@ -733,14 +738,14 @@ export function VoiceStageView({
               className="size-8 shrink-0"
               fallbackClassName="size-8 text-xs"
               showPresence
-              presenceRingClassName="border-black"
+              presenceRingClassName="border-media-backdrop"
             />
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 text-sm font-semibold text-white">
+              <h1 className="min-w-0 text-sm font-semibold text-on-media">
                 {dmHeader.onOpenProfile ? (
                   <button
                     type="button"
-                    className="block max-w-full truncate rounded-sm text-left font-semibold text-white transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    className="block max-w-full truncate rounded-sm text-left font-semibold text-on-media transition-colors hover:text-on-media/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-media/40"
                     onClick={dmHeader.onOpenProfile}
                   >
                     {title}
@@ -751,20 +756,20 @@ export function VoiceStageView({
               </h1>
               {dmHeader.aliases.length > 0 ? (
                 <>
-                  <span className="shrink-0 text-white/35" aria-hidden>
+                  <span className="shrink-0 text-on-media/35" aria-hidden>
                     |
                   </span>
-                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/55">
+                  <span className="shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide text-on-media/55">
                     AKA
                   </span>
-                  <span className="min-w-0 truncate text-xs text-white/70">
+                  <span className="min-w-0 truncate text-xs text-on-media/70">
                     {dmHeader.aliases.join(', ')}
                   </span>
                 </>
               ) : null}
               {dmHeader.loading ? (
-                <span className="shrink-0 text-xs text-white/50">
-                  загрузка…
+                <span className="shrink-0 text-xs text-on-media/50">
+                  {t('actions.loading')}
                 </span>
               ) : null}
             </div>
@@ -774,7 +779,7 @@ export function VoiceStageView({
             <VoiceChannelIcon
               channel={channel}
               server={server}
-              className="size-5 text-white/60"
+              className="size-5 text-on-media/60"
             />
             <h1
               className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
@@ -788,18 +793,18 @@ export function VoiceStageView({
                 <span className="truncate">{title}</span>
                 {focusedMediaHeader ? (
                   <>
-                    <span className="shrink-0 text-white/45" aria-hidden>
+                    <span className="shrink-0 text-on-media/45" aria-hidden>
                       •
                     </span>
                     {focusedMediaHeader.showAvatar ? (
                       <UserAvatar
                         user={focusedMediaHeader.user}
                         className="size-5"
-                        fallbackClassName="size-5 text-[10px]"
+                        fallbackClassName="size-5 text-[0.625rem]"
                         showPresence={false}
                       />
                     ) : null}
-                    <span className="shrink-0 text-white/70">
+                    <span className="shrink-0 text-on-media/70">
                       {focusedMediaHeader.kindLabel}
                     </span>
                     <span className="min-w-0 truncate">
@@ -816,17 +821,17 @@ export function VoiceStageView({
         )}
         {dmHeader && focusedMediaHeader ? (
           <div
-            className="flex min-w-0 max-w-[40%] items-center gap-1.5 truncate text-sm font-semibold text-white/80"
+            className="flex min-w-0 max-w-[40%] items-center gap-1.5 truncate text-sm font-semibold text-on-media/80"
             title={`${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`}
           >
-            <span className="shrink-0 text-white/45" aria-hidden>
+            <span className="shrink-0 text-on-media/45" aria-hidden>
               •
             </span>
             {focusedMediaHeader.showAvatar ? (
               <UserAvatar
                 user={focusedMediaHeader.user}
                 className="size-5"
-                fallbackClassName="size-5 text-[10px]"
+                fallbackClassName="size-5 text-[0.625rem]"
                 showPresence={false}
               />
             ) : null}
@@ -847,13 +852,10 @@ export function VoiceStageView({
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
             type="button"
-            variant="ghost"
+            variant={chatOpen ? 'media-ghost-active' : 'media-ghost'}
             size="icon"
-            className={cn(
-              'size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white',
-              chatOpen && 'bg-white/15 text-white',
-            )}
-            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            className="size-9 shrink-0"
+            title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
             aria-pressed={chatOpen}
             onClick={onToggleChat}
           >
@@ -882,7 +884,9 @@ export function VoiceStageView({
             onToggleChat={onToggleChat}
             incomingCall={voiceCallIncoming && voiceCall?.phase === 'ringing'}
             declineLabel={
-              channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+              channel.channel_type === 'DirectMessage'
+                ? t('actions.decline')
+                : t('actions.hide')
             }
             onDeclineIncomingCall={onDeclineVoiceCall}
             viewSessions={viewSessions}
@@ -904,8 +908,8 @@ export function VoiceStageView({
                 }
                 declineLabel={
                   channel.channel_type === 'DirectMessage'
-                    ? 'Отклонить'
-                    : 'Скрыть'
+                    ? t('actions.decline')
+                    : t('actions.hide')
                 }
                 onDeclineIncomingCall={onDeclineVoiceCall}
                 viewSessions={viewSessions}
@@ -982,6 +986,7 @@ function VoiceStageWaitingCall({
   currentUserId?: string
   displayName: (userId: string) => string
 }) {
+  const t = useTranslations('voice')
   const counterpartId = voiceCallIncoming
     ? voiceCall.initiatorId
     : (voiceCall.recipients.find((userId) => userId !== currentUserId) ??
@@ -995,13 +1000,13 @@ function VoiceStageWaitingCall({
     voiceCall.initiatorId === currentUserId &&
     voiceCall.declinedRecipients.includes(counterpartId),
   )
-  let statusLabel = 'Звонок идёт'
+  let statusLabel = t('stage.callInProgress')
   if (voiceCallIncoming) {
-    statusLabel = `${counterpartName} звонит`
+    statusLabel = t('stage.incomingCall', { name: counterpartName })
   } else if (counterpartDeclined) {
-    statusLabel = `${counterpartName} отклонил звонок`
+    statusLabel = t('stage.callDeclined', { name: counterpartName })
   } else if (voiceCall.phase === 'ringing') {
-    statusLabel = `Звоним ${counterpartName}`
+    statusLabel = t('stage.calling', { name: counterpartName })
   }
 
   return (
@@ -1015,13 +1020,13 @@ function VoiceStageWaitingCall({
         />
       </div>
       <div className="space-y-1">
-        <p className="text-lg font-semibold text-white">{statusLabel}</p>
-        <p className="text-sm text-white/60">
+        <p className="text-lg font-semibold text-on-media">{statusLabel}</p>
+        <p className="text-sm text-on-media/60">
           {counterpartDeclined
-            ? 'Звонок останется доступен, пока вы в канале'
+            ? t('stage.callAvailable')
             : voiceCall.phase === 'ringing'
-              ? 'Ответьте на звонок или отклоните его'
-              : 'Подключитесь, чтобы присоединиться к разговору'}
+              ? t('stage.answerOrDecline')
+              : t('stage.connectToJoin')}
         </p>
       </div>
     </div>
@@ -1037,25 +1042,17 @@ function EmptyVoiceStage({
   joinLabel: string
   onJoin: () => void
 }) {
+  const t = useTranslations('voice')
+
   return (
     <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
       <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
-      <p className="text-sm text-muted-foreground">В канале никого нет</p>
+      <p className="text-sm text-muted-foreground">{t('stage.noOne')}</p>
       <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
         {joinLabel}
       </Button>
     </div>
   )
-}
-
-function additionalParticipantLabel(count: number) {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} участника`
-  }
-  return `${count} участников`
 }
 
 function VoiceStageJoinPreview({
@@ -1075,16 +1072,18 @@ function VoiceStageJoinPreview({
   joinLabel: string
   onJoin: () => void
 }) {
+  const t = useTranslations('voice')
   const visibleParticipants = participants.slice(0, 4)
   const hiddenParticipantCount =
     participants.length - visibleParticipants.length
   const firstParticipantName = displayName(participants[0].id)
   const status =
     participants.length === 1
-      ? `${firstParticipantName} сейчас в голосовом чате`
-      : `${firstParticipantName} и ещё ${additionalParticipantLabel(
-          participants.length - 1,
-        )} сейчас в голосовом чате`
+      ? t('stage.inVoiceChat', { name: firstParticipantName })
+      : t('stage.andMoreInVoiceChat', {
+          name: firstParticipantName,
+          count: participants.length - 1,
+        })
 
   return (
     <div className="grid min-h-[min(50vh,24rem)] flex-1 place-items-center px-4 text-center">
@@ -1092,7 +1091,7 @@ function VoiceStageJoinPreview({
         <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
           <ul
             className="flex -space-x-3"
-            aria-label="Участники голосового канала"
+            aria-label={t('stage.participantsLabel')}
           >
             {visibleParticipants.map((participant) => {
               const user =
@@ -1114,7 +1113,9 @@ function VoiceStageJoinPreview({
             {hiddenParticipantCount > 0 ? (
               <li
                 className="relative grid size-12 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground ring-2 ring-muted"
-                aria-label={`И ещё ${additionalParticipantLabel(hiddenParticipantCount)}`}
+                aria-label={t('stage.moreParticipants', {
+                  count: hiddenParticipantCount,
+                })}
               >
                 +{hiddenParticipantCount}
               </li>

@@ -33,7 +33,8 @@ export function VoiceCallBanner({
         <Button
           type="button"
           size="sm"
-          className="h-8 shrink-0 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
+          variant="success"
+          className="h-8 shrink-0"
           onClick={onJoin}
         >
           <HeadphonesIcon className="size-4" />

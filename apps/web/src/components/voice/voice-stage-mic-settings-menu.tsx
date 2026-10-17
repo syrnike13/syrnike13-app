@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
 import { Effect, Fiber } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { Slider } from '#/components/ui/slider'
 import {
@@ -28,21 +29,24 @@ import { cn } from '#/lib/utils'
 
 const METER_BAR_COUNT = 25
 
-function deviceLabel(device: MediaDeviceInfo) {
-  return device.label.trim() || 'Устройство'
+function deviceLabel(device: MediaDeviceInfo, t: Translator) {
+  return device.label.trim() || t('devices.device')
 }
 
 function resolveSelectedDeviceLabel(
   devices: MediaDeviceInfo[],
   preferredId: string | undefined,
+  t: Translator,
 ) {
   const selectable = devices.filter((device) => device.deviceId.length > 0)
   if (!preferredId) {
     const first = selectable[0]
-    return first ? `По умолчанию (${deviceLabel(first)})` : 'По умолчанию'
+    return first
+      ? t('devices.defaultDevice', { name: deviceLabel(first, t) })
+      : t('devices.default')
   }
   const match = selectable.find((device) => device.deviceId === preferredId)
-  return match ? deviceLabel(match) : 'Устройство'
+  return match ? deviceLabel(match, t) : t('devices.device')
 }
 
 function outputVolumeToSlider(outputVolume: number) {
@@ -54,6 +58,7 @@ function sliderToOutputVolume(value: number) {
 }
 
 function useMicInputSettingsModel() {
+  const t = useTranslations('voice')
   const prefs = useVoicePreferences()
   const voice = useVoiceSession()
   const auth = useAuth()
@@ -76,8 +81,9 @@ function useMicInputSettingsModel() {
       resolveSelectedDeviceLabel(
         inputDevices,
         prefs.preferredAudioInputDevice,
+        t,
       ),
-    [inputDevices, prefs.preferredAudioInputDevice],
+    [inputDevices, prefs.preferredAudioInputDevice, t],
   )
 
   const selfSpeaking =
@@ -118,9 +124,11 @@ function MicInputDeviceSettingsRows({
   inputSubtitle: string
   preferredAudioInputDevice: string | undefined
 }) {
+  const t = useTranslations('voice')
+
   return (
     <MicSettingsDeviceRow
-      title="Микрофон"
+      title={t('devices.microphone')}
       subtitle={inputSubtitle}
       devices={inputDevices}
       selectedId={preferredAudioInputDevice}
@@ -136,12 +144,16 @@ function MicInputMeterSection({
 }: {
   levels: readonly number[]
 }) {
+  const t = useTranslations('voice')
+
   return (
     <section className="space-y-2 px-0.5">
-      <p className={voiceStagePopoverSectionTitleClass}>Уровень микрофона</p>
+      <p className={voiceStagePopoverSectionTitleClass}>
+        {t('devices.micLevel')}
+      </p>
       <MicInputMeter levels={levels} />
       <p className={voiceStagePopoverHintClass}>
-        Громкость входа задаётся в системе. Здесь — индикатор активности.
+        {t('devices.micLevelHint')}
       </p>
     </section>
   )
@@ -149,6 +161,7 @@ function MicInputMeterSection({
 
 /** UserPanel: устройство и профиль входа. */
 export function VoicePanelMicSettingsMenuContent() {
+  const t = useTranslations('voice')
   const { prefs, inputDevices, inputSubtitle } = useMicInputSettingsModel()
   const { openSettings } = useSettingsModal()
 
@@ -168,7 +181,7 @@ export function VoicePanelMicSettingsMenuContent() {
         )}
         onClick={() => openSettings('voice')}
       >
-        <span>Настройки голоса</span>
+        <span>{t('devices.voiceSettings')}</span>
         <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
       </button>
     </div>
@@ -177,6 +190,7 @@ export function VoicePanelMicSettingsMenuContent() {
 
 /** Оверлей стейджа: полное меню микрофона и звука. */
 export function VoiceStageMicSettingsMenuContent() {
+  const t = useTranslations('voice')
   const { prefs, voice, inputDevices, inputSubtitle, meterLevels } =
     useMicInputSettingsModel()
   const { openSettings } = useSettingsModal()
@@ -187,8 +201,9 @@ export function VoiceStageMicSettingsMenuContent() {
       resolveSelectedDeviceLabel(
         outputDevices,
         prefs.preferredAudioOutputDevice,
+        t,
       ),
-    [outputDevices, prefs.preferredAudioOutputDevice],
+    [outputDevices, prefs.preferredAudioOutputDevice, t],
   )
 
   return (
@@ -200,7 +215,7 @@ export function VoiceStageMicSettingsMenuContent() {
       />
 
       <MicSettingsDeviceRow
-        title="Вывод"
+        title={t('devices.output')}
         subtitle={outputSubtitle}
         devices={outputDevices}
         selectedId={prefs.preferredAudioOutputDevice}
@@ -215,7 +230,7 @@ export function VoiceStageMicSettingsMenuContent() {
 
       <section className="space-y-2 px-0.5">
         <p className={voiceStagePopoverSectionTitleClass}>
-          Громкость входящего
+          {t('devices.inputVolume')}
         </p>
         <Slider
           value={[outputVolumeToSlider(prefs.outputVolume)]}
@@ -232,7 +247,9 @@ export function VoiceStageMicSettingsMenuContent() {
       <MicSettingsSeparator />
 
       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
-        <span className={voiceStagePopoverSectionTitleClass}>Не слышать</span>
+        <span className={voiceStagePopoverSectionTitleClass}>
+          {t('devices.dontHear')}
+        </span>
         <input
           type="checkbox"
           className={voiceStagePopoverCheckboxClass}
@@ -249,7 +266,7 @@ export function VoiceStageMicSettingsMenuContent() {
         )}
         onClick={() => openSettings('voice')}
       >
-        <span>Настройки голоса</span>
+        <span>{t('devices.voiceSettings')}</span>
         <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
       </button>
     </div>
@@ -257,6 +274,7 @@ export function VoiceStageMicSettingsMenuContent() {
 }
 
 export function VoiceSoundSettingsMenuContent() {
+  const t = useTranslations('voice')
   const prefs = useVoicePreferences()
   const { openSettings } = useSettingsModal()
   const outputDevices = useMediaDevices('audiooutput')
@@ -275,14 +293,15 @@ export function VoiceSoundSettingsMenuContent() {
       resolveSelectedDeviceLabel(
         outputDevices,
         prefs.preferredAudioOutputDevice,
+        t,
       ),
-    [outputDevices, prefs.preferredAudioOutputDevice],
+    [outputDevices, prefs.preferredAudioOutputDevice, t],
   )
 
   return (
     <div className="flex flex-col gap-2">
       <MicSettingsDeviceRow
-        title="Вывод"
+        title={t('devices.output')}
         subtitle={outputSubtitle}
         devices={outputDevices}
         selectedId={prefs.preferredAudioOutputDevice}
@@ -293,7 +312,7 @@ export function VoiceSoundSettingsMenuContent() {
 
       <section className="space-y-2 px-0.5">
         <p className={voiceStagePopoverSectionTitleClass}>
-          Громкость входящего
+          {t('devices.inputVolume')}
         </p>
         <Slider
           value={[outputVolumeToSlider(prefs.outputVolume)]}
@@ -315,7 +334,7 @@ export function VoiceSoundSettingsMenuContent() {
         )}
         onClick={() => openSettings('voice')}
       >
-        <span>Настройки голоса</span>
+        <span>{t('devices.voiceSettings')}</span>
         <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
       </button>
     </div>
@@ -339,6 +358,7 @@ function MicSettingsDeviceRow({
   selectedId: string | undefined
   onSelect: (deviceId: string | undefined) => void
 }) {
+  const t = useTranslations('voice')
   const selectable = devices.filter((device) => device.deviceId.length > 0)
 
   return (
@@ -347,7 +367,7 @@ function MicSettingsDeviceRow({
         <>
           <span className="min-w-0 flex-1">
             <span className={voiceStagePopoverSectionTitleClass}>{title}</span>
-            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[0.6875rem] text-muted-foreground">
               {subtitle}
             </span>
           </span>
@@ -360,7 +380,9 @@ function MicSettingsDeviceRow({
         className={micSettingsMenuItemClass(!selectedId)}
         onClick={() => onSelect(undefined)}
       >
-        <span className="min-w-0 flex-1 truncate">По умолчанию</span>
+        <span className="min-w-0 flex-1 truncate">
+          {t('devices.default')}
+        </span>
         {!selectedId ? (
           <CheckIcon className="size-4 shrink-0 text-primary" />
         ) : (
@@ -377,7 +399,7 @@ function MicSettingsDeviceRow({
             onClick={() => onSelect(device.deviceId)}
           >
             <span className="min-w-0 flex-1 truncate">
-              {deviceLabel(device)}
+              {deviceLabel(device, t)}
             </span>
             {selected ? (
               <CheckIcon className="size-4 shrink-0 text-primary" />

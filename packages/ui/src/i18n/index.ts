@@ -2,6 +2,7 @@ export {
   LocaleProvider,
   UI_MESSAGES,
   configureDefaultCatalogs,
+  createTranslator,
   formatMessage,
   mergeMessages,
   useLocale,

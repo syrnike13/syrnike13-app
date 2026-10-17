@@ -1,5 +1,6 @@
 import type { User } from '@syrnike13/api-types'
 import { useState, type DragEvent } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
@@ -47,6 +48,7 @@ export function VoiceParticipantRow({
   serverName,
   roles,
 }: VoiceParticipantRowProps) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const [profileOpen, setProfileOpen] = useState(false)
   const watchScreenShare = useWatchParticipantScreenShare()
@@ -118,7 +120,9 @@ export function VoiceParticipantRow({
             compact ? 'size-6' : 'size-8',
             voiceElsewhere && 'opacity-60',
           )}
-          fallbackClassName={compact ? 'size-6 text-[10px]' : 'size-8 text-xs'}
+          fallbackClassName={
+            compact ? 'size-6 text-[0.625rem]' : 'size-8 text-xs'
+          }
           showPresence={false}
         />
       </div>
@@ -126,7 +130,7 @@ export function VoiceParticipantRow({
         className={cn(
           'min-w-0 flex-1 truncate',
           voiceElsewhere ? 'font-normal' : 'font-medium',
-          isSpeaking ? 'text-white' : 'text-muted-foreground',
+          isSpeaking ? 'text-on-media' : 'text-muted-foreground',
         )}
       >
         {displayName}
@@ -175,9 +179,7 @@ export function VoiceParticipantRow({
         draggable={canDragParticipant}
         onDragStart={handleDragStart}
         title={
-          voiceElsewhere
-            ? 'Вы в этом канале с другой вкладки или устройства'
-            : undefined
+          voiceElsewhere ? t('stage.selfOtherDevice') : undefined
         }
         className={cn(
           rowClassName,

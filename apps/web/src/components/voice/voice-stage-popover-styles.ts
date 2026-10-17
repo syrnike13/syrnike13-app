@@ -46,7 +46,7 @@ export const voiceStagePopoverSectionTitleClass =
   'text-xs font-semibold text-foreground'
 
 export const voiceStagePopoverHintClass =
-  'text-[11px] leading-snug text-muted-foreground'
+  'text-[0.6875rem] leading-snug text-muted-foreground'
 
 export const voiceStagePopoverSeparatorClass = 'my-0.5 h-px bg-border'
 

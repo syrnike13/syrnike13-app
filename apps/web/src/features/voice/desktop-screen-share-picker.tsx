@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   AppWindowIcon,
   Gamepad2Icon,
@@ -91,23 +92,30 @@ export const loadDisplaySourceVisualsEffect = Effect.fn(
 
 const SOURCE_TABS: Array<{
   value: SourceTab
-  label: string
+  labelKey: string
   icon: typeof MonitorIcon
 }> = [
-  { value: 'screen', label: 'Экран', icon: MonitorIcon },
-  { value: 'applications', label: 'Приложения', icon: AppWindowIcon },
+  { value: 'screen', labelKey: 'sharePicker.screens', icon: MonitorIcon },
+  {
+    value: 'applications',
+    labelKey: 'sharePicker.applications',
+    icon: AppWindowIcon,
+  },
 ]
 
-const EMPTY_TAB_TEXT: Record<SourceTab, string> = {
-  screen: 'Экраны не найдены',
-  applications: 'Приложения не найдены',
+const EMPTY_TAB_TEXT_KEYS: Record<SourceTab, string> = {
+  screen: 'sharePicker.noScreens',
+  applications: 'sharePicker.noApplications',
 }
 
-export function sourceAudioLabel(source: DesktopDisplayMediaSource) {
-  if (source.audioAvailable === false) return 'Звук недоступен'
-  if (source.type === 'screen') return 'Системный звук без приложения'
-  if (source.type === 'game') return 'Звук только игры'
-  return 'Звук только окна'
+export function sourceAudioLabel(
+  source: DesktopDisplayMediaSource,
+  t: Translator,
+) {
+  if (source.audioAvailable === false) return t('sharePicker.soundUnavailable')
+  if (source.type === 'screen') return t('sharePicker.systemSound')
+  if (source.type === 'game') return t('sharePicker.gameSound')
+  return t('sharePicker.windowSound')
 }
 
 export function canRequestSourceAudio(
@@ -117,6 +125,7 @@ export function canRequestSourceAudio(
 }
 
 export function DesktopScreenSharePicker() {
+  const t = useTranslations('voice')
   const { desktop } = usePlatform()
   const [request, setRequest] = useState<DesktopDisplayMediaRequest | null>(
     null,
@@ -187,7 +196,7 @@ export function DesktopScreenSharePicker() {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось получить источники демонстрации',
+                : t('sharePicker.loadError'),
             )
             setLoading(false)
           }),
@@ -199,7 +208,7 @@ export function DesktopScreenSharePicker() {
       current = false
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [desktop, page, requestId])
+  }, [desktop, page, requestId, t])
 
   useEffect(() => {
     if (!desktop || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
@@ -261,7 +270,7 @@ export function DesktopScreenSharePicker() {
           audioRequested && canRequestSourceAudio(source),
         )
         if (!selected) {
-          toast.error('Источник демонстрации больше недоступен')
+          toast.error(t('sharePicker.sourceGone'))
           setSubmittingSourceId(null)
           return
         }
@@ -277,12 +286,12 @@ export function DesktopScreenSharePicker() {
         toast.error(
           error instanceof Error
             ? error.message
-            : 'Не удалось начать демонстрацию',
+            : t('sharePicker.startError'),
         )
         setSubmittingSourceId(null)
       }
     },
-    [audioRequested, desktop, request],
+    [audioRequested, desktop, request, t],
   )
 
   const open = Boolean(request)
@@ -294,10 +303,9 @@ export function DesktopScreenSharePicker() {
         showCloseButton={false}
         className="grid aspect-[4/3] w-[min(96vw,66.667vh)] max-w-none grid-rows-[1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-none"
       >
-        <DialogTitle className="sr-only">Демонстрация экрана</DialogTitle>
+        <DialogTitle className="sr-only">{t('sharePicker.title')}</DialogTitle>
         <DialogDescription className="sr-only">
-          Выберите экран или приложение, которое хотите показать участникам
-          голосового канала.
+          {t('sharePicker.description')}
         </DialogDescription>
 
         <Tabs
@@ -318,7 +326,7 @@ export function DesktopScreenSharePicker() {
               return (
                 <TabsTrigger key={tab.value} value={tab.value}>
                   <Icon />
-                  <span>{tab.label}</span>
+                  <span>{t(tab.labelKey)}</span>
                   <span className="text-xs text-muted-foreground">{count}</span>
                 </TabsTrigger>
               )
@@ -330,7 +338,7 @@ export function DesktopScreenSharePicker() {
               sources={screenSources}
               submittingSourceId={submittingSourceId}
               loading={loading}
-              emptyText={EMPTY_TAB_TEXT.screen}
+              emptyText={t(EMPTY_TAB_TEXT_KEYS.screen)}
               onShare={selectSource}
             />
           </TabsContent>
@@ -342,7 +350,7 @@ export function DesktopScreenSharePicker() {
               sources={applicationSources}
               submittingSourceId={submittingSourceId}
               loading={loading}
-              emptyText={EMPTY_TAB_TEXT.applications}
+              emptyText={t(EMPTY_TAB_TEXT_KEYS.applications)}
               onShare={selectSource}
             />
           </TabsContent>
@@ -360,7 +368,7 @@ export function DesktopScreenSharePicker() {
                   onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
                   disabled={!hasPreviousPage || loading || submitting}
                 >
-                  Назад
+                  {t('sharePicker.back')}
                 </Button>
                 <span className="min-w-8 text-center text-xs text-muted-foreground">
                   {page + 1}
@@ -372,7 +380,7 @@ export function DesktopScreenSharePicker() {
                   onClick={() => setPage((currentPage) => currentPage + 1)}
                   disabled={!hasNextPage || loading || submitting}
                 >
-                  Далее
+                  {t('sharePicker.next')}
                 </Button>
               </>
             ) : null}
@@ -382,7 +390,7 @@ export function DesktopScreenSharePicker() {
               onClick={cancelRequest}
               disabled={submitting}
             >
-              Отмена
+              {t('sharePicker.cancel')}
             </Button>
             <ScreenSharePickerSettings
               audioSupported={Boolean(request?.nativeVideo)}
@@ -452,7 +460,8 @@ function DisplaySourceTile({
   disabled: boolean
   onShare: () => void
 }) {
-  const sourceLabel = desktopScreenShareSourceLabel(source)
+  const t = useTranslations('voice')
+  const sourceLabel = desktopScreenShareSourceLabel(source, t)
   const FallbackIcon =
     source.type === 'screen'
       ? MonitorIcon
@@ -464,7 +473,7 @@ function DisplaySourceTile({
     <div className="grid min-w-0 gap-2">
       <button
         type="button"
-        aria-label={`Демонстрировать ${sourceLabel}`}
+        aria-label={t('sharePicker.shareAria', { source: sourceLabel })}
         className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none"
         disabled={disabled}
         onClick={onShare}
@@ -488,7 +497,7 @@ function DisplaySourceTile({
             <Button
               asChild
               size="sm"
-              className="bg-foreground text-background"
+              variant="inverse"
             >
               <span aria-hidden="true">
                 {submitting ? (
@@ -497,7 +506,7 @@ function DisplaySourceTile({
                     className="animate-spin"
                   />
                 ) : null}
-                Демонстрировать
+                {t('sharePicker.share')}
               </span>
             </Button>
           </div>
@@ -523,10 +532,13 @@ function DisplaySourceTile({
 }
 
 function ScreenSharePickerQualitySummary() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
     <div className="mr-auto min-w-0 text-left">
-      <p className="text-sm font-semibold text-foreground">Качество стрима</p>
+      <p className="text-sm font-semibold text-foreground">
+        {t('sharePicker.quality')}
+      </p>
       <p className="text-xs text-muted-foreground">
         {quality.resolutionLabel(quality.resolution)} · {quality.fps} FPS
       </p>
@@ -545,6 +557,7 @@ function ScreenSharePickerSettings({
   onAudioRequestedChange: (value: boolean) => void
   disabled: boolean
 }) {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
     <Popover>
@@ -553,8 +566,8 @@ function ScreenSharePickerSettings({
           type="button"
           variant="outline"
           size="icon"
-          aria-label="Настройки стрима"
-          title="Настройки стрима"
+          aria-label={t('sharePicker.streamSettings')}
+          title={t('sharePicker.streamSettings')}
           disabled={disabled}
           className="group/gear cursor-pointer disabled:cursor-not-allowed"
         >
@@ -570,14 +583,14 @@ function ScreenSharePickerSettings({
       >
         <div className="flex flex-col gap-0.5">
           <StreamSettingsSubmenu
-            label="Разрешение экрана"
+            label={t('sharePicker.resolution')}
             hint={quality.resolutionLabel(quality.resolution)}
             side="left"
           >
             <ScreenShareResolutionOptions />
           </StreamSettingsSubmenu>
           <StreamSettingsSubmenu
-            label="Частота кадров"
+            label={t('sharePicker.frameRate')}
             hint={`${quality.fps} FPS`}
             side="left"
           >
@@ -587,7 +600,7 @@ function ScreenSharePickerSettings({
             <>
               <div className={voiceStagePopoverSeparatorClass} role="separator" />
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
-                <span>Заглушить аудио стрима</span>
+                <span>{t('sharePicker.muteAudio')}</span>
                 <input
                   type="checkbox"
                   className={voiceStagePopoverCheckboxClass}
