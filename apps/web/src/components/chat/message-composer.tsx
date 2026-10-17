@@ -616,8 +616,10 @@ export function MessageComposer({
       <div
         ref={composerInputRowRef}
         className={cn(
-          'flex items-end gap-0.5 px-1 pb-2',
-          floating && 'min-h-14',
+          'flex items-end gap-0.5 px-1',
+          floating
+            ? 'min-h-14 gap-5 px-3'
+            : 'pb-2',
           !floating && hasComposerHeader && 'min-h-14',
           !floating && !hasComposerHeader && 'min-h-11',
           showComposerDivider && 'border-t border-foreground/10',
@@ -628,7 +630,7 @@ export function MessageComposer({
             className={cn(
               composerIconClass,
               composerIconHoverClass(floating),
-              'mb-1 cursor-pointer',
+              floating ? 'mb-3 cursor-pointer' : 'mb-1 cursor-pointer',
               (composerDisabled || sending || !canUploadFiles) &&
                 'pointer-events-none',
             )}
@@ -659,9 +661,13 @@ export function MessageComposer({
               ? 'bg-secondary text-secondary-foreground'
               : 'bg-accent text-foreground'
           }
-          className="min-w-0 flex-1"
+          className={
+            floating ? 'min-h-14 min-w-0 flex-1' : 'min-w-0 flex-1'
+          }
           editorClassName={
-            floating ? 'text-secondary-foreground' : 'text-foreground'
+            floating
+              ? 'min-h-14 px-0 py-4.25 leading-5.5 text-secondary-foreground'
+              : 'text-foreground'
           }
           onValueChange={(nextValue) => {
             if (nextValue !== value) {
@@ -687,7 +693,13 @@ export function MessageComposer({
           }}
         />
 
-        <div className="mb-1 flex shrink-0 items-center">
+        <div
+          className={
+            floating
+              ? 'mb-3 flex shrink-0 items-center'
+              : 'mb-1 flex shrink-0 items-center'
+          }
+        >
           {!isEditing ? (
             <ComposerEmojiPicker
               serverId={serverId}

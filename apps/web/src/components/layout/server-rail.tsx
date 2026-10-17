@@ -219,14 +219,13 @@ export function ServerRail({
             reserveUserPanelSpace
               ? 'pb-(--rail-bottom-reserve)'
               : 'pb-3',
-            'pt-1',
             shellNavSurface,
           )}
           style={railBottomReserveStyle}
         >
           <Squircle
             {...railIconSquircleProps}
-            className={cn('size-11', 'animate-pulse bg-muted')}
+            className={cn('size-10', 'animate-pulse bg-muted')}
           />
         </div>
     )
@@ -237,7 +236,6 @@ export function ServerRail({
       className={cn(
         'flex h-full w-18 shrink-0 flex-col',
         reserveUserPanelSpace ? 'pb-(--rail-bottom-reserve)' : 'pb-3',
-        'pt-1',
         shellNavSurface,
       )}
       style={railBottomReserveStyle}
@@ -293,7 +291,7 @@ export function ServerRail({
               <Squircle
                 {...railIconSquircleProps}
                 className={cn(
-                  'size-11',
+                  'size-10',
                   'bg-card text-foreground hover:bg-secondary hover:text-foreground',
                   'flex items-center justify-center text-foreground',
                 )}

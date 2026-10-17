@@ -40,7 +40,7 @@ const gatewayStatusKeys = {
 } as const
 
 const userPanelControlButtonClass =
-  'size-9 shrink-0 rounded-md bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+  'size-8 shrink-0 rounded-md bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
 
 const TELEGRAM_CHANNEL_URL = 'https://t.me/+oF1TAWZ2yyQwMDcy'
 
@@ -155,7 +155,7 @@ export function UserPanel({
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <div
             className={cn(
-              'flex w-full items-center gap-2.5 px-2.5',
+              'flex w-full items-center gap-2 px-3',
               FLOATING_BAR_HEIGHT_CLASS,
             )}
           >
@@ -163,24 +163,24 @@ export function UserPanel({
               render={
                 <button
                   type="button"
-                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-accent/60"
+                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-accent/60"
                 />
               }
             >
               <UserAvatar
                 user={user}
-                className="size-9 shrink-0"
-                fallbackClassName="size-9"
+                className="size-8 shrink-0"
+                fallbackClassName="size-8"
                 showPresence
               />
               <div className="min-w-0 flex-1 overflow-hidden">
-                <p className="truncate text-sm font-semibold leading-4">
+                <p className="truncate text-base font-medium leading-4.5">
                   {displayName}
                 </p>
-                <div className="relative h-4 overflow-hidden">
+                <div className="relative h-3.25 overflow-hidden">
                   <p
                     className={cn(
-                      'truncate text-xs leading-4 transition duration-200 ease-out',
+                      'truncate text-xs font-medium leading-3.25 transition duration-200 ease-out',
                       'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
                       gatewayConnected
                         ? 'text-muted-foreground'
@@ -193,7 +193,7 @@ export function UserPanel({
                   </p>
                   <p
                     className={cn(
-                      'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
+                      'absolute inset-x-0 top-0 truncate text-xs font-medium leading-3.25 text-muted-foreground',
                       'translate-y-full opacity-0 transition duration-200 ease-out',
                       'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
                     )}
@@ -204,7 +204,7 @@ export function UserPanel({
               </div>
             </PopoverTrigger>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-2">
               <VoiceMicSplitControl
                 surface="panel"
                 inVoice={inVoice}

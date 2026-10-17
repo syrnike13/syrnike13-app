@@ -120,10 +120,10 @@ describe('ServerHeaderMenu', () => {
     expect(triggerClass).toContain('hover:backdrop-blur-sm')
   })
 
-  it('renders the server name with the heaviest font weight', () => {
+  it('renders the server name with the Discord header weight', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
-    expect(screen.getByText('Server').className).toContain('font-black')
+    expect(screen.getByText('Server').className).toContain('font-semibold')
   })
 
   beforeEach(() => {

@@ -341,7 +341,7 @@ function ChannelSectionList({
               {header}
               {!collapsed ? (
                 <div
-                  className="h-9 shrink-0"
+                  className="h-8 shrink-0"
                   aria-hidden
                   data-empty-category-slot=""
                 />

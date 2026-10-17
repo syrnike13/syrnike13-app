@@ -34,7 +34,7 @@ export function ShellNavColumn({
         />
         <div
           className={cn(
-            'flex min-h-0 flex-col overflow-hidden rounded-tl-xl border-l border-t shadow-sm',
+            'flex min-h-0 flex-col overflow-hidden rounded-tl-shell border-l border-t shadow-sm',
             CHANNEL_SIDEBAR_WIDTH_CLASS,
             shellDivider,
             shellNavSurface,

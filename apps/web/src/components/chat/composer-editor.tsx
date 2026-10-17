@@ -213,7 +213,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
 
           return {
             class: cn(
-              'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none md:text-sm',
+              'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none',
               editorClassNameRef.current,
             ),
             role: 'textbox',

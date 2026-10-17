@@ -73,7 +73,7 @@ export function ChannelSidebar({
       <header
         className={cn(
           shellColumnHeaderClass,
-          'relative overflow-hidden px-3',
+          'relative overflow-hidden px-2',
           bannerUrl ? 'h-32 items-start py-3' : 'bg-transparent',
         )}
       >
@@ -101,7 +101,7 @@ export function ChannelSidebar({
             />
           </div>
         ) : (
-          <h2 className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
+          <h2 className="min-w-0 flex-1 truncate px-1 text-base font-semibold">
             {serverName}
           </h2>
         )}

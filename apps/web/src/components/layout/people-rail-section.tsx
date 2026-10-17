@@ -136,8 +136,8 @@ function PeopleRailButton({
       {dmUser ? (
         <UserAvatar
           user={dmUser}
-          className="size-11"
-          fallbackClassName="size-11 text-xs"
+          className="size-10"
+          fallbackClassName="size-10 text-xs"
           showPresence={false}
           notificationBadge={railNotificationBadge}
           notificationRingClassName="border-background"

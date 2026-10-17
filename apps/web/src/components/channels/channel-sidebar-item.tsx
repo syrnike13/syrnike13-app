@@ -445,7 +445,7 @@ export function ChannelSidebarItem({
     >
       <div
         className={cn(
-          'relative flex h-9 min-w-0 items-stretch rounded-md text-sm transition-colors',
+          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-5 font-normal transition-colors',
           active
             ? 'bg-secondary text-secondary-foreground'
             : 'text-foreground hover:bg-accent hover:text-accent-foreground',
@@ -459,7 +459,7 @@ export function ChannelSidebarItem({
           params={{ channelId: channel._id }}
           search={{ m: undefined }}
           className={cn(
-            'flex h-full min-w-0 flex-1 items-center gap-2 px-2 font-normal',
+            'flex h-full min-w-0 flex-1 items-center gap-2 px-2',
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
@@ -478,27 +478,31 @@ export function ChannelSidebarItem({
               <img
                 src={attachmentPreviewUrl(channel.icon)}
                 alt=""
-                className="size-4 shrink-0 rounded-sm object-cover"
+                className="size-5 shrink-0 rounded-sm object-cover"
               />
             ) : (
               <span
                 title={t('groupChat')}
-                className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+                className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
               >
-                <UsersIcon aria-hidden="true" className="size-4" />
+                <UsersIcon aria-hidden="true" className="size-5" />
               </span>
             )
           ) : serverVoice ? (
-            <VoiceChannelIcon channel={channel} server={server} />
+            <VoiceChannelIcon
+              channel={channel}
+              server={server}
+              className="size-5"
+            />
           ) : restrictedTextChannel ? (
             <span
               title={t('privateText')}
-              className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+              className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
             >
-              <RestrictedTextChannelIcon className="size-4" />
+              <RestrictedTextChannelIcon className="size-5" />
             </span>
           ) : (
-            <HashIcon className="size-4 shrink-0 text-muted-foreground" />
+            <HashIcon className="size-5 shrink-0 text-muted-foreground" />
           )}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {voiceCallMarkerTitle ? (

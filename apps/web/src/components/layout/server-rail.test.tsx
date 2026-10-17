@@ -111,7 +111,7 @@ describe('ServerRail', () => {
 
     expect(screen.getByRole('link', { name: 'Главная' })).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
-    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(false)
     expect(
       container.firstElementChild?.classList.contains(
         'pb-(--rail-bottom-reserve)',

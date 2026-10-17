@@ -180,7 +180,7 @@ export function ServerHeaderMenu({
         <PopoverTrigger render={<button
             type="button"
             className={cn(
-              'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent',
+              'flex h-8 min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
               overBanner &&
                 'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
               menuOpen &&
@@ -189,7 +189,7 @@ export function ServerHeaderMenu({
                   : 'bg-accent'),
             )}
             aria-expanded={menuOpen} />}>
-            <span className="min-w-0 flex-1 truncate text-sm font-black">
+            <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold">
               {serverName}
             </span>
             <ChevronDownIcon
@@ -202,7 +202,7 @@ export function ServerHeaderMenu({
         <PopoverContent
           align="start"
           sideOffset={4}
-          className="w-(--anchor-width) p-1"
+          className="w-(--anchor-width) gap-0 p-1"
         >
           {menuPermissions?.invite ? (
             <ServerHeaderMenuItem

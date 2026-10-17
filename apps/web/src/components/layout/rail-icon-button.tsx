@@ -120,7 +120,7 @@ export function RailIconButton<TTo extends string>(
                       variant: active ? 'default' : 'ghost',
                       size: 'icon',
                     }),
-                    'size-11',
+                    'size-10',
                     !active &&
                       'bg-card text-foreground hover:bg-secondary hover:text-foreground',
                   )}

@@ -116,7 +116,7 @@ function WebShellTitleBar() {
   return (
     <header
       className={cn(
-        'relative flex h-9 shrink-0 items-center px-2',
+        'relative flex h-8 shrink-0 items-center px-2',
         shellNavSurface,
       )}
     >

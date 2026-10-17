@@ -187,7 +187,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                 size="icon"
                 variant="ghost"
                 className={cn(
-                  'size-11',
+                  'size-10',
                   // eslint-disable-next-line shadcn/require-static-classes -- shared rail idle surface constant
                   railIconIdleClass,
                 )}

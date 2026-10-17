@@ -555,7 +555,7 @@ export function ChannelView({
           ) : null}
         </div>
         {token && showMemberSidebar ? (
-          <div className="hidden h-full w-52 shrink-0 items-center pl-2 lg:flex">
+          <div className="hidden h-full w-66 shrink-0 items-center pl-2 lg:flex">
             <ServerChannelSearchPopover
               serverId={channel.server}
               token={token}
@@ -564,7 +564,7 @@ export function ChannelView({
           </div>
         ) : null}
         {token && !showMemberSidebar ? (
-          <div className="hidden h-full w-52 shrink-0 items-center pl-2 lg:flex">
+          <div className="hidden h-full w-66 shrink-0 items-center pl-2 lg:flex">
             <ChannelSearchDialog
               channelId={channelId}
               token={token}
@@ -646,7 +646,7 @@ export function ChannelView({
                           triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
                         />
                       </div>
-                      <div className="hidden w-52 lg:flex">
+                      <div className="hidden w-66 lg:flex">
                         <ChannelSearchDialog
                           channelId={channelId}
                           token={token}
@@ -901,7 +901,7 @@ export function ChannelView({
                           triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
                         />
                       </div>
-                      <div className="hidden w-52 lg:flex">
+                      <div className="hidden w-66 lg:flex">
                         <ChannelSearchDialog
                           channelId={channelId}
                           token={token}

@@ -69,11 +69,11 @@ export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
 export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
 /** Кнопки рельса: фиксированный квадрат; форма — Squircle, не CSS rounded. */
-export const RAIL_ICON_SIZE_PX = 44
-/** Пропорционально `RAIL_ICON_SIZE_PX` (было 14 при 40px). */
-export const RAIL_ICON_CORNER_RADIUS_PX = 15
+export const RAIL_ICON_SIZE_PX = 40
+/** Пропорционально `RAIL_ICON_SIZE_PX`: 40px иконка → 14px радиус. */
+export const RAIL_ICON_CORNER_RADIUS_PX = 14
 /** Круглые аватары DM в рельсе — тот же визуальный размер, что и кнопки. */
-export const railAvatarClass = 'size-11' as const
+export const railAvatarClass = 'size-10' as const
 /** Glyph внутри кнопки рельса (Home, Plus, Hash). */
 export const railGlyphClass = 'size-4.5' as const
 
@@ -105,7 +105,7 @@ export const shellDivider = 'border-shell-divider' as const
 
 /** Заголовок колонки (сайдбар канала, шапка канала): одна высота, липнет к верху. */
 export const shellColumnHeaderClass =
-  'sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider' as const
+  'sticky top-0 z-10 flex h-12.25 shrink-0 items-center gap-2 border-b border-shell-divider' as const
 
 /** Плавающие панели (UserPanel, композер): высота строки + отступ bottom-2. */
 export const FLOATING_BAR_HEIGHT_PX = 56
@@ -121,11 +121,8 @@ export function floatingBarReservePx(heightPx: number): number {
   return heightPx + FLOATING_BAR_BOTTOM_OFFSET_PX
 }
 
-/**
- * Бывший `rounded-lg` (= `--radius` / `--radius-lg` = 0.625rem ≈ 10px).
- * Форму даёт `<FloatingBarShell>` / `<Squircle>`, не CSS radius.
- */
-export const FLOATING_BAR_CORNER_RADIUS_PX = 10
+/** Радиус плавающих панелей Discord: 8px. Форму даёт `<Squircle>`. */
+export const FLOATING_BAR_CORNER_RADIUS_PX = 8
 
 export const floatingBarSquircleProps = {
   cornerRadius: FLOATING_BAR_CORNER_RADIUS_PX,

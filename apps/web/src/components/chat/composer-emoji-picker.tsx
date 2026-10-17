@@ -36,11 +36,11 @@ export function ComposerEmojiPicker({
           size="icon"
           className={
             // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-            triggerClassName ?? 'size-9 shrink-0'
+            triggerClassName ?? 'size-8 shrink-0'
           }
           disabled={disabled}
           title="Emoji" />}>
-          <SmileIcon className="size-4" />
+          <SmileIcon className="size-5" />
         </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">

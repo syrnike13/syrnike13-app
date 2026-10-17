@@ -832,6 +832,7 @@ html {
   --text-3xs--line-height: 0.875rem;
   --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
   --color-role-default: #4e5058;
+  --radius-shell: 0.75rem;
 }
 
 /* Settings shell: centered 64rem column with a 13.625rem nav. */

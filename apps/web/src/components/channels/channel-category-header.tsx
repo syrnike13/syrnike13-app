@@ -35,23 +35,23 @@ export function ChannelCategoryHeader({
 
   const header = (
     <div
-      className="group/category flex items-center gap-0.5 px-1 pt-3 pb-0.5"
+      className="group/category flex h-10 items-center gap-1 px-2 pt-4"
       data-channel-category=""
     >
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-0.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1 text-left"
         onClick={onToggleCollapsed}
       >
+        <span className="truncate text-sm font-medium leading-4.5 text-muted-foreground">
+          {title}
+        </span>
         <ChevronDownIcon
           className={cn(
             'size-3 shrink-0 text-muted-foreground transition-transform',
             collapsed && '-rotate-90',
           )}
         />
-        <span className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {title}
-        </span>
       </button>
       {canManage ? (
         <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/category:opacity-100">

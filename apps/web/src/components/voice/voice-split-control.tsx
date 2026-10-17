@@ -47,7 +47,7 @@ export function splitControlMainButtonClass(
   }
 
   return cn(
-    'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+    'flex size-8 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerMainClass
       : success
@@ -82,7 +82,7 @@ function SplitControlChevron({
               : 'group-hover/media:bg-accent group-hover/media:text-foreground',
         )
       : cn(
-          'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          'flex h-8 w-4 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
           danger
             ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
             : success
