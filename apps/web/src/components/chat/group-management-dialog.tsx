@@ -12,7 +12,11 @@ import {
 } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -400,21 +404,24 @@ function GroupManagementDialogContent({
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button asChild type="button" variant="outline" size="sm">
-                  <label className="cursor-pointer">
-                    {t('uploadIcon')}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={busy}
-                      onChange={(event) => {
-                        setIconFile(event.target.files?.[0] ?? null)
-                        setRemoveIcon(false)
-                      }}
-                    />
-                  </label>
-                </Button>
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'cursor-pointer',
+                  )}
+                >
+                  {t('uploadIcon')}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={busy}
+                    onChange={(event) => {
+                      setIconFile(event.target.files?.[0] ?? null)
+                      setRemoveIcon(false)
+                    }}
+                  />
+                </label>
                 {channel.icon || iconFile ? (
                   <Button
                     type="button"

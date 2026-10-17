@@ -14,7 +14,10 @@ import type {
   DesktopDisplayMediaSource,
 } from '@syrnike13/platform'
 
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -494,21 +497,18 @@ function DisplaySourceTile({
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-            <Button
-              asChild
-              size="sm"
-              variant="inverse"
+            <span
+              aria-hidden="true"
+              className={buttonVariants({ size: 'sm', variant: 'inverse' })}
             >
-              <span aria-hidden="true">
-                {submitting ? (
-                  <Loader2Icon
-                    data-icon="inline-start"
-                    className="animate-spin"
-                  />
-                ) : null}
-                {t('sharePicker.share')}
-              </span>
-            </Button>
+              {submitting ? (
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
+              ) : null}
+              {t('sharePicker.share')}
+            </span>
           </div>
         </div>
       </button>

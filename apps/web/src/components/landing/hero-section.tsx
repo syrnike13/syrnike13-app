@@ -1,4 +1,8 @@
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PlatformIcon } from '#/components/platform-icons'
@@ -42,16 +46,17 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
 
       {/* Действие — вторая точка тяжести */}
       <div className="mt-14 flex w-full flex-col items-center gap-4">
-        <Button
-          size="lg"
-          asChild
-          className="h-14 w-full gap-2.5 text-[0.9375rem] font-semibold"
+        <a
+          data-homage-anchor="download"
+          href={current.url}
+          className={cn(
+            buttonVariants({ size: 'lg' }),
+            'h-14 w-full gap-2.5 text-[0.9375rem] font-semibold',
+          )}
         >
-          <a data-homage-anchor="download" href={current.url}>
-            <PlatformIcon platform={platform} className="size-4" />
-            {t('downloadFor', { platform: current.label })}
-          </a>
-        </Button>
+          <PlatformIcon platform={platform} className="size-4" />
+          {t('downloadFor', { platform: current.label })}
+        </a>
 
         {others.length > 0 && (
           <div

@@ -5,7 +5,11 @@ import { Effect } from 'effect'
 import { Loader2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   Card,
   CardContent,
@@ -142,9 +146,9 @@ function InviteJoinPage() {
               {t('join')}
             </Button>
           ) : (
-            <Button asChild>
-              <Link to="/login">{t('loginToJoin')}</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants())}>
+              {t('loginToJoin')}
+            </Link>
           )}
         </CardContent>
       </Card>

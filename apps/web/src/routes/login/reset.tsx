@@ -7,7 +7,11 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
@@ -80,9 +84,9 @@ function ResetRequestPage() {
         </CardHeader>
         {sent ? (
           <CardFooter>
-            <Button className="w-full" asChild>
-              <Link to="/login">{t('toLogin')}</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         ) : (
           <form

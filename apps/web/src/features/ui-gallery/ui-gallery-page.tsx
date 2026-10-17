@@ -46,7 +46,10 @@ import {
   AvatarImage,
 } from '@syrnike13/ui/primitives/avatar'
 import { Badge } from '@syrnike13/ui/primitives/badge'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import {
   Card,
   CardAction,
@@ -1287,9 +1290,13 @@ export function UiGalleryPage() {
         </div>
         <nav className="flex flex-wrap gap-1">
           {COMPONENT_NAV.map((item) => (
-            <Button key={item.id} asChild size="sm" variant="ghost">
-              <a href={`#${item.id}`}>{item.label}</a>
-            </Button>
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+            >
+              {item.label}
+            </a>
           ))}
         </nav>
       </header>

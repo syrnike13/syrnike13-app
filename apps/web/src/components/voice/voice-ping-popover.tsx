@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { VoicePingChart } from '#/components/voice/voice-ping-chart'
 import {
   PopoverContent,
@@ -135,9 +135,15 @@ export function VoicePingPopoverContent({
           {t('ping.footnote')}
         </p>
 
-        <Button asChild variant="secondary" size="sm" className="w-full">
-          <Link to="/app/voice-debug">{t('ping.debug')}</Link>
-        </Button>
+        <Link
+          to="/app/voice-debug"
+          className={cn(
+            buttonVariants({ variant: 'secondary', size: 'sm' }),
+            'w-full',
+          )}
+        >
+          {t('ping.debug')}
+        </Link>
       </div>
     </PopoverContent>
   )

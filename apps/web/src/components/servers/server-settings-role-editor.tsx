@@ -14,7 +14,10 @@ import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
 import { FxImage } from '#/components/ui/fx-image'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
@@ -452,30 +455,29 @@ export function ServerSettingsRoleEditor({
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={!canEditRole || saving}
-                  asChild
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'secondary', size: 'sm' }),
+                    'cursor-pointer',
+                    (!canEditRole || saving) &&
+                      'pointer-events-none opacity-50',
+                  )}
                 >
-                  <label className="cursor-pointer">
-                    {t('upload')}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={!canEditRole || saving}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (!file) return
-                        setIconFile(file)
-                        setRemoveIcon(false)
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                </Button>
+                  {t('upload')}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={!canEditRole || saving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) return
+                      setIconFile(file)
+                      setRemoveIcon(false)
+                      event.target.value = ''
+                    }}
+                  />
+                </label>
                 {previewIconUrl ? (
                   <Button
                     type="button"

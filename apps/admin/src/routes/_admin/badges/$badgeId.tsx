@@ -4,7 +4,8 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Loader2Icon } from '#/components/icons'
 import { AdminEmpty, AdminPage } from '#/components/layout/page'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import { BadgeEditorPage } from '#/features/badges/badge-editor'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -50,9 +51,14 @@ function EditBadgePage() {
       >
         <AdminEmpty>{t('notFound')}</AdminEmpty>
         <div className="mt-4">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/badges">{t('backToCatalog')}</Link>
-          </Button>
+          <Link
+            to="/badges"
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+            )}
+          >
+            {t('backToCatalog')}
+          </Link>
         </div>
       </AdminPage>
     )

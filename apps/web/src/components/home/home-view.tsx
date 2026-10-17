@@ -17,7 +17,10 @@ import { toast } from 'sonner'
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import { FloatingMenuItem } from '@syrnike13/ui/primitives/floating-menu'
 import { Input } from '@syrnike13/ui/primitives/input'
 import {
@@ -345,22 +348,25 @@ export function HomeView({ tab }: HomeViewProps) {
           </div>
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {visibleTabs.map((item) => (
-              <Button
+              <Link
                 key={item.id}
-                variant={tab === item.id ? 'secondary' : 'ghost'}
-                size="sm"
-                className="shrink-0"
-                asChild
+                to={prefix}
+                search={{ tab: item.id }}
+                className={cn(
+                  buttonVariants({
+                    variant: tab === item.id ? 'secondary' : 'ghost',
+                    size: 'sm',
+                  }),
+                  'shrink-0',
+                )}
               >
-                <Link to={prefix} search={{ tab: item.id }}>
-                  <span className="inline-flex items-center gap-1.5">
-                    {t(`tabs.${item.key}`)}
-                    {item.id === 'pending' ? (
-                      <NotificationBadge badge={friendRequestBadge} />
-                    ) : null}
-                  </span>
-                </Link>
-              </Button>
+                <span className="inline-flex items-center gap-1.5">
+                  {t(`tabs.${item.key}`)}
+                  {item.id === 'pending' ? (
+                    <NotificationBadge badge={friendRequestBadge} />
+                  ) : null}
+                </span>
+              </Link>
             ))}
           </nav>
           <Button

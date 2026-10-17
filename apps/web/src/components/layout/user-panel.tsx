@@ -12,7 +12,10 @@ import { VoiceSoundSplitControl } from '#/components/voice/voice-sound-split-con
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverAnchor,
@@ -340,21 +343,18 @@ export function UserPanel({
                 >
                   {t('telegram.dismiss')}
                 </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  variant="inverse"
-                  className="min-w-0 flex-1 px-2 text-xs"
+                <a
+                  href={TELEGRAM_CHANNEL_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  tabIndex={telegramPromoOpen ? 0 : -1}
+                  className={cn(
+                    buttonVariants({ variant: 'inverse', size: 'sm' }),
+                    'min-w-0 flex-1 px-2 text-xs',
+                  )}
                 >
-                  <a
-                    href={TELEGRAM_CHANNEL_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    tabIndex={telegramPromoOpen ? 0 : -1}
-                  >
-                    {t('telegram.open')}
-                  </a>
-                </Button>
+                  {t('telegram.open')}
+                </a>
               </div>
             </div>
           </div>

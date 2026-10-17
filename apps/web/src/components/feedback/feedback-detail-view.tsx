@@ -20,13 +20,14 @@ import {
   TagIcon,
   UserIcon,
 } from '#/components/icons'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchFeedbackSuggestion } from '#/features/api/feedback-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
+import { cn } from '#/lib/utils'
 
 export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   const t = useTranslations('feedback.detail')
@@ -79,15 +80,14 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   return (
     <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="gradient-surface-chrome flex h-14 shrink-0 items-center gap-2 border-b border-shell-divider px-3 sm:px-5">
-        <Button variant="ghost" size="icon" asChild>
-          <Link
-            to={`${prefix}/feedback`}
-            search={{ view: 'all' }}
-            aria-label={t('backAria')}
-          >
-            <ChevronLeftIcon className="size-5" />
-          </Link>
-        </Button>
+        <Link
+          to={`${prefix}/feedback`}
+          search={{ view: 'all' }}
+          aria-label={t('backAria')}
+          className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+        >
+          <ChevronLeftIcon className="size-5" />
+        </Link>
         <span className="truncate text-sm font-semibold">{t('title')}</span>
       </header>
 
@@ -159,14 +159,16 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
               <section className="gradient-surface-raised mt-8 rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6">
                 <h2 className="font-semibold">{t('mergedTitle')}</h2>
                 {suggestion.merge_reason ? <p className="mt-1 text-muted-foreground">{suggestion.merge_reason}</p> : null}
-                <Button variant="link" className="mt-1 h-auto p-0" asChild>
-                  <Link
-                    to={`${prefix}/feedback/$feedbackId`}
-                    params={{ feedbackId: suggestion.merged_into }}
-                  >
-                    {t('openMainIdea')}
-                  </Link>
-                </Button>
+                <Link
+                  to={`${prefix}/feedback/$feedbackId`}
+                  params={{ feedbackId: suggestion.merged_into }}
+                  className={cn(
+                    buttonVariants({ variant: 'link' }),
+                    'mt-1 h-auto p-0',
+                  )}
+                >
+                  {t('openMainIdea')}
+                </Link>
               </section>
             ) : null}
           </article>

@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -78,17 +78,18 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
               : null
 
         return (
-          <Button
+          <Link
             key={channel._id}
-            variant={active ? 'secondary' : 'ghost'}
-            className="h-11 justify-start gap-2.5 px-2.5 text-base font-normal"
-            asChild
+            to={`${prefix}/c/$channelId`}
+            params={{ channelId: channel._id }}
+            search={{ m: undefined }}
+            className={cn(
+              buttonVariants({
+                variant: active ? 'secondary' : 'ghost',
+              }),
+              'h-11 justify-start gap-2.5 px-2.5 text-base font-normal',
+            )}
           >
-            <Link
-              to={`${prefix}/c/$channelId`}
-              params={{ channelId: channel._id }}
-              search={{ m: undefined }}
-            >
               {dmUser ? (
                 <UserAvatar
                   user={dmUser}
@@ -129,7 +130,6 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                 />
               ) : null}
             </Link>
-          </Button>
         )
       })}
     </nav>

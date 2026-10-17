@@ -30,7 +30,10 @@ import {
   RotateCcwIcon,
   SearchIcon,
 } from '#/components/icons'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import {
   Popover,
@@ -199,11 +202,17 @@ export function FeedbackView({
       <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           {prefix === '/m' ? (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
-              <Link to="/m" search={{ tab: 'online' }} aria-label={t('backHomeAria')}>
-                <ChevronLeftIcon className="size-5" />
-              </Link>
-            </Button>
+            <Link
+              to="/m"
+              search={{ tab: 'online' }}
+              aria-label={t('backHomeAria')}
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon' }),
+                'size-8 shrink-0',
+              )}
+            >
+              <ChevronLeftIcon className="size-5" />
+            </Link>
           ) : null}
           <div className="flex shrink-0 items-center gap-2">
             <LightbulbIcon className="size-5 shrink-0 text-primary" aria-hidden />

@@ -7,7 +7,11 @@ import { SettingsIcon, XIcon } from '#/components/icons'
 import { SettingsProfileStatusDialog } from '#/components/settings/settings-profile-status-dialog'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { MobilePresenceDrawer } from '#/components/user/mobile-presence-drawer'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchUserProfile } from '#/features/api/users-api'
@@ -54,19 +58,18 @@ export function MobileProfilePage() {
           onAvatarPress={() => setPresenceDrawerOpen(true)}
           bannerOverlay={
             <>
-              <Button
-                type="button"
-                variant="scrim"
-                size="icon"
-                className="size-10 rounded-full"
+              <Link
+                to="/m"
+                search={{ tab: 'online' }}
+                className={cn(
+                  buttonVariants({ variant: 'scrim', size: 'icon' }),
+                  'size-10 rounded-full',
+                )}
                 aria-label={t('close')}
                 title={t('close')}
-                asChild
               >
-                <Link to="/m" search={{ tab: 'online' }}>
-                  <XIcon className="size-5" />
-                </Link>
-              </Button>
+                <XIcon className="size-5" />
+              </Link>
               <Button
                 type="button"
                 variant="scrim"

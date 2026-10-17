@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { APP_LOGO_SRC } from '#/lib/brand'
 import { config } from '#/lib/config'
+import { cn } from '#/lib/utils'
 
 export function SiteHeader() {
   const t = useTranslations('landing')
@@ -23,15 +24,17 @@ export function SiteHeader() {
         </span>
       </Link>
 
-      <Button asChild variant="inverse" size="sm" className="rounded-full px-4">
-        <Link
-          data-homage-anchor="header-cta"
-          to="/app"
-          search={{ tab: 'online' }}
-        >
-          {t('openInBrowser')}
-        </Link>
-      </Button>
+      <Link
+        data-homage-anchor="header-cta"
+        to="/app"
+        search={{ tab: 'online' }}
+        className={cn(
+          buttonVariants({ variant: 'inverse', size: 'sm' }),
+          'rounded-full px-4',
+        )}
+      >
+        {t('openInBrowser')}
+      </Link>
     </header>
   )
 }

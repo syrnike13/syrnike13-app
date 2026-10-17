@@ -2,7 +2,8 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   CardDescription,
   CardFooter,
@@ -38,9 +39,9 @@ function CheckEmailPage() {
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button className="w-full" asChild>
-              <Link to="/login">{t('toLogin')}</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         </AuthCard>
       </AuthLayout>
@@ -63,12 +64,15 @@ function CheckEmailPage() {
           </CardDescription>
         </CardHeader>
         <CardFooter className="flex flex-col gap-2">
-          <Button className="w-full" asChild>
-            <Link to="/login">{t('toLogin')}</Link>
-          </Button>
-          <Button variant="ghost" className="w-full" asChild>
-            <Link to="/login/resend">{t('check.resend')}</Link>
-          </Button>
+          <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+            {t('toLogin')}
+          </Link>
+          <Link
+            to="/login/resend"
+            className={cn(buttonVariants({ variant: 'ghost' }), 'w-full')}
+          >
+            {t('check.resend')}
+          </Link>
         </CardFooter>
       </AuthCard>
     </AuthLayout>

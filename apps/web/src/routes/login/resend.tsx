@@ -12,7 +12,11 @@ import {
   useHcaptchaRef,
 } from '#/components/auth/hcaptcha-widget'
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
@@ -123,9 +127,9 @@ function ResendVerificationPage() {
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-2">
-            <Button className="w-full" asChild>
-              <Link to="/login">{t('toLogin')}</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         </AuthCard>
       </AuthLayout>

@@ -13,7 +13,7 @@ import {
   railIconItemRowClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Tooltip,
@@ -112,16 +112,21 @@ export function RailIconButton<TTo extends string>(
             unread={unread}
           />
           <Squircle asChild {...railIconSquircleProps}>
-            <Button
-              size="icon"
-              variant={active ? 'default' : 'ghost'}
-              className={cn(railIconButtonClass, !active && railIconIdleClass)}
-              asChild
-            >
-              <TooltipTrigger asChild>
-                <a {...anchorProps}>{children}</a>
-              </TooltipTrigger>
-            </Button>
+            <TooltipTrigger asChild>
+              <a
+                {...anchorProps}
+                className={cn(
+                  buttonVariants({
+                    variant: active ? 'default' : 'ghost',
+                    size: 'icon',
+                  }),
+                  railIconButtonClass,
+                  !active && railIconIdleClass,
+                )}
+              >
+                {children}
+              </a>
+            </TooltipTrigger>
           </Squircle>
         </div>
         <TooltipContent side="right" sideOffset={8} className="font-black">

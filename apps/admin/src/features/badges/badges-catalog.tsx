@@ -13,7 +13,7 @@ import {
 } from '#/components/layout/page'
 import { PlusIcon } from '#/components/icons'
 import { SearchField } from '#/components/search-field'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -63,12 +63,13 @@ export function BadgesCatalogPage() {
     <AdminPage
       title={t('title')}
       actions={
-        <Button asChild size="sm">
-          <Link to="/badges/new">
-            <PlusIcon className="size-4" aria-hidden />
-            {t('create')}
-          </Link>
-        </Button>
+        <Link
+          to="/badges/new"
+          className={cn(buttonVariants({ size: 'sm' }))}
+        >
+          <PlusIcon className="size-4" aria-hidden />
+          {t('create')}
+        </Link>
       }
     >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">

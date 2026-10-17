@@ -3,7 +3,10 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -56,17 +59,17 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           {t('dock.title', { count: participants.length })}
         </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-8 shrink-0"
-          asChild
+        <Link
+          to={`${prefix}/c/$channelId`}
+          params={{ channelId }}
+          search={{ m: undefined }}
+          className={cn(
+            buttonVariants({ size: 'sm', variant: 'ghost' }),
+            'h-8 shrink-0',
+          )}
         >
-          <Link to={`${prefix}/c/$channelId`} params={{ channelId }} search={{ m: undefined }}>
-            {t('dock.openStage')}
-          </Link>
-        </Button>
+          {t('dock.openStage')}
+        </Link>
         <Button
           type="button"
           size="icon"

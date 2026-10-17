@@ -217,11 +217,11 @@ describe('ServerSettingsPanelContent', () => {
     const unsavedBar = screen.getByRole('status')
     expect(unsavedBar.querySelector('.gradient-surface-solid')).toBeTruthy()
     expect(
-      screen.getByRole('button', { name: 'Сбросить' }).dataset.variant,
-    ).toBe('ghost')
+      screen.getByRole('button', { name: 'Сбросить' }),
+    ).toHaveClass('hover:bg-muted')
     expect(
-      screen.getByRole('button', { name: 'Сохранить' }).dataset.variant,
-    ).toBe('default')
+      screen.getByRole('button', { name: 'Сохранить' }),
+    ).toHaveClass('bg-primary')
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 

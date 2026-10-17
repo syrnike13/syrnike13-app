@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
@@ -112,9 +113,9 @@ function VerifyEmailPage() {
         ) : null}
         {state.status !== 'loading' ? (
           <CardFooter className="flex flex-col gap-2">
-            <Button className="w-full" asChild>
-              <Link to="/login">{t('verify.toLogin')}</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('verify.toLogin')}
+            </Link>
           </CardFooter>
         ) : null}
       </AuthCard>

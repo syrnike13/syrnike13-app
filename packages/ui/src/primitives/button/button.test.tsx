@@ -17,14 +17,11 @@ test('renders a button and forwards clicks', () => {
   expect(onClick).toHaveBeenCalledOnce()
 })
 
-test('asChild renders the child element with button props', () => {
-  render(
-    <Button asChild>
-      <a href="/settings">Настройки</a>
-    </Button>,
-  )
+test('applies upstream shadcn variant classes', () => {
+  render(<Button variant="outline">Настройки</Button>)
 
-  const link = screen.getByRole('link', { name: 'Настройки' })
-  expect(link).toHaveAttribute('data-slot', 'button')
-  expect(link).toHaveAttribute('href', '/settings')
+  const button = screen.getByRole('button', { name: 'Настройки' })
+  expect(button).toHaveAttribute('data-slot', 'button')
+  expect(button).toHaveClass('border-border')
+  expect(button).toHaveClass('bg-background')
 })

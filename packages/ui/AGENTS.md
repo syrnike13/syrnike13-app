@@ -21,7 +21,7 @@
 
 | Задача | Бери | Не делай |
 | --- | --- | --- |
-| Кнопка | `Button` (`default`, `destructive`, `outline`, `secondary`, `ghost`, `link`; размеры `xs…lg`, `icon*`) | `<button className="bg-… rounded-…">`, свои классы формы |
+| Кнопка | `Button` (shadcn Base UI `base-nova`: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link` + продуктовые варианты; размеры `xs…lg`, `icon*`) | `<button className="bg-… rounded-…">`, свои классы формы |
 | Иконка-кнопка | `IconButton` + `aria-label` | фиксированные `size-8` вне компактных панелей |
 | Статус | `Badge` (`default`, `secondary`, `outline`, `destructive`, `success`, `warning`, `muted`) | `span` с `bg-emerald-500/15` |
 | Поверхность | `Squircle`, `Card`, `LayerCard` | `div` с `rounded-[…]`, локальные тени |
@@ -35,6 +35,8 @@
 | Строка списка | `ListItem` | `<button className="flex w-full … hover:bg-…">` |
 
 Каталог расширяется по мере переноса примитивов. Приложения импортируют примитивы напрямую из `@syrnike13/ui/primitives/*`; app-local `components/ui` содержит только продуктовые обёртки (`fx-image`, `resizable`, `sonner`).
+
+`Button` собран на `@base-ui/react/button` и повторяет исходник shadcn `base-nova`; продуктовые варианты и плотная шкала размеров добавлены ниже upstream-вариантов. Ссылки не оборачивайте в `Button`: используйте `buttonVariants({ variant, size })` на `Link`/`<a>`. Для составных не-нативных элементов у Base UI есть `render` prop.
 
 ## Правила
 
