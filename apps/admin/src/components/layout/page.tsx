@@ -33,13 +33,13 @@ export function AdminPage({
             {back ? (
               <Link
                 to={back.to}
-                className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground"
               >
                 <ArrowLeftIcon className="size-3.5" aria-hidden />
                 <span className="hidden sm:inline">{back.label}</span>
               </Link>
             ) : null}
-            <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+            <h1 className="truncate text-[0.9375rem] font-semibold tracking-tight">{title}</h1>
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
@@ -80,7 +80,7 @@ export function AdminSectionHeader({
   return (
     <div
       className={cn(
-        'border-b border-border/60 px-4 py-2.5 text-[12px] font-medium text-muted-foreground',
+        'border-b border-border/60 px-4 py-2.5 text-xs font-medium text-muted-foreground',
         className,
       )}
     >
@@ -99,7 +99,7 @@ export function AdminEmpty({
   return (
     <div
       className={cn(
-        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-[13px] text-muted-foreground',
+        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-[0.8125rem] text-muted-foreground',
         className,
       )}
     >

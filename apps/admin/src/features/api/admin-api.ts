@@ -5,6 +5,7 @@ import type {
   DiagnosticReportStatus,
 } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import type { Translator } from '@syrnike13/ui/i18n'
 import { Effect, Schema } from 'effect'
 
 import { apiRequestEffect } from '#/lib/api/client'
@@ -104,28 +105,32 @@ export function updateAdminDiagnosticReport(
 
 export const downloadAdminDiagnosticReportEffect = Effect.fn(
   'admin.diagnostics.download',
-)(function*(token: string, id: string) {
+)(function*(token: string, id: string, t: Translator) {
   const response = yield* Effect.tryPromise({
     try: (signal) =>
       fetch(
         `${config.apiUrl}/admin/diagnostics/${encodeURIComponent(id)}/download`,
         { headers: { 'X-Session-Token': token }, signal },
       ),
-    catch: () => new Error('Не удалось подключиться к API'),
+    catch: () => new Error(t('download.connectError')),
   })
   if (!response.ok) {
     return yield* Effect.fail(
-      new Error(`Не удалось скачать отчёт: HTTP ${response.status}`),
+      new Error(t('download.httpError', { status: response.status })),
     )
   }
   return yield* Effect.tryPromise({
     try: () => response.blob(),
-    catch: () => new Error('Не удалось прочитать архив отчёта'),
+    catch: () => new Error(t('download.readError')),
   })
 })
 
-export function downloadAdminDiagnosticReport(token: string, id: string) {
-  return Effect.runPromise(downloadAdminDiagnosticReportEffect(token, id))
+export function downloadAdminDiagnosticReport(
+  token: string,
+  id: string,
+  t: Translator,
+) {
+  return Effect.runPromise(downloadAdminDiagnosticReportEffect(token, id, t))
 }
 
 export const fetchAdminBadgesEffect = Effect.fn('admin.badges.fetchAll')(

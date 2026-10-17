@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import type { Badge } from '@syrnike13/api-types'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import { MetaFlag } from '#/components/meta-flag'
@@ -20,14 +21,15 @@ import { cn } from '#/lib/utils'
 
 type BadgeFilter = 'all' | 'visible' | 'hidden' | 'premium'
 
-const FILTERS: Array<{ value: BadgeFilter; label: string }> = [
-  { value: 'all', label: 'Все' },
-  { value: 'visible', label: 'Видимые' },
-  { value: 'hidden', label: 'Скрытые' },
-  { value: 'premium', label: 'Premium' },
+const FILTERS: Array<{ value: BadgeFilter; labelKey: string }> = [
+  { value: 'all', labelKey: 'filters.all' },
+  { value: 'visible', labelKey: 'filters.visible' },
+  { value: 'hidden', labelKey: 'filters.hidden' },
+  { value: 'premium', labelKey: 'filters.premium' },
 ]
 
 export function BadgesCatalogPage() {
+  const t = useTranslations('badges.catalog')
   const auth = useAuth()
   const token = auth.session?.token
   const [query, setQuery] = useState('')
@@ -59,12 +61,12 @@ export function BadgesCatalogPage() {
 
   return (
     <AdminPage
-      title="Бейджи"
+      title={t('title')}
       actions={
         <Button asChild size="sm">
           <Link to="/badges/new">
             <PlusIcon className="size-4" aria-hidden />
-            Создать
+            {t('create')}
           </Link>
         </Button>
       }
@@ -73,7 +75,7 @@ export function BadgesCatalogPage() {
         <SearchField
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск"
+          placeholder={t('searchPlaceholder')}
           className="sm:max-w-xs"
         />
         <div className="flex flex-wrap gap-1">
@@ -83,13 +85,13 @@ export function BadgesCatalogPage() {
               type="button"
               onClick={() => setFilter(item.value)}
               className={cn(
-                'h-8 rounded-md px-2.5 text-[12px] transition-colors',
+                'h-8 rounded-md px-2.5 text-xs transition-colors',
                 filter === item.value
                   ? 'bg-accent font-medium text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </div>
@@ -104,12 +106,12 @@ export function BadgesCatalogPage() {
       ) : badges.length === 0 ? (
         <AdminEmpty>
           {filtered ? (
-            'Ничего не найдено'
+            t('emptyFiltered')
           ) : (
             <span>
-              Каталог пуст.{' '}
+              {t('emptyCatalog')}{' '}
               <Link to="/badges/new" className="text-primary hover:underline">
-                Создать бейдж
+                {t('createBadge')}
               </Link>
             </span>
           )}
@@ -128,6 +130,7 @@ export function BadgesCatalogPage() {
 }
 
 function BadgeRow({ badge }: { badge: Badge }) {
+  const t = useTranslations('badges.catalog')
   return (
     <li className="border-b border-border/50 last:border-0">
       <Link
@@ -137,17 +140,19 @@ function BadgeRow({ badge }: { badge: Badge }) {
       >
         <BadgeIcon badge={badge} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium">{badge.name}</div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
+          <div className="truncate text-[0.8125rem] font-medium">{badge.name}</div>
+          <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
             {badge.slug}
           </div>
         </div>
         <div className="hidden items-center gap-3 sm:flex">
           <MetaFlag tone={badge.visible ? 'ok' : 'muted'}>
-            {badge.visible ? 'видимый' : 'скрытый'}
+            {badge.visible ? t('visible') : t('hidden')}
           </MetaFlag>
-          {badge.premium ? <MetaFlag tone="accent">premium</MetaFlag> : null}
-          <span className="w-8 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+          {badge.premium ? (
+            <MetaFlag tone="accent">{t('premium')}</MetaFlag>
+          ) : null}
+          <span className="w-8 text-right font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
             {badge.display_order}
           </span>
         </div>

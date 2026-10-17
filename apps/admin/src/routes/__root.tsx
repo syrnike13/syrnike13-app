@@ -42,7 +42,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: 'width=device-width, initial-scale=1, viewport-fit=cover',
       },
       { title: config.appTitle },
-      { name: 'description', content: 'Админка syrnike13' },
+      {
+        name: 'description',
+        // design-allow hardcoded-string: document metadata is resolved before LocaleProvider mounts
+        content: 'Админка syrnike13',
+      },
     ],
   }),
   component: RootComponent,

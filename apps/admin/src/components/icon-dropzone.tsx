@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FolderPlusIcon } from '#/components/icons'
 import { cn } from '#/lib/utils'
@@ -14,6 +15,7 @@ export function IconDropzone({
   onFileChange: (file: File | null) => void
   disabled?: boolean
 }) {
+  const t = useTranslations('common')
   const [dragging, setDragging] = useState(false)
 
   const handleFiles = useCallback(
@@ -53,7 +55,7 @@ export function IconDropzone({
         </span>
       )}
       <span className="max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
-        {file ? file.name : 'PNG или WebP · перетащите или нажмите'}
+        {file ? file.name : t('uploadHint')}
       </span>
       <input
         type="file"

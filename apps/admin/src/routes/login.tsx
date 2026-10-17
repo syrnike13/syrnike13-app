@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -15,6 +16,7 @@ export const Route = createFileRoute('/login')({
 })
 
 function LoginPage() {
+  const t = useTranslations('login')
   const auth = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -36,7 +38,7 @@ function LoginPage() {
           : auth.login({ email, password }),
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось войти')
+      toast.error(error instanceof Error ? error.message : t('error'))
     } finally {
       setSubmitting(false)
     }
@@ -52,9 +54,11 @@ function LoginPage() {
             <SparklesIcon className="size-4" aria-hidden />
           </span>
           <div>
-            <div className="text-[15px] font-semibold">syrnike13 admin</div>
+            <div className="text-[0.9375rem] font-semibold">syrnike13 admin</div>
             {nightly ? (
-              <div className="text-[10px] font-medium uppercase text-warning">Nightly</div>
+              <div className="text-[0.625rem] font-medium uppercase text-warning">
+                Nightly
+              </div>
             ) : null}
           </div>
         </div>
@@ -63,15 +67,15 @@ function LoginPage() {
           onSubmit={submit}
           className="rounded-md border border-border/70 bg-card p-5"
         >
-          <h1 className="text-[15px] font-semibold">Вход</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            {auth.mfaChallenge ? 'Пароль 2FA' : 'Аккаунт администратора'}
+          <h1 className="text-[0.9375rem] font-semibold">{t('title')}</h1>
+          <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+            {auth.mfaChallenge ? t('mfaSubtitle') : t('subtitle')}
           </p>
 
           <div className="mt-5 space-y-4">
             {auth.mfaChallenge ? (
               <div className="space-y-2">
-                <Label htmlFor="mfa">Пароль 2FA</Label>
+                <Label htmlFor="mfa">{t('mfaLabel')}</Label>
                 <Input
                   id="mfa"
                   type="password"
@@ -95,7 +99,7 @@ function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Пароль</Label>
+                  <Label htmlFor="password">{t('password')}</Label>
                   <Input
                     id="password"
                     type="password"
@@ -108,16 +112,16 @@ function LoginPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Входим...' : 'Войти'}
+              {submitting ? t('submitting') : t('submit')}
             </Button>
 
             {auth.mfaChallenge ? (
               <button
                 type="button"
-                className="w-full text-center text-[13px] text-muted-foreground hover:text-foreground"
+                className="w-full text-center text-[0.8125rem] text-muted-foreground hover:text-foreground"
                 onClick={() => auth.cancelMfa()}
               >
-                Назад
+                {t('back')}
               </button>
             ) : null}
           </div>

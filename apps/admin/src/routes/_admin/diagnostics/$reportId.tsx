@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect, Option, Schema } from 'effect'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   AdminEmpty,
@@ -29,6 +30,10 @@ export const Route = createFileRoute('/_admin/diagnostics/$reportId')({
 })
 
 function DiagnosticReportPage() {
+  const t = useTranslations('diagnostics.report')
+  const tStatus = useTranslations('diagnostics.status')
+  const tDownload = useTranslations('diagnostics.download')
+  const { locale } = useLocale()
   const { reportId } = Route.useParams()
   const auth = useAuth()
   const token = auth.session?.token
@@ -55,9 +60,10 @@ function DiagnosticReportPage() {
     mutationFn: () => updateAdminDiagnosticReport(token!, reportId, { status, notes }),
     onSuccess: (value) => {
       queryClient.setQueryData(queryKeys.admin.diagnostic(reportId), value)
-      toast.success('Отчёт обновлён')
+      toast.success(t('updated'))
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Ошибка'),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t('updateError')),
   })
 
   const download = async () => {
@@ -65,7 +71,11 @@ function DiagnosticReportPage() {
     setDownloading(true)
     await Effect.runPromise(
       Effect.gen(function*() {
-        const blob = yield* downloadAdminDiagnosticReportEffect(token, reportId)
+        const blob = yield* downloadAdminDiagnosticReportEffect(
+          token,
+          reportId,
+          tDownload,
+        )
         const url = yield* Effect.sync(() => URL.createObjectURL(blob))
         yield* Effect.sync(() => {
           const anchor = document.createElement('a')
@@ -81,7 +91,7 @@ function DiagnosticReportPage() {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось скачать отчёт',
+                : t('downloadError'),
             )
           }),
         ),
@@ -91,20 +101,31 @@ function DiagnosticReportPage() {
   }
 
   if (report.isLoading) {
-    return <AdminPage title="Диагностический отчёт"><AdminEmpty><Loader2Icon className="mr-2 inline size-4 animate-spin" />Загрузка</AdminEmpty></AdminPage>
+    return (
+      <AdminPage title={t('title')}>
+        <AdminEmpty>
+          <Loader2Icon className="mr-2 inline size-4 animate-spin" />
+          {t('loading')}
+        </AdminEmpty>
+      </AdminPage>
+    )
   }
   if (report.isError) {
     const notFound = report.error instanceof ApiError && report.error.status === 404
     return (
-      <AdminPage title="Диагностический отчёт">
+      <AdminPage title={t('title')}>
         <AdminEmpty>
-          {notFound ? 'Отчёт не найден' : 'Не удалось загрузить диагностический отчёт'}
+          {notFound ? t('notFound') : t('loadError')}
         </AdminEmpty>
       </AdminPage>
     )
   }
   if (!report.data) {
-    return <AdminPage title="Диагностический отчёт"><AdminEmpty>Отчёт не найден</AdminEmpty></AdminPage>
+    return (
+      <AdminPage title={t('title')}>
+        <AdminEmpty>{t('notFound')}</AdminEmpty>
+      </AdminPage>
+    )
   }
 
   const value = report.data
@@ -112,33 +133,50 @@ function DiagnosticReportPage() {
   return (
     <AdminPage
       title={value.trigger_code}
-      back={{ to: '/diagnostics', label: 'Диагностика' }}
+      back={{ to: '/diagnostics', label: t('back') }}
       actions={
         <Button type="button" size="sm" variant="outline" disabled={downloading} onClick={() => void download()}>
           <DownloadIcon className="size-4" aria-hidden />
-          {downloading ? 'Скачивание…' : 'Скачать'}
+          {downloading ? t('downloading') : t('download')}
         </Button>
       }
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <AdminSection className="p-4">
-          <dl className="grid gap-x-6 gap-y-3 text-[12px] sm:grid-cols-2">
-            <Field label="ID" value={value.id} mono />
-            <Field label="Пользователь" value={value.user_id} mono />
-            <Field label="Создан" value={new Date(value.created_at * 1_000).toLocaleString('ru-RU')} />
-            <Field label="Удаление" value={new Date(value.expires_at * 1_000).toLocaleString('ru-RU')} />
-            <Field label="Область" value={value.area} />
-            <Field label="Серьёзность" value={value.severity} />
-            <Field label="Клиент" value={`${value.source} · ${value.platform}`} />
-            <Field label="Версия" value={`${value.release_channel} · ${value.app_version}`} />
-            <Field label="Размер" value={`${Math.ceil(value.size_bytes / 1024)} КБ`} />
-            <Field label="SHA-256" value={value.sha256} mono />
+          <dl className="grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2">
+            <Field label={t('fields.id')} value={value.id} mono />
+            <Field label={t('fields.user')} value={value.user_id} mono />
+            <Field
+              label={t('fields.created')}
+              value={new Date(value.created_at * 1_000).toLocaleString(locale)}
+            />
+            <Field
+              label={t('fields.expires')}
+              value={new Date(value.expires_at * 1_000).toLocaleString(locale)}
+            />
+            <Field label={t('fields.area')} value={value.area} />
+            <Field label={t('fields.severity')} value={value.severity} />
+            <Field
+              label={t('fields.client')}
+              value={`${value.source} · ${value.platform}`}
+            />
+            <Field
+              label={t('fields.version')}
+              value={`${value.release_channel} · ${value.app_version}`}
+            />
+            <Field
+              label={t('fields.size')}
+              value={t('sizeKb', {
+                kb: Math.ceil(value.size_bytes / 1024),
+              })}
+            />
+            <Field label={t('fields.sha256')} value={value.sha256} mono />
           </dl>
-          {value.description ? <p className="mt-4 border-t border-border/60 pt-4 text-[13px]">{value.description}</p> : null}
+          {value.description ? <p className="mt-4 border-t border-border/60 pt-4 text-[0.8125rem]">{value.description}</p> : null}
         </AdminSection>
 
         <AdminSection className="space-y-3 p-4">
-          <label className="block text-[12px] text-muted-foreground" htmlFor="diagnostic-status">Статус</label>
+          <label className="block text-xs text-muted-foreground" htmlFor="diagnostic-status">{t('statusLabel')}</label>
           <select
             id="diagnostic-status"
             value={status}
@@ -148,18 +186,18 @@ function DiagnosticReportPage() {
               )(event.target.value)
               if (Option.isSome(decoded)) setStatus(decoded.value)
             }}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-[13px]"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-[0.8125rem]"
           >
-            <option value="new">Новый</option>
-            <option value="investigating">В работе</option>
-            <option value="resolved">Решён</option>
+            <option value="new">{tStatus('new')}</option>
+            <option value="investigating">{tStatus('investigating')}</option>
+            <option value="resolved">{tStatus('resolved')}</option>
           </select>
-          <label className="block text-[12px] text-muted-foreground" htmlFor="diagnostic-notes">Заметки</label>
+          <label className="block text-xs text-muted-foreground" htmlFor="diagnostic-notes">{t('notes')}</label>
           <Textarea id="diagnostic-notes" value={notes} maxLength={4000} onChange={(event) => setNotes(event.target.value)} rows={8} />
         </AdminSection>
       </div>
       <AdminStickyFooter visible={dirty}>
-        <span className="text-[12px] text-muted-foreground">Есть несохранённые изменения</span>
+        <span className="text-xs text-muted-foreground">{t('unsaved')}</span>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -171,7 +209,7 @@ function DiagnosticReportPage() {
               setNotes(value.notes)
             }}
           >
-            Сбросить
+            {t('reset')}
           </Button>
           <Button
             type="button"
@@ -179,7 +217,7 @@ function DiagnosticReportPage() {
             disabled={update.isPending}
             onClick={() => update.mutate()}
           >
-            {update.isPending ? 'Сохранение…' : 'Сохранить'}
+            {update.isPending ? t('saving') : t('save')}
           </Button>
         </div>
       </AdminStickyFooter>
@@ -188,5 +226,5 @@ function DiagnosticReportPage() {
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className={mono ? 'mt-0.5 break-all font-mono text-[11px]' : 'mt-0.5 break-words'}>{value}</dd></div>
+  return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className={mono ? 'mt-0.5 break-all font-mono text-[0.6875rem]' : 'mt-0.5 break-words'}>{value}</dd></div>
 }

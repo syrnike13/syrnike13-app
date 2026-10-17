@@ -2,6 +2,7 @@ export {
   RiAddLine as PlusIcon,
   RiArrowLeftLine as ArrowLeftIcon,
   RiArrowDownSLine as ChevronDownIcon,
+  RiArrowRightLine as ArrowRightIcon,
   RiArrowUpSLine as ChevronUpIcon,
   RiAwardLine as AwardIcon,
   RiBugLine as BugIcon,
@@ -15,6 +16,7 @@ export {
   RiEyeLine as EyeIcon,
   RiEyeOffLine as EyeOffIcon,
   RiFolderAddLine as FolderPlusIcon,
+  RiGitMergeLine as GitMergeIcon,
   RiInformationLine as InfoIcon,
   RiLoader4Line as Loader2Icon,
   RiLogoutBoxRLine as LogOutIcon,
@@ -22,5 +24,6 @@ export {
   RiSparklingLine as SparklesIcon,
   RiStarLine as StarIcon,
   RiUserAddLine as UserPlusIcon,
+  RiUserLine as UserIcon,
   RiUserSearchLine as UserSearchIcon,
 } from '@remixicon/react'

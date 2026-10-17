@@ -1,5 +1,6 @@
 import { Link, Outlet, useBlocker, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 
 import {
@@ -20,10 +21,10 @@ import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'
 
 const NAV = [
-  { to: '/diagnostics', label: 'Диагностика', icon: BugIcon },
-  { to: '/badges', label: 'Бейджи', icon: AwardIcon },
-  { to: '/users', label: 'Пользователи', icon: UserSearchIcon },
-  { to: '/feedback', label: 'Обращения', icon: SparklesIcon },
+  { to: '/diagnostics', labelKey: 'nav.diagnostics', icon: BugIcon },
+  { to: '/badges', labelKey: 'nav.badges', icon: AwardIcon },
+  { to: '/users', labelKey: 'nav.users', icon: UserSearchIcon },
+  { to: '/feedback', labelKey: 'nav.feedback', icon: SparklesIcon },
 ] as const
 
 export function AdminShell({ children }: { children?: ReactNode }) {
@@ -35,15 +36,14 @@ export function AdminShell({ children }: { children?: ReactNode }) {
 }
 
 function AdminShellContent({ children }: { children?: ReactNode }) {
+  const t = useTranslations('shell')
   const auth = useAuth()
   const draftController = useAdminDraftController()
 
   useBlocker({
     shouldBlockFn: () => {
       if (!draftController?.isDirty) return false
-      return !window.confirm(
-        'Есть несохранённые изменения. Покинуть страницу без сохранения?',
-      )
+      return !window.confirm(t('leaveConfirm'))
     },
     enableBeforeUnload: () => Boolean(draftController?.isDirty),
   })
@@ -62,8 +62,8 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
             <SparklesIcon className="size-3.5" aria-hidden />
           </span>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-[13px] font-semibold">syrnike13</div>
-            <div className="text-[10px] text-muted-foreground">admin</div>
+            <div className="truncate text-[0.8125rem] font-semibold">syrnike13</div>
+            <div className="text-[0.625rem] text-muted-foreground">admin</div>
           </div>
         </div>
 
@@ -75,15 +75,15 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
 
         <div className="border-t border-border/60 p-2">
           {config.releaseChannel === 'nightly' ? (
-            <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-wide text-warning">
+            <div className="mb-2 px-2 text-[0.625rem] font-medium uppercase tracking-wide text-warning">
               Nightly
             </div>
           ) : null}
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-medium">{name}</div>
+              <div className="truncate text-xs font-medium">{name}</div>
               {auth.user?.username ? (
-                <div className="truncate text-[11px] text-muted-foreground">
+                <div className="truncate text-[0.6875rem] text-muted-foreground">
                   @{auth.user.username}
                 </div>
               ) : null}
@@ -92,13 +92,11 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
               variant="ghost"
               size="icon-sm"
               className="shrink-0 text-muted-foreground"
-              aria-label="Выйти"
+              aria-label={t('logoutAria')}
               onClick={() => {
                 if (
                   draftController?.isDirty &&
-                  !window.confirm(
-                    'Есть несохранённые изменения. Выйти без сохранения?',
-                  )
+                  !window.confirm(t('logoutConfirm'))
                 ) {
                   return
                 }
@@ -121,13 +119,14 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
 
 function NavLink({
   to,
-  label,
+  labelKey,
   icon: Icon,
 }: {
   to: string
-  label: string
+  labelKey: string
   icon: typeof AwardIcon
 }) {
+  const t = useTranslations('shell')
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const active = pathname === to || pathname.startsWith(`${to}/`)
 
@@ -135,14 +134,14 @@ function NavLink({
     <Link
       to={to}
       className={cn(
-        'flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] transition-colors',
+        'flex h-8 items-center gap-2 rounded-md px-2.5 text-[0.8125rem] transition-colors',
         active
           ? 'bg-sidebar-accent font-medium text-foreground'
           : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground',
       )}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
-      {label}
+      {t(labelKey)}
     </Link>
   )
 }

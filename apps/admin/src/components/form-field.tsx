@@ -16,8 +16,8 @@ export function FormField({
 }) {
   return (
     <div className={cn('grid gap-1.5', className)}>
-      <Label className="text-[12px] text-muted-foreground">{label}</Label>
-      {hint ? <p className="text-[11px] text-muted-foreground/80">{hint}</p> : null}
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      {hint ? <p className="text-[0.6875rem] text-muted-foreground/80">{hint}</p> : null}
       {children}
     </div>
   )

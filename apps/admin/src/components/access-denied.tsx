@@ -1,17 +1,19 @@
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 
 export function AccessDenied() {
+  const t = useTranslations('common')
   const auth = useAuth()
 
   return (
     <div className="flex h-svh items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-md border border-border/70 bg-card p-6 text-center">
-        <h1 className="text-[15px] font-semibold">Нет доступа</h1>
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          Нужен привилегированный аккаунт.
+        <h1 className="text-[0.9375rem] font-semibold">{t('accessDeniedTitle')}</h1>
+        <p className="mt-2 text-[0.8125rem] text-muted-foreground">
+          {t('accessDeniedDescription')}
         </p>
         {auth.session ? (
           <Button
@@ -20,7 +22,7 @@ export function AccessDenied() {
             className="mt-4"
             onClick={() => Effect.runFork(auth.logout())}
           >
-            Выйти
+            {t('logout')}
           </Button>
         ) : null}
       </div>

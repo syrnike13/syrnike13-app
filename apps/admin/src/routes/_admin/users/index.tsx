@@ -4,6 +4,7 @@ import type { Badge, User } from '@syrnike13/api-types'
 import { Effect, Schema } from 'effect'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import {
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/_admin/users/')({
 })
 
 function UsersPage() {
+  const t = useTranslations('users')
   const auth = useAuth()
   const token = auth.session?.token
   const navigate = useNavigate({ from: '/users/' })
@@ -64,7 +66,7 @@ function UsersPage() {
       Effect.runPromise(
         token
           ? fetchAdminUserEffect(token, lookup)
-          : Effect.fail(new Error('Нет сессии')),
+          : Effect.fail(new Error(t('noSession'))),
       ),
     onSuccess: (user) => {
       setSelectedUser(user)
@@ -72,7 +74,7 @@ function UsersPage() {
     },
     onError: (e) => {
       setSelectedUser(null)
-      toast.error(e instanceof Error ? e.message : 'Не найден')
+      toast.error(e instanceof Error ? e.message : t('notFound'))
     },
   })
 
@@ -88,14 +90,14 @@ function UsersPage() {
       Effect.runPromise(
         token && selectedUser
           ? assignAdminUserBadgeEffect(token, selectedUser._id, badge._id)
-          : Effect.fail(new Error('Нет пользователя')),
+          : Effect.fail(new Error(t('noUser'))),
       ),
     onSuccess: (assigned) => {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(e instanceof Error ? e.message : t('error'))
     },
   })
 
@@ -104,14 +106,14 @@ function UsersPage() {
       Effect.runPromise(
         token && selectedUser
           ? removeAdminUserBadgeEffect(token, selectedUser._id, badge._id)
-          : Effect.fail(new Error('Нет пользователя')),
+          : Effect.fail(new Error(t('noUser'))),
       ),
     onSuccess: (assigned) => {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(e instanceof Error ? e.message : t('error'))
     },
   })
 
@@ -133,12 +135,12 @@ function UsersPage() {
   }
 
   return (
-    <AdminPage title="Пользователи">
+    <AdminPage title={t('title')}>
       <form onSubmit={submit} className="mb-5 flex flex-col gap-2 sm:flex-row">
         <SearchField
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="id, username или username#0001"
+          placeholder={t('searchPlaceholder')}
           className="flex-1"
         />
         <Button
@@ -150,21 +152,21 @@ function UsersPage() {
           {findUserMutation.isPending ? (
             <Loader2Icon className="size-4 animate-spin" aria-hidden />
           ) : null}
-          Найти
+          {t('find')}
         </Button>
       </form>
 
       {!selectedUser ? (
-        <AdminEmpty>Найдите пользователя, чтобы управлять бейджами</AdminEmpty>
+        <AdminEmpty>{t('hint')}</AdminEmpty>
       ) : (
         <div className="space-y-4">
-          <div className="flex items-start justify-between gap-3 text-[13px]">
+          <div className="flex items-start justify-between gap-3 text-[0.8125rem]">
             <div className="min-w-0">
               <div className="font-medium">
                 {selectedUser.display_name ?? selectedUser.username}
               </div>
               <div className="text-muted-foreground">@{selectedUser.username}</div>
-              <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              <div className="mt-0.5 font-mono text-[0.6875rem] text-muted-foreground">
                 {selectedUser._id}
               </div>
             </div>
@@ -178,27 +180,27 @@ function UsersPage() {
                 void navigate({ search: { u: undefined }, replace: true })
               }}
             >
-              Сбросить
+              {t('reset')}
             </Button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <BadgeList
-              title={`Выданные · ${assigned.length}`}
+              title={t('assignedCount', { count: assigned.length })}
               badges={assigned}
               loading={userBadgesQuery.isLoading}
               icon={XIcon}
-              label="Снять"
+              label={t('remove')}
               variant="ghost"
               disabled={busy}
               onAction={(b) => removeMutation.mutate(b)}
             />
             <BadgeList
-              title={`Доступные · ${available.length}`}
+              title={t('availableCount', { count: available.length })}
               badges={available}
               loading={badgesQuery.isLoading}
               icon={PlusIcon}
-              label="Выдать"
+              label={t('assign')}
               variant="outline"
               disabled={busy}
               onAction={(b) => assignMutation.mutate(b)}
@@ -229,16 +231,17 @@ function BadgeList({
   disabled: boolean
   onAction: (badge: Badge) => void
 }) {
+  const t = useTranslations('users')
   return (
     <AdminSection>
       <AdminSectionHeader>{title}</AdminSectionHeader>
       {loading ? (
-        <div className="flex h-20 items-center justify-center text-[13px] text-muted-foreground">
+        <div className="flex h-20 items-center justify-center text-[0.8125rem] text-muted-foreground">
           <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
         </div>
       ) : badges.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px] text-muted-foreground">
-          Пусто
+        <div className="px-4 py-8 text-center text-[0.8125rem] text-muted-foreground">
+          {t('emptyList')}
         </div>
       ) : (
         <ul>
@@ -249,8 +252,8 @@ function BadgeList({
             >
               <BadgeIcon badge={badge} size="sm" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">{badge.name}</div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                <div className="truncate text-[0.8125rem]">{badge.name}</div>
+                <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
                   {badge.slug}
                 </div>
               </div>
