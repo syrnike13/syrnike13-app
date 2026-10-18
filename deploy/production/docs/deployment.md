@@ -75,25 +75,53 @@ That workflow runs:
 DEPLOY_SERVICES="api events autumn january gifbox crond pushd voice-ingress" ./scripts/deploy-on-server.sh
 ```
 
-The server then runs:
+The server pulls the listed images and updates them through
+`scripts/rollout.sh`:
 
-```bash
-docker compose pull api events autumn january gifbox crond pushd voice-ingress
-docker compose up -d --no-deps api events autumn january gifbox crond pushd voice-ingress
-docker compose ps api events autumn january gifbox crond pushd voice-ingress
-```
+- User-facing services (`api`, `events`, `autumn`, `january`, `gifbox`,
+  `voice-ingress`, `web`, `admin`) are rolled out. When the image or compose
+  definition changed, a second container starts next to the running one; once
+  it accepts connections on its port the old container is stopped. Caddy
+  reaches these services through network aliases (`syrnike13-<service>`) that
+  both containers share and retries requests that hit a stopping container, so
+  clients see no errors. A service whose image and definition are unchanged is
+  left running.
+- `events` hands its gateway clients over while it stops: it stops accepting
+  connections, asks each client to reconnect (spread over 10 seconds), and
+  exits once the clients moved, within its 45 second `stop_grace_period`.
+  Clients open the new connection before closing the old one, so no events are
+  lost. Each gateway process keeps its own presence region and only clears the
+  regions of processes that are gone, starting 60 seconds after boot.
+- Other services (`crond`, `pushd`, `livekit`, infrastructure) are recreated
+  by `docker compose up -d --no-deps` only when they changed.
+
+Rolled services must not set `container_name` or publish host ports, because
+two containers run side by side during an update. A new container that exits
+or does not accept connections within `ROLLOUT_READY_TIMEOUT` (180 seconds)
+is removed and the deploy fails with the old container still serving.
+
+A manual `docker compose up -d <service>` still recreates the container in
+place and causes a short interruption; use the deploy script instead.
 
 ## Updating The Full Stack
 
-Run `.github/workflows/deploy-production.yml` manually with `full_stack=true` when production infrastructure files changed and the entire stack should be reconciled.
+Run the production workflow manually with an empty `services` input when
+production infrastructure files changed and the entire stack should be
+reconciled.
 
-Without `DEPLOY_SERVICES`, the server runs:
+Without `DEPLOY_SERVICES`, the server pulls every image, creates missing
+services and removes orphans without touching running containers
+(`docker compose up -d --no-recreate --remove-orphans`), then updates every
+service the same way as above.
 
-```bash
-docker compose pull
-docker compose up -d --remove-orphans
-docker compose ps
-```
+## Updating LiveKit
+
+A LiveKit restart drops every room on the node. The LiveKit image is tagged
+with the git tree of `services/livekit-server` (`tree-<hash>`); a release
+reuses the existing image when that tree is unchanged, so `:latest` keeps its
+digest and the container is not recreated. Only a change under
+`services/livekit-server` publishes a new image and restarts LiveKit, so
+schedule such releases for a quiet time.
 
 ## Updating The Shared Edge
 

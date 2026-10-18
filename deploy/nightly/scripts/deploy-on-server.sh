@@ -33,6 +33,9 @@ retry() {
   done
 }
 
+# shellcheck source=../../production/scripts/rollout.sh
+source "$(dirname "$0")/rollout.sh"
+
 edge_network="${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
 
 if ! docker network inspect "$edge_network" >/dev/null 2>&1; then
@@ -62,11 +65,15 @@ if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying nightly services: ${services[*]}"
   retry 3 5 docker compose pull "${services[@]}"
-  docker compose up -d --no-deps "${services[@]}"
+  rollout_deploy "${services[@]}"
   docker compose ps "${services[@]}"
 else
   echo "Deploying the full nightly stack."
   retry 3 5 docker compose pull
-  docker compose up -d --remove-orphans
+  # Create missing services and remove orphans without touching running ones,
+  # then update each service in place.
+  docker compose up -d --no-recreate --remove-orphans
+  mapfile -t services < <(docker compose config --services)
+  rollout_deploy "${services[@]}"
   docker compose ps
 fi

@@ -38,6 +38,9 @@ if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then
   retry 3 5 sh -c 'printf "%s" "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/dev/null'
 fi
 
+# shellcheck source=rollout.sh
+source "$(dirname "$0")/rollout.sh"
+
 reverse_proxy="${SYRNIKE_REVERSE_PROXY:-false}"
 video_enabled="${SYRNIKE_VIDEO_ENABLED:-true}"
 edge_network="${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
@@ -103,13 +106,17 @@ if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
 
   if (( ${#application_services[@]} > 0 )); then
     retry 3 5 docker compose pull "${application_services[@]}"
-    docker compose up -d --no-deps "${application_services[@]}"
+    rollout_deploy "${application_services[@]}"
   fi
 
   docker compose ps "${services[@]}"
 else
   echo "Deploying the full production stack."
   retry 3 5 docker compose pull
-  docker compose up -d --remove-orphans
+  # Create missing services and remove orphans without touching running ones,
+  # then update each service in place.
+  docker compose up -d --no-recreate --remove-orphans
+  mapfile -t services < <(docker compose config --services)
+  rollout_deploy "${services[@]}"
   docker compose ps
 fi

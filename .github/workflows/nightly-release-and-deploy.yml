@@ -298,6 +298,7 @@ jobs:
           STAGING="$(mktemp -d)"
           cp -R deploy/nightly/. "$STAGING/"
           cp deploy/production/generate_config.sh "$STAGING/generate_config.sh"
+          cp deploy/production/scripts/rollout.sh "$STAGING/scripts/rollout.sh"
           cp deploy/production/secrets.env.example "$STAGING/secrets.env.example"
           tar -C "$STAGING" \
             --exclude='data*' \
