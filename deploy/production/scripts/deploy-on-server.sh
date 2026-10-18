@@ -84,6 +84,17 @@ fi
 CADDY_ADMIN_HOSTNAME="$admin_domain" \
   ./scripts/reload-caddy.sh "${CADDYFILE_CANDIDATE:-Caddyfile}"
 
+if livekit_b_enabled; then
+  echo "Writing livekit-b.yml for the second LiveKit node."
+  write_livekit_b_config \
+    "$(dotenv_value LIVEKIT_B_TCP_PORT 7883)" \
+    "$(dotenv_value LIVEKIT_B_TURN_UDP_PORT 3480)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_START 50201)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_END 50300)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_START 30201)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_END 30300)"
+fi
+
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying services: ${services[*]}"

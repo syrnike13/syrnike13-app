@@ -61,6 +61,17 @@ else
   echo "Existing nightly config found; keeping server-local secrets and generated config."
 fi
 
+if livekit_b_enabled; then
+  echo "Writing livekit-b.yml for the second nightly LiveKit node."
+  write_livekit_b_config \
+    "$(dotenv_value LIVEKIT_B_TCP_PORT 7884)" \
+    "$(dotenv_value LIVEKIT_B_TURN_UDP_PORT 3481)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_START 50301)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_END 50400)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_START 30301)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_END 30400)"
+fi
+
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying nightly services: ${services[*]}"

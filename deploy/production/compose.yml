@@ -251,6 +251,33 @@ services:
         source: ./livekit.yml
         target: /etc/livekit.yml
 
+  # Second LiveKit node, so a LiveKit update drains one node while the other
+  # takes new rooms. Enable with COMPOSE_PROFILES=livekit-b in the server-local
+  # .env after opening its ports (docs/deployment.md, "Two LiveKit nodes").
+  livekit-b:
+    image: ghcr.io/syrnike13/app-livekit-server:latest
+    profiles: ["livekit-b"]
+    logging: *json-log-rotation
+    depends_on:
+      redis:
+        condition: service_started
+    command: --config /etc/livekit.yml
+    ports:
+      - "${LIVEKIT_B_TCP_PORT:-7883}:${LIVEKIT_B_TCP_PORT:-7883}"
+      - "${LIVEKIT_B_TURN_UDP_PORT:-3480}:${LIVEKIT_B_TURN_UDP_PORT:-3480}/udp"
+      - "${LIVEKIT_B_TURN_RELAY_RANGE_START:-30201}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30300}:${LIVEKIT_B_TURN_RELAY_RANGE_START:-30201}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30300}/udp"
+      - "${LIVEKIT_B_RTC_PORT_RANGE_START:-50201}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50300}:${LIVEKIT_B_RTC_PORT_RANGE_START:-50201}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50300}/udp"
+    volumes:
+      - type: bind
+        source: ./livekit-b.yml
+        target: /etc/livekit.yml
+    networks:
+      default:
+        aliases:
+          - livekit
+          - syrnike13-livekit
+    restart: always
+
   # Web App
   web:
     image: ghcr.io/syrnike13/app-web:latest

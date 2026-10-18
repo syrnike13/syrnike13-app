@@ -230,6 +230,35 @@ services:
           - syrnike13-nightly-livekit
     restart: always
 
+  # Second LiveKit node, so a LiveKit update drains one node while the other
+  # takes new rooms. Enable with COMPOSE_PROFILES=livekit-b in the server-local
+  # .env after opening its ports (docs/deployment.md, "Two LiveKit nodes").
+  livekit-b:
+    image: ghcr.io/syrnike13/app-livekit-server:nightly
+    profiles: ["livekit-b"]
+    logging: *json-log-rotation
+    depends_on:
+      redis:
+        condition: service_started
+    command: --config /etc/livekit.yml
+    ports:
+      - "${LIVEKIT_B_TCP_PORT:-7884}:${LIVEKIT_B_TCP_PORT:-7884}"
+      - "${LIVEKIT_B_TURN_UDP_PORT:-3481}:${LIVEKIT_B_TURN_UDP_PORT:-3481}/udp"
+      - "${LIVEKIT_B_TURN_RELAY_RANGE_START:-30301}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30400}:${LIVEKIT_B_TURN_RELAY_RANGE_START:-30301}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30400}/udp"
+      - "${LIVEKIT_B_RTC_PORT_RANGE_START:-50301}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50400}:${LIVEKIT_B_RTC_PORT_RANGE_START:-50301}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50400}/udp"
+    volumes:
+      - type: bind
+        source: ./livekit-b.yml
+        target: /etc/livekit.yml
+    networks:
+      default:
+        aliases:
+          - livekit
+      edge:
+        aliases:
+          - syrnike13-nightly-livekit
+    restart: always
+
   web:
     image: ghcr.io/syrnike13/app-web:nightly
     # Keeps hashed assets of previous builds for tabs opened before a deploy.

@@ -121,7 +121,44 @@ with the git tree of `services/livekit-server` (`tree-<hash>`); a release
 reuses the existing image when that tree is unchanged, so `:latest` keeps its
 digest and the container is not recreated. Only a change under
 `services/livekit-server` publishes a new image and restarts LiveKit, so
-schedule such releases for a quiet time.
+schedule such releases for a quiet time, or run two LiveKit nodes.
+
+### Two LiveKit nodes
+
+With the `livekit-b` compose profile a second LiveKit node runs next to
+`livekit`. Both share Redis, keys and webhooks; any node accepts signalling
+and routes a participant to the node of its room. A LiveKit update then drains
+one node at a time with `docker stop -t $LIVEKIT_DRAIN_TIMEOUT` (default 900
+seconds): the draining node takes no new rooms, its rooms stay up until they
+empty, and rooms still open at the timeout are closed, so their clients
+reconnect to the other node. Voice channels that are never empty therefore
+see one reconnect per node update; all other rooms see none.
+
+The second node needs its own host ports. Defaults:
+
+| | TCP (ICE) | TURN UDP | TURN relay UDP | RTC UDP |
+| --- | --- | --- | --- | --- |
+| production `livekit-b` | 7883 | 3480 | 30201-30300 | 50201-50300 |
+| nightly `livekit-b` | 7884 | 3481 | 30301-30400 | 50301-50400 |
+
+To enable it:
+
+1. Open these ports in the host and provider firewalls. Calls whose room lands
+   on a node with blocked ports fail to connect media.
+2. Add `COMPOSE_PROFILES=livekit-b` to the server-local `.env`. Override any
+   port there with `LIVEKIT_B_TCP_PORT`, `LIVEKIT_B_TURN_UDP_PORT`,
+   `LIVEKIT_B_TURN_RELAY_RANGE_START`/`_END` or
+   `LIVEKIT_B_RTC_PORT_RANGE_START`/`_END`.
+3. Run a full-stack deploy. The deploy script writes `livekit-b.yml` from
+   `livekit.yml` with the second node's ports on every run, so edit only
+   `livekit.yml`. It refuses to write it when `livekit.yml` sets
+   `rtc.udp_port`, since both nodes would then share that port.
+4. Check that both nodes are registered (`redis-cli HLEN nodes` in the
+   project's Redis) and join a call on each node.
+
+The first node keeps its compose definition, so enabling the profile does not
+restart it. Each node uses roughly as much CPU and memory as its rooms need;
+see `server-sizing.md`.
 
 ## Updating The Shared Edge
 

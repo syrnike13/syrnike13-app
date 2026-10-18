@@ -78,7 +78,10 @@ import /etc/caddy/sites/*.caddyfile
 
 	route /livekit* {
 		uri strip_prefix /livekit
-		reverse_proxy http://syrnike13-livekit-1:7880 {
+		# The second node (livekit-b profile) takes signalling while the first one
+		# is replaced; any node routes a participant to the node of its room.
+		reverse_proxy http://syrnike13-livekit-1:7880 http://syrnike13-livekit:7880 {
+			import rolling_upstream
 			header_down Location "^/" "/livekit/"
 		}
 	}
@@ -186,6 +189,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /livekit* {
 		uri strip_prefix /livekit
 		reverse_proxy http://syrnike13-nightly-livekit:7880 {
+			import rolling_upstream
 			header_down Location "^/" "/livekit/"
 		}
 	}
