@@ -207,6 +207,8 @@ export function ChannelSidebarItem({
 
   const label = getChannelLabel(channel, users, currentUserId, tChat)
   const active = channel._id === activeChannelId
+  const connectedVoice = voice.channelId === channel._id
+  const connectedVoiceReady = connectedVoice && voice.status === 'connected'
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
   )
@@ -445,10 +447,12 @@ export function ChannelSidebarItem({
     >
       <div
         className={cn(
-          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-normal tracking-tight transition-colors',
+          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-medium tracking-tight transition-colors',
           active
-            ? 'bg-secondary font-medium text-secondary-foreground'
-            : 'text-foreground hover:bg-accent hover:text-accent-foreground',
+            ? 'bg-secondary text-foreground'
+            : connectedVoice
+              ? 'text-foreground hover:bg-accent'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
         )}
       >
         {!active && notificationBadge.hasUnread ? (
@@ -483,7 +487,7 @@ export function ChannelSidebarItem({
             ) : (
               <span
                 title={t('groupChat')}
-                className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+                className="flex size-5 shrink-0 items-center justify-center"
               >
                 <UsersIcon aria-hidden="true" className="size-5" />
               </span>
@@ -492,17 +496,17 @@ export function ChannelSidebarItem({
             <VoiceChannelIcon
               channel={channel}
               server={server}
-              className="size-5"
+              className={cn('size-5', connectedVoiceReady && 'text-chart-3')}
             />
           ) : restrictedTextChannel ? (
             <span
               title={t('privateText')}
-              className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+              className="flex size-5 shrink-0 items-center justify-center"
             >
               <RestrictedTextChannelIcon className="size-5" />
             </span>
           ) : (
-            <HashIcon className="size-5 shrink-0 text-muted-foreground" />
+            <HashIcon className="size-5 shrink-0" />
           )}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {voiceCallMarkerTitle ? (

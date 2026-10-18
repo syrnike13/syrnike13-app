@@ -27,10 +27,7 @@ export function VoiceChannelIcon({
   server,
   className,
 }: VoiceChannelIconProps) {
-  const iconClassName = cn(
-    'size-4 shrink-0 text-muted-foreground',
-    className,
-  )
+  const iconClassName = cn('size-4 shrink-0', className)
 
   if (isVoiceChannelRestricted(channel, server)) {
     return <RestrictedVoiceChannelIcon className={iconClassName} />

@@ -253,6 +253,44 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
   })
 
+  it('keeps regular channel names muted until hover or selection', () => {
+    mocks.voice.channelId = null
+    mocks.voice.status = 'idle'
+    renderVoiceItem('text-general')
+
+    const link = screen.getByRole('link', { name: 'main' })
+    const row = link.parentElement
+
+    expect(row?.className).toContain('text-muted-foreground')
+    expect(row?.className).toContain('hover:text-foreground')
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
+  })
+
+  it('keeps the medium weight for the active channel', () => {
+    mocks.voice.channelId = null
+    mocks.voice.status = 'idle'
+    renderVoiceItem('voice-main')
+
+    const row = screen.getByRole('link', { name: 'main' }).parentElement
+
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
+  })
+
+  it('renders the connected voice channel name in foreground', () => {
+    mocks.voice.channelId = 'voice-main'
+    mocks.voice.status = 'connected'
+    renderVoiceItem('text-general')
+
+    const row = screen.getByRole('link', { name: 'main' }).parentElement
+
+    expect(row?.className).toContain('text-foreground')
+    expect(row?.className).not.toContain('text-muted-foreground')
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
+  })
+
   it('reasserts the selected intent when reopening its voice screen', () => {
     renderVoiceItem('voice-main')
 
