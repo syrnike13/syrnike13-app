@@ -402,15 +402,16 @@ describe('EventsGateway migration', () => {
 
     send(old, { type: 'ChannelStartTyping', id: 'channel-1', user: 'user-1' })
     send(next, { type: 'Authenticated' })
-    send(next, { type: 'ChannelStartTyping', id: 'channel-1', user: 'user-1' })
-    expect(events).toEqual(['ChannelStartTyping'])
-
     send(next, { type: 'Ready', users: [] })
     expect(old?.close).toHaveBeenCalled()
-    expect(events).toEqual(['ChannelStartTyping', 'Authenticated', 'Ready'])
+    // The old connection kept the state current, so the new Ready snapshot
+    // must not replace it.
+    expect(events).toEqual(['ChannelStartTyping'])
 
+    // Events published while both connections were open arrive on both.
+    send(next, { type: 'ChannelStartTyping', id: 'channel-1', user: 'user-1' })
     send(next, { type: 'ChannelStopTyping', id: 'channel-1', user: 'user-1' })
-    expect(events.at(-1)).toBe('ChannelStopTyping')
+    expect(events).toEqual(['ChannelStartTyping', 'ChannelStopTyping'])
     expect(states).toEqual(['connected'])
 
     gateway.send({ type: 'BeginTyping', channel: 'channel-1' })
@@ -431,6 +432,35 @@ describe('EventsGateway migration', () => {
     send(next, { type: 'Ready', users: [] })
     expect(gateway.state).toBe('connected')
     expect(events).toEqual(['Ready'])
+  })
+
+  it('reconnects normally when the old connection closes before the new one opens', () => {
+    const [old] = mock.sockets
+    send(old, { type: 'Reconnect' })
+    const next = mock.sockets[1]
+    if (next) next.readyState = 0
+
+    old?.onclose?.()
+    expect(next?.close).toHaveBeenCalled()
+    expect(gateway.state).toBe('reconnecting')
+
+    vi.advanceTimersByTime(1_000)
+    expect(mock.sockets).toHaveLength(3)
+  })
+
+  it('does not skip events on a later ordinary reconnect', () => {
+    const [old] = mock.sockets
+    send(old, { type: 'Reconnect' })
+    send(old, { type: 'ChannelStartTyping', id: 'channel-1', user: 'user-1' })
+    const next = mock.sockets[1]
+    send(next, { type: 'Ready', users: [] })
+
+    next?.onclose?.()
+    vi.advanceTimersByTime(1_000)
+    const third = mock.sockets[2]
+    send(third, { type: 'Ready', users: [] })
+    send(third, { type: 'ChannelStartTyping', id: 'channel-1', user: 'user-1' })
+    expect(events).toEqual(['ChannelStartTyping', 'Ready', 'ChannelStartTyping'])
   })
 
   it('keeps the old connection when the new one fails', () => {

@@ -200,6 +200,7 @@ export class EventsGateway {
     if (!url) return
 
     this.#closeSocket()
+    this.#clearDedupe()
     this.#manualClose = false
     this.#setState(isReconnect ? 'reconnecting' : 'connecting')
 
@@ -238,7 +239,7 @@ export class EventsGateway {
       // The old gateway closed before the new connection was Ready; carry on
       // with the new connection as an ordinary reconnect.
       if (this.#migration) {
-        this.#swapToMigration('reconnecting')
+        this.#adoptMigrationAsReconnect()
         return
       }
       this.#handleUnexpectedClose()
@@ -315,7 +316,7 @@ export class EventsGateway {
         return
       migration.pending.push(message.data)
       if (READY_MESSAGE_PATTERN.test(message.data)) {
-        this.#swapToMigration('connected')
+        this.#completeMigration()
       }
     }
     ws.onerror = null
@@ -324,44 +325,68 @@ export class EventsGateway {
     }
   }
 
-  #swapToMigration(state: GatewayState) {
+  #detachPrimary() {
+    const previous = this.#ws
+    this.#ws = undefined
+    this.#stopHeartbeat()
+    if (!previous) return
+    previous.onopen = null
+    previous.onmessage = null
+    previous.onerror = null
+    previous.onclose = null
+    previous.close()
+  }
+
+  /**
+   * The new connection is Ready. The old connection delivered every event up to
+   * now, so the app state is current: the new connection's Ready (a snapshot
+   * taken before it subscribed) is not replayed, and events both connections
+   * delivered are skipped on the new one.
+   */
+  #completeMigration() {
     const migration = this.#migration
     if (!migration) return
     this.#migration = undefined
 
-    const previous = this.#ws
-    if (previous) {
-      previous.onopen = null
-      previous.onmessage = null
-      previous.onerror = null
-      previous.onclose = null
-      previous.close()
-    }
-    this.#stopHeartbeat()
+    this.#detachPrimary()
+    this.#ws = migration.ws
+    this.#attachPrimary(migration.ws)
+    this.#touchActivity()
+    this.#startHeartbeat()
+    this.#dedupeUntil = Date.now() + MIGRATION_DEDUPE_MS
+    this.#flushReliableQueue()
+  }
+
+  /**
+   * The old connection closed before the new one was Ready, so events may have
+   * been missed: continue on the new connection as a reconnect and let its
+   * Ready replace the state.
+   */
+  #adoptMigrationAsReconnect() {
+    const migration = this.#migration
+    if (!migration) return
+    this.#migration = undefined
+    this.#clearDedupe()
 
     const ws = migration.ws
-    if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
-      // The new connection failed meanwhile; fall back to a normal reconnect.
+    if (ws.readyState !== WebSocket.OPEN) {
+      // Still connecting or already failed: a normal reconnect has timeouts
+      // and backoff that a pending socket lacks.
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
-      this.#ws = undefined
+      ws.close()
       this.#handleUnexpectedClose()
       return
     }
 
     this.#ws = ws
     this.#attachPrimary(ws)
-    if (ws.readyState === WebSocket.OPEN) {
-      this.#touchActivity()
-      this.#startHeartbeat()
-    }
-    this.#dedupeUntil = Date.now() + MIGRATION_DEDUPE_MS
-    if (state !== 'connected') this.#setState(state)
-
+    this.#touchActivity()
+    this.#startHeartbeat()
+    this.#setState('reconnecting')
     for (const data of migration.pending) {
       if (this.#ws !== ws) return
-      if (this.#isDuplicateAfterSwap(data)) continue
       this.#handleMessage(data)
     }
   }
@@ -374,6 +399,11 @@ export class EventsGateway {
     migration.ws.onmessage = null
     migration.ws.onclose = null
     migration.ws.close()
+  }
+
+  #clearDedupe() {
+    this.#beforeSwap.clear()
+    this.#dedupeUntil = 0
   }
 
   #rememberBeforeSwap(data: string) {
