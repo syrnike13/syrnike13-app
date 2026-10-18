@@ -8,9 +8,10 @@ use std::{
 use async_tungstenite::WebSocketStream;
 use authifier::AuthifierEvent;
 use fred::{
+    clients::SubscriberClient,
     error::RedisErrorKind,
     interfaces::{ClientLike, EventInterface, PubsubInterface},
-    types::{ReconnectPolicy, RedisConfig},
+    types::{Message, ReconnectPolicy, RedisConfig},
 };
 use futures::{
     channel::oneshot,
@@ -32,6 +33,7 @@ use syrnike_presence::{
     create_session, delete_session, has_recent_activity, touch_session, PresenceClientKind,
     SYSTEM_IDLE_AFTER_MS, SYSTEM_IDLE_CHECK_INTERVAL_MS,
 };
+use tokio::sync::broadcast::error::RecvError;
 
 use async_std::{
     net::TcpStream,
@@ -162,7 +164,15 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
         }
     };
 
+    // Subscribe before sending Ready so events published while a large Ready
+    // payload is in flight are queued instead of lost.
+    let Some(subscription) = subscribe_events(&mut state, addr).await else {
+        delete_session(&user_id, presence_session_id).await;
+        return;
+    };
+
     if report_internal_error!(write.send(config.encode(&ready_payload)).await).is_err() {
+        subscription.quit().await;
         delete_session(&user_id, presence_session_id).await;
         return;
     }
@@ -171,6 +181,7 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
     if !slowmodes.is_empty() {
         let event = EventV1::UserSlowmodes { slowmodes };
         if report_internal_error!(write.send(config.encode(&event)).await).is_err() {
+            subscription.quit().await;
             delete_session(&user_id, presence_session_id).await;
             return;
         }
@@ -198,6 +209,7 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
         let listener = listener_with_kill_signal(
             db,
             &mut state,
+            subscription,
             addr,
             &config,
             topic_signal_r,
@@ -236,39 +248,21 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn listener_with_kill_signal(
-    db: &'static Database,
-    state: &mut State,
-    addr: SocketAddr,
-    config: &ProtocolConfiguration,
-    topic_signal_r: async_channel::Receiver<()>,
-    kill_signal_r: async_channel::Receiver<()>,
-    write: &Mutex<WsWriter>,
-    kill_signal_s: async_channel::Sender<()>,
-) {
-    listener(
-        db,
-        state,
-        addr,
-        config,
-        topic_signal_r,
-        kill_signal_r,
-        write,
-    )
-    .await;
-    kill_signal_s.send(()).await.ok();
+/// Redis PubSub connection for one client, with messages already queued.
+struct EventSubscription {
+    subscriber: SubscriberClient,
+    messages: async_channel::Receiver<Message>,
+    clean_up_r: async_channel::Receiver<()>,
 }
 
-async fn listener(
-    db: &'static Database,
-    state: &mut State,
-    addr: SocketAddr,
-    config: &ProtocolConfiguration,
-    topic_signal_r: async_channel::Receiver<()>,
-    kill_signal_r: async_channel::Receiver<()>,
-    write: &Mutex<WsWriter>,
-) {
+impl EventSubscription {
+    async fn quit(self) {
+        report_internal_error!(self.subscriber.quit().await).ok();
+    }
+}
+
+/// Connect to Redis PubSub and subscribe to the client's current topics.
+async fn subscribe_events(state: &mut State, addr: SocketAddr) -> Option<EventSubscription> {
     let syrnike_config = syrnike_config::config().await;
     let url = syrnike_config
         .database
@@ -278,13 +272,10 @@ async fn listener(
     let redis_config = RedisConfig::from_url(&url).unwrap();
     let mut builder = fred::types::Builder::from_config(redis_config);
     builder.set_policy(ReconnectPolicy::new_exponential(8, 100, 30_000, 2));
-    let subscriber = match report_internal_error!(builder.build_subscriber_client()) {
-        Ok(subscriber) => subscriber,
-        Err(_) => return,
-    };
+    let subscriber = report_internal_error!(builder.build_subscriber_client()).ok()?;
 
     if report_internal_error!(subscriber.init().await).is_err() {
-        return;
+        return None;
     }
 
     // Let Fred automatically re-subscribe to tracked channels on reconnect.
@@ -306,51 +297,138 @@ async fn listener(
         Ok(())
     });
 
+    // Fred's broadcast channel holds only a few messages and reports a lag
+    // once it overflows, so drain it into an unbounded queue right away. The
+    // queue absorbs events while Ready is still being written to the client.
     let mut message_rx = subscriber.message_rx();
+    let (messages_s, messages) = async_channel::unbounded();
+    spawn(async move {
+        loop {
+            match message_rx.recv().await {
+                Ok(message) => {
+                    if messages_s.send(message).await.is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    if !matches!(err, RecvError::Closed) {
+                        warn!("Redis subscriber for {addr:?} stopped receiving: {err:?}");
+                    }
+                    break;
+                }
+            }
+        }
+    });
+
+    let subscription = EventSubscription {
+        subscriber,
+        messages,
+        clean_up_r,
+    };
+
+    if !apply_subscription_changes(state, &subscription.subscriber, addr).await {
+        subscription.quit().await;
+        return None;
+    }
+
+    Some(subscription)
+}
+
+/// Flush queued subscription changes to Redis. Returns false on failure.
+async fn apply_subscription_changes(
+    state: &mut State,
+    subscriber: &SubscriberClient,
+    addr: SocketAddr,
+) -> bool {
+    match state.apply_state().await {
+        SubscriptionStateChange::Reset => {
+            if report_internal_error!(subscriber.unsubscribe_all().await).is_err() {
+                return false;
+            }
+
+            let subscribed = state.subscribed.read().await;
+            for id in subscribed.iter() {
+                if report_internal_error!(subscriber.subscribe(id).await).is_err() {
+                    return false;
+                }
+            }
+
+            #[cfg(debug_assertions)]
+            info!("{addr:?} has reset their subscriptions");
+        }
+        SubscriptionStateChange::Change { add, remove } => {
+            for id in remove {
+                #[cfg(debug_assertions)]
+                info!("{addr:?} unsubscribing from {id}");
+
+                if report_internal_error!(subscriber.unsubscribe(id).await).is_err() {
+                    return false;
+                }
+            }
+
+            for id in add {
+                #[cfg(debug_assertions)]
+                info!("{addr:?} subscribing to {id}");
+
+                if report_internal_error!(subscriber.subscribe(id).await).is_err() {
+                    return false;
+                }
+            }
+        }
+        SubscriptionStateChange::None => {}
+    }
+
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn listener_with_kill_signal(
+    db: &'static Database,
+    state: &mut State,
+    subscription: EventSubscription,
+    addr: SocketAddr,
+    config: &ProtocolConfiguration,
+    topic_signal_r: async_channel::Receiver<()>,
+    kill_signal_r: async_channel::Receiver<()>,
+    write: &Mutex<WsWriter>,
+    kill_signal_s: async_channel::Sender<()>,
+) {
+    listener(
+        db,
+        state,
+        &subscription,
+        addr,
+        config,
+        topic_signal_r,
+        kill_signal_r,
+        write,
+    )
+    .await;
+    subscription.quit().await;
+    kill_signal_s.send(()).await.ok();
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn listener(
+    db: &'static Database,
+    state: &mut State,
+    subscription: &EventSubscription,
+    addr: SocketAddr,
+    config: &ProtocolConfiguration,
+    topic_signal_r: async_channel::Receiver<()>,
+    kill_signal_r: async_channel::Receiver<()>,
+    write: &Mutex<WsWriter>,
+) {
     'out: loop {
         // Check for state changes for subscriptions.
-        match state.apply_state().await {
-            SubscriptionStateChange::Reset => {
-                if report_internal_error!(subscriber.unsubscribe_all().await).is_err() {
-                    break 'out;
-                }
-
-                let subscribed = state.subscribed.read().await;
-                for id in subscribed.iter() {
-                    if report_internal_error!(subscriber.subscribe(id).await).is_err() {
-                        break 'out;
-                    }
-                }
-
-                #[cfg(debug_assertions)]
-                info!("{addr:?} has reset their subscriptions");
-            }
-            SubscriptionStateChange::Change { add, remove } => {
-                for id in remove {
-                    #[cfg(debug_assertions)]
-                    info!("{addr:?} unsubscribing from {id}");
-
-                    if report_internal_error!(subscriber.unsubscribe(id).await).is_err() {
-                        break 'out;
-                    }
-                }
-
-                for id in add {
-                    #[cfg(debug_assertions)]
-                    info!("{addr:?} subscribing to {id}");
-
-                    if report_internal_error!(subscriber.subscribe(id).await).is_err() {
-                        break 'out;
-                    }
-                }
-            }
-            SubscriptionStateChange::None => {}
+        if !apply_subscription_changes(state, &subscription.subscriber, addr).await {
+            break 'out;
         }
 
-        let t1 = message_rx.recv().fuse();
+        let t1 = subscription.messages.recv().fuse();
         let t2 = topic_signal_r.recv().fuse();
         let t3 = kill_signal_r.recv().fuse();
-        let t4 = clean_up_r.recv().fuse();
+        let t4 = subscription.clean_up_r.recv().fuse();
 
         pin_mut!(t1, t2, t3, t4);
 
@@ -364,9 +442,9 @@ async fn listener(
             _ = t2 => {},
             message = t1 => {
                 // Handle incoming events.
-                let message = match report_internal_error!(message) {
-                    Ok(message) => message,
-                    Err(_) => break 'out
+                // The queue closes once the Redis subscriber stops.
+                let Ok(message) = message else {
+                    break 'out;
                 };
 
                 let event = match *REDIS_PAYLOAD_TYPE {
@@ -440,8 +518,6 @@ async fn listener(
             }
         }
     }
-
-    report_internal_error!(subscriber.quit().await).ok();
 }
 
 #[allow(clippy::too_many_arguments)]

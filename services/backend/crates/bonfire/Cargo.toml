@@ -17,6 +17,7 @@ once_cell = { workspace = true }
 redis-kiss = { workspace = true }
 lru_time_cache = { workspace = true }
 async-channel = { workspace = true }
+tokio = { workspace = true }
 
 # parsing
 querystring = { workspace = true }

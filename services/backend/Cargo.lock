@@ -9130,6 +9130,7 @@ dependencies = [
  "syrnike-permissions",
  "syrnike-presence",
  "syrnike-result",
+ "tokio 1.51.0",
  "ulid 1.2.1",
 ]
 
