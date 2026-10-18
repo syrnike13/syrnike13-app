@@ -16,8 +16,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/twitchtv/twirp"
 
@@ -33,7 +35,7 @@ import (
 type RoomService struct {
 	limitConf         config.LimitConfig
 	apiConf           config.APIConfig
-	router            routing.MessageRouter
+	router            routing.Router
 	roomAllocator     RoomAllocator
 	roomStore         ServiceStore
 	egressLauncher    rtc.EgressLauncher
@@ -48,7 +50,7 @@ type RoomService struct {
 func NewRoomService(
 	limitConf config.LimitConfig,
 	apiConf config.APIConfig,
-	router routing.MessageRouter,
+	router routing.Router,
 	roomAllocator RoomAllocator,
 	serviceStore ServiceStore,
 	egressLauncher rtc.EgressLauncher,
@@ -135,6 +137,12 @@ func (s *RoomService) DeleteRoom(ctx context.Context, req *livekit.DeleteRoomReq
 		return nil, ErrRoomNotFound
 	}
 
+	if s.clearRoomOfGoneNode(ctx, livekit.RoomName(req.Room)) {
+		res := &livekit.DeleteRoomResponse{}
+		RecordResponse(ctx, res)
+		return res, nil
+	}
+
 	// ensure at least one node is available to handle the request
 	room, err := s.router.CreateRoom(ctx, &livekit.CreateRoomRequest{Name: req.Room})
 	if err != nil {
@@ -166,6 +174,9 @@ func (s *RoomService) ListParticipants(ctx context.Context, req *livekit.ListPar
 		res, err = s.roomClient.ListParticipants(ctx, s.topicFormatter.RoomTopic(ctx, livekit.RoomName(req.Room)), req)
 	} else if store, ok := s.roomStore.(OSSServiceStore); ok {
 		var participants []*livekit.ParticipantInfo
+		if s.clearRoomOfGoneNode(ctx, livekit.RoomName(req.Room)) {
+			return &livekit.ListParticipantsResponse{}, nil
+		}
 		participants, err = store.ListParticipants(ctx, livekit.RoomName(req.Room))
 		if err == nil {
 			res = &livekit.ListParticipantsResponse{
@@ -222,6 +233,9 @@ func (s *RoomService) RemoveParticipant(ctx context.Context, req *livekit.RoomPa
 		if err != nil {
 			return nil, err
 		} else if !found {
+			return nil, ErrParticipantNotFound
+		}
+		if s.clearRoomOfGoneNode(ctx, livekit.RoomName(req.Room)) {
 			return nil, ErrParticipantNotFound
 		}
 	}
@@ -397,4 +411,41 @@ func (s *RoomService) PerformRpc(ctx context.Context, req *livekit.PerformRpcReq
 	res, err := s.participantClient.PerformRpc(ctx, s.topicFormatter.ParticipantTopic(ctx, roomName, livekit.ParticipantIdentity(req.DestinationIdentity)), req)
 	RecordResponse(ctx, res)
 	return res, err
+}
+
+// A node refreshes its stats every few seconds; one silent for this long is gone.
+const goneNodeAfter = 30 * time.Second
+
+// clearRoomOfGoneNode removes the stored state of a room whose node is gone
+// and reports whether it did. A node that stops without cleaning up (for
+// example when it is killed) leaves its rooms and participants in Redis;
+// requests routed to that node only time out, and the stale participants
+// would otherwise be listed until the room is reused.
+func (s *RoomService) clearRoomOfGoneNode(ctx context.Context, roomName livekit.RoomName) bool {
+	if exists, err := s.roomStore.RoomExists(ctx, roomName); err != nil || !exists {
+		return false
+	}
+
+	node, err := s.router.GetNodeForRoom(ctx, roomName)
+	switch {
+	case errors.Is(err, routing.ErrNotFound):
+	case err != nil:
+		return false
+	case node.Stats == nil || time.Since(time.Unix(node.Stats.UpdatedAt, 0)) < goneNodeAfter:
+		return false
+	}
+
+	store, ok := s.roomStore.(OSSServiceStore)
+	if !ok {
+		return false
+	}
+	if err := store.DeleteRoom(ctx, roomName); err != nil {
+		logger.Warnw("could not clear room of a gone node", err, "room", roomName)
+		return false
+	}
+	if err := s.router.ClearRoomState(ctx, roomName); err != nil {
+		logger.Warnw("could not clear room node of a gone node", err, "room", roomName)
+	}
+	logger.Infow("cleared room of a gone node", "room", roomName)
+	return true
 }
