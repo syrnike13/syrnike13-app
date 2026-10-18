@@ -20,13 +20,6 @@ pub async fn __remove_from_set_u32(conn: &mut Conn, key: &str, value: u32) {
     let _: Option<()> = conn.srem(key, value).await.ok();
 }
 
-/// Get set members as string
-pub async fn __get_set_members_as_string(conn: &mut Conn, key: &str) -> Vec<String> {
-    conn.smembers::<_, Vec<String>>(key)
-        .await
-        .expect("could not get set members as string")
-}
-
 /// Get set members as u32
 pub async fn __get_set_members_as_u32(conn: &mut Conn, key: &str) -> Vec<u32> {
     conn.smembers::<_, Vec<u32>>(key).await.unwrap_or_default()

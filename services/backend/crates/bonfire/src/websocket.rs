@@ -248,11 +248,18 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
     }
 }
 
+/// Events queued for a client that has not read them yet. A client this far
+/// behind is disconnected, as Fred would do once its own small buffer lags.
+const EVENT_QUEUE_CAPACITY: usize = 4096;
+
 /// Redis PubSub connection for one client, with messages already queued.
 struct EventSubscription {
     subscriber: SubscriberClient,
     messages: async_channel::Receiver<Message>,
     clean_up_r: async_channel::Receiver<()>,
+    /// Dropping this stops the task that queues messages, even when Fred
+    /// never closes its receiver (QUIT fails once Redis is gone).
+    _stop_forwarding: async_channel::Sender<()>,
 }
 
 impl EventSubscription {
@@ -298,18 +305,26 @@ async fn subscribe_events(state: &mut State, addr: SocketAddr) -> Option<EventSu
     });
 
     // Fred's broadcast channel holds only a few messages and reports a lag
-    // once it overflows, so drain it into an unbounded queue right away. The
+    // once it overflows, so move them into a larger queue right away. The
     // queue absorbs events while Ready is still being written to the client.
     let mut message_rx = subscriber.message_rx();
-    let (messages_s, messages) = async_channel::unbounded();
+    let (messages_s, messages) = async_channel::bounded(EVENT_QUEUE_CAPACITY);
+    let (stop_forwarding, stop_forwarding_r) = async_channel::bounded::<()>(1);
     spawn(async move {
         loop {
-            match message_rx.recv().await {
-                Ok(message) => {
-                    if messages_s.send(message).await.is_err() {
+            let received = select! {
+                received = message_rx.recv().fuse() => received,
+                _ = stop_forwarding_r.recv().fuse() => break,
+            };
+            match received {
+                Ok(message) => match messages_s.try_send(message) {
+                    Ok(()) => {}
+                    Err(async_channel::TrySendError::Full(_)) => {
+                        warn!("{addr:?} fell {EVENT_QUEUE_CAPACITY} events behind, disconnecting.");
                         break;
                     }
-                }
+                    Err(async_channel::TrySendError::Closed(_)) => break,
+                },
                 Err(err) => {
                     if !matches!(err, RecvError::Closed) {
                         warn!("Redis subscriber for {addr:?} stopped receiving: {err:?}");
@@ -324,6 +339,7 @@ async fn subscribe_events(state: &mut State, addr: SocketAddr) -> Option<EventSu
         subscriber,
         messages,
         clean_up_r,
+        _stop_forwarding: stop_forwarding,
     };
 
     if !apply_subscription_changes(state, &subscription.subscriber, addr).await {

@@ -22,11 +22,12 @@ mod websocket;
 
 /// Interval between presence liveness refreshes of this process.
 const REGION_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
-/// Delay before the first stale presence sweep. A gateway being replaced keeps
-/// serving its clients for a while after the new one starts, and a gateway that
-/// predates per-process regions has no liveness key to prove that.
-const DEAD_REGION_SWEEP_DELAY: Duration = Duration::from_secs(60);
-const DEAD_REGION_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+/// Delay before the first stale presence sweep. A gone process's liveness key
+/// needs up to its TTL to expire, and a gateway that predates per-process
+/// regions has no key, so give a gateway being replaced that long to stop.
+const DEAD_REGION_SWEEP_DELAY: Duration =
+    Duration::from_secs(syrnike_presence::REGION_ALIVE_TTL_SECS + 5);
+const DEAD_REGION_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 #[async_std::main]
 async fn main() {

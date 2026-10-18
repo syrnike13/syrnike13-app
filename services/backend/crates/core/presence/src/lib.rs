@@ -11,8 +11,8 @@ use std::{
 
 mod operations;
 use operations::{
-    __add_to_set_string, __add_to_set_u32, __delete_key, __get_set_members_as_string,
-    __get_set_members_as_u32, __get_set_size, __remove_from_set_string, __remove_from_set_u32,
+    __add_to_set_string, __add_to_set_u32, __delete_key, __get_set_members_as_u32, __get_set_size,
+    __remove_from_set_string, __remove_from_set_u32,
 };
 
 pub static REGION_ID: Lazy<u16> = Lazy::new(|| {
@@ -286,9 +286,18 @@ pub async fn filter_online(user_ids: &'_ [String]) -> HashSet<String> {
 /// Reset any stale presence data
 pub async fn clear_region(region_id: Option<&str>) {
     let region_id = region_id.unwrap_or(&*REGION_KEY);
-    let mut conn = get_connection().await.expect("Redis connection");
-
-    let sessions = __get_set_members_as_string(&mut conn, region_id).await;
+    // Runs periodically, so a Redis error skips this pass instead of panicking.
+    let Ok(mut conn) = get_connection().await else {
+        warn!("Could not clear presence region {region_id}: no Redis connection.");
+        return;
+    };
+    let sessions: Vec<String> = match conn.smembers(region_id).await {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            warn!("Could not read presence region {region_id}: {error:?}");
+            return;
+        }
+    };
     if !sessions.is_empty() {
         info!(
             "Cleaning up {} sessions, this may take a while...",
