@@ -51,6 +51,9 @@ services:
 
   api:
     image: ghcr.io/syrnike13/app-api:nightly
+    # Rust binaries run as PID 1 without signal handlers; the init process
+    # forwards SIGTERM so restarts do not wait out the 10s stop timeout.
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -74,6 +77,7 @@ services:
 
   events:
     image: ghcr.io/syrnike13/app-events:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -94,6 +98,7 @@ services:
 
   autumn:
     image: ghcr.io/syrnike13/app-file-server:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -112,6 +117,7 @@ services:
 
   january:
     image: ghcr.io/syrnike13/app-proxy:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -127,6 +133,7 @@ services:
 
   gifbox:
     image: ghcr.io/syrnike13/app-gifbox:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -142,6 +149,7 @@ services:
 
   crond:
     image: ghcr.io/syrnike13/app-crond:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -158,6 +166,7 @@ services:
 
   pushd:
     image: ghcr.io/syrnike13/app-pushd:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -176,6 +185,7 @@ services:
 
   voice-ingress:
     image: ghcr.io/syrnike13/app-voice-ingress:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:

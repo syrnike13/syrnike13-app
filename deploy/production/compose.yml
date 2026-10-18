@@ -76,6 +76,9 @@ services:
   # API server
   api:
     image: ghcr.io/syrnike13/app-api:latest
+    # Rust binaries run as PID 1 without signal handlers; the init process
+    # forwards SIGTERM so restarts do not wait out the 10s stop timeout.
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -95,6 +98,7 @@ services:
   # Events service
   events:
     image: ghcr.io/syrnike13/app-events:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -111,6 +115,7 @@ services:
   # File server
   autumn:
     image: ghcr.io/syrnike13/app-file-server:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -125,6 +130,7 @@ services:
   # Metadata and image proxy
   january:
     image: ghcr.io/syrnike13/app-proxy:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -136,6 +142,7 @@ services:
   # Tenor proxy
   gifbox:
     image: ghcr.io/syrnike13/app-gifbox:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -147,6 +154,7 @@ services:
   # Regular task daemon
   crond:
     image: ghcr.io/syrnike13/app-crond:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -164,6 +172,7 @@ services:
   # Push notification daemon
   pushd:
     image: ghcr.io/syrnike13/app-pushd:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -183,6 +192,7 @@ services:
    # Voice ingress daemon
   voice-ingress:
     image: ghcr.io/syrnike13/app-voice-ingress:latest
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     restart: always
