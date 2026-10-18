@@ -260,7 +260,7 @@ function BadgeList({
           {badges.map((badge) => (
             <li
               key={badge._id}
-              className="flex items-center gap-2 border-b border-border/50 px-3 py-2 last:border-0"
+              className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-0"
             >
               <BadgeIcon badge={badge} size="sm" />
               <div className="min-w-0 flex-1">

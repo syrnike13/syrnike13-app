@@ -22,7 +22,7 @@ export function AdminPage({
 }) {
   return (
     <div className={cn('admin-enter flex min-h-full flex-col', className)}>
-      <header className="shrink-0 border-b border-border/60">
+      <header className="shrink-0 border-b border-border">
         <div
           className={cn(
             'admin-page-inner flex h-14 items-center justify-between gap-4',
@@ -61,7 +61,7 @@ export function AdminSection({
   return (
     <section
       className={cn(
-        'overflow-hidden rounded-md border border-border/70 bg-card',
+        'overflow-hidden rounded-md border border-border bg-card',
         className,
       )}
     >
@@ -80,7 +80,7 @@ export function AdminSectionHeader({
   return (
     <div
       className={cn(
-        'border-b border-border/60 px-4 py-2.5 text-xs font-medium text-muted-foreground',
+        'border-b border-border px-4 py-2.5 text-xs font-medium text-muted-foreground',
         className,
       )}
     >
@@ -99,7 +99,7 @@ export function AdminEmpty({
   return (
     <div
       className={cn(
-        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-sm text-muted-foreground',
+        'rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground',
         className,
       )}
     >
@@ -118,7 +118,7 @@ export function AdminStickyFooter({
   if (!visible) return null
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-(--page-padding-x) mt-5 border-t border-border/60 bg-background/95 px-(--page-padding-x) py-3 backdrop-blur-sm">
+    <div className="sticky bottom-0 z-10 -mx-(--page-padding-x) mt-5 border-t border-border bg-background/95 px-(--page-padding-x) py-3 backdrop-blur-sm">
       <div className="flex w-full flex-wrap items-center justify-between gap-2">{children}</div>
     </div>
   )

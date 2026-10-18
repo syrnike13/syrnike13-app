@@ -340,7 +340,7 @@ export function BadgeEditorPage({
                 </Button>
               ) : null}
             </AdminSection>
-            <div className="flex items-center gap-2.5 rounded-md border border-border/60 bg-card/50 px-3 py-2">
+            <div className="flex items-center gap-2.5 rounded-md border border-border bg-card/50 px-3 py-2">
               <BadgeIcon
                 badge={{ icon: removeIcon && !iconFile ? undefined : badge?.icon }}
                 previewUrl={previewUrl}

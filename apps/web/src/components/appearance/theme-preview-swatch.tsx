@@ -50,7 +50,7 @@ export function ThemePreviewSwatch({
               'group relative h-11 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               active
                 ? 'border-primary shadow-sm ring-2 ring-primary/25'
-                : 'border-border/60 hover:border-foreground/40',
+                : 'border-border hover:border-foreground/40',
             )}
           />
         }

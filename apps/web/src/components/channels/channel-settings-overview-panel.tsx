@@ -91,7 +91,7 @@ function SettingsField({
   return (
     <section
       className={cn(
-        'border-b border-border/60 py-6 last:border-b-0',
+        'border-b border-border py-6 last:border-b-0',
         className,
       )}
     >

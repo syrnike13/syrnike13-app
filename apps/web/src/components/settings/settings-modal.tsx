@@ -137,7 +137,7 @@ function SettingsDesktopModal() {
         </DialogDescription>
 
         <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-          <div className="border-b border-border/60 p-3">
+          <div className="border-b border-border p-3">
             <button
               type="button"
               className={cn(
@@ -193,7 +193,7 @@ function SettingsDesktopModal() {
                   </button>
                 )
               })}
-              <div className="mt-2 border-t border-border/60 pt-2">
+              <div className="mt-2 border-t border-border pt-2">
                 <button
                   type="button"
                   className={cn(

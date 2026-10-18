@@ -244,7 +244,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     <div className="gradient-surface-content settings-page-grid relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground">
       <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
         <div className="ml-auto flex h-full w-54.5 min-w-0 flex-col">
-          <div className="border-b border-border/60 px-3 py-4">
+          <div className="border-b border-border px-3 py-4">
             <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               {server.name}
             </p>
@@ -341,7 +341,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
               ) : null}
 
               {server.owner === auth.user?._id ? (
-                <div className="border-t border-border/60 pt-3">
+                <div className="border-t border-border pt-3">
                   <Button
                     type="button"
                     variant="destructive"

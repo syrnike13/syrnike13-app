@@ -27,7 +27,7 @@ export function BadgeIcon({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/50 text-muted-foreground',
+        'inline-flex shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground',
         sizes.box,
         className,
       )}

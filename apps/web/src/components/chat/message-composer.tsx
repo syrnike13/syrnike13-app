@@ -622,7 +622,7 @@ export function MessageComposer({
             : 'pb-2',
           !floating && hasComposerHeader && 'min-h-14',
           !floating && !hasComposerHeader && 'min-h-11',
-          showComposerDivider && 'border-t border-foreground/10',
+          showComposerDivider && 'border-t border-border',
         )}
       >
         {!isEditing ? (

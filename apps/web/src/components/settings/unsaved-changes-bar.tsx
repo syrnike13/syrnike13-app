@@ -128,7 +128,7 @@ export function UnsavedChangesBar({
     >
       <div
         className={cn(
-          'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border/80 bg-popover px-4 py-3 text-popover-foreground shadow-lg',
+          'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border bg-popover px-4 py-3 text-popover-foreground shadow-lg',
           (showSaveAck || showResetAck) && 'justify-center',
         )}
       >

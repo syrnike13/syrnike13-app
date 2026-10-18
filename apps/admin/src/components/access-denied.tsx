@@ -10,7 +10,7 @@ export function AccessDenied() {
 
   return (
     <div className="flex h-svh items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-md border border-border/70 bg-card p-6 text-center">
+      <div className="w-full max-w-sm rounded-md border border-border bg-card p-6 text-center">
         <h1 className="text-base font-semibold">{t('accessDeniedTitle')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {t('accessDeniedDescription')}

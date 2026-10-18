@@ -427,7 +427,7 @@ function FeedbackModeTabs({
 
   return (
     <div
-      className="flex w-fit rounded-md border border-border/70 bg-card/40 p-0.5"
+      className="flex w-fit rounded-md border border-border bg-card/40 p-0.5"
       role="tablist"
       aria-label={t('tabsAria')}
     >
@@ -490,8 +490,8 @@ function FeedbackQueue({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <aside className="min-w-0 border-b border-border/60 lg:border-r lg:border-b-0">
-      <div className="flex h-16 items-center justify-between border-b border-border/60 px-5">
+    <aside className="min-w-0 border-b border-border lg:border-r lg:border-b-0">
+      <div className="flex h-16 items-center justify-between border-b border-border px-5">
         <h2 className="text-base font-semibold">
           {mode === 'pending' ? t('queuePending') : t('queuePublished')}
         </h2>
@@ -509,7 +509,7 @@ function FeedbackQueue({
         ))}
       </div>
       {hasNextPage ? (
-        <div className="flex justify-center border-t border-border/60 p-4">
+        <div className="flex justify-center border-t border-border p-4">
           <Button
             variant="secondary"
             disabled={loadingNextPage}
@@ -658,7 +658,7 @@ function FeedbackInspector({
           </div>
         </header>
 
-        <div className="rounded-md border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-foreground">
+        <div className="rounded-md border border-border bg-muted/20 px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-foreground">
           {suggestion.description}
         </div>
 
@@ -684,7 +684,7 @@ function FeedbackInspector({
       </div>
 
       {mode === 'pending' ? (
-        <div className="flex flex-col-reverse gap-2 border-t border-border/60 p-5 sm:flex-row sm:justify-end sm:p-6">
+        <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end sm:p-6">
           <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onReject}>
             <XIcon data-icon="inline-start" />
             {t('reject')}
@@ -775,7 +775,7 @@ function DuplicatePicker({
             />
           ))
         ) : (
-          <p className="rounded-md border border-dashed border-border/70 px-3 py-3 text-xs leading-5 text-muted-foreground">
+          <p className="rounded-md border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
             {t('noMatches')}
           </p>
         )}
@@ -807,7 +807,7 @@ function DuplicatePicker({
       {selectedTarget ? (
         <MergeComparison source={source} target={selectedTarget} />
       ) : (
-        <p className="rounded-md border border-dashed border-border/70 px-3 py-3 text-xs leading-5 text-muted-foreground">
+        <p className="rounded-md border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
           {t('pickComparison')}
         </p>
       )}
@@ -846,7 +846,7 @@ function DuplicateCandidate({
         'flex w-full items-start gap-3 rounded-md border p-3 text-left transition-colors',
         selected
           ? 'border-primary bg-primary/10'
-          : 'border-border/70 bg-card/35 hover:bg-muted/35',
+          : 'border-border bg-card/35 hover:bg-muted/35',
       )}
       aria-pressed={selected}
       onClick={onSelect}
@@ -903,7 +903,7 @@ function MergeComparison({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <div className={cn('overflow-hidden rounded-md border border-border/70 bg-card/35', compact ? 'text-xs' : '')}>
+    <div className={cn('overflow-hidden rounded-md border border-border bg-card/35', compact ? 'text-xs' : '')}>
       <div className="grid items-stretch gap-3 p-3 comparison-grid">
         <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
@@ -911,7 +911,7 @@ function MergeComparison({
         </div>
         <FeedbackComparisonItem label={t('target')} suggestion={target} target />
       </div>
-      <div className="border-t border-border/60 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+      <div className="border-t border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
         <span className="font-medium text-foreground">{t('warningPrefix')}</span>{' '}
         {t('warningText')}
       </div>
@@ -1082,7 +1082,7 @@ function PublishedFeedbackEditor({
   useAdminDraftRegistration(draftRegistration)
 
   return (
-    <div className="flex flex-col gap-4 border-t border-border/60 pt-5">
+    <div className="flex flex-col gap-4 border-t border-border pt-5">
       <div>
         <h3 className="text-base font-semibold">{t('publishTitle')}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -1156,10 +1156,10 @@ function FeedbackTag({
         tone === 'danger' && 'border-destructive/55 bg-destructive/10 text-destructive',
         tone === 'success' && 'border-success/55 bg-success/10 text-success',
         tone === 'area' && 'border-primary/50 bg-primary/10 text-primary',
-        tone === 'platform' && 'border-border/80 bg-secondary/50 text-muted-foreground',
+        tone === 'platform' && 'border-border bg-secondary/50 text-muted-foreground',
         tone === 'status' && 'border-warning/55 bg-warning/10 text-warning',
         tone === 'reason' && 'border-primary/40 bg-primary/10 text-primary',
-        tone === 'anonymous' && 'border-border/80 bg-muted/60 text-muted-foreground',
+        tone === 'anonymous' && 'border-border bg-muted/60 text-muted-foreground',
       )}
     >
       {children}

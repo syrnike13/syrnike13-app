@@ -64,7 +64,7 @@ export function RoleColourPreview({
             key={palette.id}
             className="overflow-hidden rounded-md border border-border"
           >
-            <div className="border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
               {palette.label}
             </div>
             <div

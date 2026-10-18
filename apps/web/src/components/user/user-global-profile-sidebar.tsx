@@ -411,7 +411,7 @@ export function UserGlobalProfileSidebar({
           )}
         </div>
 
-        <div className="mt-4 border-t border-border/50" />
+        <div className="mt-4 border-t border-border" />
 
         {/* Bio */}
         {profileBio ? (

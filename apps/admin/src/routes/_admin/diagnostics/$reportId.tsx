@@ -172,7 +172,7 @@ function DiagnosticReportPage() {
             />
             <Field label={t('fields.sha256')} value={value.sha256} mono />
           </dl>
-          {value.description ? <p className="mt-4 border-t border-border/60 pt-4 text-sm">{value.description}</p> : null}
+          {value.description ? <p className="mt-4 border-t border-border pt-4 text-sm">{value.description}</p> : null}
         </AdminSection>
 
         <AdminSection className="space-y-3 p-4">

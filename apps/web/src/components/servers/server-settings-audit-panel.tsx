@@ -595,7 +595,7 @@ function AuditEntryRow({
       </button>
 
       {open ? (
-        <dl className="grid gap-x-3 gap-y-1 border-t border-border/70 px-14 py-3 text-sm audit-label-grid">
+        <dl className="grid gap-x-3 gap-y-1 border-t border-border px-14 py-3 text-sm audit-label-grid">
           <dt className="text-muted-foreground">{t('detail.action')}</dt>
           <dd>{t(`actions.${entry.action.type}`)}</dd>
           {entry.reason ? (
@@ -704,7 +704,7 @@ export function ServerSettingsAuditPanel({
         </p>
       </div>
 
-      <section className="grid gap-3 border-b border-border/60 pb-4 settings-audit-grid">
+      <section className="grid gap-3 border-b border-border pb-4 settings-audit-grid">
         <AuditUserFilter
           users={users}
           value={actorFilter}

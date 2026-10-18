@@ -56,7 +56,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
-      <aside className="flex w-(--shell-sidebar-width) shrink-0 flex-col border-r border-border/60 bg-sidebar">
+      <aside className="flex w-(--shell-sidebar-width) shrink-0 flex-col border-r border-border bg-sidebar">
         <div className="flex h-14 items-center gap-2.5 px-4">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <SparklesIcon className="size-3.5" aria-hidden />
@@ -73,7 +73,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t border-border/60 p-2">
+        <div className="border-t border-border p-2">
           {config.releaseChannel === 'nightly' ? (
             <div className="mb-2 px-2 text-xs font-medium uppercase tracking-wide text-warning">
               Nightly

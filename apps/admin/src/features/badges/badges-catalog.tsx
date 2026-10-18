@@ -141,7 +141,7 @@ export function BadgesCatalogPage() {
 function BadgeRow({ badge }: { badge: Badge }) {
   const t = useTranslations('badges.catalog')
   return (
-    <li className="border-b border-border/50 last:border-0">
+    <li className="border-b border-border last:border-0">
       <Link
         to="/badges/$badgeId"
         params={{ badgeId: badge._id }}

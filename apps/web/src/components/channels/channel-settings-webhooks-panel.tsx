@@ -256,7 +256,7 @@ export function ChannelSettingsWebhooksPanel({
         <p className="mt-1 text-sm text-muted-foreground">#{channel.name}</p>
       </div>
 
-      <section className="border-b border-border/60 py-6">
+      <section className="border-b border-border py-6">
         <div className="mb-4">
           <h3 className="text-base font-semibold">{t('createTitle')}</h3>
         </div>
@@ -302,7 +302,7 @@ export function ChannelSettingsWebhooksPanel({
                 return (
                   <div
                     key={webhook.id}
-                    className="flex min-w-0 items-center gap-3 rounded-md border border-border/70 bg-muted/20 p-3"
+                    className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-muted/20 p-3"
                   >
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                       <LinkIcon className="size-4" />

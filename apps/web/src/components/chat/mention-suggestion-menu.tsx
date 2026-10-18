@@ -183,7 +183,7 @@ export function MentionSuggestionMenu({
       role="listbox"
       aria-label={t('mentions')}
       className={cn(
-        'gradient-surface-solid pointer-events-auto fixed left-(--mention-menu-left) top-(--mention-menu-top) z-300 flex w-(--mention-menu-width) -translate-y-full flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
+        'gradient-surface-solid pointer-events-auto fixed left-(--mention-menu-left) top-(--mention-menu-top) z-300 flex w-(--mention-menu-width) -translate-y-full flex-col overflow-hidden rounded-lg border border-border p-1 shadow-lg',
         surfaceClassName,
       )}
       style={
@@ -213,7 +213,7 @@ export function MentionSuggestionMenu({
           aria-label={t('otherMentions')}
           className={cn(
             participantEntries.length > 0 &&
-              'mt-1 border-t border-border/20 pt-1',
+              'mt-1 border-t border-border pt-1',
           )}
         >
           {otherEntries.map(renderEntry)}

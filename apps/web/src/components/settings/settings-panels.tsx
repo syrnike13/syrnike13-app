@@ -57,7 +57,7 @@ export function SettingsBlock({
   children: ReactNode
 }) {
   return (
-    <section className="border-b border-border/40 py-6 last:border-b-0">
+    <section className="border-b border-border py-6 last:border-b-0">
       <div className="mb-1">
         <h3 className="text-xs font-bold tracking-wide text-muted-foreground uppercase">
           {title}

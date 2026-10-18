@@ -65,7 +65,7 @@ function LoginPage() {
 
         <form
           onSubmit={submit}
-          className="rounded-md border border-border/70 bg-card p-5"
+          className="rounded-md border border-border bg-card p-5"
         >
           <h1 className="text-base font-semibold">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

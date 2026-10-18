@@ -157,7 +157,7 @@ export function ServerSettingsInvitesPanel({
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-3 border-b border-border/60 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-base font-semibold">{t('title')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">

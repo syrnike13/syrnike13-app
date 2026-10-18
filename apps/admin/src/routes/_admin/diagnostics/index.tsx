@@ -120,7 +120,7 @@ function DiagnosticsPage() {
         ) : reports.data?.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-192 text-left text-xs">
-              <thead className="border-b border-border/60 text-muted-foreground">
+              <thead className="border-b border-border text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-medium">{t('columnTime')}</th>
                   <th className="px-4 py-2 font-medium">{t('columnEvent')}</th>
@@ -131,7 +131,7 @@ function DiagnosticsPage() {
               </thead>
               <tbody>
                 {reports.data.map((report) => (
-                  <tr key={report.id} className="border-b border-border/50 last:border-0">
+                  <tr key={report.id} className="border-b border-border last:border-0">
                     <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                       {new Date(report.created_at * 1_000).toLocaleString(locale)}
                     </td>
