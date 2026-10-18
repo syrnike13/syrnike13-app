@@ -137,7 +137,6 @@ function MessageListBody({
   const t = useTranslations('chat')
   const formatDateLabel = useDateDividerLabel()
   const scroller = useMessageScroller()
-  const { end } = useMessageScrollerScrollable()
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadGuardRef = useRef(false)
 
@@ -329,21 +328,42 @@ function MessageListBody({
           </div>
         ) : null}
 
-        {end ? (
-          <div className="absolute bottom-(--jump-offset) left-1/2 z-10 -translate-x-1/2 shadow-md rounded-full">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className={cn('gap-1 rounded-full px-3')}
-              onClick={() => scroller.scrollToEnd({ behavior: 'smooth' })}
-            >
-              <ChevronDownIcon className="size-4" />
-              {t('jumpToPresent')}
-            </Button>
-          </div>
-        ) : null}
+        <MessageJumpButton />
       </MessageScroller>
     </TooltipProvider>
+  )
+}
+
+/**
+ * Кнопка подписана на scrollable-состояние сама. Иначе каждое появление
+ * кнопки перерендеривало бы всю ленту (сотни строк и embed-карточек).
+ */
+function MessageJumpButton() {
+  const t = useTranslations('chat')
+  const { end } = useMessageScrollerScrollable()
+  const scroller = useMessageScroller()
+
+  return (
+    <div
+      className={cn(
+        'absolute bottom-(--jump-offset) left-1/2 z-10 -translate-x-1/2 rounded-full shadow-md transition-all duration-200',
+        end
+          ? 'pointer-events-auto translate-y-0 opacity-100'
+          : 'pointer-events-none translate-y-2 opacity-0',
+      )}
+      aria-hidden={!end}
+    >
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="gap-1 rounded-full px-3"
+        tabIndex={end ? 0 : -1}
+        onClick={() => scroller.scrollToEnd({ behavior: 'smooth' })}
+      >
+        <ChevronDownIcon className="size-4" />
+        {t('jumpToPresent')}
+      </Button>
+    </div>
   )
 }
