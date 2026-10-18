@@ -189,7 +189,7 @@ export function ServerHeaderMenu({
                   : 'bg-accent'),
             )}
             aria-expanded={menuOpen} />}>
-            <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold">
+            <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold tracking-tight">
               {serverName}
             </span>
             <ChevronDownIcon

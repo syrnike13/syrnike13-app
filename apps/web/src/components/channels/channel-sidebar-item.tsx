@@ -445,9 +445,9 @@ export function ChannelSidebarItem({
     >
       <div
         className={cn(
-          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-5 font-normal transition-colors',
+          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-normal tracking-tight transition-colors',
           active
-            ? 'bg-secondary text-secondary-foreground'
+            ? 'bg-secondary font-medium text-secondary-foreground'
             : 'text-foreground hover:bg-accent hover:text-accent-foreground',
         )}
       >

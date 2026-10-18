@@ -907,6 +907,12 @@ html {
   transition-property: top;
 }
 
+/* Discord guild banner scroll effect: fade over 88px, lift up to 90px. */
+@utility banner-scroll {
+  opacity: var(--banner-opacity, 1);
+  transform: translateY(var(--banner-shift, 0px));
+}
+
 @utility safe-pt-3 {
   padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
 }

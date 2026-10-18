@@ -43,7 +43,7 @@ export function ChannelCategoryHeader({
         className="flex min-w-0 flex-1 items-center gap-1 text-left"
         onClick={onToggleCollapsed}
       >
-        <span className="truncate text-sm font-medium leading-4.5 text-muted-foreground">
+        <span className="truncate text-sm font-medium leading-4.5 tracking-tight text-muted-foreground">
           {title}
         </span>
         <ChevronDownIcon

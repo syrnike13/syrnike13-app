@@ -34,6 +34,7 @@ import { editServerEffect } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ChannelUnreadState } from '#/features/sync/types'
+import { GUILD_BANNER_CONTENT_OFFSET_CLASS } from '#/components/layout/shell-chrome'
 import {
   applyChannelDragResult,
   afterCategoryDroppableId,
@@ -56,6 +57,8 @@ type ServerChannelListProps = {
   users: Record<string, User>
   currentUserId?: string
   unreads: Record<string, ChannelUnreadState | undefined>
+  /** Оставляет место под видимую часть баннера сервера. */
+  bannerOffset?: boolean
 }
 
 function collapsedStorageKey(serverId: string, categoryId: string) {
@@ -84,10 +87,12 @@ function writeCollapsed(serverId: string, categoryId: string, collapsed: boolean
 function ServerChannelListFrame({
   serverId,
   canManage,
+  bannerOffset = false,
   children,
 }: {
   serverId: string
   canManage: boolean
+  bannerOffset?: boolean
   children: ReactNode
 }) {
   const t = useTranslations('channels')
@@ -114,7 +119,13 @@ function ServerChannelListFrame({
 
   return (
     <>
-      <div ref={rootRef} className="flex min-h-full flex-col p-2">
+      <div ref={rootRef} className="flex min-h-full flex-col px-2 pt-3 pb-4">
+        {bannerOffset ? (
+          <div
+            aria-hidden="true"
+            className={cn('shrink-0', GUILD_BANNER_CONTENT_OFFSET_CLASS)}
+          />
+        ) : null}
         <div className="shrink-0">{children}</div>
         {canManage ? (
           <ContextMenu>
@@ -400,6 +411,7 @@ export function ServerChannelList({
   users,
   currentUserId,
   unreads,
+  bannerOffset = false,
 }: ServerChannelListProps) {
   const t = useTranslations('channels')
   const auth = useAuth()
@@ -624,7 +636,11 @@ export function ServerChannelList({
 
   if (channels.length === 0) {
     return (
-      <ServerChannelListFrame serverId={serverId} canManage={canManage}>
+      <ServerChannelListFrame
+        serverId={serverId}
+        canManage={canManage}
+        bannerOffset={bannerOffset}
+      >
         <p className="px-2 py-4 text-xs text-muted-foreground">
           {t('list.empty')}
         </p>
@@ -665,14 +681,22 @@ export function ServerChannelList({
 
   if (!canManage) {
     return (
-      <ServerChannelListFrame serverId={serverId} canManage={false}>
+      <ServerChannelListFrame
+        serverId={serverId}
+        canManage={false}
+        bannerOffset={bannerOffset}
+      >
         <nav className="flex flex-col gap-0.5">{list}</nav>
       </ServerChannelListFrame>
     )
   }
 
   return (
-    <ServerChannelListFrame serverId={serverId} canManage>
+    <ServerChannelListFrame
+      serverId={serverId}
+      canManage
+      bannerOffset={bannerOffset}
+    >
       <DragDropContext onDragStart={startPointerTracking} onDragEnd={handleDragEnd}>
         <nav className="flex flex-col gap-0.5">{list}</nav>
       </DragDropContext>
