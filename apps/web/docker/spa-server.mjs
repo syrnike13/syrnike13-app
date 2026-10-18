@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat, utimes } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import { extname, normalize, resolve, sep } from 'node:path'
+import { extname, join, normalize, resolve, sep } from 'node:path'
 
 /** Путь к prerendered SPA shell от TanStack Start (`spa.enabled`). */
 export const SPA_SHELL_PATH = '/_shell.html'
@@ -75,16 +75,53 @@ async function serveFile(req, res, filePath, pathname) {
   return true
 }
 
-async function serveAsset(req, res, clientDir, pathname) {
+async function serveAsset(req, res, clientDir, pathname, publicPath = pathname) {
   const filePath = assetPath(clientDir, pathname)
   if (!filePath) return false
 
   try {
-    return await serveFile(req, res, filePath, pathname)
+    return await serveFile(req, res, filePath, publicPath)
   } catch (error) {
     if (error?.code === 'ENOENT') return false
     throw error
   }
+}
+
+/**
+ * Copy this build's hashed assets into a directory that outlives the
+ * container, so tabs opened before a deploy can still load lazy chunks of
+ * their build. Assets of builds older than `retentionDays` are removed.
+ */
+export async function archiveAssets({ clientDir, archiveDir, retentionDays }) {
+  const assetsDir = resolve(clientDir, 'assets')
+  await mkdir(archiveDir, { recursive: true })
+
+  const now = new Date()
+  const current = new Set(await readdir(assetsDir))
+  for (const name of current) {
+    const target = join(archiveDir, name)
+    try {
+      await stat(target)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      await copyFile(join(assetsDir, name), target)
+    }
+    await utimes(target, now, now)
+  }
+
+  const cutoff = now.getTime() - retentionDays * 24 * 60 * 60 * 1000
+  let removed = 0
+  for (const name of await readdir(archiveDir)) {
+    if (current.has(name)) continue
+    const target = join(archiveDir, name)
+    const file = await stat(target)
+    if (file.isFile() && file.mtimeMs < cutoff) {
+      await rm(target)
+      removed += 1
+    }
+  }
+
+  return { archived: current.size, removed }
 }
 
 async function serveSpaShell(req, res, clientDir) {
@@ -105,10 +142,12 @@ async function serveSpaShell(req, res, clientDir) {
 
 export function createSpaStaticServer({
   clientDir,
+  assetArchiveDir,
   host = '0.0.0.0',
   port = 5000,
 }) {
   const resolvedClientDir = resolve(clientDir)
+  const resolvedArchiveDir = assetArchiveDir ? resolve(assetArchiveDir) : null
   const shellFile = resolve(resolvedClientDir, SPA_SHELL_PATH.slice(1))
 
   const server = createServer(async (req, res) => {
@@ -119,6 +158,24 @@ export function createSpaStaticServer({
       )
 
       if (await serveAsset(req, res, resolvedClientDir, url.pathname)) return
+
+      if (url.pathname.startsWith('/assets/')) {
+        // A missing hashed asset must not fall back to the HTML shell, or the
+        // browser fails to parse it as a module.
+        const archived =
+          resolvedArchiveDir &&
+          (await serveAsset(
+            req,
+            res,
+            resolvedArchiveDir,
+            url.pathname.slice('/assets'.length),
+            url.pathname,
+          ))
+        if (archived) return
+        res.statusCode = 404
+        res.end('Not Found')
+        return
+      }
 
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (await serveSpaShell(req, res, resolvedClientDir)) return
