@@ -201,15 +201,51 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      # A LiveKit restart drops every room on the node, so an image for an
+      # already published source tree is reused instead of rebuilt.
+      - id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse HEAD:services/livekit-server)"
+          tree_ref="$IMAGE:nightly-tree-$tree"
+          echo "tree_ref=$tree_ref" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$tree_ref" >/dev/null 2>&1; then
+            echo "Reusing $tree_ref; services/livekit-server is unchanged."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image for tree $tree; building LiveKit."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: ${{ steps.image.outputs.build == 'true' }}
+        uses: docker/build-push-action@v7
         with:
           context: services/livekit-server
           file: services/livekit-server/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
+            ${{ steps.image.outputs.tree_ref }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly-${{ needs.version.outputs.sha_tag }}
+      - if: ${{ steps.image.outputs.build != 'true' }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+          TREE_REF: ${{ steps.image.outputs.tree_ref }}
+          SHA_TAG: ${{ needs.version.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          digest() {
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$1" | jq -r .digest
+          }
+          docker buildx imagetools create -t "$IMAGE:nightly-$SHA_TAG" "$TREE_REF"
+          # Touch :nightly only when it points elsewhere, so the nightly deploy
+          # keeps the same image and compose leaves livekit running.
+          if [ "$(digest "$IMAGE:nightly" 2>/dev/null || true)" != "$(digest "$TREE_REF")" ]; then
+            echo "Moving $IMAGE:nightly to $TREE_REF."
+            docker buildx imagetools create -t "$IMAGE:nightly" "$TREE_REF"
+          fi
 
   deploy:
     name: Deploy nightly
