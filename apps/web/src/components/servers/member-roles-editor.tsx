@@ -135,9 +135,8 @@ export function MemberRolesEditor({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : t('updateRolesError'),
-            )
+            console.error('[member-roles] update failed', error)
+            toast.error(t('updateRolesError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingRoleId(null))),

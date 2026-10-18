@@ -8,11 +8,13 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { canAssignRole } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -130,9 +132,7 @@ export function RoleMembersPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('updateError'),
+              apiErrorMessage(error, t('updateError')),
             )
           }),
         ),
@@ -215,9 +215,11 @@ export function RoleMembersPanel({
         </ul>
 
         {withRole.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            {query.trim() ? t('noResults') : t('noMembers')}
-          </p>
+          <Empty className="py-8">
+            <EmptyDescription>
+              {query.trim() ? t('noResults') : t('noMembers')}
+            </EmptyDescription>
+          </Empty>
         ) : null}
       </div>
 

@@ -1,6 +1,7 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Loader2Icon, WifiOffIcon } from '#/components/icons'
+import { WifiOffIcon } from '#/components/icons'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncReady } from '#/features/sync/sync-store'
@@ -32,7 +33,7 @@ export function ConnectionStatusBanner() {
       aria-live="polite"
     >
       {reconnecting ? (
-        <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+        <Spinner className="size-3.5" aria-hidden />
       ) : (
         <WifiOffIcon className="size-3.5" aria-hidden />
       )}

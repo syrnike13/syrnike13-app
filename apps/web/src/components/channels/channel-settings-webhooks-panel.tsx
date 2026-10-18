@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
@@ -37,6 +38,7 @@ import {
   editWebhookEffect,
   fetchChannelWebhooksEffect,
 } from '#/features/api/channels-api'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { config } from '#/lib/config'
 
@@ -77,9 +79,7 @@ export function ChannelSettingsWebhooksPanel({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('loadError'),
+                apiErrorMessage(error, t('loadError')),
               )
               setLoading(false)
             }),
@@ -126,7 +126,7 @@ export function ChannelSettingsWebhooksPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('createError'),
+              apiErrorMessage(error, t('createError')),
             )
           }),
         ),
@@ -156,7 +156,7 @@ export function ChannelSettingsWebhooksPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('deleteError'),
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),
@@ -215,9 +215,7 @@ export function ChannelSettingsWebhooksPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('updateError'),
+              apiErrorMessage(error, t('updateError')),
             )
           }),
         ),
@@ -236,9 +234,7 @@ export function ChannelSettingsWebhooksPanel({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('copyError'),
+                apiErrorMessage(error, t('copyError')),
               )
             }),
           onSuccess: () =>
@@ -291,9 +287,9 @@ export function ChannelSettingsWebhooksPanel({
         {loading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : sortedWebhooks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t('empty')}
-          </p>
+          <Empty className="py-6">
+            <EmptyDescription>{t('empty')}</EmptyDescription>
+          </Empty>
         ) : (
           <TooltipProvider delay={300}>
             <div className="flex flex-col gap-2">

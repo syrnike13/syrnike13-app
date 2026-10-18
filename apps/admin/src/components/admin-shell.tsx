@@ -1,5 +1,5 @@
 import { Link, Outlet, useBlocker, useRouterState } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 
@@ -15,6 +15,16 @@ import {
   UserSearchIcon,
 } from '#/components/icons'
 import { AccessDenied } from '#/components/access-denied'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
@@ -37,22 +47,36 @@ export function AdminShell({ children }: { children?: ReactNode }) {
 
 function AdminShellContent({ children }: { children?: ReactNode }) {
   const t = useTranslations('shell')
+  const tCommon = useTranslations('common')
   const auth = useAuth()
   const draftController = useAdminDraftController()
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
-  useBlocker({
-    shouldBlockFn: () => {
-      if (!draftController?.isDirty) return false
-      return !window.confirm(t('leaveConfirm'))
-    },
+  const blocker = useBlocker({
+    shouldBlockFn: () => Boolean(draftController?.isDirty),
     enableBeforeUnload: () => Boolean(draftController?.isDirty),
+    withResolver: true,
   })
 
   if (!auth.isPrivileged) {
     return <AccessDenied />
   }
 
-  const name = auth.user?.display_name ?? auth.user?.username ?? 'Admin'
+  const name =
+    auth.user?.display_name ?? auth.user?.username ?? t('userFallback')
+
+  const logout = () => {
+    draftController?.reset()
+    Effect.runFork(auth.logout())
+  }
+
+  const requestLogout = () => {
+    if (draftController?.isDirty) {
+      setLogoutConfirmOpen(true)
+      return
+    }
+    logout()
+  }
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
@@ -63,7 +87,9 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
           </span>
           <div className="min-w-0 leading-tight">
             <div className="truncate text-sm font-semibold">syrnike13</div>
-            <div className="text-xs text-muted-foreground">admin</div>
+            <div className="text-xs text-muted-foreground">
+              {t('adminLabel')}
+            </div>
           </div>
         </div>
 
@@ -76,7 +102,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
         <div className="border-t border-border p-2">
           {config.releaseChannel === 'nightly' ? (
             <div className="mb-2 px-2 text-xs font-medium uppercase tracking-wide text-warning">
-              Nightly
+              {tCommon('nightly')}
             </div>
           ) : null}
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
@@ -93,16 +119,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
               size="icon-sm"
               className="shrink-0 text-muted-foreground"
               aria-label={t('logoutAria')}
-              onClick={() => {
-                if (
-                  draftController?.isDirty &&
-                  !window.confirm(t('logoutConfirm'))
-                ) {
-                  return
-                }
-                draftController?.reset()
-                Effect.runFork(auth.logout())
-              }}
+              onClick={requestLogout}
             >
               <LogOutIcon className="size-4" aria-hidden />
             </Button>
@@ -113,6 +130,46 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
       <main className="admin-scroll min-w-0 flex-1 overflow-y-auto bg-background">
         {children ?? <Outlet />}
       </main>
+
+      <AlertDialog
+        open={blocker.status === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open) blocker.reset?.()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('leaveTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('leaveConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('stayAction')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blocker.proceed?.()}>
+              {t('leaveAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('logoutTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('logoutConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setLogoutConfirmOpen(false)
+                logout()
+              }}
+            >
+              {tCommon('logout')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

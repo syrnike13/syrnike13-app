@@ -28,6 +28,7 @@ const gatewayStatusKeys = {
  */
 export function MobileUserPanel() {
   const t = useTranslations('layout.user')
+  const tc = useTranslations('chat')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceStage = useVoiceStage()
@@ -44,7 +45,7 @@ export function MobileUserPanel() {
   const gatewayReconnecting = auth.gatewayState === 'reconnecting'
 
   const statusLabel = gatewayConnected
-    ? userStatusSubtitle(user)
+    ? userStatusSubtitle(user, tc)
     : t(gatewayStatusKeys[auth.gatewayState])
 
   return (

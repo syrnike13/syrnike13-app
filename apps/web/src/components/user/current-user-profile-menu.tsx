@@ -92,10 +92,10 @@ export function CurrentUserProfileMenu({
             </>
           ) : null}
         </div>
-        <div className="absolute -bottom-7 left-3 z-10">
+        <div className="absolute top-15.25 left-4 z-10">
           <UserProfileStatusBubble
             status={customStatus}
-            className="left-full top-52/100 ml-2"
+            className="left-full top-46/100 ml-2.5"
           />
           <button
             type="button"
@@ -129,7 +129,7 @@ export function CurrentUserProfileMenu({
         </div>
       </div>
 
-      <div className="px-3 pt-10 pb-3">
+      <div className="px-4 pt-15 pb-3">
         {onAvatarPress ? (
           <button
             type="button"
@@ -138,7 +138,7 @@ export function CurrentUserProfileMenu({
             className="group/display-name flex w-full min-w-0 items-center gap-0.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onAvatarPress}
           >
-            <span className="truncate text-lg font-semibold leading-snug text-foreground">
+            <span className="truncate text-xl leading-6 font-semibold text-foreground">
               {displayName}
             </span>
             <ChevronDownIcon
@@ -147,16 +147,16 @@ export function CurrentUserProfileMenu({
             />
           </button>
         ) : (
-          <h2 className="truncate text-lg font-semibold leading-snug text-foreground">
+          <h2 className="truncate text-xl leading-6 font-semibold text-foreground">
             {displayName}
           </h2>
         )}
-        <p className="mt-0.5 truncate text-sm leading-snug text-muted-foreground">
+        <p className="mt-0.5 truncate text-sm leading-4.5 text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
         <UserBadges badges={user.badges} size="sm" className="mt-2" />
         {profileBio ? (
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-2 line-clamp-2 text-sm leading-4.5 text-muted-foreground">
             {profileBio}
           </p>
         ) : null}
@@ -166,7 +166,7 @@ export function CurrentUserProfileMenu({
         <div className="px-3 pb-3">
           <Button
             type="button"
-            className="h-10 w-full rounded-full"
+            className="h-8 w-full"
             onClick={() => openSettings('profile')}
           >
             <PencilFillIcon className="size-4" aria-hidden />

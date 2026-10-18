@@ -2,13 +2,13 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { Loader2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 import {
   Card,
@@ -26,6 +26,7 @@ import {
 } from '#/features/api/invites-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/invite/$code')({
   component: InviteJoinPage,
@@ -107,7 +108,7 @@ function InviteJoinPage() {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('error'),
+              apiErrorMessage(error, t('error')),
             )
           }),
         ),
@@ -124,7 +125,7 @@ function InviteJoinPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {inviteQuery.isLoading ? (
-            <Loader2Icon className="mx-auto animate-spin" />
+            <Spinner className="mx-auto" />
           ) : inviteQuery.isError ? (
             <p className="text-sm text-destructive">{t('notFound')}</p>
           ) : invite && 'type' in invite && invite.type === 'Server' ? (

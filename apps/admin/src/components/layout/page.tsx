@@ -2,6 +2,9 @@ import type { ReactNode } from 'react'
 
 import { Link } from '@tanstack/react-router'
 
+import { Card } from '@syrnike13/ui/primitives/card'
+import { Empty } from '@syrnike13/ui/primitives/empty'
+
 import { ArrowLeftIcon } from '#/components/icons'
 import { cn } from '#/lib/utils'
 
@@ -59,14 +62,9 @@ export function AdminSection({
   className?: string
 }) {
   return (
-    <section
-      className={cn(
-        'overflow-hidden rounded-md border border-border bg-card',
-        className,
-      )}
-    >
+    <Card className={cn('gap-0 py-0', className)}>
       {children}
-    </section>
+    </Card>
   )
 }
 
@@ -97,14 +95,14 @@ export function AdminEmpty({
   className?: string
 }) {
   return (
-    <div
+    <Empty
       className={cn(
-        'rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground',
+        'border border-dashed px-4 py-10 text-sm text-muted-foreground',
         className,
       )}
     >
       {children}
-    </div>
+    </Empty>
   )
 }
 

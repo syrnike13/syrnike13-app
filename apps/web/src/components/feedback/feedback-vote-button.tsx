@@ -2,7 +2,8 @@ import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
-import { ArrowUpIcon, Loader2Icon } from '#/components/icons'
+import { ArrowUpIcon } from '#/components/icons'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   addFeedbackVote,
   removeFeedbackVote,
@@ -60,7 +61,7 @@ export function FeedbackVoteButton({
       onClick={() => mutation.mutate()}
     >
       {mutation.isPending ? (
-        <Loader2Icon className="size-4 animate-spin" aria-hidden />
+        <Spinner className="size-4" aria-hidden />
       ) : (
         <ArrowUpIcon
           className={cn(

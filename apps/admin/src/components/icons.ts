@@ -18,7 +18,6 @@ export {
   RiFolderAddLine as FolderPlusIcon,
   RiGitMergeLine as GitMergeIcon,
   RiInformationLine as InfoIcon,
-  RiLoader4Line as Loader2Icon,
   RiLogoutBoxRLine as LogOutIcon,
   RiSearchLine as SearchIcon,
   RiSparklingLine as SparklesIcon,

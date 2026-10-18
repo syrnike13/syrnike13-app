@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+// design-allow-file restyle-shared: landing marketing CTAs use brand pill buttons.
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { useTranslations } from '@syrnike13/ui/i18n'
 

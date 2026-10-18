@@ -4,7 +4,6 @@ import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   ActivityIcon,
-  Loader2Icon,
   MonitorUpIcon,
   MonitorXIcon,
   SoundboardIcon,
@@ -12,6 +11,7 @@ import {
   VideoOffIcon,
 } from '#/components/icons'
 
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
@@ -155,7 +155,7 @@ export function VoicePanelMediaBar() {
           onClick={voiceMedia.toggleScreenShare}
         >
           {screenShareStarting ? (
-            <Loader2Icon className="size-4.5 animate-spin" />
+            <Spinner className="size-4.5" />
           ) : sharingScreen ? (
             <MonitorXIcon className="size-4.5" />
           ) : (

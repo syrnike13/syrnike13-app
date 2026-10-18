@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
@@ -33,6 +34,7 @@ import {
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
@@ -125,9 +127,7 @@ export function ServerSettingsInvitesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('revokeError'),
+              apiErrorMessage(error, t('revokeError')),
             )
           }),
         ),
@@ -143,9 +143,7 @@ export function ServerSettingsInvitesPanel({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('copyError'),
+                apiErrorMessage(error, t('copyError')),
               )
             }),
           onSuccess: () =>
@@ -179,7 +177,9 @@ export function ServerSettingsInvitesPanel({
       ) : invitesQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : invites.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('empty')}</EmptyDescription>
+        </Empty>
       ) : (
         <ul className="space-y-2">
           {invites.map((invite) => {

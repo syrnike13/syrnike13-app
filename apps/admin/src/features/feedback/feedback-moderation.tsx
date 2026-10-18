@@ -23,12 +23,14 @@ import {
   ArrowRightIcon,
   CheckIcon,
   GitMergeIcon,
-  Loader2Icon,
   SearchIcon,
   UserIcon,
   XIcon,
 } from '#/components/icons'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
+import { Empty } from '@syrnike13/ui/primitives/empty'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +46,11 @@ import {
   InputGroupInput,
 } from '@syrnike13/ui/primitives/input-group'
 import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -51,6 +58,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
+import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -285,7 +293,7 @@ function FeedbackModerationContent() {
 
         {activeQuery.isLoading ? (
           <div className="flex min-h-80 items-center justify-center text-muted-foreground">
-            <Loader2Icon className="size-5 animate-spin" aria-label={t('loadingAria')} />
+            <Spinner className="size-5" aria-label={t('loadingAria')} />
           </div>
         ) : activeQuery.isError ? (
           <AdminEmpty>{t('loadError')}</AdminEmpty>
@@ -426,45 +434,16 @@ function FeedbackModeTabs({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <div
-      className="flex w-fit rounded-md border border-border bg-card/40 p-0.5"
-      role="tablist"
-      aria-label={t('tabsAria')}
-    >
-      <ModeTab active={mode === 'pending'} onClick={() => onChange('pending')}>
-        {t('tabPending', { count: pendingTotal })}
-      </ModeTab>
-      <ModeTab active={mode === 'published'} onClick={() => onChange('published')}>
-        {t('tabPublished', { count: publishedTotal })}
-      </ModeTab>
-    </div>
-  )
-}
-
-function ModeTab({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={cn(
-        'h-9 rounded px-4 text-sm font-medium transition-colors',
-        active
-          ? 'bg-secondary text-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground',
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
+    <Tabs value={mode} onValueChange={(value) => onChange(value as Mode)}>
+      <TabsList aria-label={t('tabsAria')}>
+        <TabsTrigger value="pending" className="px-4">
+          {t('tabPending', { count: pendingTotal })}
+        </TabsTrigger>
+        <TabsTrigger value="published" className="px-4">
+          {t('tabPublished', { count: publishedTotal })}
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   )
 }
 
@@ -730,7 +709,16 @@ function DuplicatePicker({
   const hasSearch = searchValue.trim().length >= 2
 
   return (
-    <div className="flex flex-col gap-3">
+    <RadioGroup
+      value={selectedTarget?._id ?? null}
+      className="flex flex-col gap-3"
+      onValueChange={(value) => {
+        const next = [...automaticCandidates, ...manualSearchCandidates].find(
+          (candidate) => candidate.suggestion._id === value,
+        )
+        onTargetChange(next?.suggestion ?? null)
+      }}
+    >
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-semibold">{t('duplicatesTitle')}</h3>
         <p className="text-xs leading-5 text-muted-foreground">
@@ -753,7 +741,7 @@ function DuplicatePicker({
       <CandidateGroup label={t('suggestions')}>
         {catalogIsLoading ? (
           <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
-            <Loader2Icon className="size-4 animate-spin" />
+            <Spinner className="size-4" aria-hidden />
             {t('checkingCatalog')}
           </div>
         ) : catalogIsError ? (
@@ -771,13 +759,12 @@ function DuplicatePicker({
               key={candidate.suggestion._id}
               candidate={candidate}
               selected={selectedTarget?._id === candidate.suggestion._id}
-              onSelect={() => onTargetChange(candidate.suggestion)}
             />
           ))
         ) : (
-          <p className="rounded-md border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
+          <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
             {t('noMatches')}
-          </p>
+          </Empty>
         )}
       </CandidateGroup>
 
@@ -793,7 +780,6 @@ function DuplicatePicker({
                 key={candidate.suggestion._id}
                 candidate={candidate}
                 selected={selectedTarget?._id === candidate.suggestion._id}
-                onSelect={() => onTargetChange(candidate.suggestion)}
               />
             ))
           ) : (
@@ -807,11 +793,11 @@ function DuplicatePicker({
       {selectedTarget ? (
         <MergeComparison source={source} target={selectedTarget} />
       ) : (
-        <p className="rounded-md border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
+        <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
           {t('pickComparison')}
-        </p>
+        </Empty>
       )}
-    </div>
+    </RadioGroup>
   )
 }
 
@@ -829,37 +815,24 @@ function CandidateGroup({ children, label }: { children: ReactNode; label: strin
 function DuplicateCandidate({
   candidate,
   selected,
-  onSelect,
 }: {
   candidate: CandidateSelection
   selected: boolean
-  onSelect: () => void
 }) {
   const t = useTranslations('feedback.similarity')
   const tm = useTranslations('feedback.moderation')
   const statusLabel = feedbackProductStatusLabel(candidate.suggestion.status, tm)
 
   return (
-    <button
-      type="button"
+    <label
       className={cn(
-        'flex w-full items-start gap-3 rounded-md border p-3 text-left transition-colors',
+        'flex w-full cursor-pointer items-start gap-3 rounded-md border p-3 text-left transition-colors',
         selected
           ? 'border-primary bg-primary/10'
           : 'border-border bg-card/35 hover:bg-muted/35',
       )}
-      aria-pressed={selected}
-      onClick={onSelect}
     >
-      <span
-        className={cn(
-          'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
-          selected ? 'border-primary bg-primary' : 'border-muted-foreground/70',
-        )}
-        aria-hidden
-      >
-        {selected ? <span className="size-1.5 rounded-full bg-primary-foreground" /> : null}
-      </span>
+      <RadioGroupItem value={candidate.suggestion._id} className="mt-0.5" />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <span className="truncate text-sm font-semibold text-foreground">
@@ -887,7 +860,7 @@ function DuplicateCandidate({
           </span>
         ) : null}
       </span>
-    </button>
+    </label>
   )
 }
 
@@ -903,7 +876,7 @@ function MergeComparison({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <div className={cn('overflow-hidden rounded-md border border-border bg-card/35', compact ? 'text-xs' : '')}>
+    <Card className={cn('gap-0 py-0', compact ? 'text-xs' : '')}>
       <div className="grid items-stretch gap-3 p-3 comparison-grid">
         <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
@@ -915,7 +888,7 @@ function MergeComparison({
         <span className="font-medium text-foreground">{t('warningPrefix')}</span>{' '}
         {t('warningText')}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -1006,14 +979,10 @@ function PublishedFeedbackEditor({
       Effect.runPromise(
         Effect.gen(function*() {
           if (!token) {
-            return yield* Effect.fail(
-              new Error('Missing authentication token'),
-            )
+            return yield* Effect.fail(new Error(t('missingToken')))
           }
           if (!status) {
-            return yield* Effect.fail(
-              new Error('Missing feedback product status'),
-            )
+            return yield* Effect.fail(new Error(t('missingStatus')))
           }
 
           return yield* updateFeedbackEffect(token, suggestion._id, {
@@ -1044,7 +1013,7 @@ function PublishedFeedbackEditor({
       Effect.runPromise(
         token
           ? hideFeedbackEffect(token, suggestion._id)
-          : Effect.fail(new Error('Missing authentication token')),
+          : Effect.fail(new Error(t('missingToken'))),
       ),
     onSuccess: () => {
       toast.success(t('hidden'))
@@ -1142,29 +1111,48 @@ function PublishedFeedbackEditor({
   )
 }
 
+type FeedbackTagTone =
+  | 'danger'
+  | 'success'
+  | 'area'
+  | 'platform'
+  | 'status'
+  | 'reason'
+  | 'anonymous'
+
 function FeedbackTag({
   children,
   tone,
 }: {
   children: ReactNode
-  tone: 'danger' | 'success' | 'area' | 'platform' | 'status' | 'reason' | 'anonymous'
+  tone: FeedbackTagTone
 }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs leading-4 font-medium',
-        tone === 'danger' && 'border-destructive/55 bg-destructive/10 text-destructive',
-        tone === 'success' && 'border-success/55 bg-success/10 text-success',
-        tone === 'area' && 'border-primary/50 bg-primary/10 text-primary',
-        tone === 'platform' && 'border-border bg-secondary/50 text-muted-foreground',
-        tone === 'status' && 'border-warning/55 bg-warning/10 text-warning',
-        tone === 'reason' && 'border-primary/40 bg-primary/10 text-primary',
-        tone === 'anonymous' && 'border-border bg-muted/60 text-muted-foreground',
-      )}
-    >
-      {children}
-    </span>
-  )
+  switch (tone) {
+    case 'danger':
+      return <Badge variant="destructive">{children}</Badge>
+    case 'success':
+      return (
+        <Badge variant="secondary" className="text-success">
+          {children}
+        </Badge>
+      )
+    case 'area':
+    case 'reason':
+      return (
+        <Badge variant="outline" className="text-primary">
+          {children}
+        </Badge>
+      )
+    case 'status':
+      return (
+        <Badge variant="outline" className="text-warning">
+          {children}
+        </Badge>
+      )
+    case 'platform':
+    case 'anonymous':
+      return <Badge variant="secondary">{children}</Badge>
+  }
 }
 
 function feedbackAuthorTag(

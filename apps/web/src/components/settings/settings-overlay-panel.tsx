@@ -12,8 +12,10 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function overlayStateNeedsSettingsReload(
   previous: DesktopOverlayState | null,
@@ -58,9 +60,7 @@ export function SettingsOverlayPanel() {
                 )
                 setSettings({ ...DEFAULT_DESKTOP_OVERLAY_SETTINGS })
                 toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : t('loadError'),
+                  apiErrorMessage(error, t('loadError')),
                 )
               }),
             onSuccess: (value) =>
@@ -129,9 +129,7 @@ export function SettingsOverlayPanel() {
             Effect.sync(() => {
               setSettings(previous)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('saveError'),
+                apiErrorMessage(error, t('saveError')),
               )
             }),
           onSuccess: (value) =>
@@ -173,8 +171,10 @@ export function SettingsOverlayPanel() {
         {!settings ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : games.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            {t('noGames')}
+          <div className="rounded-md border border-dashed border-border px-4 py-8">
+            <Empty className="p-0">
+              <EmptyDescription>{t('noGames')}</EmptyDescription>
+            </Empty>
           </div>
         ) : (
           <div className="divide-y divide-border/40">

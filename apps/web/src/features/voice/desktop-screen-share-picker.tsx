@@ -4,7 +4,6 @@ import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   AppWindowIcon,
   Gamepad2Icon,
-  Loader2Icon,
   MonitorIcon,
   Settings2Icon,
 } from '#/components/icons'
@@ -18,6 +17,7 @@ import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Dialog,
   DialogContent,
@@ -25,13 +25,16 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@syrnike13/ui/primitives/tabs'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { usePlatform } from '#/platform/use-platform'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   Popover,
   PopoverContent,
@@ -46,7 +49,6 @@ import {
 import {
   voiceStagePopoverCheckboxClass,
   voiceStagePopoverContentClass,
-  voiceStagePopoverSeparatorClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 import {
@@ -197,9 +199,7 @@ export function DesktopScreenSharePicker() {
           Effect.sync(() => {
             if (!current) return
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('sharePicker.loadError'),
+              apiErrorMessage(error, t('sharePicker.loadError')),
             )
             setLoading(false)
           }),
@@ -287,9 +287,7 @@ export function DesktopScreenSharePicker() {
         setSubmittingSourceId(null)
       } catch (error) {
         toast.error(
-          error instanceof Error
-            ? error.message
-            : t('sharePicker.startError'),
+          apiErrorMessage(error, t('sharePicker.startError')),
         )
         setSubmittingSourceId(null)
       }
@@ -359,7 +357,8 @@ export function DesktopScreenSharePicker() {
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3 sm:justify-between">
+        <Separator />
+        <DialogFooter className="flex-row items-center justify-between px-4 py-3 sm:justify-between">
           <ScreenSharePickerQualitySummary />
           <div className="flex items-center gap-2">
             {hasPreviousPage || hasNextPage ? (
@@ -424,15 +423,17 @@ function DisplaySourceGrid({
   if (loading) {
     return (
       <div className="grid min-h-64 place-items-center text-muted-foreground">
-        <Loader2Icon className="size-6 animate-spin" />
+        <Spinner className="size-6" />
       </div>
     )
   }
 
   if (sources.length === 0) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-        {emptyText}
+      <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border">
+        <Empty className="py-6">
+          <EmptyDescription>{emptyText}</EmptyDescription>
+        </Empty>
       </div>
     )
   }
@@ -502,10 +503,7 @@ function DisplaySourceTile({
               className={buttonVariants({ size: 'sm', variant: 'secondary' })}
             >
               {submitting ? (
-                <Loader2Icon
-                  data-icon="inline-start"
-                  className="animate-spin"
-                />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('sharePicker.share')}
             </span>
@@ -598,7 +596,7 @@ function ScreenSharePickerSettings({
           </StreamSettingsSubmenu>
           {audioSupported ? (
             <>
-              <div className={voiceStagePopoverSeparatorClass} role="separator" />
+              <Separator className="my-0.5" />
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
                 <span>{t('sharePicker.muteAudio')}</span>
                 <input

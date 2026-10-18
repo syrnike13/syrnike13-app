@@ -1,7 +1,7 @@
+// design-allow-file restyle-shared: media-overlay controls use on-media surfaces.
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
-  Loader2Icon,
   Maximize2Icon,
   MonitorIcon,
   MonitorXIcon,
@@ -10,6 +10,7 @@ import {
 import type { User } from '@syrnike13/api-types'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -177,9 +178,9 @@ function LoadingScreenStreamTile({
         role="status"
         aria-label={t('stage.streamConnecting')}
       >
-        <Loader2Icon
+        <Spinner
           className={cn(
-            'animate-spin text-on-media/80',
+            'text-on-media/80',
             variant === 'strip' ? 'size-5' : 'size-8',
           )}
           aria-hidden

@@ -15,12 +15,22 @@ import {
 } from '#/components/layout/page'
 import {
   CheckIcon,
-  Loader2Icon,
   Trash2Icon,
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
 import {
   Dialog,
   DialogContent,
@@ -31,6 +41,7 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { Field, FieldLabel } from '@syrnike13/ui/primitives/field'
 import { Input } from '@syrnike13/ui/primitives/input'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
@@ -266,7 +277,7 @@ export function BadgeEditorPage({
                 />
               </Field>
               <Field>
-                <FieldLabel>Slug</FieldLabel>
+                <FieldLabel>{t('slug')}</FieldLabel>
                 <Input
                   value={form.slug}
                   className="font-mono"
@@ -303,7 +314,7 @@ export function BadgeEditorPage({
                     onCheckedChange={(visible) => setForm({ ...form, visible })}
                   />
                   <SwitchRow
-                    label="Premium"
+                    label={t('premium')}
                     checked={form.premium}
                     onCheckedChange={(premium) => setForm({ ...form, premium })}
                   />
@@ -340,7 +351,10 @@ export function BadgeEditorPage({
                 </Button>
               ) : null}
             </AdminSection>
-            <div className="flex items-center gap-2.5 rounded-md border border-border bg-card/50 px-3 py-2">
+            <Card
+              size="sm"
+              className="flex-row items-center gap-2.5 px-3 py-2"
+            >
               <BadgeIcon
                 badge={{ icon: removeIcon && !iconFile ? undefined : badge?.icon }}
                 previewUrl={previewUrl}
@@ -348,9 +362,11 @@ export function BadgeEditorPage({
               />
               <div className="min-w-0 text-xs">
                 <div className="truncate font-medium">{form.name || '—'}</div>
-                <div className="truncate text-muted-foreground">@username</div>
+                <div className="truncate text-muted-foreground">
+                  {t('usernamePreview')}
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
         </div>
 
@@ -388,7 +404,7 @@ export function BadgeEditorPage({
             </Button>
             <Button type="submit" size="sm" disabled={busy || !canSave}>
               {busy ? (
-                <Loader2Icon className="size-4 animate-spin" aria-hidden />
+                <Spinner className="size-4" aria-hidden />
               ) : (
                 <CheckIcon className="size-4" aria-hidden />
               )}
@@ -398,28 +414,28 @@ export function BadgeEditorPage({
         </AdminStickyFooter>
       </form>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent showCloseButton={!deleteMutation.isPending}>
-          <DialogHeader>
-            <DialogTitle>{t('deleteTitle')}</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
               {t('deleteDescription', { name: badge?.name ?? '' })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
               {t('cancel')}
-            </Button>
-            <Button
+            </AlertDialogCancel>
+            <AlertDialogAction
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => deleteMutation.mutate()}
             >
               {t('delete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>

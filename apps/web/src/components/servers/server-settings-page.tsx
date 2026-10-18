@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: server settings navigation owns its active/hover surface.
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
@@ -44,6 +45,7 @@ import {
 } from '#/features/authorization/authorization'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { cn } from '#/lib/utils'
 
 type ServerSettingsPageProps = {
@@ -169,9 +171,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('deleteError'),
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),

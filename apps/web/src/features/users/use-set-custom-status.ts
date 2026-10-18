@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { updateCurrentUserEffect } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore } from '#/features/sync/sync-store'
 
 export function useSetCustomStatus() {
@@ -37,9 +38,7 @@ export function useSetCustomStatus() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : t('statusUpdateError'),
+        apiErrorMessage(error, t('statusUpdateError')),
       )
     },
   })

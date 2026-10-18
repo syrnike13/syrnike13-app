@@ -11,11 +11,12 @@ import {
   type MentionSuggestionConfig,
 } from '#/lib/message-format/extensions/mention-suggestion'
 import { RoleMentionNode } from '#/lib/message-format/extensions/role-mention'
-import { SpoilerMark } from '#/lib/message-format/extensions/spoiler'
+import { createSpoilerMark } from '#/lib/message-format/extensions/spoiler'
 import { UserMentionNode } from '#/lib/message-format/extensions/user-mention'
 
 export type CreateMessageExtensionsOptions = {
   placeholder?: string
+  spoilerTitle?: string
   mentionSuggestion?: MentionSuggestionConfig
   channelSuggestion?: MentionSuggestionConfig
 }
@@ -39,7 +40,7 @@ export function createMessageExtensions(
         target: '_blank',
       },
     }),
-    SpoilerMark,
+    createSpoilerMark(options.spoilerTitle ?? ''),
     UserMentionNode,
     RoleMentionNode,
     ChannelMentionNode,

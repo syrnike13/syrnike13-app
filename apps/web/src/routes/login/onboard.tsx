@@ -1,13 +1,13 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   CardContent,
   CardDescription,
@@ -21,6 +21,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { usernameSchema, validateForm } from '#/features/auth/schemas'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadPersistedSessionEffect } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/onboard')({
   beforeLoad: async () => {
@@ -74,7 +75,7 @@ function OnboardPage() {
         void navigate({ to: postLoginPath(false), replace: true })
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : t('onboard.error'),
+          apiErrorMessage(error, t('onboard.error')),
         )
       } finally {
         setSubmitting(false)
@@ -85,7 +86,7 @@ function OnboardPage() {
   if (!auth.hydrated || !auth.session || !auth.onboardingChecked) {
     return (
       <AuthLayout>
-        <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
+        <Spinner className="size-8 text-muted-foreground" />
       </AuthLayout>
     )
   }
@@ -126,7 +127,7 @@ function OnboardPage() {
           <CardFooter>
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('onboard.submit')}
             </Button>

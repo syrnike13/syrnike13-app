@@ -26,6 +26,7 @@ import { Effect, Fiber, Schedule } from 'effect'
 import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { callAudioBitrateBps } from '#/lib/channel-audio-bitrate'
 import {
@@ -745,7 +746,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         await dispatchVoice({ type: 'join', channelId, recipients })
         return true
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : t('errors.noSession'))
+        toast.error(apiErrorMessage(error, t('errors.noSession')))
         return false
       }
     },
@@ -802,9 +803,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('errors.openPicker'),
+              apiErrorMessage(error, t('errors.openPicker')),
             )
           }),
         ),
@@ -1591,9 +1590,7 @@ function createDesktopVoiceClient(
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Native voice command failed',
+                apiErrorMessage(error, 'Native voice command failed'),
               )
             }),
           ),

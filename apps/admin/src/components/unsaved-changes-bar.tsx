@@ -1,8 +1,8 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AdminStickyFooter } from '#/components/layout/page'
-import { Loader2Icon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAdminDraftController } from '#/components/draft-controller-context'
 
 export function AdminUnsavedChangesBar({
@@ -36,7 +36,7 @@ export function AdminUnsavedChangesBar({
         >
           {controller.isSaving ? (
             <>
-              <Loader2Icon className="size-4 animate-spin" aria-hidden />
+              <Spinner className="size-4" aria-hidden />
               {t('saving')}
             </>
           ) : (

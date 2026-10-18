@@ -21,6 +21,7 @@ import {
   UserIcon,
 } from '#/components/icons'
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchFeedbackSuggestion } from '#/features/api/feedback-api'
@@ -57,8 +58,10 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
 
   if (!query.data) {
     return (
-      <div className="theme-surface-content gradient-surface-content flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        {t('notFound')}
+      <div className="theme-surface-content gradient-surface-content flex flex-1 items-center justify-center px-6">
+        <Empty>
+          <EmptyDescription>{t('notFound')}</EmptyDescription>
+        </Empty>
       </div>
     )
   }

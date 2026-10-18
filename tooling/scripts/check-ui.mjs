@@ -116,6 +116,37 @@ const OWNED_STATE_COMPONENTS = [
   'ListItem',
   'SearchField',
   'Field',
+  // Surface-owning overlays and containers. Triggers without a base surface
+  // are intentionally absent: custom trigger styling is a lookalike concern,
+  // not an override of a surface the primitive defines.
+  'PopoverContent',
+  'PopoverHeader',
+  'PopoverFooter',
+  'DialogContent',
+  'AlertDialogContent',
+  'SheetContent',
+  'DrawerContent',
+  'DropdownMenuContent',
+  'DropdownMenuItem',
+  'ContextMenuContent',
+  'ContextMenuItem',
+  'ContextMenuCheckboxItem',
+  'Command',
+  'Card',
+  'CardHeader',
+  'CardContent',
+  'CardFooter',
+  'TabsList',
+  'TabsContent',
+  'Avatar',
+  'AvatarFallback',
+  'AvatarBadge',
+  'Skeleton',
+  'Empty',
+  'Attachment',
+  'Message',
+  'MessageScroller',
+  'TooltipContent',
 ]
 const OWNED_STATE_CLASS =
   /(?<![\w-])(?:[\w-]+:)*(?:bg-|border-(?!0\b|\d|[trblxy]-?\d|[trblxy]\b|solid|dashed|none\b)|rounded-(?!none\b|full\b)|shadow-|ring-|outline-)[\w/.\[\]-]*/
@@ -170,14 +201,85 @@ function lineOf(source, offset) {
   return line
 }
 
-function classValues(tag) {
+function classValues(tag, classConstants = new Map()) {
   const values = []
   for (const match of tag.matchAll(/className=(?:"([^"]*)"|'([^']*)'|\{([\s\S]*?)\}(?=\s+[\w-]+=|\s*\/?>))/g)) {
     const raw = match[1] ?? match[2] ?? match[3] ?? ''
     if (match[3] === undefined) values.push(raw)
-    else for (const literal of raw.matchAll(/(['"`])((?:(?!\1)[^\\]|\\.)*)\1/g)) values.push(literal[2])
+    else {
+      for (const literal of raw.matchAll(/(['"`])((?:(?!\1)[^\\]|\\.)*)\1/g)) values.push(literal[2])
+      for (const name of directClassIdentifiers(raw)) {
+        const resolved = classConstants.get(name)
+        if (resolved) values.push(resolved)
+      }
+    }
   }
   return values
+}
+
+/** Direct identifier or direct `cn(...)` arguments, not condition variables. */
+function directClassIdentifiers(expression) {
+  const names = new Set()
+  const trimmed = expression.trim()
+  if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) names.add(trimmed)
+  const cnArguments = trimmed.match(/^cn\(([\s\S]*)\)$/)
+  if (!cnArguments) return names
+  let depth = 0
+  let current = ''
+  const args = []
+  for (const char of cnArguments[1]) {
+    if (char === '(' || char === '[' || char === '{') depth += 1
+    else if (char === ')' || char === ']' || char === '}') depth -= 1
+    if (char === ',' && depth === 0) {
+      args.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  args.push(current)
+  for (const argument of args) {
+    const name = argument.trim()
+    if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name)
+  }
+  return names
+}
+
+/** Class strings stored in `const NAME = '…'` / `cn('…', …)` in one file. */
+function collectClassConstants(source) {
+  const constants = new Map()
+  const lines = source.split(/\r?\n/)
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(.*)$/)
+    if (!match) continue
+    let block = match[2]
+    let balance = expressionBalance(block)
+    let next = index
+    while (
+      next + 1 < lines.length &&
+      next - index < 20 &&
+      (balance > 0 || block.trim().endsWith(','))
+    ) {
+      next += 1
+      block += `\n${lines[next]}`
+      balance += expressionBalance(lines[next])
+    }
+    const literals = [...block.matchAll(/(['"`])((?:(?!\1)[^\\]|\\.)*)\1/g)].map(
+      (literal) => literal[2],
+    )
+    if (literals.length > 0) constants.set(match[1], literals.join(' '))
+    index = next
+  }
+  return constants
+}
+
+function expressionBalance(line) {
+  let balance = 0
+  for (const char of line) {
+    if (char === '(' || char === '[' || char === '{') balance += 1
+    else if (char === ')' || char === ']' || char === '}') balance -= 1
+  }
+  return balance
 }
 
 /** @returns {Violation[]} */
@@ -243,15 +345,23 @@ export function checkSource(path, source) {
     }
   }
 
-  if (!css && normalizedPath.endsWith('.tsx')) {
+  const isPrimitiveSource = normalizedPath.startsWith('packages/ui/src/primitives/')
+
+  if (!css && normalizedPath.endsWith('.tsx') && !isPrimitiveSource) {
+    const classConstants = collectClassConstants(source)
     for (const name of OWNED_STATE_COMPONENTS) {
       for (const tag of jsxTags(source, name)) {
-        const offending = classValues(tag.text)
+        const offending = classValues(tag.text, classConstants)
           .flatMap((value) => value.split(/\s+/))
           .filter((token) => OWNED_STATE_CLASS.test(token))
         if (offending.length === 0) continue
         const line = lineOf(source, tag.start)
-        if (allowed(lines, line - 1, 'restyle-shared')) continue
+        if (
+          allowed(lines, line - 1, 'restyle-shared') ||
+          allowedFile(lines, 'restyle-shared')
+        ) {
+          continue
+        }
         found.push({
           rule: 'restyle-shared',
           line,

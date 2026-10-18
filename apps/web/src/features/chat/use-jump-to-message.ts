@@ -9,6 +9,7 @@ import {
   MESSAGE_PAGE_SIZE,
 } from '#/features/api/messages-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 const HIGHLIGHT_CLASS = 'ring-2 ring-primary ring-offset-2 ring-offset-background'
 
@@ -88,9 +89,7 @@ export function useJumpToMessage(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('openMessageError'),
+              apiErrorMessage(error, t('openMessageError')),
             )
           }),
         ),

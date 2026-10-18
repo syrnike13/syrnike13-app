@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: landing marketing CTAs use brand pill buttons.
 import {
   Button,
   buttonVariants,

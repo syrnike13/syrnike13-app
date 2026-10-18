@@ -22,6 +22,7 @@ import {
   subscribePushEffect,
   unsubscribePushEffect,
 } from '#/features/api/push-api'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -154,9 +155,7 @@ export function NotificationSettings({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('pushError'),
+              apiErrorMessage(error, t('pushError')),
             )
           }),
         ),
@@ -204,7 +203,7 @@ export function NotificationSettings({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('disableError'),
+              apiErrorMessage(error, t('disableError')),
             )
           }),
         ),

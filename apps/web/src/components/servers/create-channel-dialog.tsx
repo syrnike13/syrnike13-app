@@ -29,6 +29,7 @@ import {
 } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
 
@@ -92,9 +93,7 @@ export function CreateChannelDialog({
               Effect.catch((error) =>
                 Effect.sync(() => {
                   toast.error(
-                    error instanceof Error
-                      ? t('categoryErrorDetail', { detail: error.message })
-                      : t('categoryError'),
+                    apiErrorMessage(error, t('categoryError')),
                   )
                 }),
               ),
@@ -121,9 +120,7 @@ export function CreateChannelDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('createError'),
+              apiErrorMessage(error, t('createError')),
             )
           }),
         ),

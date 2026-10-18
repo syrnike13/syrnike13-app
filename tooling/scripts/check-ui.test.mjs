@@ -44,6 +44,45 @@ test('flags restyled surfaces of shared components, allows layout and text token
   assert.deepEqual(rules('a.tsx', '<Input className="border-b" />'), [])
 })
 
+test('covers surface-owning overlays and containers', () => {
+  assert.deepEqual(rules('a.tsx', '<PopoverContent className="bg-card" />'), ['restyle-shared'])
+  assert.deepEqual(rules('a.tsx', '<DialogContent className="rounded-xl shadow-none" />'), ['restyle-shared'])
+  assert.deepEqual(rules('a.tsx', '<Card className="shadow-xl" />'), ['restyle-shared'])
+  assert.deepEqual(rules('a.tsx', '<Skeleton className="rounded-lg" />'), ['restyle-shared'])
+  assert.deepEqual(rules('a.tsx', '<PopoverContent className="w-72 p-0" />'), [])
+  // Triggers have no base surface; custom trigger styling is a lookalike concern.
+  assert.deepEqual(rules('a.tsx', '<PopoverTrigger className="bg-card" />'), [])
+})
+
+test('resolves classes stored in local class constants', () => {
+  const source = `const panelClass = 'bg-card shadow-xl'
+const itemClass = 'rounded-lg'
+<DialogContent className={panelClass} />
+<Card className={cn(itemClass, 'p-4')} />`
+  const violations = checkSource('a.tsx', source)
+  assert.deepEqual(
+    violations.map((violation) => violation.rule),
+    ['restyle-shared', 'restyle-shared'],
+  )
+})
+
+test('design-allow-file exempts restyle-shared and primitives are skipped', () => {
+  assert.deepEqual(
+    rules(
+      'a.tsx',
+      "// design-allow-file restyle-shared: media surface\n<DialogContent className='bg-card' />",
+    ),
+    [],
+  )
+  assert.deepEqual(
+    rules(
+      'packages/ui/src/primitives/dialog/index.tsx',
+      '<DialogContent className="bg-popover rounded-xl" />',
+    ),
+    [],
+  )
+})
+
 test('flags Cyrillic UI strings, not comments or English text', () => {
   assert.deepEqual(rules('a.tsx', '<p>Привет</p>'), ['hardcoded-string'])
   assert.deepEqual(rules('a.tsx', "const label = 'Привет'"), ['hardcoded-string'])

@@ -23,6 +23,7 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type CategorySettingsDialogProps = {
   serverId: string
@@ -84,7 +85,7 @@ function CategorySettingsDialogContent({
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : t('saveError'),
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -137,7 +138,7 @@ function CategorySettingsDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('deleteError'),
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),

@@ -31,6 +31,7 @@ import {
 } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema, validateForm } from '#/features/auth/schemas'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
@@ -215,9 +216,7 @@ export function SettingsProfilePanel() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('saveError'),
+                apiErrorMessage(error, t('saveError')),
               )
               return false
             }),
@@ -342,9 +341,7 @@ export function SettingsProfilePanel() {
             Effect.sync(() => {
               setAvatarPreviewOverride(undefined)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('avatarUploadError'),
+                apiErrorMessage(error, t('avatarUploadError')),
               )
             }),
           ),
@@ -387,9 +384,7 @@ export function SettingsProfilePanel() {
             Effect.sync(() => {
               setBannerPreviewOverride(undefined)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('bannerUploadError'),
+                apiErrorMessage(error, t('bannerUploadError')),
               )
             }),
           ),

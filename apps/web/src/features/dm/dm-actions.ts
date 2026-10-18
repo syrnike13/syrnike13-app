@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { openDirectMessageEffect } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type NavigateToDmChannel = (channelId: string) => Promise<void> | void
 
@@ -23,7 +24,7 @@ const defaultDeps: DmActionDeps = {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
+  return apiErrorMessage(error, fallback)
 }
 
 const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(

@@ -1,7 +1,6 @@
 import { useForm } from '@tanstack/react-form'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { Loader2Icon } from '#/components/icons'
 import { useRef, useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -9,6 +8,7 @@ import { toast } from 'sonner'
 import { AuthCard } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   CardContent,
   CardDescription,
@@ -26,6 +26,7 @@ import {
   useSyrnikeConfig,
 } from './use-syrnike-config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function LoginForm() {
   const auth = useAuth()
@@ -60,7 +61,7 @@ export function LoginForm() {
       } catch (error) {
         if (auth.session) return
         toast.error(
-          error instanceof Error ? error.message : t('login.error'),
+          apiErrorMessage(error, t('login.error')),
         )
       } finally {
         setSubmitting(false)
@@ -84,7 +85,7 @@ export function LoginForm() {
         )
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : t('mfa.error'),
+          apiErrorMessage(error, t('mfa.error')),
         )
       } finally {
         setSubmitting(false)
@@ -133,7 +134,7 @@ export function LoginForm() {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('confirm')}
             </Button>
@@ -198,7 +199,7 @@ export function LoginForm() {
         <CardFooter className="flex flex-col gap-3">
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting ? (
-              <Loader2Icon className="animate-spin" data-icon="inline-start" />
+              <Spinner data-icon="inline-start" />
             ) : null}
             {t('login.submit')}
           </Button>

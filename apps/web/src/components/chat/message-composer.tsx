@@ -9,7 +9,7 @@ import {
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { ArrowUpIcon, Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
+import { ArrowUpIcon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
@@ -17,12 +17,14 @@ import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/com
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
 import {
   memberDisplayColour,
   normalizeRoleColour,
 } from '#/features/sync/member-list-groups'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
 import {
@@ -490,7 +492,7 @@ export function MessageComposer({
         onCancelAction?.()
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : t('editError'),
+          apiErrorMessage(error, t('editError')),
         )
       } finally {
         setSending(false)
@@ -553,7 +555,7 @@ export function MessageComposer({
       )
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : t('sendError'),
+        apiErrorMessage(error, t('sendError')),
       )
     } finally {
       setSending(false)
@@ -721,7 +723,7 @@ export function MessageComposer({
               role="status"
               aria-label={t('sending')}
             >
-              <Loader2Icon className="size-5 animate-spin motion-reduce:animate-none" />
+              <Spinner className="size-5 motion-reduce:animate-none" />
             </span>
           ) : (
             <Tooltip>

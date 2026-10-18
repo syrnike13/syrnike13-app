@@ -1,4 +1,5 @@
 // design-allow-file hardcoded-string: internal developer component gallery; demo copy is illustrative.
+// design-allow-file restyle-shared: internal developer component gallery; bordered/raised demo containers are illustrative.
 import { useState, type ReactNode } from 'react'
 import { toast as sonnerToast } from 'sonner'
 import {

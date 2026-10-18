@@ -11,6 +11,7 @@ import {
   unblockUserEffect,
 } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export type FriendActionDeps = {
   acceptFriendRequest: typeof acceptFriendRequestEffect
@@ -35,7 +36,7 @@ const defaultDeps: FriendActionDeps = {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
+  return apiErrorMessage(error, fallback)
 }
 
 function friendRequestUsername(user: User) {

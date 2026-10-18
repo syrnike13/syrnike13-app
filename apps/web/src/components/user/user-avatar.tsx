@@ -110,6 +110,7 @@ export function UserAvatar({
   presenceRingClassName = 'border-card',
   notificationRingClassName = 'border-card',
 }: UserAvatarProps) {
+  const t = useTranslations('chat')
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
@@ -221,9 +222,10 @@ export function UserAvatar({
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>
       {showDot ? (
+        // design-allow restyle-shared: app-level presence dot wrapper
         <AvatarBadge
           className={cn(
-            'presence-dot size-(--dot-size) border-0 p-0 text-transparent ring-0',
+            'presence-dot size-(--dot-size) ring-0',
             // eslint-disable-next-line shadcn/require-static-classes -- static offset class from layout helper
             presenceBadge.offsetClass,
             dotClass,
@@ -235,7 +237,7 @@ export function UserAvatar({
               '--dot-ring-color': presenceRingColorVar(presenceRingClassName),
             } as CSSVars
           }
-          title={presenceDotTitle(user)}
+          title={presenceDotTitle(user, t)}
         />
       ) : null}
       {notificationBadge ? (

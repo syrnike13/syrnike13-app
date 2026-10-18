@@ -147,10 +147,10 @@ describe('ServerHeaderMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
 
     expect(
-      screen.getByRole('button', { name: 'Удалить сервер' }),
+      screen.getByRole('menuitem', { name: 'Удалить сервер' }),
     ).toBeTruthy()
     expect(
-      screen.queryByRole('button', { name: 'Покинуть сервер' }),
+      screen.queryByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeNull()
   })
 
@@ -163,10 +163,10 @@ describe('ServerHeaderMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
 
     expect(
-      screen.getByRole('button', { name: 'Покинуть сервер' }),
+      screen.getByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeTruthy()
     expect(
-      screen.queryByRole('button', { name: 'Удалить сервер' }),
+      screen.queryByRole('menuitem', { name: 'Удалить сервер' }),
     ).toBeNull()
   })
 
@@ -177,7 +177,7 @@ describe('ServerHeaderMenu', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
     fireEvent.click(
-      screen.getByRole('button', { name: 'Удалить сервер' }),
+      screen.getByRole('menuitem', { name: 'Удалить сервер' }),
     )
 
     expect(confirmSpy).not.toHaveBeenCalled()
@@ -216,7 +216,7 @@ describe('ServerHeaderMenu', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
     fireEvent.click(
-      screen.getByRole('button', { name: 'Покинуть сервер' }),
+      screen.getByRole('menuitem', { name: 'Покинуть сервер' }),
     )
 
     expect(confirmSpy).not.toHaveBeenCalled()
@@ -250,7 +250,7 @@ describe('ServerHeaderMenu', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Роли' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Роли' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/servers/$serverId/settings',
@@ -259,7 +259,7 @@ describe('ServerHeaderMenu', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Журнал аудита' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Журнал аудита' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/servers/$serverId/settings',

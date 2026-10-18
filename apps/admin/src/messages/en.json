@@ -9,6 +9,9 @@
     "logout": "Sign out",
     "save": "Save",
     "reset": "Reset",
+    "cancel": "Cancel",
+    "nightly": "Nightly",
+    "loading": "Loading",
     "saving": "Saving…",
     "unsavedChanges": "You have unsaved changes",
     "uploadHint": "PNG or WebP · drag and drop or click",
@@ -28,6 +31,11 @@
       "statusNewPlural": "New",
       "statusResolvedPlural": "Resolved",
       "allChannels": "All channels",
+      "channels": {
+        "stable": "Stable",
+        "nightly": "Nightly",
+        "development": "Development"
+      },
       "filter": "Filter",
       "reports": "Reports · {count}",
       "loading": "Loading",
@@ -98,6 +106,7 @@
     "emptyList": "Empty"
   },
   "login": {
+    "brand": "syrnike13 admin",
     "title": "Sign in",
     "subtitle": "Administrator account",
     "mfaSubtitle": "2FA password",
@@ -116,7 +125,13 @@
       "users": "Users",
       "feedback": "Feedback"
     },
+    "adminLabel": "admin",
+    "userFallback": "Admin",
+    "leaveTitle": "Unsaved changes",
     "leaveConfirm": "You have unsaved changes. Leave the page without saving?",
+    "leaveAction": "Leave",
+    "stayAction": "Stay",
+    "logoutTitle": "Sign out?",
     "logoutConfirm": "You have unsaved changes. Sign out without saving?",
     "logoutAria": "Sign out"
   },
@@ -168,9 +183,12 @@
       "badgeFallback": "Badge",
       "backBadges": "Badges",
       "name": "Name",
+      "slug": "Slug",
+      "usernamePreview": "@username",
       "description": "Description",
       "order": "Order",
       "visible": "Visible",
+      "premium": "Premium",
       "cancelRemoveIcon": "Cancel removal",
       "removeIcon": "Remove icon",
       "delete": "Delete",
@@ -256,7 +274,9 @@
       "saveError": "Could not save the changes",
       "hidden": "Feedback hidden",
       "hideError": "Could not hide the feedback",
-      "unknownUser": "Unknown user"
+      "unknownUser": "Unknown user",
+      "missingToken": "Missing authentication token",
+      "missingStatus": "Missing feedback product status"
     },
     "meta": {
       "status": {

@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -16,6 +15,7 @@ import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 import {
   CardContent,
@@ -36,6 +36,7 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/resend')({
   beforeLoad: () => {
@@ -104,9 +105,7 @@ function ResendVerificationPage() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('resend.error'),
+                apiErrorMessage(error, t('resend.error')),
               )
             }),
           ),
@@ -174,7 +173,7 @@ function ResendVerificationPage() {
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('resend.submit')}
             </Button>

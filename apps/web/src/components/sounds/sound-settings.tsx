@@ -54,7 +54,7 @@ export function SoundSettings() {
           <SelectContent>
             {authorPacks.map((pack) => (
               <SelectItem key={pack.id} value={pack.id}>
-                {pack.label}
+                {t(pack.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>

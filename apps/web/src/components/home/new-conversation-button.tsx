@@ -8,27 +8,35 @@ import { toast } from 'sonner'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
+  Command,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@syrnike13/ui/primitives/command'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
-import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
 import { createGroupChannelEffect } from '#/features/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { cn } from '#/lib/utils'
 
 type DialogMode = 'dm' | 'group' | null
 
@@ -137,11 +145,7 @@ export function NewConversationButton() {
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : t('createError'),
-            )
+            toast.error(apiErrorMessage(error, t('createError')))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),
@@ -151,74 +155,67 @@ export function NewConversationButton() {
 
   return (
     <>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger render={<Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
-            title={t('title')} />}>
-            <PlusIcon className="size-4" />
-          </PopoverTrigger>
-        <PopoverContent align="end" className="w-52 p-1">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
-            onClick={() => openDialog('dm')}
-          >
-            <MessageCircleIcon className="size-4 shrink-0" />
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              title={t('title')}
+            />
+          }
+        >
+          <PlusIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={() => openDialog('dm')}>
+            <MessageCircleIcon />
             {t('directMessage')}
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
-            onClick={() => openDialog('group')}
-          >
-            <UsersIcon className="size-4 shrink-0" />
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openDialog('group')}>
+            <UsersIcon />
             {t('group')}
-          </button>
-        </PopoverContent>
-      </Popover>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <Dialog open={mode === 'dm'} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="gap-0 p-0 sm:max-w-md">
-          <DialogHeader className="border-b px-4 py-3">
+          <DialogHeader className="px-4 py-3">
             <DialogTitle>{t('directMessage')}</DialogTitle>
             <DialogDescription>{t('selectFriend')}</DialogDescription>
           </DialogHeader>
-          <div className="px-4 py-3">
-            <Input
+          <Separator />
+          <Command shouldFilter={false}>
+            <CommandInput
               value={filter}
-              onChange={(event) => setFilter(event.target.value)}
+              onValueChange={setFilter}
               placeholder={t('searchByName')}
-              className="h-9"
             />
-          </div>
-          <ScrollArea className="max-h-72 px-2 pb-3">
-            {filteredFriends.length === 0 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                {t('noFriends')}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {filteredFriends.map((user) => (
-                  <li key={user._id}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent"
-                      onClick={() => void startDm(user._id)}
-                    >
-                      <UserAvatar user={user} className="size-8" />
-                      <span className="min-w-0 truncate font-medium">
-                        {user.display_name ?? user.username}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ScrollArea>
+            <CommandList className="max-h-72 px-2 pb-3">
+              {filteredFriends.length === 0 ? (
+                <Empty className="px-2 py-6">
+                  <EmptyDescription>{t('noFriends')}</EmptyDescription>
+                </Empty>
+              ) : (
+                filteredFriends.map((user) => (
+                  <CommandItem
+                    key={user._id}
+                    value={user._id}
+                    disabled={busy}
+                    onSelect={() => void startDm(user._id)}
+                  >
+                    <UserAvatar user={user} className="size-8" />
+                    <span className="min-w-0 truncate font-medium">
+                      {user.display_name ?? user.username}
+                    </span>
+                  </CommandItem>
+                ))
+              )}
+            </CommandList>
+          </Command>
         </DialogContent>
       </Dialog>
 
@@ -227,12 +224,13 @@ export function NewConversationButton() {
         onOpenChange={(open) => !open && closeDialog()}
       >
         <DialogContent className="gap-0 p-0 sm:max-w-md">
-          <DialogHeader className="border-b px-4 py-3">
+          <DialogHeader className="px-4 py-3">
             <DialogTitle>{t('groupTitle')}</DialogTitle>
             <DialogDescription>
               {t('groupDescription')}
             </DialogDescription>
           </DialogHeader>
+          <Separator />
           <div className="space-y-3 px-4 py-3">
             <div className="space-y-1.5">
               <Label htmlFor="group-name">{t('name')}</Label>
@@ -244,46 +242,39 @@ export function NewConversationButton() {
                 className="h-9"
               />
             </div>
-            <Input
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder={t('searchFriends')}
-              className="h-9"
-            />
           </div>
-          <ScrollArea className="max-h-52 px-2">
-            {filteredFriends.length === 0 ? (
-              <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-                {t('noFriendsToAdd')}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {filteredFriends.map((user) => {
+          <Command shouldFilter={false}>
+            <CommandInput
+              value={filter}
+              onValueChange={setFilter}
+              placeholder={t('searchFriends')}
+            />
+            <CommandList className="max-h-52 px-2 pb-3">
+              {filteredFriends.length === 0 ? (
+                <Empty className="px-2 py-4">
+                  <EmptyDescription>{t('noFriendsToAdd')}</EmptyDescription>
+                </Empty>
+              ) : (
+                filteredFriends.map((user) => {
                   const selected = selectedIds.includes(user._id)
                   return (
-                    <li key={user._id}>
-                      <button
-                        type="button"
-                        className={cn(
-                          'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent',
-                          selected && 'bg-accent',
-                        )}
-                        onClick={() => toggleMember(user._id)}
-                      >
-                        <UserAvatar user={user} className="size-8" />
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {user.display_name ?? user.username}
-                        </span>
-                        {selected ? (
-                          <span className="text-xs text-primary">✓</span>
-                        ) : null}
-                      </button>
-                    </li>
+                    <CommandItem
+                      key={user._id}
+                      value={user._id}
+                      data-checked={selected}
+                      disabled={busy}
+                      onSelect={() => toggleMember(user._id)}
+                    >
+                      <UserAvatar user={user} className="size-8" />
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {user.display_name ?? user.username}
+                      </span>
+                    </CommandItem>
                   )
-                })}
-              </ul>
-            )}
-          </ScrollArea>
+                })
+              )}
+            </CommandList>
+          </Command>
           <div className="flex justify-end gap-2 border-t px-4 py-3">
             <Button type="button" variant="ghost" onClick={closeDialog}>
               {t('cancel')}

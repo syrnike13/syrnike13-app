@@ -273,6 +273,7 @@ export function MessageRow({
   )
 
   const row = (
+    // design-allow restyle-shared: mention/highlight background is a message state.
     <MessagePrimitive
       data-message-id={message._id}
       className={cn(

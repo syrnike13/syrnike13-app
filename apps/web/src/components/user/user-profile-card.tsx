@@ -3,9 +3,10 @@ import { Effect } from 'effect'
 import {
   BanIcon,
   CopyIcon,
-  Loader2Icon,
   MessageCircleIcon,
   MoreHorizontalIcon,
+  PencilFillIcon,
+  UserCheckIcon,
   UserIcon,
   UserPlusIcon,
 } from '#/components/icons'
@@ -14,21 +15,34 @@ import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
+import { UserProfileHeader } from '#/components/user/user-profile-header'
+import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import { UserProfileMutuals } from '#/components/user/user-profile-mutuals'
+import { UserProfileRoleList } from '#/components/user/user-profile-role-list'
+import { useUserMutuals } from '#/components/user/use-user-mutuals'
+import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { Input } from '@syrnike13/ui/primitives/input'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
+import {
+  blockUserRelationship,
+  sendFriendRequestToUser,
+  unblockBlockedUser,
+} from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
   canMessageUser,
   canViewUserProfile,
@@ -44,13 +58,15 @@ export type UserProfileCardProps = {
   onOpenGlobalProfile?: () => void
 }
 
-/** Серверный профиль в поповере (ЛКМ по участнику). */
+/**
+ * Серверный профиль в поповере (ЛКМ по участнику). Геометрия Discord:
+ * 300px, баннер 105px, аватар 80px, имя 20/24 w600, роли 24px.
+ */
 export function UserProfileCard({
   user: profile,
   hideMessage,
   serverId,
-  serverName: serverNameProp,
-  roles: rolesProp,
+  roles,
   onClose,
   onOpenGlobalProfile,
 }: UserProfileCardProps) {
@@ -59,15 +75,24 @@ export function UserProfileCard({
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
+  const { openSettings } = useSettingsModal()
 
   const [busy, setBusy] = useState(false)
+  const [blockOpen, setBlockOpen] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
+
+  const { bio } = useUserProfileData(profile._id)
+  const { mutualFriends, mutualFriendsCount, mutualServersCount } =
+    useUserMutuals(profile._id)
 
   const isSelf = profile._id === auth.user?._id
   const canMessage =
     !hideMessage && !isSelf && !profile.bot && canMessageUser(profile._id)
+  const canViewProfile =
+    Boolean(onOpenGlobalProfile) && canViewUserProfile(profile._id)
   const showBannerMenu = !isSelf && !profile.bot
   const canAddFriend = showBannerMenu && profile.relationship === 'None'
+  const isBlocked = profile.relationship === 'Blocked'
 
   function dismiss() {
     onClose?.()
@@ -82,11 +107,24 @@ export function UserProfileCard({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
-    if (!window.confirm(t('confirmBan', { username: profile.username }))) return
     setBusy(true)
     try {
       await Effect.runPromise(blockUserRelationship(token, profile._id, tf))
+      setBlockOpen(false)
       dismiss()
+    } catch {
+      // friend-actions already shows the concrete error toast.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUnblock() {
+    const token = auth.session?.token
+    if (!token || isSelf) return
+    setBusy(true)
+    try {
+      await Effect.runPromise(unblockBlockedUser(token, profile._id, tf))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -107,10 +145,13 @@ export function UserProfileCard({
     }
   }
 
-  async function copyUserId() {
+  async function copyToClipboard(
+    value: string,
+    successKey: 'idCopied' | 'usernameCopied',
+  ) {
     try {
-      await Effect.runPromise(writeClipboardTextEffect(profile._id))
-      toast.success(t('idCopied'))
+      await Effect.runPromise(writeClipboardTextEffect(value))
+      toast.success(t(successKey))
     } catch {
       toast.error(t('copyError'))
     }
@@ -149,62 +190,121 @@ export function UserProfileCard({
     }
   }
 
-  return (
+  const bannerActions = showBannerMenu ? (
     <>
-      <UserProfileCardHeader
+      {canAddFriend ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          disabled={busy}
+          title={t('addFriend')}
+          aria-label={t('addFriend')}
+          className="size-8"
+          onClick={(event) => {
+            event.stopPropagation()
+            void handleAddFriend()
+          }}
+        >
+          {busy ? (
+            <Spinner className="size-4" />
+          ) : (
+            <UserPlusIcon className="size-4" />
+          )}
+        </Button>
+      ) : null}
+      {canMessage ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          disabled={busy}
+          title={t('message')}
+          aria-label={t('message')}
+          className="size-8"
+          onClick={(event) => {
+            event.stopPropagation()
+            void openDm()
+          }}
+        >
+          <MessageCircleIcon className="size-4" />
+        </Button>
+      ) : null}
+      <UserProfileCardBannerMenu
+        disabled={busy}
+        canViewProfile={canViewProfile}
+        canAddFriend={canAddFriend}
+        isBlocked={isBlocked}
+        onViewProfile={handleViewProfile}
+        onAddFriend={() => void handleAddFriend()}
+        onBlock={() => setBlockOpen(true)}
+        onUnblock={() => void handleUnblock()}
+        onCopyUsername={() =>
+          void copyToClipboard(profile.username, 'usernameCopied')
+        }
+        onCopyUserId={() => void copyToClipboard(profile._id, 'idCopied')}
+      />
+    </>
+  ) : undefined
+
+  return (
+    <div className="flex max-h-profile-popover min-w-0 flex-col gap-2">
+      <UserProfileHeader
         user={profile}
-        serverId={serverId}
-        serverName={serverNameProp}
-        roles={rolesProp}
-        onAvatarClick={
-          onOpenGlobalProfile
-            ? () => {
-                dismiss()
-                onOpenGlobalProfile()
-              }
-            : undefined
-        }
-        bannerActions={
-          showBannerMenu ? (
-            <div className="flex items-center gap-1.5">
-              {canAddFriend ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  disabled={busy}
-                  title={t('addFriend')}
-                  aria-label={t('addFriend')}
-                  className="size-8"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void handleAddFriend()
-                  }}
-                >
-                  {busy ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <UserPlusIcon className="size-4" />
-                  )}
-                </Button>
-              ) : null}
-              <UserProfileCardBannerMenu
-                disabled={busy}
-                canViewProfile={
-                  Boolean(onOpenGlobalProfile) && canViewUserProfile(profile._id)
-                }
-                onViewProfile={handleViewProfile}
-                onBlock={() => void handleBlock()}
-                onCopyUserId={() => void copyUserId()}
-              />
-            </div>
-          ) : undefined
-        }
+        variant="popover"
+        bannerActions={bannerActions}
+        onAvatarClick={canViewProfile ? handleViewProfile : undefined}
       />
 
-      {canMessage ? (
+      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2">
+        <UserProfileIdentity user={profile} />
+        <UserProfileMutuals
+          mutualFriends={mutualFriends}
+          mutualFriendsCount={mutualFriendsCount}
+          mutualServersCount={mutualServersCount}
+        />
+        {bio ? (
+          <div className="min-w-0">
+            <p className="line-clamp-3 text-sm leading-4.5 whitespace-pre-wrap text-foreground">
+              {bio}
+            </p>
+            {canViewProfile ? (
+              <button
+                type="button"
+                className="mt-1 text-xs leading-4 text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                onClick={handleViewProfile}
+              >
+                {t('viewFullProfile')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <UserProfileRoleList
+          user={profile}
+          serverId={serverId}
+          roles={roles}
+          maxVisible={6}
+        />
+      </div>
+
+      {isSelf ? (
+        <div className="px-4 pb-3">
+          <Button
+            type="button"
+            size="default"
+            className="h-8 w-full"
+            onClick={() => {
+              dismiss()
+              openSettings('profile')
+            }}
+          >
+            <PencilFillIcon className="size-4" aria-hidden />
+            {t('editProfile')}
+          </Button>
+        </div>
+      ) : canMessage ? (
         <form
-          className="px-4 pt-1 pb-4"
+          className="px-4 pb-3"
           onSubmit={(event) => {
             event.preventDefault()
             void openDm(messageDraft)
@@ -217,7 +317,7 @@ export function UserProfileCard({
               placeholder={t('messagePlaceholder', {
                 username: profile.username,
               })}
-              className="h-10 pr-10 text-sm"
+              className="h-11.5 pr-11 text-base leading-5.5 md:text-base"
               onChange={(event) => setMessageDraft(event.target.value)}
             />
             <Button
@@ -230,7 +330,7 @@ export function UserProfileCard({
               aria-label={t('openDm')}
             >
               {busy ? (
-                <Loader2Icon className="size-4 animate-spin" />
+                <Spinner className="size-4" />
               ) : (
                 <MessageCircleIcon className="size-4" />
               )}
@@ -238,21 +338,39 @@ export function UserProfileCard({
           </div>
         </form>
       ) : null}
-    </>
+
+      <UserBlockDialog
+        user={profile}
+        open={blockOpen}
+        busy={busy}
+        onOpenChange={setBlockOpen}
+        onConfirm={() => void handleBlock()}
+      />
+    </div>
   )
 }
 
 function UserProfileCardBannerMenu({
   disabled,
   canViewProfile,
+  canAddFriend,
+  isBlocked,
   onViewProfile,
+  onAddFriend,
   onBlock,
+  onUnblock,
+  onCopyUsername,
   onCopyUserId,
 }: {
   disabled?: boolean
   canViewProfile: boolean
+  canAddFriend: boolean
+  isBlocked: boolean
   onViewProfile: () => void
+  onAddFriend: () => void
   onBlock: () => void
+  onUnblock: () => void
+  onCopyUsername: () => void
   onCopyUserId: () => void
 }) {
   const t = useTranslations('users')
@@ -286,14 +404,33 @@ function UserProfileCardBannerMenu({
             {t('viewProfile')}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem variant="destructive" onClick={onBlock}>
-          <BanIcon className="size-3.5" />
-          {t('block')}
+        {canAddFriend ? (
+          <DropdownMenuItem onClick={onAddFriend}>
+            <UserPlusIcon className="size-3.5" />
+            {t('addFriend')}
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onCopyUsername}>
+          <CopyIcon className="size-3.5" />
+          {t('copyUsername')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onCopyUserId}>
           <CopyIcon className="size-3.5" />
           {t('copyUserId')}
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {isBlocked ? (
+          <DropdownMenuItem onClick={onUnblock}>
+            <UserCheckIcon className="size-3.5" />
+            {t('unblock')}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem variant="destructive" onClick={onBlock}>
+            <BanIcon className="size-3.5" />
+            {t('block')}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

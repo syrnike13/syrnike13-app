@@ -34,6 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
@@ -45,6 +46,7 @@ import {
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -451,7 +453,7 @@ function ServerSettingsGeneralPanel({
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : t('saveError'),
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -641,7 +643,7 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : t('saveError'),
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -752,9 +754,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('emojiLoadError'),
+                apiErrorMessage(error, t('emojiLoadError')),
               )
               setEmojiLoading(false)
             }),
@@ -809,9 +809,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('emojiCreateError'),
+              apiErrorMessage(error, t('emojiCreateError')),
             )
             if (emojiFileRef.current) emojiFileRef.current.value = ''
           }),
@@ -841,7 +839,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('emojiDeleteError'),
+              apiErrorMessage(error, t('emojiDeleteError')),
             )
           }),
         ),
@@ -863,6 +861,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               id="emoji-name"
               value={emojiName}
               maxLength={32}
+              // design-allow hardcoded-string: example emoji identifier, not UI copy
               placeholder="party_parrot"
               onChange={(event) => setEmojiName(event.target.value)}
             />
@@ -888,7 +887,9 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         {emojiLoading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : emojis.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('noEmoji')}</p>
+          <Empty className="py-6">
+            <EmptyDescription>{t('noEmoji')}</EmptyDescription>
+          </Empty>
         ) : (
           <ul className="flex flex-col gap-2">
             {emojis.map((emoji) => (

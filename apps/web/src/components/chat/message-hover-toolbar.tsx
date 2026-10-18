@@ -6,6 +6,7 @@ import { ReplyIcon, SmilePlusIcon } from '#/components/icons'
 import { MessageActionsMenu } from '#/components/chat/message-actions-menu'
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   Tooltip,
   TooltipContent,
@@ -97,7 +98,7 @@ export function MessageHoverToolbar({
           )
         })}
 
-        <div className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
+        <Separator orientation="vertical" className="mx-0.5 h-5" />
 
         <MessageReactionPicker
           open={pickerOpen}

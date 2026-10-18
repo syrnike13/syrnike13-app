@@ -27,7 +27,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
-import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   type SettingsSection,
@@ -36,15 +40,6 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
-
-function settingsNavItemClass(active: boolean) {
-  return cn(
-    'flex w-full items-center gap-2 rounded-md text-left text-sm transition-colors',
-    active
-      ? 'bg-accent font-medium text-accent-foreground'
-      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-  )
-}
 
 const DESKTOP_NAV_ITEM: {
   id: SettingsSection
@@ -127,9 +122,7 @@ function SettingsDesktopModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         showCloseButton={false}
-        className={cn(
-          'flex h-settings-modal max-h-settings-modal w-settings-modal max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl',
-        )}
+        className="flex h-settings-modal max-h-settings-modal w-settings-modal max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl"
       >
         <DialogTitle className="sr-only">{t('userSettingsTitle')}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -138,14 +131,10 @@ function SettingsDesktopModal() {
 
         <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
           <div className="border-b border-border p-3">
-            <button
+            <Button
               type="button"
-              className={cn(
-                'flex w-full items-center gap-2 rounded-lg p-1.5 text-left transition-colors',
-                section === 'profile'
-                  ? 'bg-accent ring-1 ring-border/60'
-                  : 'hover:bg-accent/50',
-              )}
+              variant={section === 'profile' ? 'secondary' : 'ghost'}
+              className="h-auto w-full justify-start gap-2 p-1.5 text-left"
               onClick={() => setSection('profile')}
             >
               <UserAvatar
@@ -162,15 +151,17 @@ function SettingsDesktopModal() {
                   {t('edit')}
                 </p>
               </div>
-            </button>
-            <div className="relative mt-3">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
+            </Button>
+            <InputGroup className="mt-3 h-8">
+              <InputGroupAddon>
+                <SearchIcon className="size-4" />
+              </InputGroupAddon>
+              <InputGroupInput
                 disabled
                 placeholder={t('searchSoon')}
-                className="h-8 pl-8 text-xs"
+                className="text-xs"
               />
-            </div>
+            </InputGroup>
           </div>
 
           <ScrollArea className="h-0 min-h-0 flex-1">
@@ -182,30 +173,30 @@ function SettingsDesktopModal() {
                 const Icon = item.icon
                 const active = section === item.id
                 return (
-                  <button
+                  <Button
                     key={item.id}
                     type="button"
-                    className={cn(settingsNavItemClass(active), 'h-9 px-2')}
+                    variant={active ? 'secondary' : 'ghost'}
+                    aria-current={active ? 'page' : undefined}
+                    className="h-9 w-full justify-start gap-2 px-2"
                     onClick={() => setSection(item.id)}
                   >
                     <Icon className="size-4 shrink-0" />
                     {t(item.labelKey)}
-                  </button>
+                  </Button>
                 )
               })}
               <div className="mt-2 border-t border-border pt-2">
-                <button
+                <Button
                   type="button"
-                  className={cn(
-                    settingsNavItemClass(false),
-                    'h-9 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive',
-                  )}
+                  variant="destructive"
+                  className="h-9 w-full justify-start gap-2 px-2"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}
                 >
                   <LogOutIcon className="size-4 shrink-0" />
                   {loggingOut ? t('loggingOut') : t('logout')}
-                </button>
+                </Button>
               </div>
             </nav>
           </ScrollArea>

@@ -18,6 +18,15 @@ import {
 } from '@syrnike13/ui/primitives/button'
 import { cn } from '#/lib/utils'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -42,12 +51,18 @@ import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type GroupChannel = Extract<Channel, { channel_type: 'Group' }>
 
 type GroupManagementDialogProps = {
   channel: GroupChannel
 }
+
+type PendingConfirmation =
+  | { type: 'remove'; user: User }
+  | { type: 'transfer'; user: User }
+  | { type: 'leave'; suffix: string }
 
 export function GroupManagementDialog({
   ...props
@@ -63,6 +78,7 @@ function GroupManagementDialogContent({
   channel,
 }: GroupManagementDialogProps) {
   const t = useTranslations('chat.group')
+  const tc = useTranslations('chat')
   const tm = useTranslations('media')
   const auth = useAuth()
   const navigate = useNavigate()
@@ -80,6 +96,8 @@ function GroupManagementDialogContent({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [confirmation, setConfirmation] =
+    useState<PendingConfirmation | null>(null)
 
   const token = auth.session?.token
   const currentUserId = auth.user?._id
@@ -109,9 +127,7 @@ function GroupManagementDialogContent({
       Effect.catch((error) =>
         Effect.sync(() => {
           toast.error(
-            error instanceof Error
-              ? error.message
-              : t('membersLoadError'),
+            apiErrorMessage(error, t('membersLoadError')),
           )
         }),
       ),
@@ -212,7 +228,7 @@ function GroupManagementDialogContent({
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : t('saveError'),
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -263,7 +279,7 @@ function GroupManagementDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('addError'),
+              apiErrorMessage(error, t('addError')),
             )
           }),
         ),
@@ -274,7 +290,6 @@ function GroupManagementDialogContent({
 
   async function removeMember(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
-    if (!window.confirm(t('removeConfirm', { username: user.username }))) return
     setBusy(true)
     await Effect.runPromise(
       removeGroupMemberEffect(token, channel._id, user._id).pipe(
@@ -294,7 +309,7 @@ function GroupManagementDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('removeError'),
+              apiErrorMessage(error, t('removeError')),
             )
           }),
         ),
@@ -305,7 +320,6 @@ function GroupManagementDialogContent({
 
   async function transferOwnership(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
-    if (!window.confirm(t('transferConfirm', { username: user.username }))) return
     setBusy(true)
     await Effect.runPromise(
       transferGroupOwnershipEffect(token, channel._id, user._id).pipe(
@@ -318,9 +332,7 @@ function GroupManagementDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('transferError'),
+              apiErrorMessage(error, t('transferError')),
             )
           }),
         ),
@@ -329,7 +341,7 @@ function GroupManagementDialogContent({
     )
   }
 
-  async function leaveGroup() {
+  function requestLeave() {
     if (!token) return
     const nextOwner =
       isOwner && members.length > 1
@@ -338,7 +350,11 @@ function GroupManagementDialogContent({
     const suffix = nextOwner
       ? t('leaveOwnerSuffix', { username: nextOwner.username })
       : ''
-    if (!window.confirm(t('leaveConfirm', { suffix }))) return
+    setConfirmation({ type: 'leave', suffix })
+  }
+
+  async function leaveGroup() {
+    if (!token) return
     setBusy(true)
     await Effect.runPromise(
       Effect.gen(function*() {
@@ -356,7 +372,7 @@ function GroupManagementDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('leaveError'),
+              apiErrorMessage(error, t('leaveError')),
             )
             setBusy(false)
           }),
@@ -369,6 +385,7 @@ function GroupManagementDialogContent({
     channel.icon && !removeIcon ? attachmentPreviewUrl(channel.icon) : null
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button
           type="button"
@@ -482,7 +499,9 @@ function GroupManagementDialogContent({
                         variant="ghost"
                         size="sm"
                         disabled={busy}
-                        onClick={() => void transferOwnership(member)}
+                        onClick={() =>
+                          setConfirmation({ type: 'transfer', user: member })
+                        }
                       >
                         {t('transfer')}
                       </Button>
@@ -492,7 +511,9 @@ function GroupManagementDialogContent({
                         size="icon"
                         title={t('removeMember')}
                         disabled={busy}
-                        onClick={() => void removeMember(member)}
+                        onClick={() =>
+                          setConfirmation({ type: 'remove', user: member })
+                        }
                       >
                         <UserMinusIcon className="size-4" />
                       </Button>
@@ -531,7 +552,7 @@ function GroupManagementDialogContent({
               type="button"
               variant="destructive"
               disabled={busy}
-              onClick={() => void leaveGroup()}
+              onClick={requestLeave}
             >
               <LogOutIcon className="size-4" />
               {t('leave')}
@@ -541,5 +562,53 @@ function GroupManagementDialogContent({
         <UnsavedChangesBar placement="flow" />
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={confirmation !== null}
+      onOpenChange={(next) => {
+        if (!next) setConfirmation(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {confirmation?.type === 'remove'
+              ? t('removeConfirm', { username: confirmation.user.username })
+              : confirmation?.type === 'transfer'
+                ? t('transferConfirm', {
+                    username: confirmation.user.username,
+                  })
+                : t('leaveConfirm', {
+                    suffix:
+                      confirmation?.type === 'leave' ? confirmation.suffix : '',
+                  })}
+          </AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant={confirmation?.type === 'transfer' ? 'default' : 'destructive'}
+            onClick={() => {
+              const pending = confirmation
+              setConfirmation(null)
+              if (!pending) return
+              if (pending.type === 'remove') void removeMember(pending.user)
+              else if (pending.type === 'transfer') {
+                void transferOwnership(pending.user)
+              } else {
+                void leaveGroup()
+              }
+            }}
+          >
+            {confirmation?.type === 'remove'
+              ? t('removeMember')
+              : confirmation?.type === 'transfer'
+                ? t('transfer')
+                : t('leave')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

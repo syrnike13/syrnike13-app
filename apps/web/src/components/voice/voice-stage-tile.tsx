@@ -17,6 +17,7 @@ import type { UserVoiceState } from '#/features/sync/voice-types'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { inviteUrl } from '#/lib/invite-link'
 
 const TILE_SURFACE =
@@ -151,9 +152,7 @@ export function VoiceStageInviteTile({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('errors.inviteCreate'),
+              apiErrorMessage(error, t('errors.inviteCreate')),
             )
           }),
         ),

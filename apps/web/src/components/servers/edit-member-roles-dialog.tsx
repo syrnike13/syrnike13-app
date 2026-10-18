@@ -13,6 +13,7 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 
 type EditMemberRolesDialogProps = {
   server: Server
@@ -43,7 +44,7 @@ export function EditMemberRolesDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid w-full max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
-        <DialogHeader className="gap-2.5 border-b border-border px-5 py-3.5 pr-12 text-left sm:text-left">
+        <DialogHeader className="gap-2.5 px-5 py-3.5 pr-12 text-left sm:text-left">
           <DialogTitle className="truncate text-base leading-snug">
             {t('title', { name: nickname })}
           </DialogTitle>
@@ -61,6 +62,7 @@ export function EditMemberRolesDialog({
             />
           </div>
         </DialogHeader>
+        <Separator />
 
         <ScrollArea className="max-h-roles-dialog px-2 py-1.5">
           <MemberRolesEditor

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
-import { CheckIcon, SearchIcon } from '#/components/icons'
+import { SearchIcon } from '#/components/icons'
 import { Effect, Exit } from 'effect'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -15,12 +16,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { canToggleMemberRole } from '#/lib/member-roles'
 import { cn } from '#/lib/utils'
 
@@ -186,11 +190,7 @@ export function AddRoleMembersDialog({
 
       onOpenChange(false)
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t('addError'),
-      )
+      toast.error(apiErrorMessage(error, t('addError')))
     } finally {
       setSaving(false)
     }
@@ -231,27 +231,19 @@ export function AddRoleMembersDialog({
 
               return (
                 <li key={member._id.user}>
-                  <button
-                    type="button"
-                    disabled={disabled}
+                  <label
                     className={cn(
                       'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors',
                       selected ? 'bg-accent/60' : 'hover:bg-muted/40',
                       disabled && 'cursor-not-allowed opacity-50',
                     )}
-                    onClick={() => toggleMember(member._id.user)}
                   >
-                    <span
-                      className={cn(
-                        'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-                        selected
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-muted-foreground/40 bg-transparent',
-                      )}
-                      aria-hidden
-                    >
-                      {selected ? <CheckIcon className="size-3" /> : null}
-                    </span>
+                    <Checkbox
+                      checked={selected}
+                      disabled={disabled}
+                      aria-label={memberDisplayName(user, member)}
+                      onCheckedChange={() => toggleMember(member._id.user)}
+                    />
                     <UserAvatar
                       user={user}
                       className="size-8"
@@ -268,19 +260,22 @@ export function AddRoleMembersDialog({
                         </span>
                       ) : null}
                     </span>
-                  </button>
+                  </label>
                 </li>
               )
             })}
           </ul>
           {candidates.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {query.trim() ? t('noResults') : t('noCandidates')}
-            </p>
+            <Empty className="px-3 py-8">
+              <EmptyDescription>
+                {query.trim() ? t('noResults') : t('noCandidates')}
+              </EmptyDescription>
+            </Empty>
           ) : null}
         </ScrollArea>
 
-        <DialogFooter className="grid grid-cols-2 gap-2 border-t border-border p-4 sm:justify-stretch">
+        <Separator />
+        <DialogFooter className="grid grid-cols-2 gap-2 p-4 sm:justify-stretch">
           <Button
             type="button"
             variant="secondary"

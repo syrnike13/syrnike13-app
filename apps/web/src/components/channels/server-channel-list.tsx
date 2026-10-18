@@ -49,6 +49,7 @@ import {
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -560,9 +561,7 @@ export function ServerChannelList({
           Effect.sync(() => {
             setOptimisticSections(null)
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('list.orderError'),
+              apiErrorMessage(error, t('list.orderError')),
             )
           }),
         ),

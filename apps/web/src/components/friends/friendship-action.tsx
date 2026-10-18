@@ -4,7 +4,6 @@ import { Effect } from 'effect'
 import { useState } from 'react'
 
 import {
-  Loader2Icon,
   ShieldOffIcon,
   UserCheckIcon,
   UserMinusIcon,
@@ -12,6 +11,7 @@ import {
   XIcon,
 } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { ContextMenuItem } from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -63,7 +63,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
 
   const disabled = busy || !token
   const pendingIcon = busy ? (
-    <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+    <Spinner className="size-4" data-icon="inline-start" />
   ) : null
 
   if (user.relationship === 'Incoming') {

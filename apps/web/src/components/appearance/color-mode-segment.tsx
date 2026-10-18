@@ -1,7 +1,10 @@
 import type { AppearanceColorMode } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { cn } from '#/lib/utils'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@syrnike13/ui/primitives/toggle-group'
 
 const MODES = [
   { id: 'light', labelKey: 'modes.light' },
@@ -26,30 +29,24 @@ export function ColorModeSegment({
   const t = useTranslations('settings.appearance')
 
   return (
-    <div
-      className={cn(
-        'inline-flex rounded-lg border border-border bg-muted/40 p-1',
-        disabled && 'pointer-events-none opacity-50',
-      )}
-      role="group"
+    <ToggleGroup
       aria-label={t('displayMode')}
+      value={[value]}
+      onValueChange={(next) => {
+        const nextMode = next[0]
+        if (nextMode) onChange(nextMode as AppearanceColorMode)
+      }}
+      multiple={false}
+      disabled={disabled}
+      variant="outline"
+      size="sm"
+      spacing={0}
     >
       {MODES.map((mode) => (
-        <button
-          key={mode.id}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(mode.id)}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            value === mode.id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
+        <ToggleGroupItem key={mode.id} value={mode.id}>
           {t(mode.labelKey)}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   )
 }

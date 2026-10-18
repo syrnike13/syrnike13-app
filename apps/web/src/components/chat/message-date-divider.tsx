@@ -1,3 +1,5 @@
+import { Separator } from '@syrnike13/ui/primitives/separator'
+
 type MessageDateDividerProps = {
   label: string
 }
@@ -9,11 +11,11 @@ export function MessageDateDivider({ label }: MessageDateDividerProps) {
       role="separator"
       aria-label={label}
     >
-      <div className="h-px flex-1 bg-border" />
+      <Separator aria-hidden className="flex-1" />
       <span className="mx-3 shrink-0 text-xs font-medium text-muted-foreground">
         {label}
       </span>
-      <div className="h-px flex-1 bg-border" />
+      <Separator aria-hidden className="flex-1" />
     </div>
   )
 }

@@ -20,6 +20,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -160,9 +161,7 @@ export function useChannelChat({
           Effect.sync(() => {
             if (activeChannelIdRef.current === requestChannelId) {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('messagesLoadError'),
+                apiErrorMessage(error, t('messagesLoadError')),
               )
             }
           }),
@@ -199,7 +198,7 @@ export function useChannelChat({
             Effect.sync(() => {
               syncStore.upsertMessage(message)
               toast.error(
-                error instanceof Error ? error.message : t('deleteMessageError'),
+                apiErrorMessage(error, t('deleteMessageError')),
               )
             }),
           ),
@@ -224,9 +223,7 @@ export function useChannelChat({
                 pinned: message.pinned,
               })
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('pinMessageError'),
+                apiErrorMessage(error, t('pinMessageError')),
               )
             }),
           ),
@@ -263,9 +260,7 @@ export function useChannelChat({
                 pinned: message.pinned,
               })
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('unpinMessageError'),
+                apiErrorMessage(error, t('unpinMessageError')),
               )
             }),
           ),

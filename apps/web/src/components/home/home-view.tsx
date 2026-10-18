@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
 import {
   Button,
   buttonVariants,
@@ -61,8 +62,7 @@ function userLabel(user: { username: string; display_name?: string | null }) {
   return user.display_name ?? user.username
 }
 
-const rowIconActionClass =
-  'size-9 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+const rowIconActionClass = 'size-9 shrink-0 text-muted-foreground'
 
 function HomeFriendRow({
   user,
@@ -79,7 +79,10 @@ function HomeFriendRow({
 }) {
   const t = useTranslations('home.friends')
   const tf = useTranslations('friends')
+  const tc = useTranslations('chat')
   const interactive = Boolean(onOpen)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!onOpen || event.target !== event.currentTarget) return
@@ -97,121 +100,146 @@ function HomeFriendRow({
     }
   }
 
-  function handleBlock() {
+  async function handleBlock() {
     if (!token) return
-    if (!window.confirm(t('blockConfirm', { username: user.username }))) return
-    Effect.runFork(
-      blockUserRelationship(token, user._id, tf).pipe(Effect.ignore),
-    )
+    setBlocking(true)
+    try {
+      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      setBlockDialogOpen(false)
+    } catch {
+      // friend-actions already shows the error toast.
+    } finally {
+      setBlocking(false)
+    }
   }
 
   return (
-    <div
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      className={cn(
-        'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
-        interactive &&
-          'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
-      )}
-      onClick={onOpen}
-      onKeyDown={handleKeyDown}
-    >
-      <UserAvatar user={user} className="size-10" fallbackClassName="size-10" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{userLabel(user)}</p>
-        <p className="truncate text-sm text-muted-foreground">
-          {presenceLabel(user)}
-        </p>
-      </div>
+    <>
       <div
-        className="flex shrink-0 items-center gap-1"
-        onClick={(event) => event.stopPropagation()}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        className={cn(
+          'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
+          interactive &&
+            'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
+        )}
+        onClick={onOpen}
+        onKeyDown={handleKeyDown}
       >
-        {actions}
-        {onMessage ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={rowIconActionClass}
-            title={t('write')}
-            aria-label={t('write')}
-            onClick={onMessage}
-          >
-            <MessageCircleIcon className="size-4" />
-          </Button>
-        ) : null}
-        {token ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className={rowIconActionClass}
-                  title={t('more')}
-                  aria-label={t('more')}
-                />
-              }
+        <UserAvatar
+          user={user}
+          className="size-10"
+          fallbackClassName="size-10"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{userLabel(user)}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            {presenceLabel(user, tc)}
+          </p>
+        </div>
+        <div
+          className="flex shrink-0 items-center gap-1"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {actions}
+          {onMessage ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={rowIconActionClass}
+              title={t('write')}
+              aria-label={t('write')}
+              onClick={onMessage}
             >
-              <MoreHorizontalIcon className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-auto min-w-44">
-              {user.relationship === 'Incoming' ? (
+              <MessageCircleIcon className="size-4" />
+            </Button>
+          ) : null}
+          {token ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className={rowIconActionClass}
+                    title={t('more')}
+                    aria-label={t('more')}
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-44">
+                {user.relationship === 'Incoming' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        declineIncomingFriendRequest(token, user._id, tf).pipe(
+                          Effect.ignore,
+                        ),
+                      )
+                    }}
+                  >
+                    <XIcon className="size-3.5" />
+                    {t('declineRequest')}
+                  </DropdownMenuItem>
+                ) : null}
+                {user.relationship === 'Outgoing' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        cancelOutgoingFriendRequest(token, user._id, tf).pipe(
+                          Effect.ignore,
+                        ),
+                      )
+                    }}
+                  >
+                    <XIcon className="size-3.5" />
+                    {t('cancelRequest')}
+                  </DropdownMenuItem>
+                ) : null}
+                {user.relationship === 'Friend' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        removeFriend(token, user._id, tf).pipe(Effect.ignore),
+                      )
+                    }}
+                  >
+                    <UserMinusIcon className="size-3.5" />
+                    {t('removeFriend')}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem onClick={() => void copyUserId()}>
+                  <CopyIcon className="size-3.5" />
+                  {t('copyId')}
+                </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      declineIncomingFriendRequest(token, user._id, tf).pipe(
-                        Effect.ignore,
-                      ),
-                    )
+                  onClick={(event) => {
+                    event.preventDefault()
+                    setBlockDialogOpen(true)
                   }}
                 >
-                  <XIcon className="size-3.5" />
-                  {t('declineRequest')}
+                  <BanIcon className="size-3.5" />
+                  {t('block')}
                 </DropdownMenuItem>
-              ) : null}
-              {user.relationship === 'Outgoing' ? (
-                <DropdownMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      cancelOutgoingFriendRequest(token, user._id, tf).pipe(
-                        Effect.ignore,
-                      ),
-                    )
-                  }}
-                >
-                  <XIcon className="size-3.5" />
-                  {t('cancelRequest')}
-                </DropdownMenuItem>
-              ) : null}
-              {user.relationship === 'Friend' ? (
-                <DropdownMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      removeFriend(token, user._id, tf).pipe(Effect.ignore),
-                    )
-                  }}
-                >
-                  <UserMinusIcon className="size-3.5" />
-                  {t('removeFriend')}
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem onClick={() => void copyUserId()}>
-                <CopyIcon className="size-3.5" />
-                {t('copyId')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleBlock}>
-                <BanIcon className="size-3.5" />
-                {t('block')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
       </div>
-    </div>
+      {token ? (
+        <UserBlockDialog
+          user={user}
+          open={blockDialogOpen}
+          busy={blocking}
+          onOpenChange={setBlockDialogOpen}
+          onConfirm={() => void handleBlock()}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -389,7 +417,7 @@ export function HomeView({ tab }: HomeViewProps) {
               <Input
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="username"
+                placeholder={t('usernamePlaceholder')}
                 disabled={sending}
               />
               <Button type="submit" disabled={sending}>

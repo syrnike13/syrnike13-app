@@ -1,4 +1,5 @@
 // design-allow-file hardcoded-string: internal developer Prism tuning overlay.
+// design-allow-file restyle-shared: internal developer Prism tuning overlay; demo panels are not product surfaces.
 import { useEffect, useMemo, useState } from 'react'
 import {
   DEFAULT_PRISM_TUNING,

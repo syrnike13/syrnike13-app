@@ -40,7 +40,7 @@ const gatewayStatusKeys = {
 } as const
 
 const userPanelControlButtonClass =
-  'size-8 shrink-0 rounded-md bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+  'size-8 shrink-0 text-muted-foreground'
 
 const TELEGRAM_CHANNEL_URL = 'https://t.me/+oF1TAWZ2yyQwMDcy'
 
@@ -57,6 +57,7 @@ export function UserPanel({
   onHeightChange,
 }: UserPanelProps) {
   const t = useTranslations('layout.user')
+  const tc = useTranslations('chat')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceSession = useVoiceSession()
@@ -105,7 +106,7 @@ export function UserPanel({
   const soundOff = voiceSession.deafened
 
   const statusLabel = gatewayConnected
-    ? userStatusSubtitle(user)
+    ? userStatusSubtitle(user, tc)
     : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
@@ -236,7 +237,7 @@ export function UserPanel({
             side="top"
             align="start"
             sideOffset={8}
-            className="z-200 w-user-panel-popover overflow-hidden border-0 bg-popover p-0 text-popover-foreground shadow-xl ring-1 ring-shell-divider"
+            className="z-200 w-user-panel-popover overflow-hidden p-0"
             initialFocus={false}
           >
             <CurrentUserProfileMenu

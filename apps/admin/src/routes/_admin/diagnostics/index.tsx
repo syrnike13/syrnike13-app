@@ -11,8 +11,13 @@ import {
   AdminSection,
   AdminSectionHeader,
 } from '#/components/layout/page'
-import { Loader2Icon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { fetchAdminDiagnosticReports } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -72,38 +77,48 @@ function DiagnosticsPage() {
           })
         }}
       >
-        <input
+        <Input
           name="user_id"
           defaultValue={filters.user_id}
           placeholder={t('userPlaceholder')}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
-        <input
+        <Input
           name="area"
           defaultValue={filters.area}
           placeholder={t('areaPlaceholder')}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
-        <select
+        <NativeSelect
           name="status"
           defaultValue={filters.status ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          className="w-full"
         >
-          <option value="">{t('allStatuses')}</option>
-          <option value="new">{t('statusNewPlural')}</option>
-          <option value="investigating">{tStatus('investigating')}</option>
-          <option value="resolved">{t('statusResolvedPlural')}</option>
-        </select>
-        <select
+          <NativeSelectOption value="">{t('allStatuses')}</NativeSelectOption>
+          <NativeSelectOption value="new">
+            {t('statusNewPlural')}
+          </NativeSelectOption>
+          <NativeSelectOption value="investigating">
+            {tStatus('investigating')}
+          </NativeSelectOption>
+          <NativeSelectOption value="resolved">
+            {t('statusResolvedPlural')}
+          </NativeSelectOption>
+        </NativeSelect>
+        <NativeSelect
           name="release_channel"
           defaultValue={filters.release_channel ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          className="w-full"
         >
-          <option value="">{t('allChannels')}</option>
-          <option value="stable">Stable</option>
-          <option value="nightly">Nightly</option>
-          <option value="development">Development</option>
-        </select>
+          <NativeSelectOption value="">{t('allChannels')}</NativeSelectOption>
+          <NativeSelectOption value="stable">
+            {t('channels.stable')}
+          </NativeSelectOption>
+          <NativeSelectOption value="nightly">
+            {t('channels.nightly')}
+          </NativeSelectOption>
+          <NativeSelectOption value="development">
+            {t('channels.development')}
+          </NativeSelectOption>
+        </NativeSelect>
         <Button type="submit" size="sm">{t('filter')}</Button>
       </form>
       <AdminSection>
@@ -112,7 +127,7 @@ function DiagnosticsPage() {
         </AdminSectionHeader>
         {reports.isLoading ? (
           <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-            <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
+            <Spinner className="mr-2 size-4" aria-hidden />
             {t('loading')}
           </div>
         ) : reports.isError ? (

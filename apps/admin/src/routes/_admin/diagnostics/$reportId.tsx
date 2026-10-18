@@ -12,8 +12,14 @@ import {
   AdminSection,
   AdminStickyFooter,
 } from '#/components/layout/page'
-import { DownloadIcon, Loader2Icon } from '#/components/icons'
+import { DownloadIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Label } from '@syrnike13/ui/primitives/label'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   downloadAdminDiagnosticReportEffect,
@@ -104,7 +110,7 @@ function DiagnosticReportPage() {
     return (
       <AdminPage title={t('title')}>
         <AdminEmpty>
-          <Loader2Icon className="mr-2 inline size-4 animate-spin" />
+          <Spinner className="mr-2 inline size-4" aria-hidden />
           {t('loading')}
         </AdminEmpty>
       </AdminPage>
@@ -176,23 +182,39 @@ function DiagnosticReportPage() {
         </AdminSection>
 
         <AdminSection className="space-y-3 p-4">
-          <label className="block text-xs text-muted-foreground" htmlFor="diagnostic-status">{t('statusLabel')}</label>
-          <select
+          <Label
+            className="text-xs text-muted-foreground"
+            htmlFor="diagnostic-status"
+          >
+            {t('statusLabel')}
+          </Label>
+          <NativeSelect
             id="diagnostic-status"
             value={status}
+            className="w-full"
             onChange={(event) => {
               const decoded = Schema.decodeUnknownOption(
                 ApiSchema.DiagnosticReportStatus,
               )(event.target.value)
               if (Option.isSome(decoded)) setStatus(decoded.value)
             }}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
-            <option value="new">{tStatus('new')}</option>
-            <option value="investigating">{tStatus('investigating')}</option>
-            <option value="resolved">{tStatus('resolved')}</option>
-          </select>
-          <label className="block text-xs text-muted-foreground" htmlFor="diagnostic-notes">{t('notes')}</label>
+            <NativeSelectOption value="new">
+              {tStatus('new')}
+            </NativeSelectOption>
+            <NativeSelectOption value="investigating">
+              {tStatus('investigating')}
+            </NativeSelectOption>
+            <NativeSelectOption value="resolved">
+              {tStatus('resolved')}
+            </NativeSelectOption>
+          </NativeSelect>
+          <Label
+            className="text-xs text-muted-foreground"
+            htmlFor="diagnostic-notes"
+          >
+            {t('notes')}
+          </Label>
           <Textarea id="diagnostic-notes" value={notes} maxLength={4000} onChange={(event) => setNotes(event.target.value)} rows={8} />
         </AdminSection>
       </div>

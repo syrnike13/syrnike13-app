@@ -41,6 +41,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -394,9 +395,11 @@ function AuditActionFilter({
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <button
+            <Button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              variant="outline"
+              size="lg"
+              className="w-full justify-between"
             />
           }
         >
@@ -468,9 +471,11 @@ function AuditUserFilter({
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <button
+            <Button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              variant="outline"
+              size="lg"
+              className="w-full justify-between"
             />
           }
         >
@@ -495,7 +500,7 @@ function AuditUserFilter({
               <Input
                 value={query}
                 placeholder={t('filters.searchUser')}
-                className="h-8 pl-8"
+                className="pl-8"
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
@@ -731,7 +736,9 @@ export function ServerSettingsAuditPanel({
       ) : auditQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('empty')}</EmptyDescription>
+        </Empty>
       ) : (
         <>
           <ul className="space-y-2">

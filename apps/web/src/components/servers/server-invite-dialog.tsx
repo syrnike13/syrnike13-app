@@ -18,9 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import { sendChannelMessageEffect } from '#/features/api/messages-api'
 import { fetchServerInvitesEffect } from '#/features/api/servers-api'
@@ -176,7 +182,7 @@ export function ServerInviteDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('loadError'),
+              apiErrorMessage(error, t('loadError')),
             )
           }),
         ),
@@ -284,7 +290,7 @@ export function ServerInviteDialog({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : t('copyError'),
+                apiErrorMessage(error, t('copyError')),
               )
             }),
           onSuccess: () =>
@@ -324,7 +330,7 @@ export function ServerInviteDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('inviteError'),
+              apiErrorMessage(error, t('inviteError')),
             )
           }),
         ),
@@ -366,9 +372,9 @@ export function ServerInviteDialog({
             {t('serverMembers')}
           </p>
           {visibleFriends.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t('noFriends')}
-            </p>
+            <Empty className="py-8">
+              <EmptyDescription>{t('noFriends')}</EmptyDescription>
+            </Empty>
           ) : (
             <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
               {visibleFriends.map((user) => {
@@ -460,64 +466,64 @@ export function ServerInviteDialog({
                   <Label htmlFor="server-invite-channel">
                     {t('channel')}
                   </Label>
-                  <select
+                  <NativeSelect
                     id="server-invite-channel"
                     value={activeChannelId ?? ''}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="w-full"
                     onChange={(event) => {
                       setSelectedChannelId(event.target.value)
                       invalidateLink()
                     }}
                   >
                     {inviteChannels.map((channel) => (
-                      <option key={channel._id} value={channel._id}>
+                      <NativeSelectOption key={channel._id} value={channel._id}>
                         #{channel.name}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               ) : null}
 
               <div className="space-y-1.5">
                 <Label htmlFor="server-invite-max-age">{t('expiry')}</Label>
-                <select
+                <NativeSelect
                   id="server-invite-max-age"
                   value={maxAgeSeconds}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="w-full"
                   onChange={(event) => {
                     setMaxAgeSeconds(event.target.value)
                     invalidateLink()
                   }}
                 >
                   {INVITE_MAX_AGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <NativeSelectOption key={option.value} value={option.value}>
                       {t(option.labelKey)}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="server-invite-max-uses">
                   {t('maxUses')}
                 </Label>
-                <select
+                <NativeSelect
                   id="server-invite-max-uses"
                   value={maxUses}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="w-full"
                   onChange={(event) => {
                     setMaxUses(event.target.value)
                     invalidateLink()
                   }}
                 >
                   {INVITE_MAX_USES_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <NativeSelectOption key={option.value} value={option.value}>
                       {'labelKey' in option
                         ? t(option.labelKey)
                         : option.label}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
           ) : null}

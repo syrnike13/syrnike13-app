@@ -13,7 +13,18 @@ import {
 } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import {
   editChannelMessageEffect,
@@ -44,7 +55,9 @@ export function ChannelChatPanel({
 }: ChannelChatPanelProps) {
   const t = useTranslations('chat')
   const tf = useTranslations('friends')
+  const tu = useTranslations('users')
   const [composerHeight, setComposerHeight] = useState(56)
+  const [blockUserId, setBlockUserId] = useState<string | null>(null)
   const messageListRef = useRef<MessageListHandle>(null)
   const chat = useChannelChat({
     channelId,
@@ -79,8 +92,10 @@ export function ChannelChatPanel({
     return (
       <aside className="theme-surface-content gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider text-card-foreground">
         <PanelHeader title={t('panelChat')} onClose={onClose} />
-        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          {t('channelNotFound')}
+        <div className="flex flex-1 items-center justify-center px-6">
+          <Empty>
+            <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
+          </Empty>
         </div>
       </aside>
     )
@@ -103,6 +118,7 @@ export function ChannelChatPanel({
           : undefined
 
   return (
+    <>
     <aside className="theme-surface-content gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider text-card-foreground">
       <PanelHeader title={title} onClose={onClose}>
         {historyQuery.isFetching ? (
@@ -149,10 +165,7 @@ export function ChannelChatPanel({
           onDelete={(message) => void handleDelete(message)}
           onBlock={(message) => {
             if (!token || message.author === auth.user?._id) return
-            if (!window.confirm(t('blockConfirm'))) return
-            Effect.runFork(
-              blockUserRelationship(token, message.author, tf).pipe(Effect.ignore),
-            )
+            setBlockUserId(message.author)
           }}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}
@@ -251,6 +264,39 @@ export function ChannelChatPanel({
         </div>
       </div>
     </aside>
+
+    <AlertDialog
+      open={Boolean(blockUserId)}
+      onOpenChange={(open) => {
+        if (!open) setBlockUserId(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('blockConfirm')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {tu('blockDescription')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => {
+              if (!token || !blockUserId) return
+              const userId = blockUserId
+              setBlockUserId(null)
+              Effect.runFork(
+                blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+              )
+            }}
+          >
+            {t('block')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
 

@@ -10,6 +10,10 @@ import {
 
 import { SearchIcon } from '#/components/icons'
 import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import { useAuth } from '#/features/auth/auth-context'
@@ -97,10 +101,10 @@ export function ServerSettingsMembersPanel({
 
       return memberDisplayName(a.user, a.member).localeCompare(
         memberDisplayName(b.user, b.member),
-        'ru',
+        locale,
       )
     })
-  }, [members, query, server, sort])
+  }, [locale, members, query, server, sort])
 
   if (!server) return null
 
@@ -123,9 +127,9 @@ export function ServerSettingsMembersPanel({
             className="pl-9"
           />
         </div>
-        <select
+        <NativeSelect
           value={sort}
-          className="h-9 rounded-md border border-input bg-muted/40 px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+          className="w-full sm:w-45"
           aria-label={t('sortAria')}
           onChange={(event) => {
             const decoded = Schema.decodeUnknownOption(MemberSortSchema)(
@@ -134,10 +138,16 @@ export function ServerSettingsMembersPanel({
             if (Option.isSome(decoded)) setSort(decoded.value)
           }}
         >
-          <option value="name">{t('sortName')}</option>
-          <option value="joined">{t('sortJoined')}</option>
-          <option value="roles">{t('sortRoles')}</option>
-        </select>
+          <NativeSelectOption value="name">
+            {t('sortName')}
+          </NativeSelectOption>
+          <NativeSelectOption value="joined">
+            {t('sortJoined')}
+          </NativeSelectOption>
+          <NativeSelectOption value="roles">
+            {t('sortRoles')}
+          </NativeSelectOption>
+        </NativeSelect>
       </div>
 
       <div className="overflow-hidden rounded-md border border-border">

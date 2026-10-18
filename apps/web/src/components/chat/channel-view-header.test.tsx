@@ -51,6 +51,44 @@ vi.mock('@tanstack/react-router', () => ({
     select({ location: { pathname: routerMocks.pathname } }),
 }))
 
+vi.mock('#/features/auth/auth-context', () => ({
+  useAuth: () => ({
+    hydrated: true,
+    isLoading: false,
+    session: { token: 'test-token' },
+    user: {
+      _id: 'current-user',
+      username: 'me',
+      discriminator: '0001',
+      relationship: 'User',
+      online: true,
+    },
+    gatewayState: 'ready',
+    mfaChallenge: null,
+    profileLoadError: null,
+    needsOnboarding: false,
+    onboardingChecked: true,
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
+    retryProfileLoad: vi.fn(),
+  }),
+}))
+
+vi.mock('#/features/api/users-api', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('#/features/api/users-api')>()
+  return {
+    ...actual,
+    fetchUserProfile: vi.fn(async () => ({ content: null, background: null })),
+    fetchUserMutual: vi.fn(async () => ({
+      users: [],
+      servers: [],
+      channels: [],
+    })),
+    fetchUser: vi.fn(async () => ({ badges: [] })),
+  }
+})
+
 class FakeResizeObserver {
   observe = vi.fn()
   disconnect = vi.fn()

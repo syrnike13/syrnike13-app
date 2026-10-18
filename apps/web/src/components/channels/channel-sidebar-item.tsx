@@ -62,6 +62,7 @@ import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
@@ -194,9 +195,7 @@ export function ChannelSidebarItem({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('deleteError'),
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),
@@ -286,7 +285,7 @@ export function ChannelSidebarItem({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('createError'),
+              apiErrorMessage(error, t('createError')),
             )
           }),
         ),
@@ -416,9 +415,7 @@ export function ChannelSidebarItem({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('moveError'),
+                apiErrorMessage(error, t('moveError')),
               )
             }),
           onSuccess: () =>

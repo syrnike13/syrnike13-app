@@ -79,6 +79,7 @@ function ChannelPermissionEditor({
   canEdit: boolean
 }) {
   const t = useTranslations('channels.permissions')
+  const tp = useTranslations('settings.permissions')
   const [permissions, setPermissions] = useState<PermissionOverrideField>(() =>
     overrideFieldFromRole(initialPermissions),
   )
@@ -131,11 +132,8 @@ function ChannelPermissionEditor({
         Effect.as(true),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : t('saveError'),
-            )
+            console.error('[channel-permissions] save failed', error)
+            toast.error(t('saveError'))
             return false
           }),
         ),
@@ -167,9 +165,9 @@ function ChannelPermissionEditor({
 
       <div className="space-y-4">
         {CHANNEL_PERMISSION_GROUPS.map((group) => (
-          <section key={group.title} className="space-y-2">
+          <section key={group.titleKey} className="space-y-2">
             <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              {group.title}
+              {tp(group.titleKey)}
             </h4>
             <ul className="space-y-1">
               {group.permissions.map((permission) => {
@@ -183,9 +181,9 @@ function ChannelPermissionEditor({
                     key={permission.flag}
                     className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
                   >
-                    <span className="text-sm">{permission.label}</span>
+                    <span className="text-sm">{tp(permission.labelKey)}</span>
                     <PermissionStateButton
-                      label={permission.label}
+                      label={tp(permission.labelKey)}
                       state={getPermissionTriState(permissions, permission.flag)}
                       allowedStates={allowedStates}
                       disabled={!canEdit}

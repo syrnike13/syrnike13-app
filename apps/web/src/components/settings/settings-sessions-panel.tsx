@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, MonitorIcon, Trash2Icon } from '#/components/icons'
+import { useState } from 'react'
+import { MonitorIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 import {
@@ -9,13 +10,25 @@ import {
 } from '@syrnike13/ui/i18n'
 
 import { SettingsBlock } from '#/components/settings/settings-panels'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   deleteSessionEffect,
   fetchSessions,
   revokeOtherSessionsEffect,
 } from '#/features/api/sessions-api'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { loadSession } from '#/lib/session'
 
 function formatSessionDate(sessionId: string, locale: AppLocale) {
@@ -29,11 +42,15 @@ function formatSessionDate(sessionId: string, locale: AppLocale) {
 
 export function SettingsSessionsPanel() {
   const t = useTranslations('settings.sessions')
+  const ts = useTranslations('settings.status')
   const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
   const token = auth.session?.token
   const currentSessionId = loadSession()?._id
+  const [pendingRevocation, setPendingRevocation] = useState<
+    { type: 'revoke'; sessionId: string } | { type: 'revoke-others' } | null
+  >(null)
 
   const sessionsQuery = useQuery({
     queryKey: ['auth', 'sessions'],
@@ -43,7 +60,6 @@ export function SettingsSessionsPanel() {
 
   function revokeSession(sessionId: string) {
     if (!token) return
-    if (!window.confirm(t('confirmRevoke'))) return
 
     Effect.runFork(
       deleteSessionEffect(token, sessionId).pipe(
@@ -59,11 +75,7 @@ export function SettingsSessionsPanel() {
         Effect.matchEffect({
           onFailure: (error) =>
             Effect.sync(() => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('revokeError'),
-              )
+              toast.error(apiErrorMessage(error, t('revokeError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
@@ -76,7 +88,6 @@ export function SettingsSessionsPanel() {
 
   function revokeAllOthers() {
     if (!token) return
-    if (!window.confirm(t('confirmRevokeOthers'))) return
 
     Effect.runFork(
       revokeOtherSessionsEffect(token).pipe(
@@ -92,11 +103,7 @@ export function SettingsSessionsPanel() {
         Effect.matchEffect({
           onFailure: (error) =>
             Effect.sync(() => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('revokeOthersError'),
-              )
+              toast.error(apiErrorMessage(error, t('revokeOthersError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
@@ -110,7 +117,7 @@ export function SettingsSessionsPanel() {
   if (sessionsQuery.isLoading) {
     return (
       <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-        <Loader2Icon className="size-4 animate-spin" />
+        <Spinner className="size-4" />
         {t('loading')}
       </div>
     )
@@ -130,6 +137,7 @@ export function SettingsSessionsPanel() {
     sessions.find((s) => s._id === currentSessionId) ?? sessions[0]
 
   return (
+    <>
     <div className="space-y-2">
       {current ? (
         <SettingsBlock title={t('currentTitle')}>
@@ -164,7 +172,9 @@ export function SettingsSessionsPanel() {
                 variant="outline"
                 size="sm"
                 className="h-8"
-                onClick={() => void revokeAllOthers()}
+                onClick={() =>
+                  setPendingRevocation({ type: 'revoke-others' })
+                }
               >
                 {t('revokeAll')}
               </Button>
@@ -190,7 +200,12 @@ export function SettingsSessionsPanel() {
                     size="icon"
                     className="size-8 shrink-0 text-destructive"
                     title={t('revoke')}
-                    onClick={() => void revokeSession(session._id)}
+                    onClick={() =>
+                      setPendingRevocation({
+                        type: 'revoke',
+                        sessionId: session._id,
+                      })
+                    }
                   >
                     <Trash2Icon className="size-4" />
                   </Button>
@@ -199,11 +214,46 @@ export function SettingsSessionsPanel() {
             </ul>
           </>
         ) : (
-          <p className="py-3 text-sm text-muted-foreground">
-            {t('noOthers')}
-          </p>
+          <Empty className="py-3">
+            <EmptyDescription>{t('noOthers')}</EmptyDescription>
+          </Empty>
         )}
       </SettingsBlock>
     </div>
+
+    <AlertDialog
+      open={pendingRevocation !== null}
+      onOpenChange={(next) => {
+        if (!next) setPendingRevocation(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {pendingRevocation?.type === 'revoke-others'
+              ? t('confirmRevokeOthers')
+              : t('confirmRevoke')}
+          </AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{ts('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => {
+              const pending = pendingRevocation
+              setPendingRevocation(null)
+              if (!pending) return
+              if (pending.type === 'revoke') revokeSession(pending.sessionId)
+              else revokeAllOthers()
+            }}
+          >
+            {pendingRevocation?.type === 'revoke-others'
+              ? t('revokeAll')
+              : t('revoke')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

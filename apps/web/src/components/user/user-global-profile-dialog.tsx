@@ -4,11 +4,16 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
+import { XIcon } from '#/components/icons'
 
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
 import { UserGlobalProfileSections } from '#/components/user/user-global-profile-sections'
 import { UserGlobalProfileSidebar } from '#/components/user/user-global-profile-sidebar'
+import { useUserMutuals } from '#/components/user/use-user-mutuals'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
@@ -21,9 +26,9 @@ import {
   unblockBlockedUser,
 } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
+import { listServerChannels } from '#/features/sync/selectors'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { syncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { canMessageUser } from '#/features/authorization/authorization'
 
@@ -48,6 +53,7 @@ export function UserGlobalProfileDialog({
   const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
+  const [blockOpen, setBlockOpen] = useState(false)
 
   const isSelf = user._id === auth.user?._id
   const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
@@ -57,8 +63,9 @@ export function UserGlobalProfileDialog({
     auth.session?.token,
     open,
   )
-  const mutualServers = useSyncStore((s) =>
-    listMutualServers(s, user._id, auth.user?._id),
+  const { mutualServers, mutualFriends, mutualFriendsCount } = useUserMutuals(
+    user._id,
+    { enabled: open },
   )
 
   const displayName = user.display_name ?? user.username
@@ -97,11 +104,10 @@ export function UserGlobalProfileDialog({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
-    if (!window.confirm(t('confirmBan', { username: user.username })))
-      return
     setBusy(true)
     try {
       await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      setBlockOpen(false)
       close()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -150,8 +156,8 @@ export function UserGlobalProfileDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-profile-dialog max-h-dialog flex-col gap-0 overflow-hidden p-0 sm:max-w-225"
-        showCloseButton
+        className="flex h-profile-dialog max-h-dialog w-profile-dialog flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+        showCloseButton={false}
       >
         <DialogTitle className="sr-only">
           {t('profileTitle', { name: displayName })}
@@ -160,8 +166,22 @@ export function UserGlobalProfileDialog({
           {t('profileDescription', { name: displayName })}
         </DialogDescription>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden p-6">
-          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden">
+        <DialogClose
+          render={
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="absolute top-2 right-2 z-30 size-8"
+            />
+          }
+        >
+          <XIcon className="size-4" />
+          <span className="sr-only">{t('close')}</span>
+        </DialogClose>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:flex-row sm:gap-0 sm:overflow-hidden sm:p-0 sm:pt-12 sm:pr-8 sm:pl-12">
+          <aside className="flex min-h-0 w-full shrink-0 flex-col sm:h-full sm:w-100">
             <UserGlobalProfileSidebar
               user={user}
               serverId={serverId}
@@ -169,23 +189,33 @@ export function UserGlobalProfileDialog({
               busy={busy}
               onOpenDm={() => void openDm()}
               onCopyId={() => void copyUserId()}
-              onBlock={() => void handleBlock()}
+              onBlock={() => setBlockOpen(true)}
               onUnblock={() => void handleUnblock()}
               onEditProfile={() => {
                 close()
-                openSettings('account')
+                openSettings('profile')
               }}
             />
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:h-full sm:pt-5 sm:pl-8">
             <UserGlobalProfileSections
               mutualServers={mutualServers}
+              mutualFriends={mutualFriends}
+              mutualFriendsCount={mutualFriendsCount}
               busy={busy}
               onServerSelect={handleServerSelect}
             />
           </div>
         </div>
+
+        <UserBlockDialog
+          user={user}
+          open={blockOpen}
+          busy={busy}
+          onOpenChange={setBlockOpen}
+          onConfirm={() => void handleBlock()}
+        />
       </DialogContent>
     </Dialog>
   )

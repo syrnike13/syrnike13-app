@@ -1,58 +1,39 @@
-import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import {
   BanIcon,
   CopyIcon,
-  Loader2Icon,
   MessageCircleIcon,
   MoreHorizontalIcon,
-  PlusIcon,
+  ServerIcon,
   SettingsIcon,
   UserCheckIcon,
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
-import { useMemo, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
-import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
-import { UserAvatar } from '#/components/user/user-avatar'
-import { UserBadges } from '#/components/user/user-badges'
-import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
+import { UserProfileHeader } from '#/components/user/user-profile-header'
+import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import { UserProfileRoleList } from '#/components/user/user-profile-role-list'
+import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMemberEffect } from '#/features/api/servers-api'
-import { fetchUserProfile } from '#/features/api/users-api'
-import { useUserBadges } from '#/features/users/use-user-badges'
 import {
   acceptIncomingFriendRequest,
   cancelOutgoingFriendRequest,
   declineIncomingFriendRequest,
   sendFriendRequestToUser,
 } from '#/features/friends/friend-actions'
-import { queryKeys } from '#/lib/api/query-keys'
-import { userBannerUrl } from '#/lib/media'
-import { userProfileBannerClassName } from '#/lib/user-profile-banner'
-import {
-  memberRoleEntries,
-  type MemberRoleEntry,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import {
-  canEditAnyMemberRole,
-  canToggleMemberRole,
-} from '#/lib/member-roles'
-import { FxImage } from '#/components/ui/fx-image'
-import type { CSSVars } from '#/lib/css-vars'
-import { cn } from '#/lib/utils'
+import { useSyncStore } from '#/features/sync/sync-store'
 import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileSidebarProps = {
@@ -67,11 +48,6 @@ type UserGlobalProfileSidebarProps = {
   onEditProfile: () => void
 }
 
-function roleDotColour(colour: string | null) {
-  if (!colour) return 'var(--muted-foreground)'
-  return colour.startsWith('#') ? colour : `#${colour}`
-}
-
 function formatDate(iso: string, locale: string) {
   return new Date(iso).toLocaleDateString(locale, {
     day: 'numeric',
@@ -80,12 +56,12 @@ function formatDate(iso: string, locale: string) {
   })
 }
 
-const profileIconActionClass =
-  'size-8 shrink-0 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+const profileIconActionClass = 'size-8 shrink-0 text-muted-foreground'
 
-const profilePrimaryActionClass =
-  'w-fit gap-1.5 transition-colors hover:bg-primary/85 active:bg-primary/75'
-
+/**
+ * Левая карточка полного профиля Discord: 400px, баннер 140px,
+ * аватар 120px, имя 24/32 w600, секции 12/16 w500.
+ */
 export function UserGlobalProfileSidebar({
   user,
   serverId,
@@ -102,182 +78,46 @@ export function UserGlobalProfileSidebar({
   const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
-  const displayName = user.display_name ?? user.username
-  const customStatus = user.status?.text?.trim()
+  const { bio } = useUserProfileData(user._id)
   const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
 
-  const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
-  const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
-  const [friendBusy, setFriendBusy] = useState(false)
-  const actionsDisabled = busy || friendBusy || !token
-
-  const server = useSyncStore((s) =>
-    serverId ? s.servers[serverId] : undefined,
+  const server = useSyncStore((state) =>
+    serverId ? state.servers[serverId] : undefined,
   )
-  const member = useSyncStore((s) =>
-    serverId ? s.members[`${serverId}:${user._id}`] : undefined,
-  )
-  const actorMember = useSyncStore((s) =>
-    serverId && auth.user?._id
-      ? s.members[`${serverId}:${auth.user._id}`]
-      : undefined,
-  )
-  const roles: MemberRoleEntry[] = member
-    ? memberRoleEntries(server, member)
-    : []
-  const actorUserId = auth.user?._id
-
-  const canEditRoles = useMemo(
-    () =>
-      Boolean(
-        server &&
-          member &&
-          actorUserId &&
-          canEditAnyMemberRole(
-            server,
-            actorMember,
-            actorUserId,
-            member,
-          ),
-      ),
-    [actorMember, actorUserId, member, server],
+  const member = useSyncStore((state) =>
+    serverId ? state.members[`${serverId}:${user._id}`] : undefined,
   )
 
-  const profileQuery = useQuery({
-    queryKey: queryKeys.users.profile(user._id),
-    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
-    enabled: Boolean(token),
-    staleTime: 60_000,
-  })
-
-  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
-    animated: true,
-  })
-  const profileBio = profileQuery.data?.content?.trim()
-  const badges = useUserBadges(user._id, user.badges)
-
-  async function removeRole(roleId: string) {
-    if (!token || !actorUserId || !server || !member) return
-    const role = server.roles?.[roleId]
-    if (!role) return
-    if (
-      !canToggleMemberRole(
-        server,
-        actorMember,
-        actorUserId,
-        member,
-        role,
-        false,
-      )
-    ) {
-      return
-    }
-    setRemovingRoleId(roleId)
-    const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
-    await Effect.runPromise(
-      editServerMemberEffect(
-        token,
-        server._id,
-        member._id.user,
-        { roles: nextRoles },
-      ).pipe(
-        Effect.tap((updated) =>
-          Effect.sync(() => syncStore.upsertMembers([updated])),
-        ),
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : t('removeRoleError'),
-            )
-          }),
-        ),
-        Effect.ensuring(Effect.sync(() => setRemovingRoleId(null))),
-      ),
-    )
-  }
-
-  const showServerSection = Boolean(serverId && member)
+  const showAddFriend = canDirectMessage && user.relationship === 'None'
+  const showAcceptFriend = canDirectMessage && user.relationship === 'Incoming'
+  const actionsDisabled = busy || !token
 
   async function runFriendAction(
     action: () => Effect.Effect<unknown, unknown>,
   ) {
     if (!token || actionsDisabled) return
-    setFriendBusy(true)
-    try {
-      await Effect.runPromise(action())
-    } catch {
+    await Effect.runPromise(action()).catch(() => {
       // friend-actions already shows the concrete error toast.
-    } finally {
-      setFriendBusy(false)
-    }
+    })
   }
 
-  const showAddFriend = canDirectMessage && user.relationship === 'None'
-  const showAcceptFriend = canDirectMessage && user.relationship === 'Incoming'
-  const isFriend = user.relationship === 'Friend'
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-6">
-      {/* Inner card */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-secondary ">
-        {/* Banner */}
-        <div className="relative shrink-0">
-          <div
-            className={userProfileBannerClassName(
-              'rounded-t-xl',
-              !bannerUrl && 'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
-            )}
-          >
-            {bannerUrl ? (
-              <>
-                <FxImage
-                  src={bannerUrl}
-                  wrapperClassName="block h-full w-full"
-                  className="h-full w-full object-cover"
-                />
-                <div className="pointer-events-none absolute inset-0 bg-media-backdrop/20" aria-hidden />
-              </>
-            ) : null}
-          </div>
-          {/* Avatar — straddling banner */}
-          <div className="absolute -bottom-12 left-4 z-10">
-            <UserProfileStatusBubble
-              status={customStatus}
-              className="left-full top-43/100 ml-2"
-            />
-            <UserAvatar
-              user={user}
-              className="size-24"
-              fallbackClassName="size-24 text-2xl ring-5 ring-secondary bg-secondary"
-              animated="always"
-              showPresence
-              presenceRingClassName="border-secondary"
-            />
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-secondary sm:rounded-t-xl">
+      <UserProfileHeader user={user} variant="modal" />
 
-        {/* Content */}
-        <div className="flex min-h-0 flex-1 flex-col px-4 pt-14 pb-4">
-        {/* Name + username */}
-        <h2 className="truncate text-xl font-bold leading-tight text-foreground">
-          {displayName}
-        </h2>
-        <p className="truncate text-sm text-muted-foreground">
-          {user.display_name ? `@${user.username}` : user.username}
-        </p>
-        <UserBadges badges={badges} className="mt-2" />
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-8 pt-1 pr-6 pb-8">
+        <UserProfileIdentity user={user} variant="modal" />
 
-        {/* Action buttons */}
-        <div className="mt-3 flex gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {isSelf ? (
             <Button
               type="button"
-              size="sm"
+              size="default"
               disabled={busy}
-              className={cn('gap-2', profilePrimaryActionClass)}
+              className="h-8 gap-1.5"
               onClick={onEditProfile}
             >
-              <SettingsIcon className="size-3.5" />
+              <SettingsIcon className="size-4" />
               {t('editProfile')}
             </Button>
           ) : (
@@ -285,64 +125,67 @@ export function UserGlobalProfileSidebar({
               {showAcceptFriend ? (
                 <Button
                   type="button"
-                  size="sm"
+                  size="default"
                   disabled={actionsDisabled}
-                  className={profilePrimaryActionClass}
+                  className="h-8 gap-1.5"
                   onClick={() =>
                     void runFriendAction(() =>
                       acceptIncomingFriendRequest(token!, user._id, tf),
                     )
                   }
                 >
-                  {friendBusy ? (
-                    <Loader2Icon className="size-3.5 animate-spin" />
-                  ) : (
-                    <UserCheckIcon className="size-3.5" />
-                  )}
+                  <UserCheckIcon className="size-4" />
                   <span className="truncate">{t('accept')}</span>
                 </Button>
               ) : null}
-              {showAddFriend ? (
+              {canDirectMessage ? (
                 <Button
                   type="button"
-                  size="sm"
+                  variant={showAcceptFriend ? 'secondary' : 'default'}
+                  size="default"
                   disabled={actionsDisabled}
-                  className={profilePrimaryActionClass}
+                  className="h-8 gap-1.5"
+                  onClick={onOpenDm}
+                >
+                  {busy ? (
+                    <Spinner className="size-4" />
+                  ) : (
+                    <MessageCircleIcon className="size-4" />
+                  )}
+                  <span className="truncate">{t('message')}</span>
+                </Button>
+              ) : showAddFriend ? (
+                <Button
+                  type="button"
+                  size="default"
+                  disabled={actionsDisabled}
+                  className="h-8 gap-1.5"
                   onClick={() =>
                     void runFriendAction(() =>
                       sendFriendRequestToUser(token!, user, tf),
                     )
                   }
                 >
-                  {friendBusy ? (
-                    <Loader2Icon className="size-3.5 animate-spin" />
-                  ) : (
-                    <UserPlusIcon className="size-3.5" />
-                  )}
+                  <UserPlusIcon className="size-4" />
                   <span className="truncate">{t('addFriend')}</span>
                 </Button>
               ) : null}
-              {canDirectMessage ? (
+              {showAddFriend && canDirectMessage ? (
                 <Button
                   type="button"
-                  variant={isFriend ? 'default' : 'ghost'}
-                  size={isFriend ? 'sm' : 'icon'}
+                  variant="ghost"
+                  size="icon"
                   disabled={actionsDisabled}
-                  className={
-                    isFriend ? profilePrimaryActionClass : profileIconActionClass
+                  className={profileIconActionClass}
+                  title={t('addFriend')}
+                  aria-label={t('addFriend')}
+                  onClick={() =>
+                    void runFriendAction(() =>
+                      sendFriendRequestToUser(token!, user, tf),
+                    )
                   }
-                  title={t('message')}
-                  aria-label={t('message')}
-                  onClick={onOpenDm}
                 >
-                  {busy ? (
-                    <Loader2Icon
-                      className={cn('animate-spin', isFriend ? 'size-3.5' : 'size-4')}
-                    />
-                  ) : (
-                    <MessageCircleIcon className={isFriend ? 'size-3.5' : 'size-4'} />
-                  )}
-                  {isFriend ? <span className="truncate">{t('message')}</span> : null}
+                  <UserPlusIcon className="size-4" />
                 </Button>
               ) : null}
               <DropdownMenu>
@@ -362,8 +205,8 @@ export function UserGlobalProfileSidebar({
                   <MoreHorizontalIcon className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
-                  side="top"
-                  align="end"
+                  side="bottom"
+                  align="start"
                   className="z-310 w-auto min-w-44"
                 >
                   {user.relationship === 'Incoming' ? (
@@ -394,13 +237,14 @@ export function UserGlobalProfileSidebar({
                     <CopyIcon className="size-3.5" />
                     {t('copyId')}
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   {user.relationship === 'Blocked' ? (
                     <DropdownMenuItem onClick={onUnblock}>
                       <BanIcon className="size-3.5" />
                       {t('unblock')}
                     </DropdownMenuItem>
                   ) : (
-                    <DropdownMenuItem onClick={onBlock}>
+                    <DropdownMenuItem variant="destructive" onClick={onBlock}>
                       <BanIcon className="size-3.5" />
                       {t('block')}
                     </DropdownMenuItem>
@@ -411,103 +255,30 @@ export function UserGlobalProfileSidebar({
           )}
         </div>
 
-        <div className="mt-4 border-t border-border" />
-
-        {/* Bio */}
-        {profileBio ? (
-          <div className="mt-4">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
-              {profileBio}
-            </p>
-          </div>
+        {bio ? (
+          <p className="text-sm leading-4.5 whitespace-pre-wrap text-foreground">
+            {bio}
+          </p>
         ) : null}
 
-        {/* Member since (server context) */}
-        {showServerSection && member?.joined_at ? (
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {server && member?.joined_at ? (
+          <section>
+            <h3 className="text-xs leading-4 font-medium text-muted-foreground">
               {t('memberSince')}
+            </h3>
+            <p className="mt-2 flex min-w-0 items-center gap-1.5 text-sm leading-4.5 text-foreground">
+              <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{server.name}</span>
+              <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground/50" />
+              <span className="shrink-0 text-muted-foreground">
+                {formatDate(member.joined_at, locale)}
+              </span>
             </p>
-            <p className="text-sm text-foreground/90">{formatDate(member.joined_at, locale)}</p>
-          </div>
+          </section>
         ) : null}
 
-        {/* Roles (server context) */}
-        {showServerSection && server && member && (roles.length > 0 || canEditRoles) ? (
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {t('roles')}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {roles.map((role) => {
-                const serverRole = server.roles?.[role.id]
-                const canRemove =
-                  Boolean(serverRole) &&
-                  Boolean(actorUserId) &&
-                  canToggleMemberRole(
-                    server,
-                    actorMember,
-                    actorUserId,
-                    member,
-                    serverRole!,
-                    false,
-                  )
-                const removing = removingRoleId === role.id
-                return (
-                  <span
-                    key={role.id}
-                    className={cn(
-                      'inline-flex max-w-full items-center gap-1 rounded-md bg-background/60 py-0.5 text-xs font-medium text-foreground',
-                      canRemove ? 'pl-2 pr-0.5' : 'px-2',
-                    )}
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full bg-(--role-dot)"
-                      style={
-                        {
-                          '--role-dot': roleDotColour(role.colour),
-                        } as CSSVars
-                      }
-                    />
-                    <span className="truncate">{role.name}</span>
-                    {canRemove ? (
-                      <button
-                        type="button"
-                        disabled={removingRoleId !== null}
-                        className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-                        title={t('removeRole', { name: role.name })}
-                        onClick={(e) => { e.stopPropagation(); void removeRole(role.id) }}
-                      >
-                        <XIcon className={cn('size-3', removing && 'opacity-50')} />
-                      </button>
-                    ) : null}
-                  </span>
-                )
-              })}
-              {canEditRoles ? (
-                <button
-                  type="button"
-                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-background/60 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title={t('editRoles')}
-                  onClick={(e) => { e.stopPropagation(); setRolesDialogOpen(true) }}
-                >
-                  <PlusIcon className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-            {canEditRoles ? (
-              <EditMemberRolesDialog
-                server={server}
-                targetMember={member}
-                targetUser={user}
-                open={rolesDialogOpen}
-                onOpenChange={setRolesDialogOpen}
-              />
-            ) : null}
-          </div>
-        ) : null}
-        </div>{/* end content */}
-      </div>{/* end inner card */}
+        <UserProfileRoleList user={user} serverId={serverId} heading />
+      </div>
     </div>
   )
 }

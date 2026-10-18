@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
 import { useState } from 'react'
 import type {
   Channel,
@@ -7,6 +8,7 @@ import type {
 } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -35,6 +37,7 @@ import {
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
 import { runtimeChannelName } from '#/lib/channel-voice'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   canDeafenServerMember,
   canMoveServerMember,
@@ -182,9 +185,7 @@ export function UserContextMenuVoiceControls({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('updateError'),
+              apiErrorMessage(error, t('updateError')),
             )
           }),
         ),

@@ -9,6 +9,7 @@ import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
 import { useAuth } from '#/features/auth/auth-context'
 import { sendDiagnosticReport } from '#/features/diagnostics/diagnostic-reporter'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import type {
   DesktopUpdateState,
   DesktopVersions,
@@ -125,9 +126,7 @@ export function SettingsDesktopPanel() {
             Effect.sync(() => {
               setUpdateState(null)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('checkError'),
+                apiErrorMessage(error, t('checkError')),
               )
             }),
           onSuccess: (state) =>
@@ -214,9 +213,7 @@ export function SettingsDesktopPanel() {
                       Effect.sync(() => {
                         setWindowPreferences(previous)
                         toast.error(
-                          error instanceof Error
-                            ? error.message
-                            : t('saveLaunchError'),
+                          apiErrorMessage(error, t('saveLaunchError')),
                         )
                       }),
                     onSuccess: (value) =>
@@ -259,9 +256,7 @@ export function SettingsDesktopPanel() {
                       Effect.sync(() => {
                         setWindowPreferences(previous)
                         toast.error(
-                          error instanceof Error
-                            ? error.message
-                            : t('saveWindowError'),
+                          apiErrorMessage(error, t('saveWindowError')),
                         )
                       }),
                     onSuccess: (value) =>
@@ -356,9 +351,7 @@ export function SettingsDesktopPanel() {
                     onFailure: (error) =>
                       Effect.sync(() => {
                         toast.error(
-                          error instanceof Error
-                            ? error.message
-                            : t('reportError'),
+                          apiErrorMessage(error, t('reportError')),
                         )
                       }),
                     onSuccess: (report) =>
@@ -405,9 +398,7 @@ export function SettingsDesktopPanel() {
             Effect.sync(() => {
               setObservability(previous)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('saveDiagnosticsError'),
+                apiErrorMessage(error, t('saveDiagnosticsError')),
               )
             }),
           onSuccess: (settings) =>

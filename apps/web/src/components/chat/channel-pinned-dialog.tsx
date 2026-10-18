@@ -8,6 +8,8 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Dialog,
   DialogContent,
@@ -20,6 +22,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
@@ -92,21 +95,19 @@ export function ChannelPinnedDialog({
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {pinnedQuery.isFetching ? (
-            <p className="text-sm text-muted-foreground">{t('loading')}</p>
+            <Spinner className="mx-auto" />
           ) : null}
           {pinnedQuery.isError ? (
             <p className="text-sm text-destructive">
-              {pinnedQuery.error instanceof Error
-                ? pinnedQuery.error.message
-                : t('loadError')}
+              {apiErrorMessage(pinnedQuery.error, t('loadError'))}
             </p>
           ) : null}
           {!pinnedQuery.isFetching &&
           !pinnedQuery.isError &&
           messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t('noPinned')}
-            </p>
+            <Empty className="py-8">
+              <EmptyDescription>{t('noPinned')}</EmptyDescription>
+            </Empty>
           ) : null}
           {messages.map((message) => {
             const author = message.user ?? users[message.author]

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -29,17 +29,19 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
-import { Separator } from '@syrnike13/ui/primitives/separator'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -47,36 +49,6 @@ type ServerHeaderMenuProps = {
   serverId: string
   serverName: string
   overBanner?: boolean
-}
-
-function ServerHeaderMenuItem({
-  children,
-  icon,
-  onClick,
-  destructive,
-  disabled,
-}: {
-  children: ReactNode
-  icon: ReactNode
-  onClick?: () => void
-  destructive?: boolean
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent',
-        destructive && 'text-destructive hover:text-destructive',
-        disabled && 'pointer-events-none opacity-50',
-      )}
-      onClick={onClick}
-    >
-      <span>{children}</span>
-      <span className="shrink-0 opacity-70">{icon}</span>
-    </button>
-  )
 }
 
 export function ServerHeaderMenu({
@@ -137,11 +109,10 @@ export function ServerHeaderMenu({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : isOwner
-                  ? t('deleteError')
-                  : t('leaveError'),
+              apiErrorMessage(
+                error,
+                isOwner ? t('deleteError') : t('leaveError'),
+              ),
             )
           }),
         ),
@@ -176,45 +147,44 @@ export function ServerHeaderMenu({
 
   return (
     <>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger render={<button
-            type="button"
-            className={cn(
-              'flex h-8 min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
-              overBanner &&
-                'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
-              menuOpen &&
-                (overBanner
-                  ? 'bg-background/60 backdrop-blur-sm'
-                  : 'bg-accent'),
-            )}
-            aria-expanded={menuOpen} />}>
-            <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold tracking-tight">
-              {serverName}
-            </span>
-            <ChevronDownIcon
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
               className={cn(
-                'size-4 shrink-0 opacity-70 transition-transform',
-                menuOpen && 'rotate-180',
+                'flex h-8 min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
+                overBanner &&
+                  'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
+                menuOpen &&
+                  (overBanner
+                    ? 'bg-background/60 backdrop-blur-sm'
+                    : 'bg-accent'),
               )}
             />
-          </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          sideOffset={4}
-          className="w-(--anchor-width) gap-0 p-1"
+          }
         >
+          <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold tracking-tight">
+            {serverName}
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              'size-4 shrink-0 opacity-70 transition-transform',
+              menuOpen && 'rotate-180',
+            )}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={4}>
           {menuPermissions?.invite ? (
-            <ServerHeaderMenuItem
-              icon={<UserPlusIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setInviteOpen(true))}
             >
+              <UserPlusIcon />
               {t('invite')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.settings ? (
-            <ServerHeaderMenuItem
-              icon={<SettingsIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -224,12 +194,12 @@ export function ServerHeaderMenu({
                 })
               }}
             >
+              <SettingsIcon />
               {t('settings')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.roles ? (
-            <ServerHeaderMenuItem
-              icon={<ShieldFillIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -239,12 +209,12 @@ export function ServerHeaderMenu({
                 })
               }}
             >
+              <ShieldFillIcon />
               {t('roles')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.audit ? (
-            <ServerHeaderMenuItem
-              icon={<ShieldIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -254,61 +224,54 @@ export function ServerHeaderMenu({
                 })
               }}
             >
+              <ShieldIcon />
               {t('audit')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
-            <ServerHeaderMenuItem
-              icon={<PlusCircleIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setCreateChannelOpen(true))}
             >
+              <PlusCircleIcon />
               {t('createChannel')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
-            <ServerHeaderMenuItem
-              icon={<FolderPlusIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setCreateCategoryOpen(true))}
             >
+              <FolderPlusIcon />
               {t('createCategory')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {showAdminSection &&
           (menuPermissions?.leave || menuPermissions?.copyId) ? (
-            <Separator className="my-1" />
+            <DropdownMenuSeparator />
           ) : null}
           {menuPermissions?.leave ? (
-            <ServerHeaderMenuItem
-              icon={
-                isOwner ? (
-                  <Trash2Icon className="size-4" />
-                ) : (
-                  <LogOutIcon className="size-4" />
-                )
-              }
-              destructive
+            <DropdownMenuItem
+              variant="destructive"
               disabled={removingServer}
               onClick={() => {
                 setMenuOpen(false)
                 setRemoveDialogOpen(true)
               }}
             >
+              {isOwner ? <Trash2Icon /> : <LogOutIcon />}
               {isOwner ? t('delete') : t('leave')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.leave && menuPermissions?.copyId ? (
-            <Separator className="my-1" />
+            <DropdownMenuSeparator />
           ) : null}
           {menuPermissions?.copyId ? (
-            <ServerHeaderMenuItem
-              icon={<CopyIcon className="size-4" />}
-              onClick={() => void copyServerId()}
-            >
+            <DropdownMenuItem onClick={() => void copyServerId()}>
+              <CopyIcon />
               {t('copyId')}
-            </ServerHeaderMenuItem>
+            </DropdownMenuItem>
           ) : null}
-        </PopoverContent>
-      </Popover>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {menuPermissions?.leave ? (
         <Dialog

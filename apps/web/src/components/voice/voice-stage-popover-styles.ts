@@ -1,3 +1,6 @@
+// design-allow-file restyle-shared: the voice-stage popover surface is shared by PopoverContent
+// and by the nested submenu div in consumers owned by others. It intentionally pins one Prism
+// surface (popover background, shell divider ring, elevated shadow) for both.
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { cn } from '#/lib/utils'
 
@@ -46,8 +49,6 @@ export const voiceStagePopoverSectionTitleClass =
 
 export const voiceStagePopoverHintClass =
   'text-xs leading-snug text-muted-foreground'
-
-export const voiceStagePopoverSeparatorClass = 'my-0.5 h-px bg-border'
 
 export const voiceStagePopoverCheckboxClass =
   'size-4 shrink-0 rounded border-input accent-primary'

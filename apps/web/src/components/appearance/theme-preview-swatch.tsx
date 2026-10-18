@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: theme preview swatch intentionally mirrors the selected theme surface.
 import type { AppearanceSettings } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 

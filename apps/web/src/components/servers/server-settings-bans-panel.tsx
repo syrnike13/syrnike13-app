@@ -15,8 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBansEffect,
@@ -132,7 +134,7 @@ export function ServerSettingsBansPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('unbanError'),
+              apiErrorMessage(error, t('unbanError')),
             )
           }),
         ),
@@ -186,9 +188,13 @@ export function ServerSettingsBansPanel({
       ) : bansQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : bans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('empty')}</EmptyDescription>
+        </Empty>
       ) : filteredBans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('noResults')}</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('noResults')}</EmptyDescription>
+        </Empty>
       ) : (
         <ul className="space-y-2">
           {filteredBans.map((ban) => (

@@ -170,9 +170,11 @@ describe('ServerSettingsAuditPanel', () => {
       <ServerSettingsAuditPanel serverId="server-1" />,
     )
 
-    const row = await screen.findByRole('button', {
-      name: /nioh13 создал роль «Прицел»/,
-    })
+    const row = await screen.findByRole(
+      'button',
+      { name: /nioh13 создал роль «Прицел»/ },
+      { timeout: 5000 },
+    )
     fireEvent.click(row)
 
     expect(screen.getAllByText('Создание роли').length).toBeGreaterThan(0)

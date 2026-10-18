@@ -172,6 +172,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       () =>
         [
           ...createMessageExtensions({
+            spoilerTitle: t('spoilerShow'),
             mentionSuggestion: {
               items: ({ query }) => mentionItemsRef.current(query),
               render: () => ({
@@ -199,7 +200,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
             showOnlyWhenEditable: false,
           }),
         ],
-      [],
+      [t],
     )
 
     const editor = useEditor({

@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: rail control owns its product hover/active surface.
 import {
   useLinkProps,
   type LinkComponentProps,

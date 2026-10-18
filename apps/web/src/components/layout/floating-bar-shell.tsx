@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: brand floating shell built on Squircle.
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import {

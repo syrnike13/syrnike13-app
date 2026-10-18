@@ -9,10 +9,10 @@ import {
   type Ref,
 } from 'react'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   MessageSquareIcon,
   ChevronDownIcon,
-  Loader2Icon,
 } from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
@@ -655,7 +655,7 @@ export function VoiceStageView({
           <Suspense
             fallback={
               <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-                <Loader2Icon className="mr-2 size-5 animate-spin" />
+                <Spinner className="mr-2 size-5" />
                 {t('stage.loadingActivity')}
               </div>
             }

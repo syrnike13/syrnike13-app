@@ -38,6 +38,7 @@ import {
 } from '#/features/api/channels-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { pickDefaultChannelId } from '#/features/sync/selectors'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
@@ -251,7 +252,7 @@ export function ChannelSettingsOverviewPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('saveError'),
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           }),
@@ -318,9 +319,7 @@ export function ChannelSettingsOverviewPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('deleteError'),
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),

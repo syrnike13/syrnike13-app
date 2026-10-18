@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -41,11 +42,27 @@ vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div>{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogClose: ({ children }: { children: ReactNode }) => (
+    <button type="button">{children}</button>
+  ),
   DialogDescription: ({ children }: { children: ReactNode }) => (
     <p>{children}</p>
   ),
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
+
+vi.mock('#/features/api/users-api', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('#/features/api/users-api')>()
+  return {
+    ...actual,
+    fetchUserMutual: vi.fn(async () => ({
+      users: [],
+      servers: [],
+      channels: [],
+    })),
+  }
+})
 
 vi.mock('#/components/user/user-global-profile-sidebar', () => ({
   UserGlobalProfileSidebar: () => <aside data-testid="profile-sidebar" />,
@@ -85,12 +102,17 @@ describe('UserGlobalProfileDialog', () => {
   })
 
   it('clears message search when opening a mutual server channel', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
     render(
-      <UserGlobalProfileDialog
-        user={{ _id: 'user-target', username: 'bob', online: true } as never}
-        open
-        onOpenChange={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <UserGlobalProfileDialog
+          user={{ _id: 'user-target', username: 'bob', online: true } as never}
+          open
+          onOpenChange={vi.fn()}
+        />
+      </QueryClientProvider>,
     )
 
     fireEvent.click(screen.getByRole('button', { name: /Alpha/ }))

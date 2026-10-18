@@ -4,13 +4,13 @@ import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { Slider } from '@syrnike13/ui/primitives/slider'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   voiceStagePopoverCheckboxClass,
   voiceStagePopoverHintClass,
   voiceStagePopoverMenuItemClass,
   voiceStagePopoverNavRowClass,
   voiceStagePopoverSectionTitleClass,
-  voiceStagePopoverSeparatorClass,
   voiceStagePopoverSubmenuClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useAuth } from '#/features/auth/auth-context'
@@ -345,7 +345,7 @@ export function VoiceSoundSettingsMenuContent() {
 }
 
 function MicSettingsSeparator() {
-  return <div className={voiceStagePopoverSeparatorClass} role="separator" />
+  return <Separator className="my-0.5" />
 }
 
 function MicSettingsDeviceRow({

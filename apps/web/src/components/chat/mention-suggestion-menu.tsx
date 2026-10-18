@@ -1,3 +1,8 @@
+// design-allow-file restyle-shared: Tiptap suggestion listbox owns keyboard/focus through the
+// contenteditable (aria-activedescendant; Enter/Tab/Escape handled by the editor). A focusable
+// Popover/Command would steal focus and cmdk would capture arrow/Enter, while the shared
+// PopoverContent positioner cannot anchor to the caret rect here — so the caret-anchored
+// listbox surface stays hand-rolled instead of being replaced without a typing regression.
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from '@syrnike13/ui/i18n'

@@ -22,7 +22,6 @@ import {
 import { FeedbackCreateDialog } from '#/components/feedback/feedback-create-dialog'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
-  CheckIcon,
   ChevronLeftIcon,
   FilterIcon,
   LightbulbIcon,
@@ -34,7 +33,18 @@ import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
 import {
   Popover,
   PopoverContent,
@@ -49,6 +59,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
+import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchFeedbackSuggestions,
@@ -443,43 +454,52 @@ function FeedbackFilterGroup<Value extends string>({
   onChange: (value: Value) => void
 }) {
   return (
-    <div role="group" aria-label={label}>
+    <div>
       <p className="px-2 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </p>
-      <div className="space-y-0.5">
+      <RadioGroup
+        aria-label={label}
+        value={value}
+        onValueChange={(next) => onChange(next as Value)}
+        className="gap-0.5"
+      >
         {options.map((option) => {
           const selected = option.value === value
           return (
-            <button
+            <label
               key={option.value}
-              type="button"
-              aria-pressed={selected}
               className={cn(
-                'flex h-7 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                'flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                 selected && 'bg-accent/60 text-foreground',
               )}
-              onClick={() => onChange(option.value)}
             >
-              <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
-              {selected ? (
-                <CheckIcon className="size-3.5 shrink-0 text-primary" aria-hidden />
-              ) : null}
-            </button>
+              <RadioGroupItem
+                value={option.value}
+                aria-label={option.label}
+              />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {option.label}
+              </span>
+            </label>
           )
         })}
-      </div>
+      </RadioGroup>
     </div>
   )
 }
 
 function FeedbackEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
-      <LightbulbIcon className="size-9 text-muted-foreground/60" aria-hidden />
-      <h2 className="mt-3 text-base font-semibold">{title}</h2>
-      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
+    <Empty className="min-h-64">
+      <EmptyMedia variant="icon">
+        <LightbulbIcon aria-hidden />
+      </EmptyMedia>
+      <EmptyHeader>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   )
 }
 
@@ -492,16 +512,16 @@ function FeedbackListSkeleton() {
           className="space-y-2.5 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5"
         >
           <div className="flex items-center gap-1.5">
-            <div className="h-6 w-14 animate-pulse rounded-md bg-muted" />
-            <div className="h-6 w-24 animate-pulse rounded-md bg-muted" />
-            <div className="h-6 w-20 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-6 w-14" />
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-20" />
           </div>
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1 space-y-1.5">
-              <div className="h-3.5 w-2/5 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3.5 w-2/5" />
+              <Skeleton className="h-3 w-3/4" />
             </div>
-            <div className="h-9 w-20 shrink-0 animate-pulse rounded-lg bg-muted" />
+            <Skeleton className="h-9 w-20 shrink-0" />
           </div>
         </div>
       ))}

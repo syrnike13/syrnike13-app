@@ -35,6 +35,11 @@ import { Button } from '@syrnike13/ui/primitives/button'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -184,9 +189,8 @@ function UserRolesContextMenuSub({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : t('rolesUpdateError'),
-            )
+            console.error('[user-context-menu] role update failed', error)
+            toast.error(t('rolesUpdateError'))
           }),
         ),
         Effect.ensuring(
@@ -220,12 +224,7 @@ function UserRolesContextMenuSub({
             <ContextMenuItem
               key={role._id}
               disabled={disabled}
-              className={cn(
-                'grid icon-text-icon-grid gap-2',
-                assigned &&
-                  disabled &&
-                  'data-[disabled]:bg-accent/45 data-[disabled]:opacity-100',
-              )}
+              className="grid icon-text-icon-grid gap-2"
               onClick={(event) => {
                 event.preventDefault()
                 if (!disabled) void toggleRole(role._id, !assigned)
@@ -315,6 +314,8 @@ export function UserContextMenuContent({
   const [banReason, setBanReason] = useState('')
   const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
   const [banning, setBanning] = useState(false)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -437,9 +438,8 @@ export function UserContextMenuContent({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : t('kickError'),
-            )
+            console.error('[user-context-menu] kick failed', error)
+            toast.error(t('kickError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setKicking(false))),
@@ -478,9 +478,8 @@ export function UserContextMenuContent({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : t('banError'),
-            )
+            console.error('[user-context-menu] ban failed', error)
+            toast.error(t('banError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBanning(false))),
@@ -490,11 +489,14 @@ export function UserContextMenuContent({
 
   async function handleBlock() {
     if (!token || isSelf) return
-    if (!window.confirm(t('confirmBan', { username: user.username }))) return
+    setBlocking(true)
     try {
       await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      setBlockDialogOpen(false)
     } catch {
-      // friend-actions already shows the concrete error toast.
+      // friend-actions already shows the error toast.
+    } finally {
+      setBlocking(false)
     }
   }
 
@@ -594,7 +596,10 @@ export function UserContextMenuContent({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onClick={() => void handleBlock()}
+            onClick={(event) => {
+              event.preventDefault()
+              setBlockDialogOpen(true)
+            }}
           >
             <BanIcon />
             {t('block')}
@@ -668,21 +673,24 @@ export function UserContextMenuContent({
                 <Label htmlFor={`ban-delete-messages-${user._id}`}>
                   {t('deleteMessageHistory')}
                 </Label>
-                <select
+                <NativeSelect
                   id={`ban-delete-messages-${user._id}`}
                   value={banDeleteMessageSeconds}
-                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+                  className="w-full"
                   disabled={banning}
                   onChange={(event) =>
                     setBanDeleteMessageSeconds(event.target.value)
                   }
                 >
                   {BAN_DELETE_MESSAGE_PRESETS.map((preset) => (
-                    <option key={preset.seconds} value={String(preset.seconds)}>
+                    <NativeSelectOption
+                      key={preset.seconds}
+                      value={String(preset.seconds)}
+                    >
                       {t(preset.labelKey)}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
             <DialogFooter>
@@ -705,6 +713,15 @@ export function UserContextMenuContent({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      ) : null}
+      {canBlock ? (
+        <UserBlockDialog
+          user={user}
+          open={blockDialogOpen}
+          busy={blocking}
+          onOpenChange={setBlockDialogOpen}
+          onConfirm={() => void handleBlock()}
+        />
       ) : null}
     </>
   )

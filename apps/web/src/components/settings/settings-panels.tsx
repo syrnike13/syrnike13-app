@@ -4,7 +4,6 @@ import {
   useTranslations,
   type Translator,
 } from '@syrnike13/ui/i18n'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -22,12 +21,14 @@ import { useAppearance } from '#/features/appearance/appearance-context'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import type { SettingsSection } from '#/features/settings/settings-modal-context'
 import { changeAccountPasswordEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   readBrowserDiagnosticReportsEnabled,
   writeBrowserDiagnosticReportsEnabled,
@@ -206,9 +207,7 @@ export function SettingsAccountPanel() {
                   onFailure: (error) =>
                     Effect.sync(() => {
                       toast.error(
-                        error instanceof Error
-                          ? error.message
-                          : t('passwordChangeError'),
+                        apiErrorMessage(error, t('passwordChangeError')),
                       )
                     }),
                   onSuccess: () =>
@@ -251,7 +250,7 @@ export function SettingsAccountPanel() {
           </div>
           <Button type="submit" size="sm" disabled={passwordSaving}>
             {passwordSaving ? (
-              <Loader2Icon className="size-4 animate-spin" />
+              <Spinner className="size-4" />
             ) : (
               t('changePassword')
             )}
@@ -308,9 +307,7 @@ export function SettingsAccountPanel() {
                       onFailure: (error) =>
                         Effect.sync(() => {
                           toast.error(
-                            error instanceof Error
-                              ? error.message
-                              : t('reportError'),
+                            apiErrorMessage(error, t('reportError')),
                           )
                         }),
                       onSuccess: (report) =>

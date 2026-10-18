@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
@@ -24,20 +23,21 @@ import {
 import { Button } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@syrnike13/ui/primitives/sheet'
+import {
   type SettingsSection,
   useSettingsModal,
 } from '#/features/settings/settings-modal-context'
 import { useAuth } from '#/features/auth/auth-context'
 import { cn } from '#/lib/utils'
 
-function mobileNavRowClass(active = false) {
-  return cn(
-    'flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
-    active
-      ? 'bg-accent text-accent-foreground'
-      : 'text-foreground hover:bg-accent/50',
-  )
-}
+const mobileNavRowClass =
+  'h-auto w-full min-w-0 justify-start gap-3 px-3 py-3 text-left text-base'
 
 function screenTitle(screen: MobileSettingsScreen, t: Translator) {
   if (screen.kind === 'general') return t('title')
@@ -62,33 +62,6 @@ export function SettingsMobileModal() {
     if (!open) return
     setStack(resolveMobileSettingsStack(section))
   }, [open, section])
-
-  useEffect(() => {
-    if (!open) return
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      setStack((prev) => {
-        if (prev.length > 1) return prev.slice(0, -1)
-        setOpen(false)
-        return prev
-      })
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, setOpen])
 
   function pushScreen(screen: MobileSettingsScreen) {
     setStack((prev) => [...prev, screen])
@@ -129,70 +102,94 @@ export function SettingsMobileModal() {
     )
   }
 
-  if (!open) return null
-
-  return createPortal(
-    <div className="gradient-surface-solid fixed inset-0 z-300 flex flex-col bg-card text-card-foreground">
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-3 safe-pt-3">
-        {stack.length > 1 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-10 shrink-0"
-            onClick={handleBack}
-            aria-label={t('back')}
-          >
-            <ChevronLeftIcon className="size-5" />
-          </Button>
-        ) : (
-          <span className="size-10 shrink-0" aria-hidden />
-        )}
-        <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold">
-          {screenTitle(currentScreen, t)}
-        </h1>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-10 shrink-0"
-          onClick={() => setOpen(false)}
-          aria-label={t('close')}
-        >
-          <XIcon className="size-5" />
-        </Button>
-      </header>
-
-      <ProfileDraftProvider>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <ScrollArea className="min-h-0 flex-1">
-            <div
-              className={cn(
-                'px-4 py-4',
-                showProfileBar && 'pb-28',
-              )}
-            >
-              {currentScreen.kind === 'general' ? (
-                <MobileGeneralSettingsMenu
-                  onSelect={(id) => openSection(id)}
-                  onLogout={() => void handleLogout()}
-                  loggingOut={loggingOut}
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen, details) => {
+        // Escape pops the mobile settings stack before closing the sheet.
+        if (
+          !nextOpen &&
+          details.reason === 'escape-key' &&
+          stack.length > 1
+        ) {
+          details.cancel()
+          setStack((prev) => prev.slice(0, -1))
+          return
+        }
+        setOpen(nextOpen)
+      }}
+    >
+      {/* design-allow restyle-shared: mobile settings sheet uses the settings surface */}
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="gradient-surface-solid z-300 gap-0 bg-card p-0 text-card-foreground shadow-none data-[side=right]:w-full data-[side=right]:border-l-0 data-[side=right]:max-w-none data-[side=right]:sm:max-w-none"
+      >
+        <SheetHeader className="shrink-0 gap-0 border-b border-border p-0">
+          <div className="flex items-center gap-2 px-2 pb-3 safe-pt-3">
+            {stack.length > 1 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-10 shrink-0"
+                onClick={handleBack}
+                aria-label={t('back')}
+              >
+                <ChevronLeftIcon className="size-5" />
+              </Button>
+            ) : (
+              <span className="size-10 shrink-0" aria-hidden />
+            )}
+            <SheetTitle className="min-w-0 flex-1 truncate text-center">
+              {screenTitle(currentScreen, t)}
+            </SheetTitle>
+            <SheetClose
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 shrink-0"
+                  aria-label={t('close')}
                 />
-              ) : null}
+              }
+            >
+              <XIcon className="size-5" />
+            </SheetClose>
+          </div>
+        </SheetHeader>
 
-              {currentScreen.kind === 'section' ? (
-                <SettingsPanelContent section={currentScreen.section} />
-              ) : null}
-            </div>
-          </ScrollArea>
+        <ProfileDraftProvider>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <ScrollArea className="min-h-0 flex-1">
+              <div
+                className={cn(
+                  'px-4 py-4',
+                  showProfileBar && 'pb-28',
+                )}
+              >
+                {currentScreen.kind === 'general' ? (
+                  <MobileGeneralSettingsMenu
+                    onSelect={(id) => openSection(id)}
+                    onLogout={() => void handleLogout()}
+                    loggingOut={loggingOut}
+                  />
+                ) : null}
 
-          {showProfileBar ? (
-            <ProfileUnsavedChangesBar className="inset-x-4 safe-bottom-3" />
-          ) : null}
-        </div>
-      </ProfileDraftProvider>
-    </div>,
-    document.body,
+                {currentScreen.kind === 'section' ? (
+                  <SettingsPanelContent section={currentScreen.section} />
+                ) : null}
+              </div>
+            </ScrollArea>
+
+            {showProfileBar ? (
+              <ProfileUnsavedChangesBar className="inset-x-4 safe-bottom-3" />
+            ) : null}
+          </div>
+        </ProfileDraftProvider>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -213,39 +210,38 @@ function MobileGeneralSettingsMenu({
         const Icon = item.icon
 
         return (
-          <button
+          <Button
             key={item.id}
             type="button"
-            className={mobileNavRowClass()}
+            variant="ghost"
+            className={mobileNavRowClass}
             onClick={() => onSelect(item.id)}
           >
             <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-base">
+            <span className="min-w-0 flex-1 truncate">
               {t(item.labelKey)}
             </span>
             <ChevronRightIcon
               className="size-4 shrink-0 text-muted-foreground"
               aria-hidden
             />
-          </button>
+          </Button>
         )
       })}
 
       <div className="mt-4 border-t border-border pt-2">
-        <button
+        <Button
           type="button"
-          className={cn(
-            mobileNavRowClass(),
-            'text-destructive hover:bg-destructive/10 hover:text-destructive',
-          )}
+          variant="destructive"
+          className={mobileNavRowClass}
           disabled={loggingOut}
           onClick={onLogout}
         >
           <LogOutIcon className="size-5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-base">
+          <span className="min-w-0 flex-1 truncate">
             {loggingOut ? t('loggingOut') : t('logout')}
           </span>
-        </button>
+        </Button>
       </div>
     </div>
   )

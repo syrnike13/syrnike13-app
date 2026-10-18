@@ -12,6 +12,7 @@ import { ActivityPresenceManager } from '#/features/presence/activity-presence-m
 import { VoiceProvider } from '#/features/voice/voice-provider'
 import { useSyncReady } from '#/features/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 /**
  * Общий gate для авторизованных зон (`/app`, `/m`).
@@ -77,7 +78,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   ) {
     return (
       <ProfileLoadErrorScreen
-        message={auth.profileLoadError.message}
+        error={auth.profileLoadError}
         retry={auth.retryProfileLoad}
       />
     )
@@ -103,10 +104,10 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
 }
 
 function ProfileLoadErrorScreen({
-  message,
+  error,
   retry,
 }: {
-  message: string
+  error: Error
   retry: () => Effect.Effect<void, unknown>
 }) {
   const t = useTranslations('auth')
@@ -118,7 +119,7 @@ function ProfileLoadErrorScreen({
           {t('gate.profileUnavailable')}
         </p>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          {message || t('gate.profileLoadError')}
+          {apiErrorMessage(error, t('gate.profileLoadError'))}
         </p>
         <Button
           type="button"

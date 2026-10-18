@@ -9,6 +9,7 @@ import {
   revokePendingFiles,
   type PendingComposerFile,
 } from '#/lib/composer-files'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function useComposerAttachments(channelId?: string) {
   const t = useTranslations('media')
@@ -106,9 +107,7 @@ export function useComposerAttachments(channelId?: string) {
                   const message =
                     error instanceof DOMException && error.name === 'AbortError'
                       ? t('uploadCancelled')
-                      : error instanceof Error
-                        ? error.message
-                        : t('uploadFailed')
+                      : apiErrorMessage(error, t('uploadFailed'))
                   setFiles((current) =>
                     current.map((file) =>
                       file.id === pending.id

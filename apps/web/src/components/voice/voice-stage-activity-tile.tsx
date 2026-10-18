@@ -2,12 +2,12 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   Gamepad2Icon,
-  Loader2Icon,
   LogOutIcon,
   Maximize2Icon,
 } from '#/components/icons'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -197,7 +197,7 @@ function ActivityLoadingState() {
       className="flex size-full items-center justify-center bg-background text-muted-foreground"
       role="status"
     >
-      <Loader2Icon className="mr-2 size-5 animate-spin" />
+      <Spinner className="mr-2 size-5" />
       {t('activity.loading')}
     </div>
   )
@@ -236,7 +236,7 @@ function ActivityJoinState({
       </div>
       {application ? (
         <Button type="button" disabled={joining || !connected} onClick={onJoin}>
-          {joining ? <Loader2Icon className="size-4 animate-spin" /> : null}
+          {joining ? <Spinner className="size-4" aria-hidden /> : null}
           {joining ? t('activity.joining') : t('activity.join')}
         </Button>
       ) : null}

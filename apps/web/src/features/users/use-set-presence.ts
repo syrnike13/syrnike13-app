@@ -38,11 +38,8 @@ export function useSetPresence() {
       queryClient.setQueryData(queryKeys.auth.session, updated)
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t('presenceUpdateError'),
-      )
+      console.error('[presence] update failed', error)
+      toast.error(t('presenceUpdateError'))
     },
   })
 

@@ -7,6 +7,7 @@ import {
 } from '@syrnike13/ui/i18n'
 
 import { MonitorIcon, TagIcon } from '#/components/icons'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import {
   feedbackAreaLabel,
   feedbackPlatformLabel,
@@ -19,9 +20,6 @@ import {
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
-
-const metaChipClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/20 px-2 text-xs font-medium text-muted-foreground'
 
 function formatFeedbackDate(value: string, locale: AppLocale) {
   const date = new Date(value)
@@ -71,16 +69,16 @@ export function FeedbackSuggestionRow({
           <FeedbackModerationStatus status={suggestion.moderation_status} />
         )}
         {suggestion.area ? (
-          <span className={metaChipClass}>
+          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
             <TagIcon className="size-3" aria-hidden />
             {feedbackAreaLabel(suggestion.area, tm)}
-          </span>
+          </Badge>
         ) : null}
         {suggestion.platform ? (
-          <span className={metaChipClass}>
+          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
             <MonitorIcon className="size-3" aria-hidden />
             {feedbackPlatformLabel(suggestion.platform, tm)}
-          </span>
+          </Badge>
         ) : null}
         <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:block">
           {authorLabel} · {formatFeedbackDate(suggestion.created_at, locale)}

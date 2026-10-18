@@ -11,11 +11,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   voiceStagePopoverContentClass,
   voiceStagePopoverMenuItemClass,
   voiceStagePopoverNavRowClass,
-  voiceStagePopoverSeparatorClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
@@ -244,7 +244,7 @@ export function ScreenShareQualitySections() {
     <div className="flex flex-col">
       <SectionTitle>{t('sharePicker.frameRate')}</SectionTitle>
       <ScreenShareFpsOptions />
-      <div className={cn(voiceStagePopoverSeparatorClass, 'my-1.5')} />
+      <Separator className="my-1.5" />
       <SectionTitle>{t('sharePicker.resolution')}</SectionTitle>
       <ScreenShareResolutionOptions />
     </div>
@@ -361,7 +361,7 @@ export function VoiceStreamSettingsMenuContent({
               <span>{t('actions.changeSource')}</span>
             </button>
           ) : null}
-          <div className={voiceStagePopoverSeparatorClass} role="separator" />
+          <Separator className="my-0.5" />
         </>
       ) : null}
       <StreamSettingsSubmenu

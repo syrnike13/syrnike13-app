@@ -5,7 +5,6 @@ import {
   ExternalLinkIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
-  Loader2Icon,
   LogOutIcon,
   Maximize2Icon,
   MessageSquareIcon,
@@ -22,6 +21,7 @@ import {
 } from '#/components/icons'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -606,7 +606,7 @@ function VoiceStageMobileDrawerControlBar({
             onClick={onToggleScreenShare}
           >
             {screenShareStarting ? (
-              <Loader2Icon className="size-5 animate-spin" />
+              <Spinner className="size-5" />
             ) : sharingScreen ? (
               <MonitorXIcon className="size-5" />
             ) : (
@@ -755,7 +755,7 @@ function VoiceStageOverlayControlBar({
           popoverContent={<VoiceStreamSettingsMenuContent />}
         >
           {screenShareStarting ? (
-            <Loader2Icon className="size-5 animate-spin" />
+            <Spinner className="size-5" />
           ) : sharingScreen ? (
             <MonitorXIcon className="size-5" />
           ) : (
@@ -1110,7 +1110,7 @@ function LegacyControlBar({
         onClick={onToggleScreenShare}
       >
         {screenShareStarting ? (
-          <Loader2Icon className="size-5 animate-spin" />
+          <Spinner className="size-5" />
         ) : sharingScreen ? (
           <MonitorXIcon className="size-5" />
         ) : (

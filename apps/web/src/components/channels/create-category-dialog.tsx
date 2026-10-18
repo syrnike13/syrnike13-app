@@ -16,6 +16,7 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { createCategoryId } from '#/lib/channel-sidebar-layout'
 
 type CreateCategoryDialogProps = {
@@ -66,7 +67,7 @@ export function CreateCategoryDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : t('error'),
+              apiErrorMessage(error, t('error')),
             )
           }),
         ),

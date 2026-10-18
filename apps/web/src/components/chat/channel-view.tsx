@@ -17,6 +17,16 @@ import {
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
@@ -164,6 +174,7 @@ export function ChannelView({
   const t = useTranslations('chat')
   const tVoice = useTranslations('chat.voice')
   const tf = useTranslations('friends')
+  const tu = useTranslations('users')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
   const isMobileRoute = routePrefix === '/m'
@@ -172,6 +183,7 @@ export function ChannelView({
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
   const [membersVisible, setMembersVisible] = useState(true)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)
+  const [blockUserId, setBlockUserId] = useState<string | null>(null)
   const messageListRef = useRef<MessageListHandle>(null)
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
@@ -744,12 +756,7 @@ export function ChannelView({
               onDelete={(message) => void handleDelete(message)}
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
-                if (!window.confirm(t('blockConfirm'))) return
-                Effect.runFork(
-                  blockUserRelationship(token, message.author, tf).pipe(
-                    Effect.ignore,
-                  ),
-                )
+                setBlockUserId(message.author)
               }}
               onPin={(message) => void handlePin(message)}
               onUnpin={(message) => void handleUnpin(message)}
@@ -1001,12 +1008,7 @@ export function ChannelView({
               onDelete={(message) => void handleDelete(message)}
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
-                if (!window.confirm(t('blockConfirm'))) return
-                Effect.runFork(
-                  blockUserRelationship(token, message.author, tf).pipe(
-                    Effect.ignore,
-                  ),
-                )
+                setBlockUserId(message.author)
               }}
               onPin={(message) => void handlePin(message)}
               onUnpin={(message) => void handleUnpin(message)}
@@ -1117,6 +1119,38 @@ export function ChannelView({
           onOpenChange={setFullProfileOpen}
         />
       ) : null}
+
+      <AlertDialog
+        open={Boolean(blockUserId)}
+        onOpenChange={(open) => {
+          if (!open) setBlockUserId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('blockConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tu('blockDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!token || !blockUserId) return
+                const userId = blockUserId
+                setBlockUserId(null)
+                Effect.runFork(
+                  blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+                )
+              }}
+            >
+              {t('block')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -2,9 +2,9 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Loader2Icon } from '#/components/icons'
 import { AdminEmpty, AdminPage } from '#/components/layout/page'
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 import { BadgeEditorPage } from '#/features/badges/badge-editor'
 import { fetchAdminBadges } from '#/features/api/admin-api'
@@ -36,7 +36,7 @@ function EditBadgePage() {
         back={{ to: '/badges', label: t('backBadges') }}
       >
         <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-          <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
+          <Spinner className="mr-2 size-4" aria-hidden />
           {t('loading')}
         </div>
       </AdminPage>

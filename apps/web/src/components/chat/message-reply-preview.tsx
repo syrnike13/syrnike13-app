@@ -12,7 +12,7 @@ import { cn } from '#/lib/utils'
 export function messageAuthorName(
   message: Message,
   users: Record<string, User>,
-  fallback = 'Message',
+  fallback: string,
 ) {
   const masqueradeName = message.masquerade?.name?.trim()
   if (masqueradeName) return masqueradeName

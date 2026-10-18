@@ -14,13 +14,15 @@ import { Effect, Fiber } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@syrnike13/ui/primitives/dialog'
-import { Input } from '@syrnike13/ui/primitives/input'
-import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem as CommandMenuItem,
+  CommandList,
+} from '@syrnike13/ui/primitives/command'
+import { Kbd, KbdGroup } from '@syrnike13/ui/primitives/kbd'
 import {
   buildCommandItems,
   channelLabelForMessage,
@@ -32,7 +34,6 @@ import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { syncStore } from '#/features/sync/sync-store'
-import { cn } from '#/lib/utils'
 
 function groupIcon(group: string) {
   switch (group) {
@@ -64,7 +65,7 @@ export function CommandPalette() {
   const { openSettings } = useSettingsModal()
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [messageHits, setMessageHits] = useState<
     Array<{ message: Message; channelId: string; channelLabel: string }>
   >([])
@@ -133,7 +134,6 @@ export function CommandPalette() {
   useEffect(() => {
     if (!open) {
       setQuery('')
-      setActiveIndex(0)
       setMessageHits([])
       return
     }
@@ -142,7 +142,7 @@ export function CommandPalette() {
   }, [open])
 
   useEffect(() => {
-    setActiveIndex(0)
+    setSelectedItemId(items[0]?.id)
   }, [query])
 
   useEffect(() => {
@@ -213,110 +213,74 @@ export function CommandPalette() {
     item.run()
   }
 
-  function onKeyDown(event: React.KeyboardEvent) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setActiveIndex((index) => Math.min(index + 1, items.length - 1))
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      setActiveIndex((index) => Math.max(index - 1, 0))
-    } else if (event.key === 'Enter' && items[activeIndex]) {
-      event.preventDefault()
-      runItem(items[activeIndex])
-    }
-  }
-
-  let flatIndex = 0
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent
-        showCloseButton={false}
-        className="gap-0 overflow-hidden p-0 sm:max-w-xl"
+    <CommandDialog
+      open={open}
+      onOpenChange={setOpen}
+      title={t('title')}
+      description={t('description')}
+      showCloseButton={false}
+      className="sm:max-w-xl"
+    >
+      <Command
+        shouldFilter={false}
+        value={selectedItemId}
+        onValueChange={setSelectedItemId}
       >
-        <DialogTitle className="sr-only">{t('title')}</DialogTitle>
-        <DialogDescription className="sr-only">
-          {t('description')}
-        </DialogDescription>
-        <div className="flex items-center gap-3 border-b px-4">
-          <Input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={t('placeholder')}
-            className="h-12 flex-1 [&::-webkit-search-cancel-button]:hidden"
-          />
-          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground sm:inline">
-            Esc
-          </kbd>
-        </div>
+        <CommandInput
+          ref={inputRef}
+          value={query}
+          onValueChange={setQuery}
+          placeholder={t('placeholder')}
+        />
 
-        <ScrollArea className="max-h-command-palette">
-          {items.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {searchingMessages
-                ? t('searching')
-                : query.trim()
-                  ? t('noResults')
-                  : t('typeQuery')}
-            </p>
-          ) : (
-            <div className="p-2">
-              {grouped.map(([group, groupItems]) => {
-                const Icon = groupIcon(group)
-                return (
-                  <div key={group} className="mb-2 last:mb-0">
-                    <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                      {t(`groups.${group}`)}
-                    </p>
-                    <ul>
-                      {groupItems.map((item) => {
-                        const index = flatIndex++
-                        const active = index === activeIndex
-                        return (
-                          <li key={item.id}>
-                            <button
-                              type="button"
-                              className={cn(
-                                'flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm',
-                                active && 'bg-accent text-accent-foreground',
-                              )}
-                              onMouseEnter={() => setActiveIndex(index)}
-                              onClick={() => runItem(item)}
-                            >
-                              <Icon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate font-medium">
-                                  {item.label}
-                                </span>
-                                {item.subtitle ? (
-                                  <span className="block truncate text-xs text-muted-foreground">
-                                    {item.subtitle}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </ScrollArea>
+        <CommandList className="max-h-command-palette">
+          <CommandEmpty>
+            {searchingMessages
+              ? t('searching')
+              : query.trim()
+                ? t('noResults')
+                : t('typeQuery')}
+          </CommandEmpty>
 
-        <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {grouped.map(([group, groupItems]) => {
+            const Icon = groupIcon(group)
+            return (
+              <CommandGroup key={group} heading={t(`groups.${group}`)}>
+                {groupItems.map((item) => (
+                  <CommandMenuItem
+                    key={item.id}
+                    value={item.id}
+                    className="gap-3 px-2 py-2"
+                    onSelect={() => runItem(item)}
+                  >
+                    <Icon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {item.label}
+                      </span>
+                      {item.subtitle ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {item.subtitle}
+                        </span>
+                      ) : null}
+                    </span>
+                  </CommandMenuItem>
+                ))}
+              </CommandGroup>
+            )
+          })}
+        </CommandList>
+
+        <div className="mt-1 flex items-center justify-between border-t border-border px-2 py-2 text-xs text-muted-foreground">
           <span>{t('footer')}</span>
-          <span>
-            <kbd className="rounded border bg-background px-1">Ctrl</kbd>+
-            <kbd className="rounded border bg-background px-1">K</kbd>
-          </span>
+          <KbdGroup>
+            <Kbd>Ctrl</Kbd>
+            <span>+</span>
+            <Kbd>K</Kbd>
+          </KbdGroup>
         </div>
-      </DialogContent>
-    </Dialog>
+      </Command>
+    </CommandDialog>
   )
 }

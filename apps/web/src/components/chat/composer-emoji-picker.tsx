@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { SmileIcon } from '#/components/icons'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
@@ -24,6 +25,7 @@ export function ComposerEmojiPicker({
   onInsert,
   triggerClassName,
 }: ComposerEmojiPickerProps) {
+  const t = useTranslations('chat')
   const customEmojis = useSyncStore((s) =>
     serverId ? listServerCustomEmojis(s, serverId) : [],
   )
@@ -39,12 +41,12 @@ export function ComposerEmojiPicker({
             triggerClassName ?? 'size-8 shrink-0'
           }
           disabled={disabled}
-          title="Emoji" />}>
+          title={t('emoji')} />}>
           <SmileIcon className="size-5" />
         </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">
-          Emoji
+          {t('emoji')}
         </p>
         <div className="grid max-h-40 grid-cols-8 gap-0.5 overflow-y-auto">
           {QUICK_REACTIONS.map((emoji) => (
@@ -63,7 +65,7 @@ export function ComposerEmojiPicker({
         {customEmojis.length > 0 ? (
           <>
             <p className="mb-2 mt-3 px-1 text-xs font-medium text-muted-foreground">
-              Серверные
+              {t('serverEmojis')}
             </p>
             <div className="grid max-h-32 grid-cols-8 gap-0.5 overflow-y-auto">
               {customEmojis.map((emoji) => (

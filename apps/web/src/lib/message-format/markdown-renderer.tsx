@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import ReactMarkdown, {
   defaultUrlTransform,
   type Components,
@@ -22,6 +23,7 @@ function SyrnikeEntityLink({
   href: string
   context: MessageFormatContext
 }) {
+  const t = useTranslations('chat')
   const parsed = parseSyrnikeEntityHref(href)
   if (!parsed) return null
 
@@ -78,7 +80,7 @@ function SyrnikeEntityLink({
     return (
       <span
         className="cursor-pointer rounded bg-foreground/10 px-1 text-transparent transition hover:text-inherit"
-        title="Спойлер — наведите, чтобы показать"
+        title={t('spoilerShow')}
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}

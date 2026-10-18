@@ -6,16 +6,23 @@ import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
-import { Input } from '@syrnike13/ui/primitives/input'
+import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Command,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@syrnike13/ui/primitives/command'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
-import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
@@ -82,7 +89,7 @@ export function ChannelSearchDialog({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : t('searchFailed'),
+                apiErrorMessage(error, t('searchFailed')),
               )
               setSearching(false)
             }),
@@ -112,27 +119,33 @@ export function ChannelSearchDialog({
 
   const triggerElement =
     variant === 'strip' ? (
-      <button
+      <Button
         type="button"
+        variant="outline"
         className={cn(
-          'gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
+          'w-full justify-start font-normal',
+          // eslint-disable-next-line shadcn/require-static-classes -- caller-owned voice-stage strip styling
           stripClassName,
         )}
       >
         <SearchIcon className="size-4 shrink-0" />
         <span className="truncate">{t('search')}</span>
-      </button>
+      </Button>
     ) : (
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         className={cn(
-          'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+          'shrink-0',
+          // eslint-disable-next-line shadcn/require-static-classes -- caller-owned voice-stage icon styling
           triggerClassName,
         )}
         title={t('searchMessages')}
+        aria-label={t('searchMessages')}
       >
         <SearchIcon className="size-4" />
-      </button>
+      </Button>
     )
 
   return (
@@ -144,19 +157,18 @@ export function ChannelSearchDialog({
         sideOffset={6}
         className="w-80 p-0"
       >
-        <div className="border-b p-2">
-          <Input
+        <Command shouldFilter={false}>
+          <CommandInput
             ref={inputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onValueChange={setQuery}
             placeholder={t('searchMessagesPlaceholder')}
-            className="h-8"
           />
-        </div>
-        <ScrollArea className="max-h-80">
-          <div className="flex flex-col gap-1 p-2">
+          <CommandList className="max-h-80 p-2">
             {searching ? (
-              <p className="px-1 py-2 text-sm text-muted-foreground">{t('searching')}</p>
+              <p className="px-1 py-2 text-sm text-muted-foreground">
+                {t('searching')}
+              </p>
             ) : null}
             {!searching && query.trim().length < 2 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
@@ -164,9 +176,9 @@ export function ChannelSearchDialog({
               </p>
             ) : null}
             {!searching && query.trim().length >= 2 && results.length === 0 ? (
-              <p className="px-1 py-2 text-sm text-muted-foreground">
-                {t('nothingFound')}
-              </p>
+              <Empty className="px-1 py-2">
+                <EmptyDescription>{t('nothingFound')}</EmptyDescription>
+              </Empty>
             ) : null}
             {results.map((message) => {
               const author = message.user ?? users[message.author]
@@ -174,34 +186,34 @@ export function ChannelSearchDialog({
                 author?.display_name ?? author?.username ?? t('unknownAuthor')
 
               return (
-                <button
+                <CommandItem
                   key={message._id}
-                  type="button"
-                  className={cn(
-                    'rounded-md border border-transparent px-2 py-2 text-left text-sm transition-colors hover:border-border hover:bg-muted/60',
-                  )}
-                  onClick={() => openMessage(message._id)}
+                  value={message._id}
+                  className="items-start px-2 py-2"
+                  onSelect={() => openMessage(message._id)}
                 >
-                  <p className="truncate text-xs font-medium text-muted-foreground">
-                    {name}
-                  </p>
-                  {message.content ? (
-                    <div className="line-clamp-2 select-text text-sm">
-                      {renderMessageContent(message.content, users, emojis, {
-                        channels,
-                        roles: server?.roles,
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground">
-                      {t('noText')}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-muted-foreground">
+                      {name}
                     </p>
-                  )}
-                </button>
+                    {message.content ? (
+                      <div className="line-clamp-2 select-text text-sm">
+                        {renderMessageContent(message.content, users, emojis, {
+                          channels,
+                          roles: server?.roles,
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm italic text-muted-foreground">
+                        {t('noText')}
+                      </p>
+                    )}
+                  </div>
+                </CommandItem>
               )
             })}
-          </div>
-        </ScrollArea>
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   )

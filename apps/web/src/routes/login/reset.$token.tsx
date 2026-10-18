@@ -1,7 +1,6 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -9,6 +8,7 @@ import { toast } from 'sonner'
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   CardContent,
   CardDescription,
@@ -20,6 +20,7 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { confirmPasswordResetEffect } from '#/features/api/account-api'
 import { resetPasswordSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/reset/$token')({
   beforeLoad: () => {
@@ -54,9 +55,7 @@ function ResetConfirmPage() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('reset.updateError'),
+                apiErrorMessage(error, t('reset.updateError')),
               )
             }),
           ),
@@ -116,7 +115,7 @@ function ResetConfirmPage() {
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('reset.confirmSubmit')}
             </Button>

@@ -67,7 +67,7 @@ export function UserProfilePopover({
         align={align}
         sideOffset={8}
         className={cn(
-          'z-200 w-profile-popover overflow-hidden border-0 bg-popover p-0 text-popover-foreground shadow-xl ring-1 ring-border',
+          'z-200 w-profile-popover overflow-hidden p-0',
           className,
         )}
         initialFocus={false}

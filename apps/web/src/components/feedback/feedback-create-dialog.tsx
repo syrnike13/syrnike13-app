@@ -48,6 +48,7 @@ import {
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   Select,
   SelectContent,
@@ -232,7 +233,7 @@ export function FeedbackCreateDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-dialog-sm flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <DialogHeader className="shrink-0 gap-1 border-b border-shell-divider px-6 pt-4 pb-3">
+        <DialogHeader className="shrink-0 gap-1 px-6 pt-4 pb-3">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
             {step === 0 && t('descriptionType')}
@@ -267,12 +268,13 @@ export function FeedbackCreateDialog({
                   {t(item.labelKey)}
                 </span>
                 {index < STEPS.length - 1 ? (
-                  <span className="mx-1 h-px w-8 bg-border" aria-hidden />
+                  <Separator aria-hidden className="mx-1 w-8" />
                 ) : null}
               </li>
             ))}
           </ol>
         </DialogHeader>
+        <Separator />
 
         <ScrollArea className="min-h-0 flex-1">
           <form

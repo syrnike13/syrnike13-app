@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: rail uses the Squircle brand shape and product hover states.
 import { useMatch, useRouterState } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {

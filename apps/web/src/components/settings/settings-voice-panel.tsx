@@ -33,7 +33,6 @@ import {
   ScreenShareQualitySchema,
   NativeScreenShareProfileSchema,
   NATIVE_SCREEN_SHARE_PROFILES,
-  NATIVE_SCREEN_SHARE_PROFILE_LABELS,
 } from '#/features/voice/voice-preference-types'
 import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -261,8 +260,12 @@ export function SettingsVoicePanel() {
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="hd720p30">720p · 30 FPS</SelectItem>
-                  <SelectItem value="hd1080p30">1080p · 30 FPS</SelectItem>
+                  <SelectItem value="hd720p30">
+                    {t('preferences.quality720p30')}
+                  </SelectItem>
+                  <SelectItem value="hd1080p30">
+                    {t('preferences.quality1080p30')}
+                  </SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
@@ -420,7 +423,7 @@ export function SettingsVoicePanel() {
                 <SelectGroup>
                   {NATIVE_SCREEN_SHARE_PROFILES.map((profile) => (
                     <SelectItem key={profile} value={profile}>
-                      {NATIVE_SCREEN_SHARE_PROFILE_LABELS[profile]}
+                      {t(`preferences.quality${profile}`)}
                     </SelectItem>
                   ))}
                 </SelectGroup>

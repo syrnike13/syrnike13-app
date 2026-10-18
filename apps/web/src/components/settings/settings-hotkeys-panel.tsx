@@ -15,6 +15,7 @@ import {
   SettingsRow,
 } from '#/components/settings/settings-panels'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Select,
   SelectContent,
@@ -219,8 +220,10 @@ export function SettingsHotkeysPanel() {
         {!loaded ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : bindings.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            {t('empty')}
+          <div className="rounded-md border border-dashed border-border px-4 py-8">
+            <Empty className="p-0">
+              <EmptyDescription>{t('empty')}</EmptyDescription>
+            </Empty>
           </div>
         ) : (
           <div className="space-y-0">

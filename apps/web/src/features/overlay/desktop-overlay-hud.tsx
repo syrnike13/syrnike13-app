@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: desktop overlay HUD has native media-overlay contracts.
 import type { DesktopOverlayState } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 

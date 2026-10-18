@@ -1,12 +1,12 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 import {
   CardContent,
@@ -20,6 +20,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { clearPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/verify/$token')({
   beforeLoad: () => {
@@ -73,10 +74,7 @@ function VerifyEmailPage() {
           Effect.sync(() => {
             setState({
               status: 'error',
-              message:
-                error instanceof Error
-                  ? error.message
-                  : t('verify.error'),
+              message: apiErrorMessage(error, t('verify.error')),
             })
           }),
         ),
@@ -108,7 +106,7 @@ function VerifyEmailPage() {
         </CardHeader>
         {state.status === 'loading' ? (
           <CardContent className="flex justify-center py-6">
-            <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
+            <Spinner className="size-8 text-muted-foreground" />
           </CardContent>
         ) : null}
         {state.status !== 'loading' ? (

@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -14,6 +13,7 @@ import {
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   CardContent,
   CardFooter,
@@ -37,6 +37,7 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 const REGISTER_FIELD_NAMES = [
   'email',
@@ -174,9 +175,7 @@ function RegisterPage() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t('register.error'),
+                apiErrorMessage(error, t('register.error')),
               )
             }),
           ),
@@ -325,10 +324,7 @@ function RegisterPage() {
               disabled={submitting || !configReady}
             >
               {submitting || configQuery.isPending ? (
-                <Loader2Icon
-                  className="animate-spin"
-                  data-icon="inline-start"
-                />
+                <Spinner data-icon="inline-start" />
               ) : null}
               {t('register.submit')}
             </Button>

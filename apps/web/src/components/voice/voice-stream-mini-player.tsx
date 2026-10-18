@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
 import { Slider } from '@syrnike13/ui/primitives/slider'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   Tooltip,
   TooltipContent,
@@ -29,7 +30,6 @@ import {
 import { ScreenShareQualitySections } from '#/components/voice/voice-screen-share-quality'
 import {
   voiceStagePopoverContentClass,
-  voiceStagePopoverSeparatorClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
@@ -183,7 +183,7 @@ function MiniStreamSettings({
       >
         {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
         {remoteUserId && showOwnQuality ? (
-          <div className={cn(voiceStagePopoverSeparatorClass, 'my-1.5')} />
+          <Separator className="my-1.5" />
         ) : null}
         {showOwnQuality ? (
           <>

@@ -63,6 +63,32 @@
 | Разделитель новых сообщений | красная линия с подписью перед первым непрочитанным |
 | Кнопка «К последним» | появляется при прокрутке вверх |
 
+## Профили
+
+| Элемент | Discord |
+| --- | --- |
+| Поповер профиля | 300px, radius 8px; баннер 105px, аватар 80px на `left: 16px`, `top: 61px` |
+| Действия на баннере | 32×32px, gap 8px, отступ 8px от верхнего/правого края |
+| Имя в поповере | 20px / 24px, weight 600 |
+| Username | 14px / 18px; точка-разделитель 4px; бейджи 20px, gap 2px |
+| Тело поповера | padding 4px 8px 8px 16px, gap 12px; заголовок и тело разделены 8px |
+| Тег роли | высота 24px, radius 8px, точка 12px, текст 12px / 16px, крестик 24×24 |
+| Поле сообщения | 268×46px, radius 8px, редактор 16px / 22px, кнопка 32px |
+| Футер поповера | padding 0 16px 12px |
+| Модалка профиля | 962×800px, radius 12–16px; левая карточка 400px |
+| Баннер модалки | 400×140px; аватар 120px на `left: 32px`, `top: 80px` |
+| Имя в модалке | 24px / 32px, weight 600 |
+| Секции модалки | заголовок 12px / 16px weight 500, текст 14px / 18px, gap 24px |
+| Тело модалки | padding 4px 24px 32px 32px |
+| Правая колонка | вкладки 16px / 20px weight 500, контент с отступом 32px слева |
+
+Секции и действия профиля в бандле Discord заданы перечислениями:
+`FEATURED`, `USER_INFO`, `BOT_INFO`, `ACTIVITY`, `MUTUALS`,
+`MUTUAL_GUILDS`, `MUTUAL_FRIENDS`, `BOT_DATA_ACCESS`, `WIDGETS`, `WISHLIST`,
+`MAIN`; подсекции `ROLES`, `CONNECTIONS`, `APPS`, `NOTE`,
+`RECENT_ACTIVITY`. Типы поверхности: `POPOUT`, `MODAL`, `MODAL_V2`,
+`SIDEBAR`, `ACCOUNT_POPOUT`, `ACTION_SHEET`, `YOU_SCREEN`, `EMBED`.
+
 ## Как это соотносится с syrnike13
 
 Значения syrnike13 — из `packages/ui/src`, `apps/web/src` и `apps/admin/src`
@@ -95,7 +121,11 @@ Shell выровнен по живым метрикам Discord:
 - лента на `MessageScroller`: автопрокрутка у нижней границы, сохранение
   позиции при подгрузке истории, divider «Новые сообщения» и кнопка
   «К последним»; изображения резервируются по метаданным (550×350 max);
-- группировка одного автора рвётся после 7 минут; hover-панель 28px.
+- группировка одного автора рвётся после 7 минут; hover-панель 28px;
+- профили: поповер 300px с баннером 105px и аватаром 80px, имя 20/24 w600,
+  роли 24px; модалка 962×800 с левой карточкой 400px, баннером 140px,
+  аватаром 120px, именем 24/32 w600 и секциями 12/16 w500; общие друзья
+  и серверы, «Полный профиль», меню действий и подтверждение блокировки.
 
 ### Осознанные отличия
 
@@ -115,6 +145,7 @@ Shell выровнен по живым метрикам Discord:
 | Радиусы (общая шкала) | 6/8/10/14px | 4/8/12/16/24px | Shell использует 12px и 8px |
 | Правый блок композера | emoji + send, 32px | ~192px (gift/GIF/sticker/emoji/send) | GIF/стикеров нет в API |
 | Форма плавающих панелей | Squircle smoothing 1 | CSS round 8px | Радиус совпадает, форма мягче |
+| Секции профиля | activity, widgets, wishlist, connections, note | bio, роли, общие друзья/серверы, дата входа | В API нет активности, виджетов, вишлиста, подключений и заметок |
 
 ### Что осталось из старых различий
 
@@ -123,18 +154,38 @@ Shell выровнен по живым метрикам Discord:
 - Glyph рельса 18 vs 24.
 - Разделитель после системного блока (появится вместе с ним).
 
-Массовую миграцию примитивов не выполняли; shell, колонка каналов, user panel,
-лента сообщений и композер выровнены по Discord.
+Миграция на примитивы выполнена: `Command` (палитра и поиск), `Sheet` (мобильные
+настройки), `DropdownMenu` (меню сервера и статусы), `ToggleGroup` (режим темы),
+`RadioGroup` (фильтры и статусы), `NativeSelect` (нативные селекты),
+`Checkbox` (выбор участников), `Tabs` (админка), `Spinner`, `Skeleton`,
+`Empty` и `Separator` заменили самописные варианты. Shell, колонка каналов,
+user panel, лента сообщений, композер и профили выровнены по Discord.
 
 ## Линтер
 
 `@shadcn/lint` подключён в `eslint.config.mjs`, команда — `pnpm lint:design`.
 
 - Проверяются `apps/web/src` и `apps/admin/src`.
-- `packages/ui/src/primitives` исключён: это literal shadcn base-nova sources,
-  их проверяет `pnpm check:ui`.
+- `packages/ui/src/primitives` исключён из `restyle-shared`: это literal
+  shadcn base-nova sources, а не call sites.
 - `no-restyle` выключен: точную политику репозитория (layout + текстовые
-  токены) уже проверяет `tooling/scripts/check-ui.mjs`.
+  токены) проверяет `tooling/scripts/check-ui.mjs`.
+- `check:ui` покрывает не только `Button`/`Input`/`Badge`, но и
+  surface-owning контейнеры: `PopoverContent`, `DialogContent`,
+  `AlertDialogContent`, `SheetContent`, `DrawerContent`,
+  `DropdownMenuContent`, `ContextMenuContent`, `Command`, `Card`,
+  `TabsList`, `Avatar*`, `Skeleton`, `Empty`, `Attachment`, `Message`,
+  `MessageScroller`, `TooltipContent`.
+- Чекер разворачивает локальные `const`-классы (`className={panelClass}`,
+  `cn(itemClass, …)`), поэтому переопределения через класс-мэпы больше не
+  проходят незамеченными.
+- Baseline `tooling/ui-baseline.json` пуст; осознанные исключения — только
+  `design-allow`/`design-allow-file restyle-shared` с причиной.
+- Точечные исключения: dev-галерея, Prism tuning, Tiptap mention-listbox
+  (фокус управляется редактором), fullscreen media viewer, voice/media-
+  поверхности, desktop overlay HUD, Squircle-рельс, landing pill CTA,
+  мобильный settings sheet, presence-точка аватара, подсветка сообщений и
+  destructive-фокус голосовых действий.
 - Включены `no-arbitrary-values`, `no-raw-colors`, `no-unknown-classes`,
   `require-static-classes`, `no-inline-styles`.
 - Существующие нарушения зафиксированы в `eslint-suppressions.json`; новые

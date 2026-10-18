@@ -521,7 +521,7 @@ describe('UserContextMenuContent', () => {
     expect(
       assignedLocked.querySelector('[data-role-indicator="locked"]'),
     ).toBeTruthy()
-    expect(assignedLocked.className).toContain(
+    expect(assignedLocked.className).not.toContain(
       'data-[disabled]:bg-accent/45',
     )
     expect(screen.queryByRole('button', { name: /Hidden/ })).toBeNull()

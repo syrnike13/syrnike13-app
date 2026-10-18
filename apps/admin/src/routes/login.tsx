@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
@@ -17,6 +18,7 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const t = useTranslations('login')
+  const tCommon = useTranslations('common')
   const auth = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -54,19 +56,17 @@ function LoginPage() {
             <SparklesIcon className="size-4" aria-hidden />
           </span>
           <div>
-            <div className="text-base font-semibold">syrnike13 admin</div>
+            <div className="text-base font-semibold">{t('brand')}</div>
             {nightly ? (
               <div className="text-xs font-medium uppercase text-warning">
-                Nightly
+                {tCommon('nightly')}
               </div>
             ) : null}
           </div>
         </div>
 
-        <form
-          onSubmit={submit}
-          className="rounded-md border border-border bg-card p-5"
-        >
+        <Card className="p-5">
+          <form onSubmit={submit}>
           <h1 className="text-base font-semibold">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {auth.mfaChallenge ? t('mfaSubtitle') : t('subtitle')}
@@ -88,7 +88,7 @@ function LoginPage() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t('email')}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -116,16 +116,18 @@ function LoginPage() {
             </Button>
 
             {auth.mfaChallenge ? (
-              <button
+              <Button
                 type="button"
-                className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
+                variant="ghost"
+                className="w-full text-muted-foreground"
                 onClick={() => auth.cancelMfa()}
               >
                 {t('back')}
-              </button>
+              </Button>
             ) : null}
           </div>
-        </form>
+          </form>
+        </Card>
       </div>
     </main>
   )

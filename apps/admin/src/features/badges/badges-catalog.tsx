@@ -18,6 +18,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@syrnike13/ui/primitives/input-group'
+import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -109,7 +110,7 @@ export function BadgesCatalogPage() {
       {badgesQuery.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="h-12 animate-pulse rounded-md bg-card/50" />
+            <Skeleton key={i} className="h-12" />
           ))}
         </div>
       ) : badges.length === 0 ? (

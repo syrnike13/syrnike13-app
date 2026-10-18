@@ -13,18 +13,15 @@ import {
   AdminSection,
   AdminSectionHeader,
 } from '#/components/layout/page'
-import {
-  Loader2Icon,
-  PlusIcon,
-  SearchIcon,
-  XIcon,
-} from '#/components/icons'
+import { PlusIcon, SearchIcon, XIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty } from '@syrnike13/ui/primitives/empty'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from '@syrnike13/ui/primitives/input-group'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   assignAdminUserBadgeEffect,
   fetchAdminBadges,
@@ -162,7 +159,7 @@ function UsersPage() {
           disabled={findUserMutation.isPending || !(query.trim() || search.u)}
         >
           {findUserMutation.isPending ? (
-            <Loader2Icon className="size-4 animate-spin" aria-hidden />
+            <Spinner className="size-4" aria-hidden />
           ) : null}
           {t('find')}
         </Button>
@@ -249,12 +246,12 @@ function BadgeList({
       <AdminSectionHeader>{title}</AdminSectionHeader>
       {loading ? (
         <div className="flex h-20 items-center justify-center text-sm text-muted-foreground">
-          <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
+          <Spinner className="size-4" aria-hidden />
         </div>
       ) : badges.length === 0 ? (
-        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        <Empty className="px-4 py-8 text-sm text-muted-foreground">
           {t('emptyList')}
-        </div>
+        </Empty>
       ) : (
         <ul>
           {badges.map((badge) => (

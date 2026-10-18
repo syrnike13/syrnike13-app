@@ -81,7 +81,7 @@ function ComposerAttachmentTile({
     <Attachment
       orientation="vertical"
       state={attachmentState(pending)}
-      className="w-28 shrink-0 rounded-md"
+      className="w-28 shrink-0"
       aria-label={displayName}
     >
       <AttachmentMedia variant={pending.previewUrl ? 'image' : 'icon'}>

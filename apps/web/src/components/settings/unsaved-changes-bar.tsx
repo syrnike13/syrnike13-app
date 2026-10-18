@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
+import { CheckIcon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 
 type ExitKind = 'save' | 'reset'
@@ -171,7 +172,7 @@ export function UnsavedChangesBar({
               >
                 {saving ? (
                   <>
-                    <Loader2Icon className="size-4 animate-spin" />
+                    <Spinner className="size-4" />
                     {t('saving')}
                   </>
                 ) : (

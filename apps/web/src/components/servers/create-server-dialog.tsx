@@ -31,6 +31,7 @@ import {
 import { createServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {
@@ -92,9 +93,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('createError'),
+              apiErrorMessage(error, t('createError')),
             )
           }),
         ),
@@ -165,9 +164,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : t('joinError'),
+              apiErrorMessage(error, t('joinError')),
             )
           }),
         ),
@@ -182,6 +179,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         render={
           trigger ?? (
             <Squircle asChild {...railIconSquircleProps}>
+              {/* design-allow restyle-shared: rail idle surface is a brand/rail exception */}
               <Button
                 type="button"
                 size="icon"

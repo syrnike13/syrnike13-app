@@ -9,6 +9,9 @@
     "logout": "Выйти",
     "save": "Сохранить",
     "reset": "Сбросить",
+    "cancel": "Отмена",
+    "nightly": "Nightly",
+    "loading": "Загрузка",
     "saving": "Сохранение…",
     "unsavedChanges": "Есть несохранённые изменения",
     "uploadHint": "PNG или WebP · перетащите или нажмите",
@@ -28,6 +31,11 @@
       "statusNewPlural": "Новые",
       "statusResolvedPlural": "Решённые",
       "allChannels": "Все каналы",
+      "channels": {
+        "stable": "Стабильный",
+        "nightly": "Nightly",
+        "development": "Development"
+      },
       "filter": "Фильтр",
       "reports": "Отчёты · {count}",
       "loading": "Загрузка",
@@ -98,6 +106,7 @@
     "emptyList": "Пусто"
   },
   "login": {
+    "brand": "Админка syrnike13",
     "title": "Вход",
     "subtitle": "Аккаунт администратора",
     "mfaSubtitle": "Пароль 2FA",
@@ -116,7 +125,13 @@
       "users": "Пользователи",
       "feedback": "Обращения"
     },
+    "adminLabel": "админ",
+    "userFallback": "Администратор",
+    "leaveTitle": "Несохранённые изменения",
     "leaveConfirm": "Есть несохранённые изменения. Покинуть страницу без сохранения?",
+    "leaveAction": "Покинуть",
+    "stayAction": "Остаться",
+    "logoutTitle": "Выйти?",
     "logoutConfirm": "Есть несохранённые изменения. Выйти без сохранения?",
     "logoutAria": "Выйти"
   },
@@ -168,9 +183,12 @@
       "badgeFallback": "Бейдж",
       "backBadges": "Бейджи",
       "name": "Название",
+      "slug": "Slug",
+      "usernamePreview": "@username",
       "description": "Описание",
       "order": "Порядок",
       "visible": "Видимый",
+      "premium": "Premium",
       "cancelRemoveIcon": "Отменить удаление",
       "removeIcon": "Удалить иконку",
       "delete": "Удалить",
@@ -256,7 +274,9 @@
       "saveError": "Не удалось сохранить изменения",
       "hidden": "Обращение скрыто",
       "hideError": "Не удалось скрыть обращение",
-      "unknownUser": "Неизвестный пользователь"
+      "unknownUser": "Неизвестный пользователь",
+      "missingToken": "Нет токена аутентификации",
+      "missingStatus": "Не выбран статус обращения"
     },
     "meta": {
       "status": {
