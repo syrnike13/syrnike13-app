@@ -128,10 +128,10 @@ schedule such releases for a quiet time, or run two LiveKit nodes.
 With the `livekit-b` compose profile a second LiveKit node runs next to
 `livekit`. Both share Redis, keys and webhooks; any node accepts signalling
 and routes a participant to the node of its room. A LiveKit update then drains
-one node at a time with `docker stop -t $LIVEKIT_DRAIN_TIMEOUT` (default 900
-seconds): the draining node takes no new rooms, its rooms stay up until they
-empty, and rooms still open at the timeout are closed, so their clients
-reconnect to the other node. Voice channels that are never empty therefore
+one node at a time: SIGTERM makes the node take no new rooms while its rooms
+stay up until they empty. After `LIVEKIT_DRAIN_TIMEOUT` (default 900 seconds)
+a second SIGTERM closes the rooms still open and unregisters the node, so
+their clients reconnect to the other node right away. Voice channels that are never empty therefore
 see one reconnect per node update; all other rooms see none.
 
 The second node needs its own host ports. Defaults:

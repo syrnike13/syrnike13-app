@@ -57,7 +57,7 @@ rollout_accepts_connections() {
 
 rollout_wait_ready() {
   local service="$1" container="$2" port="$3"
-  local ip deadline
+  local deadline
 
   deadline=$((SECONDS + ROLLOUT_READY_TIMEOUT))
   while (( SECONDS < deadline )); do
@@ -69,8 +69,7 @@ rollout_wait_ready() {
       return 1
     fi
 
-    ip="$(rollout_container_ip "$container")"
-    if [[ -n "$ip" ]] && (timeout 2 bash -c "</dev/tcp/$ip/$port") 2>/dev/null; then
+    if rollout_accepts_connections "$container" "$port"; then
       return 0
     fi
     sleep 1
@@ -170,6 +169,28 @@ write_livekit_b_config() {
   mv livekit-b.yml.tmp livekit-b.yml
 }
 
+# Drain a LiveKit node and wait for it to exit. The first SIGTERM stops new
+# rooms and waits for open ones to empty; a second one closes the rooms that
+# are left and unregisters the node, so their clients rejoin on the other node
+# at once (a killed node stays registered and looks alive for a while).
+livekit_drain_container() {
+  local container="$1"
+
+  # Keep the restart policy from starting the node again once it exits;
+  # compose recreates it afterwards.
+  docker update --restart=no "$container" >/dev/null
+  docker kill -s TERM "$container" >/dev/null 2>&1 || return 0
+  if timeout "$LIVEKIT_DRAIN_TIMEOUT" docker wait "$container" >/dev/null; then
+    return 0
+  fi
+
+  echo "Closing the rooms still open on $container."
+  docker kill -s TERM "$container" >/dev/null 2>&1 || return 0
+  if ! timeout 30 docker wait "$container" >/dev/null; then
+    docker kill "$container" >/dev/null 2>&1 || true
+  fi
+}
+
 rollout_livekit_node() {
   local service="$1" other
   local -a old=() new=()
@@ -185,10 +206,11 @@ rollout_livekit_node() {
   local peer
   peer="$(docker compose ps -q "$other")"
   if (( ${#old[@]} > 0 )) && [[ -n "$peer" ]] && rollout_accepts_connections "$peer" "$LIVEKIT_NODE_PORT"; then
-    # docker stop sends SIGTERM, which drains the node, and kills it only
-    # after the timeout. New rooms go to the other node meanwhile.
     echo "Draining $service for up to ${LIVEKIT_DRAIN_TIMEOUT}s; $other takes new rooms."
-    docker stop -t "$LIVEKIT_DRAIN_TIMEOUT" "${old[@]}" >/dev/null
+    local container
+    for container in "${old[@]}"; do
+      livekit_drain_container "$container"
+    done
   fi
 
   docker compose up -d --no-deps "$service"
