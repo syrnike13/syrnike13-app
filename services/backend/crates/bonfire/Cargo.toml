@@ -17,6 +17,7 @@ once_cell = { workspace = true }
 redis-kiss = { workspace = true }
 lru_time_cache = { workspace = true }
 async-channel = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true }
 
 # parsing
@@ -49,3 +50,6 @@ syrnike-presence = { workspace = true, features = ["redis-is-patched"] }
 
 # redis
 fred = { workspace = true, features = ["subscriber-client"] }
+
+[target.'cfg(unix)'.dependencies]
+async-signal = "0.2"

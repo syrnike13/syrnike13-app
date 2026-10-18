@@ -419,6 +419,12 @@ async fn listener(
     kill_signal_r: async_channel::Receiver<()>,
     write: &Mutex<WsWriter>,
 ) {
+    // During shutdown the client is first asked to reconnect, then closed once
+    // it had time to move to another gateway process.
+    let drain = crate::drain::register();
+    let mut reconnect_at: Option<Instant> = None;
+    let mut close_at: Option<Instant> = None;
+
     'out: loop {
         // Check for state changes for subscriptions.
         if !apply_subscription_changes(state, &subscription.subscriber, addr).await {
@@ -429,10 +435,43 @@ async fn listener(
         let t2 = topic_signal_r.recv().fuse();
         let t3 = kill_signal_r.recv().fuse();
         let t4 = subscription.clean_up_r.recv().fuse();
+        let draining = reconnect_at.is_some() || close_at.is_some();
+        let t5 = async {
+            if draining {
+                futures::future::pending().await
+            } else {
+                drain.reconnect_requested().await
+            }
+        }
+        .fuse();
+        let deadline = reconnect_at.or(close_at);
+        let t6 = async move {
+            match deadline {
+                Some(at) => {
+                    async_std::task::sleep(at.saturating_duration_since(Instant::now())).await
+                }
+                None => futures::future::pending().await,
+            }
+        }
+        .fuse();
 
-        pin_mut!(t1, t2, t3, t4);
+        pin_mut!(t1, t2, t3, t4, t5, t6);
 
         select! {
+            delay = t5 => {
+                reconnect_at = Some(Instant::now() + delay);
+            },
+            _ = t6 => {
+                if reconnect_at.take().is_none() {
+                    break 'out;
+                }
+
+                let result = write.lock().await.send(config.encode(&EventV1::Reconnect)).await;
+                if result.is_err() {
+                    break 'out;
+                }
+                close_at = Some(Instant::now() + crate::drain::CLOSE_AFTER_RECONNECT);
+            },
             _ = t4 => {
                 break 'out;
             },
