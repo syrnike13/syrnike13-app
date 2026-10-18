@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EventsGateway } from './gateway'
+import { EventsGateway, gatewayReconnectDelayMs } from './gateway'
 
 type MockSocket = {
   url: string
@@ -360,5 +360,26 @@ describe('EventsGateway', () => {
       expect.any(Function),
     )
     expect(removeOnline).toHaveBeenCalledWith('online', expect.any(Function))
+  })
+})
+
+describe('gatewayReconnectDelayMs', () => {
+  it('retries quickly during the first minute of an outage', () => {
+    const max = Array.from({ length: 15 }, (_, attempt) =>
+      gatewayReconnectDelayMs(attempt, () => 1),
+    )
+    expect(max.slice(0, 5)).toEqual([500, 1_000, 2_000, 4_000, 5_000])
+    expect(Math.max(...max)).toBe(5_000)
+  })
+
+  it('backs off to the long cap after the fast attempts', () => {
+    expect(gatewayReconnectDelayMs(15, () => 1)).toBe(30_000)
+    expect(gatewayReconnectDelayMs(40, () => 1)).toBe(30_000)
+  })
+
+  it('jitters within the upper half of each step', () => {
+    expect(gatewayReconnectDelayMs(0, () => 0)).toBe(250)
+    expect(gatewayReconnectDelayMs(4, () => 0)).toBe(2_500)
+    expect(gatewayReconnectDelayMs(20, () => 0)).toBe(15_000)
   })
 })

@@ -39,9 +39,24 @@ const READY_FIELDS = [
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 const HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 2
-const RECONNECT_BASE_MS = 1_000
+const RECONNECT_BASE_MS = 500
+// Deploy restarts take seconds, so keep retries frequent for the first minute
+// and back off to the long cap only for real outages.
+const RECONNECT_FAST_CAP_MS = 5_000
+const RECONNECT_FAST_ATTEMPTS = 15
 const RECONNECT_MAX_MS = 30_000
 const RELIABLE_QUEUE_MAX = 64
+
+/**
+ * Exponential reconnect delay with jitter in the upper half of each step, so
+ * clients dropped by the same restart do not reconnect in one burst.
+ */
+export function gatewayReconnectDelayMs(attempt: number, random = Math.random) {
+  const cap =
+    attempt < RECONNECT_FAST_ATTEMPTS ? RECONNECT_FAST_CAP_MS : RECONNECT_MAX_MS
+  const step = Math.min(RECONNECT_BASE_MS * 2 ** attempt, cap)
+  return Math.round(step / 2 + (step / 2) * random())
+}
 
 function gatewayClientKind() {
   return window.syrnikeDesktop?.runtime === 'desktop' ? 'desktop' : 'web'
@@ -253,10 +268,7 @@ export class EventsGateway {
 
     this.#setState('reconnecting')
 
-    const delay = Math.min(
-      RECONNECT_BASE_MS * 2 ** this.#reconnectAttempt,
-      RECONNECT_MAX_MS,
-    )
+    const delay = gatewayReconnectDelayMs(this.#reconnectAttempt)
     this.#reconnectAttempt += 1
 
     let fiber: Fiber.Fiber<void, never>
