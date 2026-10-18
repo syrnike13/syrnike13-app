@@ -151,7 +151,8 @@ write_livekit_b_config() {
     fi
   done
 
-  awk -v tcp="$tcp" -v turn_udp="$turn_udp" -v rtc_start="$rtc_start" -v rtc_end="$rtc_end"     -v relay_start="$relay_start" -v relay_end="$relay_end" '
+  awk -v tcp="$tcp" -v turn_udp="$turn_udp" -v rtc_start="$rtc_start" -v rtc_end="$rtc_end" \
+    -v relay_start="$relay_start" -v relay_end="$relay_end" '
     /^[^ #]/ { section = $1 }
     section == "rtc:" && /^  udp_port:/ { print "livekit.yml sets rtc.udp_port; give livekit-b its own port first" > "/dev/stderr"; failed = 1 }
     section == "rtc:" && /^  tcp_port:/ { print "  tcp_port: " tcp; replaced++; next }
