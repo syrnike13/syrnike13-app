@@ -96,7 +96,11 @@ The server pulls the listed images and updates them through
   by `docker compose up -d --no-deps` only when they changed.
 
 Rolled services must not set `container_name` or publish host ports, because
-two containers run side by side during an update. A new container that exits
+two containers run side by side during an update. They must also open their
+port only once they can serve requests: readiness is checked by connecting to
+that port. Every rolled service does so today (each binds after connecting to
+its database and broker, web and admin after archiving their assets); a
+service that binds earlier needs a readiness check before it is rolled. A new container that exits
 or does not accept connections within `ROLLOUT_READY_TIMEOUT` (180 seconds)
 is removed and the deploy fails with the old container still serving.
 
