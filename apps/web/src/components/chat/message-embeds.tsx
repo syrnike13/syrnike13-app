@@ -92,7 +92,7 @@ function EmbedCardShell({
     <div
       data-embed={type}
       className={cn(
-        'flex max-w-lg flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-sm',
+        'flex max-w-137.5 flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-base leading-5.5',
         accent && 'border-l-(--embed-accent)',
       )}
       style={accent ? ({ '--embed-accent': accent } as CSSVars) : undefined}
@@ -181,11 +181,11 @@ function EmbedImageBox({
     <div
       data-embed-image
       data-aspect-ratio={String(aspectRatio)}
-      className="relative aspect-(--embed-aspect) max-h-96 w-(--embed-width) max-w-full overflow-hidden rounded-md border border-border bg-border"
+      className="relative aspect-(--embed-aspect) max-h-87.5 w-(--embed-width) max-w-full overflow-hidden rounded-md border border-border bg-border"
       style={
         {
           '--embed-aspect': aspectRatio,
-          '--embed-width': `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
+          '--embed-width': `min(100%, 34.375rem, calc(21.875rem * ${aspectRatio}))`,
         } as CSSVars
       }
     >

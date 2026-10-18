@@ -1673,6 +1673,7 @@
   },
   "chat": {
     "copyError": "Could not copy",
+    "cancel": "Cancel",
     "more": "More",
     "reply": "Reply",
     "textCopied": "Text copied",
@@ -1756,6 +1757,17 @@
     "mentionOnShort": "ON",
     "mentionOffShort": "OFF",
     "cancelReply": "Cancel reply",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "todayAt": "Today at {time}",
+    "yesterdayAt": "Yesterday at {time}",
+    "newMessages": "New messages",
+    "jumpToPresent": "Jump to present",
+    "noMessages": "No messages yet",
+    "noMessagesHint": "Be the first to write something.",
+    "messagesLabel": "Messages",
+    "showMembers": "Show member list",
+    "hideMembers": "Hide member list",
     "voice": {
       "call": "Call",
       "voice": "Voice",
@@ -1829,6 +1841,7 @@
       "cancelEdit": "Cancel editing",
       "attachment": "Attachment",
       "sending": "Sending message",
+      "send": "Send message",
       "dropFiles": "Drop files to attach"
     },
     "system": {

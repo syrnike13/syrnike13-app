@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
@@ -7,7 +7,10 @@ import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { MessageComposer } from '#/components/chat/message-composer'
-import { MessageList } from '#/components/chat/message-list'
+import {
+  MessageList,
+  type MessageListHandle,
+} from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -42,6 +45,7 @@ export function ChannelChatPanel({
   const t = useTranslations('chat')
   const tf = useTranslations('friends')
   const [composerHeight, setComposerHeight] = useState(56)
+  const messageListRef = useRef<MessageListHandle>(null)
   const chat = useChannelChat({
     channelId,
     highlightMessageId,
@@ -128,6 +132,7 @@ export function ChannelChatPanel({
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <MessageList
+          ref={messageListRef}
           channelId={channelId}
           serverId={serverIdForSelection ?? undefined}
           scrollPaddingBottom={composerHeight + 48}
@@ -223,6 +228,7 @@ export function ChannelChatPanel({
               await Effect.runPromise(
                 sendChannelMessageEffect(token, channelId, input),
               )
+              messageListRef.current?.scrollToEnd('smooth')
             }}
             onEdit={async (messageId, content) => {
               if (!token) return
@@ -261,7 +267,9 @@ function PanelHeader({
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider px-3">
       <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
-      <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
+      <h2 className="min-w-0 flex-1 truncate text-base leading-5 font-medium tracking-tight">
+        {title}
+      </h2>
       {children}
       <Button
         type="button"

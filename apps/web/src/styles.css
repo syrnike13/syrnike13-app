@@ -804,6 +804,16 @@ html {
   margin: 0;
 }
 
+/*
+ * Лента измеряет строки сразу. content-visibility подменяет высоту
+ * невидимых строк оценкой 10rem; после первого рендера фактическая высота
+ * меняется и MessageScroller теряет позицию «у конца».
+ */
+[data-slot='message-scroller-item'] {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 /* Mobile safe-area helpers. Require viewport-fit=cover in the meta viewport. */
 .safe-pt {
   padding-top: env(safe-area-inset-top);

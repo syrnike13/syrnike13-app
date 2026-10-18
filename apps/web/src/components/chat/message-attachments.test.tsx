@@ -38,9 +38,11 @@ describe('MessageAttachments', () => {
     ) as HTMLElement | null
     expect(box).toBeTruthy()
     expect(box?.getAttribute('data-aspect-ratio')).toBe(String(640 / 480))
-    expect(box?.classList.contains('max-h-96')).toBe(true)
-    expect(box?.classList.contains('sm:max-w-112')).toBe(true)
+    expect(box?.classList.contains('max-h-87.5')).toBe(true)
+    expect(box?.classList.contains('w-(--single-width)')).toBe(true)
     expect(box?.classList.contains('bg-border')).toBe(true)
+    expect(box?.style.getPropertyValue('--single-width')).toContain('34.375rem')
+    expect(box?.style.getPropertyValue('--single-width')).toContain('21.875rem')
     expect(
       screen
         .getByRole('img', { name: 'poster.png' })

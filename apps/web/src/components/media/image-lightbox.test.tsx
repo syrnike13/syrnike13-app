@@ -243,7 +243,7 @@ describe('ImageLightbox', () => {
     expect(name.style.getPropertyValue('--author-name-color')).toBe('#ed4245')
     const time = screen.getByText(timestamp)
     expect(time.tagName).toBe('TIME')
-    expect(time.getAttribute('dateTime')).toBe(timestamp)
+    expect(time.getAttribute('dateTime')).toBe(createdAt.toISOString())
   })
 
   it('hides gallery controls for a single image', () => {

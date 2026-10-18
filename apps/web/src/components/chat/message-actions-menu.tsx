@@ -1,28 +1,18 @@
+import { Fragment } from 'react'
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { Effect } from 'effect'
-import {
-  BanIcon,
-  CopyIcon,
-  LinkIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  PinIcon,
-  PinOffIcon,
-  ReplyIcon,
-  Trash2Icon,
-} from '#/components/icons'
-import { toast } from 'sonner'
+import { MoreHorizontalIcon } from '#/components/icons'
 
-import { messageDeepLink } from '#/lib/message-link'
-import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { cn } from '#/lib/utils'
+import { useMessageActions } from '#/components/chat/message-actions'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { cn } from '#/lib/utils'
 
 type MessageActionsMenuProps = {
   message: Message
@@ -37,15 +27,6 @@ type MessageActionsMenuProps = {
   onBlock?: () => void
   onPin?: () => void
   onUnpin?: () => void
-}
-
-async function copyText(label: string, value: string, errorLabel: string) {
-  try {
-    await Effect.runPromise(writeClipboardTextEffect(value))
-    toast.success(label)
-  } catch {
-    toast.error(errorLabel)
-  }
 }
 
 export function MessageActionsMenu({
@@ -63,127 +44,51 @@ export function MessageActionsMenu({
   onUnpin,
 }: MessageActionsMenuProps) {
   const t = useTranslations('chat')
-  const canEdit = own && Boolean(message.content?.trim())
-  const pinned = Boolean(message.pinned)
-  const hasText = Boolean(message.content?.trim())
+  const actions = useMessageActions({
+    message,
+    channelId,
+    own,
+    onReply,
+    onEdit,
+    onDelete,
+    onBlock,
+    onPin,
+    onUnpin,
+  })
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger render={<Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'size-7',
-            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-            triggerClassName,
-          )}
-          title={t('more')} />}>
-          <MoreHorizontalIcon className="size-3.5" />
-        </PopoverTrigger>
-      <PopoverContent className="w-44 p-1" align="end">
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-8 w-full justify-start px-2 font-normal"
-          onClick={onReply}
-        >
-          <ReplyIcon className="size-3.5" />
-          {t('reply')}
-        </Button>
-        {hasText ? (
+    <DropdownMenu open={open} onOpenChange={(next) => onOpenChange?.(next)}>
+      <DropdownMenuTrigger
+        render={
           <Button
             type="button"
             variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal"
-            onClick={() =>
-              void copyText(t('textCopied'), message.content!, t('copyError'))
-            }
-          >
-            <CopyIcon className="size-3.5" />
-            {t('copyText')}
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-8 w-full justify-start px-2 font-normal"
-          onClick={() => void copyText(t('idCopied'), message._id, t('copyError'))}
-        >
-          <CopyIcon className="size-3.5" />
-          {t('copyId')}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-8 w-full justify-start px-2 font-normal"
-          onClick={() =>
-            void copyText(
-              t('linkCopied'),
-              messageDeepLink(channelId, message._id),
-              t('copyError'),
-            )
-          }
-        >
-          <LinkIcon className="size-3.5" />
-          {t('copyLink')}
-        </Button>
-        {pinned && onUnpin ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onUnpin}
-          >
-            <PinOffIcon className="size-3.5" />
-            {t('unpin')}
-          </Button>
-        ) : null}
-        {!pinned && onPin ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onPin}
-          >
-            <PinIcon className="size-3.5" />
-            {t('pin')}
-          </Button>
-        ) : null}
-        {canEdit && onEdit ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onEdit}
-          >
-            <PencilIcon className="size-3.5" />
-            {t('edit')}
-          </Button>
-        ) : null}
-        {own && onDelete ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
-            onClick={onDelete}
-          >
-            <Trash2Icon className="size-3.5" />
-            {t('delete')}
-          </Button>
-        ) : null}
-        {!own && onBlock ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
-            onClick={onBlock}
-          >
-            <BanIcon className="size-3.5" />
-            {t('block')}
-          </Button>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+            size="icon"
+            className={cn(
+              'size-7',
+              // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+              triggerClassName,
+            )}
+            aria-label={t('more')}
+          />
+        }
+      >
+        <MoreHorizontalIcon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-52" align="end" sideOffset={6}>
+        {actions.map((action) => (
+          <Fragment key={action.key}>
+            {action.separatorBefore ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              variant={action.destructive ? 'destructive' : 'default'}
+              onClick={action.onSelect}
+            >
+              {action.icon}
+              {action.label}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

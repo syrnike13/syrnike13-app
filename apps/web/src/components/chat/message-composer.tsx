@@ -9,7 +9,7 @@ import {
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
+import { ArrowUpIcon, Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
@@ -39,6 +39,12 @@ import {
   serverChannelServerId,
 } from '#/lib/channel-voice'
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@syrnike13/ui/primitives/tooltip'
 import { cn } from '#/lib/utils'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { hasPermissionBit } from '#/lib/permission-bits'
@@ -194,6 +200,7 @@ export function MessageComposer({
     : Math.max(0, Math.ceil((slowmodeEndsAt - now) / 1_000))
   const slowmodeActive = !isEditing && slowmodeRemaining > 0
   const composerDisabled = disabled || !canSendMessages || slowmodeActive
+  const hasDraft = value.trim().length > 0 || files.length > 0
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
@@ -661,14 +668,8 @@ export function MessageComposer({
               ? 'bg-secondary text-secondary-foreground'
               : 'bg-accent text-foreground'
           }
-          className={
-            floating ? 'min-h-14 min-w-0 flex-1' : 'min-w-0 flex-1'
-          }
-          editorClassName={
-            floating
-              ? 'min-h-14 px-0 py-4.25 leading-5.5 text-secondary-foreground'
-              : 'text-foreground'
-          }
+          className="min-h-14 min-w-0 flex-1"
+          editorClassName="min-h-14 px-0 py-4.25 leading-5.5"
           onValueChange={(nextValue) => {
             if (nextValue !== value) {
               onTyping?.()
@@ -694,11 +695,10 @@ export function MessageComposer({
         />
 
         <div
-          className={
-            floating
-              ? 'mb-3 flex shrink-0 items-center'
-              : 'mb-1 flex shrink-0 items-center'
-          }
+          className={cn(
+            'flex shrink-0 items-center gap-2',
+            floating ? 'mb-3' : 'mb-1',
+          )}
         >
           {!isEditing ? (
             <ComposerEmojiPicker
@@ -721,9 +721,32 @@ export function MessageComposer({
               role="status"
               aria-label={t('sending')}
             >
-              <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" />
+              <Loader2Icon className="size-5 animate-spin motion-reduce:animate-none" />
             </span>
-          ) : null}
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className={
+                      floating
+                        ? 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
+                        : 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
+                    }
+                    disabled={composerDisabled || !hasDraft}
+                    onClick={() => void submit()}
+                    aria-label={t('send')}
+                  />
+                }
+              >
+                <ArrowUpIcon className="size-5" />
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                {t('send')}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </>
@@ -774,8 +797,8 @@ export function MessageComposer({
           className={cn(
             'flex flex-col transition-colors',
             hasComposerHeader
-              ? 'overflow-hidden rounded-lg border border-border bg-accent text-foreground'
-              : 'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
+              ? 'overflow-hidden rounded-md border border-border bg-accent text-foreground'
+              : 'min-h-11 rounded-md border border-border bg-accent py-1 text-foreground',
             dragActive && 'ring-2 ring-primary/40',
             (composerDisabled || sending) && 'opacity-60',
           )}
@@ -786,5 +809,5 @@ export function MessageComposer({
     </div>
   )
 
-  return composerBody
+  return <TooltipProvider delay={300}>{composerBody}</TooltipProvider>
 }

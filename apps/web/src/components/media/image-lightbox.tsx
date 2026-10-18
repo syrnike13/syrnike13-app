@@ -30,7 +30,7 @@ import {
 } from '@syrnike13/ui/primitives/tooltip'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { attachmentOriginalUrl, attachmentPreviewUrl } from '#/lib/media'
-import { formatMessageTimestamp } from '#/lib/message-time'
+import { useMessageTimestamp } from '#/lib/use-message-time'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
@@ -148,6 +148,7 @@ export function ImageLightbox({
   author,
 }: ImageLightboxProps) {
   const t = useTranslations('media')
+  const formatTimestamp = useMessageTimestamp()
   const [zoom, setZoom] = useState(MIN_ZOOM)
   const [offset, setOffset] = useState<PanOffset>({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -271,9 +272,9 @@ export function ImageLightbox({
                 </p>
                 <time
                   className="block truncate text-xs text-on-media/70"
-                  dateTime={formatMessageTimestamp(author.createdAt)}
+                  dateTime={author.createdAt.toISOString()}
                 >
-                  {formatMessageTimestamp(author.createdAt)}
+                  {formatTimestamp(author.createdAt)}
                 </time>
               </div>
             </div>

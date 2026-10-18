@@ -6,12 +6,17 @@ import { ReplyIcon, SmilePlusIcon } from '#/components/icons'
 import { MessageActionsMenu } from '#/components/chat/message-actions-menu'
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
 import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@syrnike13/ui/primitives/tooltip'
 import { HOVER_BAR_REACTIONS } from '#/lib/reactions'
 import { cn } from '#/lib/utils'
 
-const toolbarButtonClass = 'size-8 shrink-0 p-0 text-lg'
+const toolbarButtonClass = 'size-7 shrink-0 p-0 text-base'
 
-const toolbarIconButtonClass = 'size-8 shrink-0'
+const toolbarIconButtonClass = 'size-7 shrink-0'
 
 type MessageHoverToolbarProps = {
   message: Message
@@ -60,17 +65,17 @@ export function MessageHoverToolbar({
       className={cn(
         'pointer-events-none absolute right-0 z-20 opacity-0 transition-opacity',
         compact ? 'top-0' : '-top-3',
-        'group-hover:pointer-events-auto group-hover:opacity-100',
-        'group-focus-within:pointer-events-auto group-focus-within:opacity-100',
+        'group-hover/message:pointer-events-auto group-hover/message:opacity-100',
+        'group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100',
         pinnedOpen && 'pointer-events-auto opacity-100',
       )}
     >
       <div
         className={cn(
-          'gradient-surface-floating flex items-center gap-0.5 rounded-lg border border-border',
+          'gradient-surface-floating flex items-center gap-0.5 rounded-md border border-border',
           'bg-popover px-0.5 py-0.5 text-popover-foreground shadow-md',
         )}
-        role="ghost"
+        role="toolbar"
         aria-label={t('messageActions')}
       >
         {HOVER_BAR_REACTIONS.map((emoji) => {
@@ -84,7 +89,7 @@ export function MessageHoverToolbar({
               type="button"
               variant={active ? 'secondary' : 'ghost'}
               className={toolbarButtonClass}
-              title={emoji}
+              aria-label={emoji}
               onClick={() => onToggleReaction(emoji, active)}
             >
               {emoji}
@@ -105,6 +110,7 @@ export function MessageHoverToolbar({
               variant="ghost"
               size="icon"
               className={toolbarIconButtonClass}
+              aria-label={t('addReaction')}
               title={t('addReaction')}
             >
               <SmilePlusIcon className="size-4" />
@@ -112,16 +118,24 @@ export function MessageHoverToolbar({
           }
         />
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={toolbarIconButtonClass}
-          title={t('reply')}
-          onClick={onReply}
-        >
-          <ReplyIcon className="size-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={toolbarIconButtonClass}
+                aria-label={t('reply')}
+              />
+            }
+          >
+            <ReplyIcon className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={6}>
+            {t('reply')}
+          </TooltipContent>
+        </Tooltip>
 
         <MessageActionsMenu
           message={message}

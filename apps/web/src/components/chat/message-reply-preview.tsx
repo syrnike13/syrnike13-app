@@ -14,6 +14,10 @@ export function messageAuthorName(
   users: Record<string, User>,
   fallback = 'Message',
 ) {
+  const masqueradeName = message.masquerade?.name?.trim()
+  if (masqueradeName) return masqueradeName
+  const webhookName = message.webhook?.name?.trim()
+  if (webhookName) return webhookName
   if (message.user) {
     return message.user.display_name ?? message.user.username
   }

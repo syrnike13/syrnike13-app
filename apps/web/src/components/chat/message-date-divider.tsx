@@ -5,17 +5,14 @@ type MessageDateDividerProps = {
 export function MessageDateDivider({ label }: MessageDateDividerProps) {
   return (
     <div
-      className="relative flex items-center py-3"
+      className="relative mx-3.5 mt-6 mb-2 flex items-center"
       role="separator"
       aria-label={label}
     >
       <div className="h-px flex-1 bg-border" />
-      <time
-        dateTime={label}
-        className="mx-3 shrink-0 rounded px-2 text-xs font-semibold text-muted-foreground"
-      >
+      <span className="mx-3 shrink-0 text-xs font-medium text-muted-foreground">
         {label}
-      </time>
+      </span>
       <div className="h-px flex-1 bg-border" />
     </div>
   )

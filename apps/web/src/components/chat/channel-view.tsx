@@ -8,6 +8,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import {
   ChevronLeftIcon,
+  HashIcon,
   HeadphonesIcon,
   PhoneIcon,
   UserIcon,
@@ -36,7 +37,10 @@ import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
 import { ServerChannelSearchPopover } from '#/components/chat/server-channel-search-popover'
 import { MessageComposer } from '#/components/chat/message-composer'
-import { MessageList } from '#/components/chat/message-list'
+import {
+  MessageList,
+  type MessageListHandle,
+} from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
@@ -128,10 +132,10 @@ function DirectMessageHeader({
         presenceRingClassName="border-card"
       />
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <h1 className="min-w-0 font-semibold">
+        <h1 className="min-w-0 text-base leading-5 font-medium tracking-tight">
           <button
             type="button"
-            className="block max-w-full truncate rounded-sm text-left font-semibold transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="block max-w-full truncate rounded-sm text-left font-medium transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onOpenProfile}
           >
             {title}
@@ -166,7 +170,9 @@ export function ChannelView({
   const voice = useVoiceSession()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
+  const [membersVisible, setMembersVisible] = useState(true)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)
+  const messageListRef = useRef<MessageListHandle>(null)
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
   )
@@ -463,11 +469,19 @@ export function ChannelView({
                   <UsersIcon aria-hidden="true" className="size-5" />
                 </span>
               )}
-              <h1 className="truncate font-semibold">{title}</h1>
+              <h1 className="truncate text-base leading-5 font-medium tracking-tight">
+                {title}
+              </h1>
             </div>
           ) : (
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate font-semibold">{title}</h1>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <HashIcon
+                aria-hidden="true"
+                className="size-5 shrink-0 text-muted-foreground"
+              />
+              <h1 className="truncate text-base leading-5 font-medium tracking-tight">
+                {title}
+              </h1>
             </div>
           )}
           {historyQuery.isFetching ? (
@@ -525,6 +539,22 @@ export function ChannelView({
           ) : null}
           {channel.channel_type === 'TextChannel' ? (
             <ChannelSettingsDialog channel={channel} />
+          ) : null}
+          {showMemberSidebar ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden size-8 lg:inline-flex"
+              aria-pressed={membersVisible}
+              aria-label={
+                membersVisible ? t('hideMembers') : t('showMembers')
+              }
+              title={membersVisible ? t('hideMembers') : t('showMembers')}
+              onClick={() => setMembersVisible((visible) => !visible)}
+            >
+              <UsersIcon className="size-4" />
+            </Button>
           ) : null}
           {token ? (
             <ChannelPinnedDialog
@@ -695,6 +725,7 @@ export function ChannelView({
           ) : null}
           <div className="relative flex min-h-0 flex-1 flex-col">
             <MessageList
+              ref={messageListRef}
               channelId={channelId}
               serverId={serverIdForSelection ?? undefined}
               scrollPaddingBottom={composerHeight + 48}
@@ -794,6 +825,7 @@ export function ChannelView({
                   await Effect.runPromise(
                     sendChannelMessageEffect(token, channelId, input),
                   )
+                  messageListRef.current?.scrollToEnd('smooth')
                 }}
                 onEdit={async (messageId, content) => {
                   if (!token) return
@@ -950,6 +982,7 @@ export function ChannelView({
           ) : null}
           <div className="relative flex min-h-0 flex-1 flex-col">
             <MessageList
+              ref={messageListRef}
               channelId={channelId}
               serverId={serverIdForSelection ?? undefined}
               scrollPaddingBottom={composerHeight + 48}
@@ -1049,6 +1082,7 @@ export function ChannelView({
                   await Effect.runPromise(
                     sendChannelMessageEffect(token, channelId, input),
                   )
+                  messageListRef.current?.scrollToEnd('smooth')
                 }}
                 onEdit={async (messageId, content) => {
                   if (!token) return
@@ -1071,7 +1105,7 @@ export function ChannelView({
             </div>
           </div>
           </div>
-          {showMemberSidebar && channel.channel_type === 'TextChannel' ? (
+          {showMemberSidebar && membersVisible ? (
             <ChannelMemberSidebar channel={channel} />
           ) : null}
         </div>

@@ -1673,6 +1673,7 @@
   },
   "chat": {
     "copyError": "Не удалось скопировать",
+    "cancel": "Отмена",
     "more": "Ещё",
     "reply": "Ответить",
     "textCopied": "Текст скопирован",
@@ -1756,6 +1757,17 @@
     "mentionOnShort": "ВКЛ",
     "mentionOffShort": "ВЫКЛ",
     "cancelReply": "Отменить ответ",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "todayAt": "Сегодня в {time}",
+    "yesterdayAt": "Вчера в {time}",
+    "newMessages": "Новые сообщения",
+    "jumpToPresent": "К последним",
+    "noMessages": "Сообщений пока нет",
+    "noMessagesHint": "Напишите первым.",
+    "messagesLabel": "Сообщения",
+    "showMembers": "Показать участников",
+    "hideMembers": "Скрыть участников",
     "voice": {
       "call": "Позвонить",
       "voice": "Голос",
@@ -1829,6 +1841,7 @@
       "cancelEdit": "Отменить редактирование",
       "attachment": "Вложение",
       "sending": "Отправка сообщения",
+      "send": "Отправить сообщение",
       "dropFiles": "Отпустите файлы для вложения"
     },
     "system": {

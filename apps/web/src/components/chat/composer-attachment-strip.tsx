@@ -2,15 +2,29 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { EyeIcon, FileIcon, Trash2Icon } from '#/components/icons'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Attachment,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@syrnike13/ui/primitives/attachment'
 import { FxImage } from '#/components/ui/fx-image'
 import {
   stripSpoilerFilename,
   type PendingComposerFile,
 } from '#/lib/composer-files'
+import { formatFileSize } from '#/lib/file-size'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
-const TILE_PREVIEW_CLASS = 'size-28 shrink-0 overflow-hidden rounded-lg'
+function attachmentState(pending: PendingComposerFile) {
+  if (pending.status === 'error') return 'error' as const
+  if (pending.status === 'uploading') return 'uploading' as const
+  if (pending.status === 'uploaded') return 'done' as const
+  return 'idle' as const
+}
 
 export function ComposerAttachmentStrip({
   files,
@@ -28,7 +42,7 @@ export function ComposerAttachmentStrip({
 
   return (
     <div
-      className="flex gap-3 overflow-x-auto px-3 pt-4"
+      className="flex gap-3 overflow-x-auto px-3 pt-3 pb-1"
       aria-label={t('attachments')}
     >
       {files.map((pending) => (
@@ -56,7 +70,6 @@ function ComposerAttachmentTile({
   onToggleSpoiler: () => void
 }) {
   const t = useTranslations('chat')
-  const hasError = pending.status === 'error'
   const isSpoiler = Boolean(pending.spoiler)
   const displayName = stripSpoilerFilename(pending.file.name)
   const progress =
@@ -65,53 +78,34 @@ function ComposerAttachmentTile({
       : null
 
   return (
-    <div className="relative w-28 shrink-0">
-      <div className="relative">
+    <Attachment
+      orientation="vertical"
+      state={attachmentState(pending)}
+      className="w-28 shrink-0 rounded-md"
+      aria-label={displayName}
+    >
+      <AttachmentMedia variant={pending.previewUrl ? 'image' : 'icon'}>
         {pending.previewUrl ? (
-          <div className={cn(TILE_PREVIEW_CLASS, 'relative bg-muted')}>
-            <FxImage
-              src={pending.previewUrl}
-              alt={displayName}
-              fill
-              rounded="lg"
-              objectFit="cover"
-              className={cn(isSpoiler && 'scale-105 blur-lg')}
-            />
-            {isSpoiler ? (
-              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-xs font-semibold tracking-wide text-foreground uppercase">
-                {t('spoiler')}
-              </span>
-            ) : null}
-          </div>
+          <FxImage
+            src={pending.previewUrl}
+            alt={displayName}
+            fill
+            objectFit="cover"
+            className={cn(isSpoiler && 'scale-105 blur-lg')}
+          />
         ) : (
-          <div
-            className={cn(
-              TILE_PREVIEW_CLASS,
-              'relative flex flex-col items-center justify-center gap-1.5 bg-muted px-2 text-center',
-              isSpoiler && 'bg-foreground/20',
-            )}
-          >
-            <FileIcon
-              aria-hidden="true"
-              className={cn(
-                'size-7 shrink-0 text-muted-foreground',
-                isSpoiler && 'opacity-40',
-              )}
-            />
-            <span className="text-xs leading-none text-muted-foreground">
-              {formatFileSize(pending.file.size)}
-            </span>
-            {isSpoiler ? (
-              <span className="absolute inset-0 flex items-center justify-center bg-background/50 text-xs font-semibold tracking-wide text-foreground uppercase">
-                {t('spoiler')}
-              </span>
-            ) : null}
-          </div>
+          <FileIcon aria-hidden="true" className="size-7" />
         )}
+
+        {isSpoiler ? (
+          <span className="absolute inset-0 z-10 flex items-center justify-center bg-background/55 text-xs font-semibold tracking-wide text-foreground uppercase">
+            {t('spoiler')}
+          </span>
+        ) : null}
 
         {progress !== null ? (
           <span
-            className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-lg bg-muted"
+            className="absolute inset-x-0 bottom-0 z-10 h-1 overflow-hidden bg-muted"
             aria-label={t('uploaded', { progress })}
           >
             <span
@@ -121,58 +115,46 @@ function ComposerAttachmentTile({
           </span>
         ) : null}
 
-        <div className="absolute -top-2 -right-1 z-10 flex items-center gap-0.5 rounded-md bg-popover p-0.5 text-popover-foreground shadow-md">
-          <Button
-            type="button"
-            variant={isSpoiler ? 'ghost' : 'ghost'}
-            size="icon"
-            className="size-7"
-            onClick={onToggleSpoiler}
-            aria-pressed={isSpoiler}
-            aria-label={
-              isSpoiler
-                ? t('removeSpoilerFrom', { name: displayName })
-                : t('markAsSpoiler', { name: displayName })
-            }
-            title={isSpoiler ? t('removeSpoiler') : t('spoiler')}
-          >
-            <EyeIcon className="size-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            size="icon"
-            className="size-7"
-            disabled={removeDisabled}
-            onClick={onRemove}
-            aria-label={t('deleteAttachment', { name: displayName })}
-          >
-            <Trash2Icon className="size-3.5" />
-          </Button>
-        </div>
-      </div>
+      </AttachmentMedia>
 
-      <p
-        className="mt-1.5 truncate text-xs leading-tight text-muted-foreground"
-        title={displayName}
-      >
-        {displayName}
-      </p>
-
-      {hasError && pending.error ? (
-        <p
-          className="mt-0.5 truncate text-xs leading-tight text-destructive"
-          title={pending.error}
+      <AttachmentActions>
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon-xs"
+          onClick={onToggleSpoiler}
+          aria-pressed={isSpoiler}
+          aria-label={
+            isSpoiler
+              ? t('removeSpoilerFrom', { name: displayName })
+              : t('markAsSpoiler', { name: displayName })
+          }
+          title={isSpoiler ? t('removeSpoiler') : t('spoiler')}
         >
-          {pending.error}
-        </p>
-      ) : null}
-    </div>
-  )
-}
+          <EyeIcon className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          size="icon-xs"
+          disabled={removeDisabled}
+          onClick={onRemove}
+          aria-label={t('deleteAttachment', { name: displayName })}
+        >
+          <Trash2Icon className="size-3.5" />
+        </Button>
+      </AttachmentActions>
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+      <AttachmentContent>
+        <AttachmentTitle title={displayName}>{displayName}</AttachmentTitle>
+        <AttachmentDescription>
+          {pending.status === 'error' && pending.error
+            ? pending.error
+            : progress !== null
+              ? t('uploaded', { progress })
+              : formatFileSize(pending.file.size)}
+        </AttachmentDescription>
+      </AttachmentContent>
+    </Attachment>
+  )
 }

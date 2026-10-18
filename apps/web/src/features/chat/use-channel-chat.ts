@@ -181,7 +181,6 @@ export function useChannelChat({
   const handleDelete = useCallback(
     async (message: Message) => {
       if (!token) return
-      if (!window.confirm(t('deleteMessageConfirm'))) return
 
       syncStore.removeMessage(channelId, message._id)
       await Effect.runPromise(

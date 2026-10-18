@@ -58,14 +58,14 @@ export function MessageReactions({
             type="button"
             variant={active ? 'secondary' : 'outline'}
             size="sm"
-            className="h-7 gap-1 px-2 text-xs"
+            className="h-7.5 gap-1 px-1.5 text-sm"
             onClick={() => onToggle(emoji, active)}
             title={userIds
               .map((id) => users[id]?.username ?? id)
               .join(', ')}
           >
             <ReactionEmoji emoji={emoji} emojiName={emojis[emoji]?.name} />
-            <span className="tabular-nums text-muted-foreground">
+            <span className="text-sm tabular-nums text-muted-foreground">
               {userIds.length}
             </span>
           </Button>
@@ -84,7 +84,7 @@ export function MessageReactions({
             type="button"
             variant="outline"
             size="sm"
-            className="size-7 px-0"
+            className="size-7.5 px-0"
             title={t('addReaction')}
           >
             <SmilePlusIcon className="size-3.5" />

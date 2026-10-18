@@ -32,8 +32,8 @@ function MemberListSectionHeader({
   count: number
 }) {
   return (
-    <li className="list-none px-2 pt-3 pb-0.5 first:pt-2">
-      <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+    <li className="list-none px-2 pt-5 pb-1 first:pt-2">
+      <p className="truncate text-sm leading-4.5 font-medium tracking-tight text-muted-foreground">
         {title} — {count}
       </p>
     </li>
@@ -77,7 +77,7 @@ function MemberSidebarRow({
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
+            'flex min-h-10.5 w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
             dimmed && 'opacity-60',
           )}
         >
@@ -85,7 +85,7 @@ function MemberSidebarRow({
           <div className="min-w-0 flex-1">
             <p
               className={cn(
-                'truncate text-sm font-medium',
+                'truncate text-base leading-5 font-medium',
                 nameColour && 'text-(--member-name-color)',
               )}
               style={
@@ -97,7 +97,7 @@ function MemberSidebarRow({
               {displayName}
             </p>
             {showStatus && customStatus ? (
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-xs leading-3.5 text-muted-foreground">
                 {customStatus}
               </p>
             ) : null}

@@ -7,6 +7,14 @@ import {
   type ImageLightboxAuthor,
 } from '#/components/media/image-lightbox'
 import { useTranslations } from '@syrnike13/ui/i18n'
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from '@syrnike13/ui/primitives/attachment'
 
 import { FxImage } from '#/components/ui/fx-image'
 import {
@@ -17,6 +25,7 @@ import {
   isSpoilerFilename,
   stripSpoilerFilename,
 } from '#/lib/composer-files'
+import { formatFileSize } from '#/lib/file-size'
 import {
   attachmentOriginalUrl,
   attachmentPreviewUrl,
@@ -67,8 +76,14 @@ export function MessageAttachments({
         ) : mosaic ? (
           <div
             data-attachment-mosaic={imageFiles.length}
-            className="relative aspect-(--mosaic-aspect) w-full max-w-md overflow-hidden rounded-md border"
-            style={{ '--mosaic-aspect': mosaic.aspectRatio } as CSSVars}
+            className="relative aspect-(--mosaic-aspect) max-h-87.5 w-(--mosaic-width) max-w-full overflow-hidden rounded-md border"
+            style={
+              {
+                '--mosaic-aspect': mosaic.aspectRatio,
+                // Discord: 550×350 max, ширина выводится из ratio до загрузки.
+                '--mosaic-width': `min(100%, 34.375rem, calc(21.875rem * ${mosaic.aspectRatio}))`,
+              } as CSSVars
+            }
           >
             {mosaic.tiles.map((tile) => {
               const file = imageFiles[tile.index]
@@ -128,30 +143,38 @@ export function MessageAttachments({
           const spoiler =
             isSpoilerFilename(file.filename) && !revealedSpoilers[file._id]
           const label = stripSpoilerFilename(file.filename) || file._id
-          if (spoiler) {
-            return (
-              <button
-                key={file._id}
-                type="button"
-                className="flex items-center gap-2 rounded-md border bg-background/40 px-3 py-2 text-sm hover:bg-background/70"
-                onClick={() => revealSpoiler(file._id)}
-              >
-                <FileIcon className="size-4 shrink-0" />
-                <span className="truncate font-semibold uppercase">{t('spoiler')}</span>
-              </button>
-            )
-          }
+
           return (
-            <a
-              key={file._id}
-              href={attachmentOriginalUrl(file)}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="flex items-center gap-2 rounded-md border bg-background/40 px-3 py-2 text-sm hover:bg-background/70"
-            >
-              <FileIcon className="size-4 shrink-0" />
-              <span className="truncate">{label}</span>
-            </a>
+            <Attachment key={file._id} size="sm" className="max-w-md">
+              <AttachmentMedia>
+                <FileIcon />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle className={cn(spoiler && 'uppercase')}>
+                  {spoiler ? t('spoiler') : label}
+                </AttachmentTitle>
+                <AttachmentDescription>
+                  {formatFileSize(file.size)}
+                </AttachmentDescription>
+              </AttachmentContent>
+              {spoiler ? (
+                <AttachmentTrigger
+                  onClick={() => revealSpoiler(file._id)}
+                  aria-label={t('spoilerShow')}
+                />
+              ) : (
+                <AttachmentTrigger
+                  render={
+                    <a
+                      href={attachmentOriginalUrl(file)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label={label}
+                    />
+                  }
+                />
+              )}
+            </Attachment>
           )
         })}
       </div>
@@ -192,12 +215,13 @@ function SingleImageAttachment({
       data-attachment-single
       data-aspect-ratio={String(aspectRatio)}
       aria-label={spoiler ? t('spoilerShow') : label}
-      className="relative block aspect-(--single-aspect) max-h-96 w-(--single-width) max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-112"
+      className="relative block aspect-(--single-aspect) max-h-87.5 w-(--single-width) max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       style={
         {
           '--single-aspect': aspectRatio,
-          // Ширина до load: min(100%, 28rem, max-h-96 * ratio), иначе w-fit схлопывается.
-          '--single-width': `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
+          // Discord: 550×350 max. Ширина до load выводится из ratio,
+          // иначе w-fit схлопывается и лента прыгает.
+          '--single-width': `min(100%, 34.375rem, calc(21.875rem * ${aspectRatio}))`,
         } as CSSVars
       }
       onClick={() => {

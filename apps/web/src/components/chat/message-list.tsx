@@ -1,60 +1,50 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
-  type ComponentProps,
-  type RefObject,
+  type Ref,
+  type UIEvent,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
-import { Loader2Icon } from '#/components/icons'
-import {
-  useVirtualizer,
-  type Virtualizer,
-} from '@tanstack/react-virtual'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { ChevronDownIcon, MessageSquareIcon } from '#/components/icons'
 
 import { MessageDateDivider } from '#/components/chat/message-date-divider'
 import { MessageRow } from '#/components/chat/message-row'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { MessageUnreadDivider } from '#/components/chat/message-unread-divider'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@syrnike13/ui/primitives/empty'
 import {
-  buildMessageFeedItems,
-  feedItemEstimateHeight,
-  type MessageFeedItem,
-} from '#/lib/message-feed'
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+  useMessageScrollerScrollable,
+} from '@syrnike13/ui/primitives/message-scroller'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
+import { useSyncStore } from '#/features/sync/sync-store'
 import type { CSSVars } from '#/lib/css-vars'
+import { buildMessageFeedItems } from '#/lib/message-feed'
+import { useDateDividerLabel } from '#/lib/use-message-time'
 import { cn } from '#/lib/utils'
 
-const VIRTUAL_THRESHOLD = 60
-/** Порог (px): считаем, что пользователь «внизу» ленты. */
-const STICKY_BOTTOM_THRESHOLD_PX = 96
+/** Порог (px): считаем, что пользователь у верхней границы загруженной истории. */
+const LOAD_OLDER_THRESHOLD_PX = 120
 
-function isNearBottom(element: HTMLDivElement, threshold = STICKY_BOTTOM_THRESHOLD_PX) {
-  return (
-    element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
-  )
-}
-
-function isScrollable(element: HTMLDivElement) {
-  return element.scrollHeight > element.clientHeight
-}
-
-function scrollContainerToBottom(
-  element: HTMLDivElement,
-  behavior: ScrollBehavior = 'auto',
-) {
-  const top = element.scrollHeight - element.clientHeight
-  if (behavior === 'auto') {
-    element.scrollTop = top
-    return
-  }
-  element.scrollTo({ top, behavior })
+export type MessageListHandle = {
+  scrollToEnd: (behavior?: ScrollBehavior) => void
 }
 
 type MessageListProps = {
   channelId: string
   serverId?: string
+  ref?: Ref<MessageListHandle>
   /** Доп. отступ снизу, когда композер плавает над лентой */
-  scrollPaddingClassName?: string
   scrollPaddingBottom?: number
   /** Подсветить сообщение в ленте (ответ, deep link). */
   highlightMessageId?: string
@@ -78,50 +68,54 @@ type MessageListProps = {
   ) => Promise<void>
 }
 
-function feedIndexForMessage(
-  feedItems: MessageFeedItem[],
-  messageId: string,
-): number {
-  return feedItems.findIndex(
-    (item) => item.type === 'message' && item.message._id === messageId,
+export function MessageList({ ref, channelId, ...props }: MessageListProps) {
+  const lastRead = useSyncStore(
+    (s) => s.unreads[channelId]?.lastId ?? null,
   )
-}
+  // Значение фиксируется на монтировании канала до ack. Если unreads
+  // приезжают чуть позже, добираем первое непустое значение.
+  const initialLastReadRef = useRef<{
+    channelId: string
+    lastId: string | null
+  }>({ channelId, lastId: lastRead })
 
-type MessageRowSharedProps = Omit<
-  ComponentProps<typeof MessageRow>,
-  'message' | 'compact' | 'highlighted'
->
-
-function FeedListItem({
-  item,
-  rowProps,
-  highlightMessageId,
-}: {
-  item: MessageFeedItem
-  rowProps: MessageRowSharedProps
-  highlightMessageId?: string
-}) {
-  if (item.type === 'date') {
-    return <MessageDateDivider label={item.dateLabel} />
+  if (initialLastReadRef.current.channelId !== channelId) {
+    initialLastReadRef.current = { channelId, lastId: lastRead }
+  } else if (initialLastReadRef.current.lastId === null && lastRead !== null) {
+    initialLastReadRef.current.lastId = lastRead
   }
 
+  const unreadAnchorId = useMemo(() => {
+    const lastReadId = initialLastReadRef.current.lastId
+    if (!lastReadId) return null
+    return props.messages.find((message) => message._id > lastReadId)?._id ?? null
+  }, [channelId, lastRead, props.messages])
+
   return (
-    <MessageRow
-      message={item.message}
-      compact={item.compact}
-      highlighted={
-        highlightMessageId != null &&
-        item.message._id === highlightMessageId
-      }
-      {...rowProps}
-    />
+    <MessageScrollerProvider
+      key={channelId}
+      autoScroll
+      defaultScrollPosition={unreadAnchorId ? 'last-anchor' : 'end'}
+    >
+      <MessageListBody
+        {...props}
+        ref={ref}
+        channelId={channelId}
+        unreadAnchorId={unreadAnchorId}
+      />
+    </MessageScrollerProvider>
   )
 }
 
-export function MessageList({
+type MessageListBodyProps = MessageListProps & {
+  channelId: string
+  unreadAnchorId: string | null
+}
+
+function MessageListBody({
+  ref,
   channelId,
   serverId,
-  scrollPaddingClassName,
   scrollPaddingBottom,
   highlightMessageId,
   messages,
@@ -138,25 +132,25 @@ export function MessageList({
   onPin,
   onUnpin,
   onToggleReaction,
-}: MessageListProps) {
+  unreadAnchorId,
+}: MessageListBodyProps) {
+  const t = useTranslations('chat')
+  const formatDateLabel = useDateDividerLabel()
+  const scroller = useMessageScroller()
+  const { end } = useMessageScrollerScrollable()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const loadGuardRef = useRef(false)
+
   const emojis = useSyncStore((s) => s.emojis)
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const topSentinelRef = useRef<HTMLDivElement>(null)
-  const onLoadOlderRef = useRef(onLoadOlder)
-  onLoadOlderRef.current = onLoadOlder
-  const canLoadOlderRef = useRef(false)
-  const stickToBottomRef = useRef(true)
-  const prevLastMessageIdRef = useRef<string | undefined>(undefined)
-  const lastMessageId = messages.at(-1)?._id
-  const wasLoadingOlder = useRef(false)
-  const scrollHeightBeforeLoad = useRef(0)
-  const anchorMessageIdRef = useRef<string | null>(null)
-  /** Первичный скролл к последнему сообщению завершён (для этого канала). */
-  const initialScrollDoneRef = useRef(false)
-
-  const feedItems = useMemo(() => buildMessageFeedItems(messages), [messages])
-  const useVirtual = feedItems.length >= VIRTUAL_THRESHOLD
+  const feedItems = useMemo(
+    () =>
+      buildMessageFeedItems(messages, {
+        unreadMessageId: unreadAnchorId,
+        formatDateLabel,
+      }),
+    [formatDateLabel, messages, unreadAnchorId],
+  )
 
   const messagesById = useMemo(() => {
     const map: Record<string, Message> = {}
@@ -166,65 +160,84 @@ export function MessageList({
     return map
   }, [messages])
 
-  const scrollToIndexRef = useRef<
-    Virtualizer<HTMLDivElement, Element>['scrollToIndex'] | null
-  >(null)
-  const feedItemsForScrollRef = useRef(feedItems)
-  feedItemsForScrollRef.current = feedItems
+  const jumpOffset =
+    scrollPaddingBottom != null
+      ? Math.max(16, scrollPaddingBottom - 24)
+      : 16
+  const scrollVars = {
+    '--scroll-padding': `${scrollPaddingBottom ?? 0}px`,
+    '--jump-offset': `${jumpOffset}px`,
+  } as CSSVars
 
-  const scrollToTail = (behavior: ScrollBehavior = 'auto') => {
-    const root = scrollRef.current
-    if (!root) return
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToEnd: (behavior: ScrollBehavior = 'smooth') => {
+        scroller.scrollToEnd({ behavior })
+      },
+    }),
+    [scroller],
+  )
 
-    const scrollToIndex = scrollToIndexRef.current
-    if (useVirtual && lastMessageId && scrollToIndex) {
-      const index = feedIndexForMessage(
-        feedItemsForScrollRef.current,
-        lastMessageId,
-      )
-      if (index >= 0) {
-        scrollToIndex(index, { align: 'end', behavior })
+  useEffect(() => {
+    if (highlightMessageId == null) return
+
+    let frame = 0
+    let attempts = 0
+
+    const run = () => {
+      if (
+        scroller.scrollToMessage(highlightMessageId, {
+          align: 'center',
+          behavior: 'smooth',
+        })
+      ) {
         return
       }
-    }
-
-    scrollContainerToBottom(root, behavior)
-  }
-
-  const scrollToTailRef = useRef(scrollToTail)
-  scrollToTailRef.current = scrollToTail
-
-  const handleVirtualizerReady = useCallback(() => {
-    if (!stickToBottomRef.current) return
-    scrollToTailRef.current('auto')
-  }, [])
-
-  useEffect(() => {
-    canLoadOlderRef.current = false
-    stickToBottomRef.current = true
-    prevLastMessageIdRef.current = undefined
-    wasLoadingOlder.current = false
-    anchorMessageIdRef.current = null
-    initialScrollDoneRef.current = false
-  }, [channelId])
-
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root) return
-
-    const onScroll = () => {
-      const nearBottom = isNearBottom(root)
-      stickToBottomRef.current = nearBottom
-      if (!nearBottom) {
-        canLoadOlderRef.current = true
+      attempts += 1
+      if (attempts < 30) {
+        frame = requestAnimationFrame(run)
       }
     }
 
-    root.addEventListener('scroll', onScroll, { passive: true })
-    return () => root.removeEventListener('scroll', onScroll)
-  }, [channelId, messages.length])
+    run()
+    return () => cancelAnimationFrame(frame)
+  }, [highlightMessageId, messages.length, scroller])
 
-  const rowProps: MessageRowSharedProps = {
+  const loadOlderIfNeeded = useCallback(() => {
+    if (loadGuardRef.current || loadingOlder || !hasOlder || messages.length === 0) {
+      return
+    }
+    loadGuardRef.current = true
+    onLoadOlder?.()
+  }, [hasOlder, loadingOlder, messages.length, onLoadOlder])
+
+  useEffect(() => {
+    if (!loadingOlder) loadGuardRef.current = false
+  }, [loadingOlder])
+
+  useEffect(() => {
+    loadGuardRef.current = false
+  }, [messages.length, hasOlder])
+
+  const handleScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (event.currentTarget.scrollTop < LOAD_OLDER_THRESHOLD_PX) {
+        loadOlderIfNeeded()
+      }
+    },
+    [loadOlderIfNeeded],
+  )
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || viewport.clientHeight <= 0) return
+    if (viewport.scrollHeight <= viewport.clientHeight + 1) {
+      loadOlderIfNeeded()
+    }
+  }, [loadOlderIfNeeded, messages.length])
+
+  const rowProps = {
     channelId,
     users,
     emojis,
@@ -245,296 +258,92 @@ export function MessageList({
       : undefined,
   }
 
-  // Первичный скролл к последнему сообщению. В виртуальном режиме позиции
-  // сначала считаются по оценкам высоты, поэтому одного scrollToIndex мало:
-  // держим ленту у нижней границы, пока измерение не стабилизируется
-  // (бюджет ~1.5 с), либо пока пользователь сам не начнёт скроллить.
-  useEffect(() => {
-    if (loadingOlder || !lastMessageId || initialScrollDoneRef.current) return
-
-    const root = scrollRef.current
-    if (!root) return
-
-    let raf = 0
-    let frames = 0
-    let stableFrames = 0
-
-    const finish = () => {
-      initialScrollDoneRef.current = true
-      stickToBottomRef.current = true
-    }
-
-    const tick = () => {
-      scrollToTail('auto')
-      frames += 1
-      if (isNearBottom(root, 4)) {
-        stableFrames += 1
-      } else {
-        stableFrames = 0
-      }
-      if (stableFrames >= 3 || frames >= 90) {
-        finish()
-        return
-      }
-      raf = requestAnimationFrame(tick)
-    }
-
-    const cancelOnUserScroll = () => {
-      finish()
-      cancelAnimationFrame(raf)
-    }
-
-    raf = requestAnimationFrame(tick)
-    root.addEventListener('wheel', cancelOnUserScroll, { passive: true })
-    root.addEventListener('touchmove', cancelOnUserScroll, { passive: true })
-
-    return () => {
-      cancelAnimationFrame(raf)
-      root.removeEventListener('wheel', cancelOnUserScroll)
-      root.removeEventListener('touchmove', cancelOnUserScroll)
-    }
-  }, [channelId, lastMessageId, loadingOlder, useVirtual])
-
-  // Автоскролл при новом сообщении в хвосте, если пользователь внизу ленты.
-  useEffect(() => {
-    if (!lastMessageId) return
-
-    const prevLastMessageId = prevLastMessageIdRef.current
-    prevLastMessageIdRef.current = lastMessageId
-
-    // Первичный скролл для канала делает эффект выше.
-    if (prevLastMessageId === undefined) return
-    if (prevLastMessageId === lastMessageId) return
-    if (!stickToBottomRef.current) return
-    if (wasLoadingOlder.current) return
-
-    const run = () => scrollToTail('auto')
-    run()
-    const raf = requestAnimationFrame(run)
-
-    return () => {
-      cancelAnimationFrame(raf)
-    }
-  }, [channelId, lastMessageId, useVirtual])
-
-  useEffect(() => {
-    const root = scrollRef.current
-    const content = root?.firstElementChild
-    if (!root || !(content instanceof HTMLElement)) return
-
-    const observer = new ResizeObserver(() => {
-      if (!stickToBottomRef.current) return
-      scrollToTail('auto')
-    })
-
-    observer.observe(content)
-    return () => observer.disconnect()
-  }, [channelId, lastMessageId, useVirtual])
-
-  useEffect(() => {
-    if (loadingOlder) {
-      wasLoadingOlder.current = true
-      anchorMessageIdRef.current = messages[0]?._id ?? null
-      if (!useVirtual) {
-        scrollHeightBeforeLoad.current = scrollRef.current?.scrollHeight ?? 0
-      }
-      return
-    }
-
-    if (!wasLoadingOlder.current) return
-    wasLoadingOlder.current = false
-    const anchorId = anchorMessageIdRef.current
-    anchorMessageIdRef.current = null
-
-    // Подгрузка сработала, пока пользователь был внизу (например, автозаполнение
-    // вьюпорта на короткой ленте), — остаёмся на последних сообщениях.
-    if (stickToBottomRef.current) return
-
-    const items = feedItemsForScrollRef.current
-
-    const scrollToIndex = scrollToIndexRef.current
-    if (useVirtual && anchorId && scrollToIndex) {
-      const index = feedIndexForMessage(items, anchorId)
-      if (index >= 0) {
-        scrollToIndex(index, { align: 'start' })
-      }
-    } else if (scrollRef.current) {
-      const delta =
-        scrollRef.current.scrollHeight - scrollHeightBeforeLoad.current
-      scrollRef.current.scrollTop += delta
-    }
-  }, [loadingOlder, useVirtual, messages])
-
-  useEffect(() => {
-    const root = scrollRef.current
-    const sentinel = topSentinelRef.current
-    if (!root || !sentinel || !hasOlder || !onLoadOlder) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        const canFillViewport = !isScrollable(root)
-        if (
-          entry?.isIntersecting &&
-          !loadingOlder &&
-          (canLoadOlderRef.current || canFillViewport)
-        ) {
-          onLoadOlderRef.current?.()
-        }
-      },
-      { root, rootMargin: '120px 0px 0px 0px', threshold: 0 },
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [channelId, hasOlder, loadingOlder])
-
   if (messages.length === 0) {
     return (
       <div
-        className={cn(
-          'flex h-0 min-h-0 flex-1 items-center justify-center overflow-hidden p-8 text-sm text-muted-foreground',
-          scrollPaddingClassName,
-          scrollPaddingBottom != null && 'pb-(--scroll-padding)',
-        )}
-        style={
-          scrollPaddingBottom == null
-            ? undefined
-            : ({ '--scroll-padding': `${scrollPaddingBottom}px` } as CSSVars)
-        }
+        className="relative flex h-0 min-h-0 flex-1 flex-col"
+        style={scrollVars}
       >
-        Сообщений пока нет. Напишите первым.
+        <Empty className="h-full pb-(--scroll-padding)">
+          <EmptyMedia variant="icon">
+            <MessageSquareIcon />
+          </EmptyMedia>
+          <EmptyTitle>{t('noMessages')}</EmptyTitle>
+          <EmptyDescription>{t('noMessagesHint')}</EmptyDescription>
+        </Empty>
       </div>
     )
   }
 
   return (
-    <div
-      ref={scrollRef}
-      className="flex h-0 min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
-    >
-      <div
-        className={cn(
-          'flex flex-col px-4 pt-4',
-          scrollPaddingClassName,
-          scrollPaddingBottom != null && 'pb-(--scroll-padding)',
-        )}
-        style={
-          scrollPaddingBottom == null
-            ? undefined
-            : ({ '--scroll-padding': `${scrollPaddingBottom}px` } as CSSVars)
-        }
-      >
-        <div ref={topSentinelRef} className="h-px shrink-0" aria-hidden />
+    <TooltipProvider delay={300}>
+      <MessageScroller className="min-h-0 flex-1" style={scrollVars}>
+        <MessageScrollerViewport
+          ref={viewportRef}
+          aria-label={t('messagesLabel')}
+          onScroll={handleScroll}
+        >
+          <MessageScrollerContent className="flex flex-col gap-0 pt-4 pb-(--scroll-padding)">
+            {feedItems.map((item) => {
+              if (item.type === 'date') {
+                return (
+                  <MessageScrollerItem key={item.key} className="min-w-0">
+                    <MessageDateDivider label={item.dateLabel} />
+                  </MessageScrollerItem>
+                )
+              }
+
+              if (item.type === 'unread') {
+                return (
+                  <MessageScrollerItem key={item.key} className="min-w-0">
+                    <MessageUnreadDivider label={t('newMessages')} />
+                  </MessageScrollerItem>
+                )
+              }
+
+              return (
+                <MessageScrollerItem
+                  key={item.key}
+                  messageId={item.message._id}
+                  scrollAnchor={item.message._id === unreadAnchorId}
+                  className="min-w-0"
+                >
+                  <MessageRow
+                    message={item.message}
+                    compact={item.compact}
+                    highlighted={
+                      highlightMessageId != null &&
+                      item.message._id === highlightMessageId
+                    }
+                    {...rowProps}
+                  />
+                </MessageScrollerItem>
+              )
+            })}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
 
         {loadingOlder ? (
-          <div className="flex justify-center py-2">
-            <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+          <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+            <Spinner className="size-5 text-muted-foreground" />
           </div>
         ) : null}
 
-        {useVirtual ? (
-          <VirtualizedFeedItems
-            feedItems={feedItems}
-            scrollRef={scrollRef}
-            scrollToIndexRef={scrollToIndexRef}
-            onVirtualizerReady={handleVirtualizerReady}
-            rowProps={rowProps}
-            highlightMessageId={highlightMessageId}
-          />
-        ) : (
-          <>
-            {feedItems.map((item) => (
-              <FeedListItem
-                key={item.key}
-                item={item}
-                rowProps={rowProps}
-                highlightMessageId={highlightMessageId}
-              />
-            ))}
-            <div className="h-px shrink-0" aria-hidden />
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-type VirtualizedFeedItemsProps = {
-  feedItems: MessageFeedItem[]
-  scrollRef: RefObject<HTMLDivElement | null>
-  scrollToIndexRef: RefObject<
-    Virtualizer<HTMLDivElement, Element>['scrollToIndex'] | null
-  >
-  onVirtualizerReady?: () => void
-  rowProps: MessageRowSharedProps
-  highlightMessageId?: string
-}
-
-function VirtualizedFeedItems({
-  feedItems,
-  scrollRef,
-  scrollToIndexRef,
-  onVirtualizerReady,
-  rowProps,
-  highlightMessageId,
-}: VirtualizedFeedItemsProps) {
-  const virtualizer = useVirtualizer({
-    count: feedItems.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => feedItemEstimateHeight(feedItems[index]!),
-    overscan: 12,
-    getItemKey: (index) => feedItems[index]!.key,
-  })
-
-  useEffect(() => {
-    scrollToIndexRef.current = virtualizer.scrollToIndex
-    return () => {
-      scrollToIndexRef.current = null
-    }
-  }, [scrollToIndexRef, virtualizer])
-
-  useEffect(() => {
-    onVirtualizerReady?.()
-    const raf = requestAnimationFrame(() => onVirtualizerReady?.())
-    return () => cancelAnimationFrame(raf)
-  }, [onVirtualizerReady, feedItems.length])
-
-  const virtualItems = virtualizer.getVirtualItems()
-
-  return (
-    <div
-      className="relative h-(--virtual-height) w-full"
-      style={
-        {
-          '--virtual-height': `${virtualizer.getTotalSize()}px`,
-        } as CSSVars
-      }
-    >
-      {virtualItems.map((virtualRow) => {
-        const item = feedItems[virtualRow.index]
-        if (!item) return null
-
-        return (
-          <div
-            key={item.key}
-            ref={virtualizer.measureElement}
-            data-index={virtualRow.index}
-            className="absolute top-0 left-0 w-full translate-y-(--virtual-offset)"
-            style={
-              {
-                '--virtual-offset': `${virtualRow.start}px`,
-              } as CSSVars
-            }
-          >
-            <FeedListItem
-              item={item}
-              rowProps={rowProps}
-              highlightMessageId={highlightMessageId}
-            />
+        {end ? (
+          <div className="absolute bottom-(--jump-offset) left-1/2 z-10 -translate-x-1/2 shadow-md rounded-full">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className={cn('gap-1 rounded-full px-3')}
+              onClick={() => scroller.scrollToEnd({ behavior: 'smooth' })}
+            >
+              <ChevronDownIcon className="size-4" />
+              {t('jumpToPresent')}
+            </Button>
           </div>
-        )
-      })}
-    </div>
+        ) : null}
+      </MessageScroller>
+    </TooltipProvider>
   )
 }
