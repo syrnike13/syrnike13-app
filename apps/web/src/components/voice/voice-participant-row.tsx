@@ -188,8 +188,8 @@ export function VoiceParticipantRow({
             ? 'cursor-grab active:cursor-grabbing'
             : 'cursor-pointer',
           isSpeaking
-            ? 'hover:brightness-105 data-[state=open]:brightness-105'
-            : 'hover:bg-accent focus-visible:bg-accent data-[state=open]:bg-accent',
+            ? 'hover:brightness-105 data-[popup-open]:brightness-105'
+            : 'hover:bg-accent focus-visible:bg-accent data-[popup-open]:bg-accent',
         )}
       >
         {content}

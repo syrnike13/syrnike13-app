@@ -18,6 +18,7 @@ import {
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,6 @@ import {
   useScreenShareQuality,
 } from '#/components/voice/voice-screen-share-quality'
 import {
-  voiceStagePopoverCheckboxClass,
   voiceStagePopoverContentClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
@@ -567,7 +567,7 @@ function ScreenSharePickerSettings({
           title={t('sharePicker.streamSettings')}
           disabled={disabled}
           className="group/gear cursor-pointer disabled:cursor-not-allowed" />}>
-          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[state=open]/gear:rotate-90 motion-reduce:transition-none" />
+          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[popup-open]/gear:rotate-90 motion-reduce:transition-none" />
         </PopoverTrigger>
       <PopoverContent
         side="top"
@@ -599,12 +599,11 @@ function ScreenSharePickerSettings({
               <Separator className="my-0.5" />
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
                 <span>{t('sharePicker.muteAudio')}</span>
-                <input
-                  type="checkbox"
-                  className={voiceStagePopoverCheckboxClass}
+                <Checkbox
                   checked={!audioRequested}
-                  onChange={(event) =>
-                    onAudioRequestedChange(!event.target.checked)
+                  aria-label={t('sharePicker.muteAudio')}
+                  onCheckedChange={(checked) =>
+                    onAudioRequestedChange(checked !== true)
                   }
                 />
               </label>

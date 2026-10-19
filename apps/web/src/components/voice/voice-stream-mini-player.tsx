@@ -14,6 +14,7 @@ import {
   Volume2Icon,
   VolumeXIcon,
 } from '#/components/icons'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import {
   Popover,
   PopoverContent,
@@ -65,7 +66,7 @@ function readWidth() {
 }
 
 const miniIconButtonClass =
-  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-on-media/80 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring data-[state=open]:bg-on-media/15 data-[state=open]:text-on-media'
+  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-on-media/80 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring data-[popup-open]:bg-on-media/15 data-[popup-open]:text-on-media'
 
 function MiniControl({
   label,
@@ -104,12 +105,11 @@ function MiniStreamVolumeSection({ userId }: { userId: string }) {
     <>
       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-accent/70">
         <span>{t('actions.muteStream')}</span>
-        <input
-          type="checkbox"
-          className="size-4 rounded border-input accent-primary"
+        <Checkbox
           checked={muted}
-          onChange={(event) =>
-            voiceListenerStore.setStreamMuted(userId, event.target.checked)
+          aria-label={t('actions.muteStream')}
+          onCheckedChange={(checked) =>
+            voiceListenerStore.setStreamMuted(userId, checked === true)
           }
         />
       </label>

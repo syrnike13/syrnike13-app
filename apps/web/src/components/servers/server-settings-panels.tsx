@@ -204,7 +204,7 @@ function ServerProfilePreview({
               ) : null}
               <span
                 aria-hidden="true"
-                className="absolute inset-0 flex items-center justify-center gap-1.5 bg-background/55 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover/banner:opacity-100 group-focus-visible/banner:opacity-100 group-data-[state=open]/banner:opacity-100 motion-reduce:transition-none"
+                className="absolute inset-0 flex items-center justify-center gap-1.5 bg-background/55 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover/banner:opacity-100 group-focus-visible/banner:opacity-100 group-data-[popup-open]/banner:opacity-100 motion-reduce:transition-none"
               >
                 <PencilIcon className="size-4" />
                 {t('edit')}
@@ -262,7 +262,7 @@ function ServerProfilePreview({
                   )}
                   <span
                     aria-hidden="true"
-                    className="absolute inset-0 flex items-center justify-center bg-background/60 text-foreground opacity-0 transition-opacity group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 group-data-[state=open]/icon:opacity-100 motion-reduce:transition-none"
+                    className="absolute inset-0 flex items-center justify-center bg-background/60 text-foreground opacity-0 transition-opacity group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 group-data-[popup-open]/icon:opacity-100 motion-reduce:transition-none"
                   >
                     <PencilIcon className="size-4" />
                   </span>

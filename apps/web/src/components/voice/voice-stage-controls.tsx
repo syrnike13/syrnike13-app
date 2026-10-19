@@ -21,6 +21,7 @@ import {
 } from '#/components/icons'
 
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   DropdownMenu,
@@ -1239,11 +1240,10 @@ function StageFilterToggle({
 }) {
   return (
     <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/70">
-      <input
-        type="checkbox"
-        className="size-4 rounded border-input accent-primary"
+      <Checkbox
         checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+        aria-label={label}
+        onCheckedChange={(next) => onChange(next === true)}
       />
       <span>{label}</span>
     </label>

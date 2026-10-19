@@ -98,6 +98,31 @@ test('design-allow skips hardcoded-string for technical strings', () => {
   )
 })
 
+test('flags raw Slider imports on settings surfaces', () => {
+  const importLine =
+    "import { Slider } from '@syrnike13/ui/primitives/slider'"
+  assert.deepEqual(
+    rules('apps/web/src/components/settings/a.tsx', importLine),
+    ['raw-slider-in-settings'],
+  )
+  assert.deepEqual(
+    rules('apps/web/src/components/sounds/a.tsx', importLine),
+    ['raw-slider-in-settings'],
+  )
+  assert.deepEqual(
+    rules('apps/web/src/components/channels/a.tsx', importLine),
+    ['raw-slider-in-settings'],
+  )
+  assert.deepEqual(
+    rules('apps/web/src/components/voice/a.tsx', importLine),
+    [],
+  )
+  assert.deepEqual(
+    rules('apps/web/src/components/ui/preset-slider.tsx', importLine),
+    [],
+  )
+})
+
 test('flags direct icon imports outside the icon registry', () => {
   assert.deepEqual(rules('apps/web/src/components/chat/a.tsx', "import { X } from '@remixicon/react'"), ['icon-import'])
   assert.deepEqual(rules('apps/web/src/components/icons/index.tsx', "import { X } from '@remixicon/react'"), [])

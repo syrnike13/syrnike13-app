@@ -4,6 +4,7 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import {
   Select,
   SelectContent,
@@ -11,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
-import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   authorSoundPackOptions,
   isSoundAuthorPackId,
@@ -28,6 +28,12 @@ function volumeToSlider(volume: number) {
 
 function sliderToVolume(value: number) {
   return Number((value / 100).toFixed(2))
+}
+
+const VOLUME_STOPS = [{ value: 0 }, { value: 100 }] as const
+
+function formatVolume(value: number) {
+  return `${value}%`
 }
 
 export function SoundSettings() {
@@ -66,18 +72,19 @@ export function SoundSettings() {
         value={`${volumeToSlider(preferences.volume)}%`}
         stacked
       >
-        <Slider
-          className="w-full"
-          value={[volumeToSlider(preferences.volume)]}
-          min={0}
-          max={100}
+        <PresetSlider
+          stops={VOLUME_STOPS}
+          value={volumeToSlider(preferences.volume)}
+          mode="continuous"
           step={1}
+          showLabels={false}
+          showMarks={false}
           disabled={!preferences.enabled}
-          onValueChange={(value) => {
-            const next = typeof value === 'number' ? value : value[0]
-            if (next == null) return
+          onValueChange={(next) =>
             soundPreferenceStore.setVolume(sliderToVolume(next))
-          }}
+          }
+          formatValue={formatVolume}
+          aria-label={t('volume')}
         />
       </SettingsRow>
 
@@ -90,21 +97,22 @@ export function SoundSettings() {
             value={`${volumeToSlider(eventVolume)}%`}
             stacked
           >
-            <Slider
-              className="w-full"
-              value={[volumeToSlider(eventVolume)]}
-              min={0}
-              max={100}
+            <PresetSlider
+              stops={VOLUME_STOPS}
+              value={volumeToSlider(eventVolume)}
+              mode="continuous"
               step={1}
+              showLabels={false}
+              showMarks={false}
               disabled={!preferences.enabled}
-              onValueChange={(value) => {
-                const next = typeof value === 'number' ? value : value[0]
-                if (next == null) return
+              onValueChange={(next) =>
                 soundPreferenceStore.setEventVolume(
                   event.id,
                   sliderToVolume(next),
                 )
-              }}
+              }
+              formatValue={formatVolume}
+              aria-label={t(event.labelKey)}
             />
           </SettingsRow>
         )

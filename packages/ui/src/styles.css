@@ -5,6 +5,15 @@
   font-family: var(--font-display);
 }
 
+/* Places a slider mark or label on the usable track: the same half-thumb
+   inset the slider thumb uses, so ticks and thumb centres agree. */
+@utility slider-mark-position {
+  left: calc(
+    var(--slider-thumb-size, 1.125rem) / 2 +
+      (100% - var(--slider-thumb-size, 1.125rem)) * var(--slider-mark-progress, 0)
+  );
+}
+
 @theme inline {
   --color-success: var(--success);
   --color-warning: var(--warning);

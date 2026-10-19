@@ -40,6 +40,9 @@ const TOKENS_HINT =
   'Нужного токена нет — добавь его в packages/ui/src/styles.css, не придумывай цвет.'
 
 const ICON_IMPORT_PATTERN = /from\s+['"](@remixicon\/react|@iconify\/react|iconoir-react(?:\/solid)?|lucide-react)['"]/
+/** Settings surfaces where sliders must go through PresetSlider. */
+const SETTINGS_SLIDER_PATHS =
+  /^apps\/web\/src\/components\/(?:settings|sounds|notifications|channels|servers)\//
 const CYRILLIC = /[Ѐ-ӿ]/
 const STRING_LITERAL = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g
 const JSX_TEXT = />([^<>{}]+)</g
@@ -86,6 +89,14 @@ const LINE_RULES = [
     pattern: ICON_IMPORT_PATTERN,
     message:
       'Иконки только через реестр packages/ui/src/icons или app-local icons. Прямые импорты @remixicon/react, @iconify/react, iconoir-react и lucide-react запрещены.',
+  },
+  {
+    rule: 'raw-slider-in-settings',
+    files: 'source',
+    path: SETTINGS_SLIDER_PATHS,
+    pattern: /from\s+['"]@syrnike13\/ui\/primitives\/slider['"]/,
+    message:
+      'Слайдеры в настройках — PresetSlider (#/components/ui/preset-slider). Примитив Slider — его внутренняя база; напрямую в настройках не подключаем.',
   },
   {
     rule: 'css-color',
@@ -293,8 +304,9 @@ export function checkSource(path, source) {
   for (const [index, text] of lines.entries()) {
     const trimmed = text.trim()
     if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue
-    for (const { rule, files, pattern, message } of LINE_RULES) {
+    for (const { rule, files, path: pathPattern, pattern, message } of LINE_RULES) {
       if ((files === 'css') !== css) continue
+      if (pathPattern && !pathPattern.test(normalizedPath)) continue
       if (rule === 'icon-import' && isIconRegistry(normalizedPath)) continue
       if (!pattern.test(text) || allowed(lines, index, rule) || allowedFile(lines, rule)) continue
       found.push({ rule, line: index + 1, text: trimmed, message })

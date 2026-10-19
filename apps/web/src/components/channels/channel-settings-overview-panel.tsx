@@ -24,8 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
-import { Slider } from '@syrnike13/ui/primitives/slider'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import {
   useDraftRegistration,
@@ -77,6 +77,13 @@ function maxUsersSliderValue(maxUsers: number | null) {
 function maxUsersFromSliderValue(value: number): number | null {
   return value <= 0 ? null : value
 }
+
+const BITRATE_STOPS = [
+  { value: MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS },
+  { value: MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS },
+] as const
+
+const USER_LIMIT_STOPS = [{ value: 0 }, { value: 99 }] as const
 
 function SettingsField({
   label,
@@ -415,18 +422,16 @@ export function ChannelSettingsOverviewPanel({
             label={t('bitrate')}
             description={t('bitrateDescription')}
           >
-            <Slider
-              id="channel-audio-bitrate"
-              aria-label={t('bitrate')}
-              value={[audioBitrateKbps]}
-              min={MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
-              max={MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
+            <PresetSlider
+              stops={BITRATE_STOPS}
+              value={audioBitrateKbps}
+              mode="continuous"
               step={1}
-              onValueChange={(value) => {
-                const next = typeof value === 'number' ? value : value[0]
-                if (next == null) return
-                setAudioBitrateKbps(next)
-              }}
+              showLabels={false}
+              showMarks={false}
+              onValueChange={setAudioBitrateKbps}
+              formatValue={(value) => `${value} kbps`}
+              aria-label={t('bitrate')}
             />
           </SettingsField>
         ) : null}
@@ -436,18 +441,20 @@ export function ChannelSettingsOverviewPanel({
             label={t('userLimit')}
             description={t('userLimitDescription')}
           >
-            <Slider
-              id="channel-max-users"
-              aria-label={t('userLimit')}
-              value={[maxUsersSliderValue(maxUsers)]}
-              min={0}
-              max={99}
+            <PresetSlider
+              stops={USER_LIMIT_STOPS}
+              value={maxUsersSliderValue(maxUsers)}
+              mode="continuous"
               step={1}
-              onValueChange={(value) => {
-                const next = typeof value === 'number' ? value : value[0]
-                if (next == null) return
-                setMaxUsers(maxUsersFromSliderValue(next))
-              }}
+              showLabels={false}
+              showMarks={false}
+              onValueChange={(value) =>
+                setMaxUsers(maxUsersFromSliderValue(value))
+              }
+              formatValue={(value) =>
+                value <= 0 ? t('unlimited') : String(value)
+              }
+              aria-label={t('userLimit')}
             />
           </SettingsField>
         ) : null}

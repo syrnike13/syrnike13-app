@@ -9,6 +9,7 @@ import {
   SettingsToggleRow,
 } from '#/components/settings/settings-panels'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import {
@@ -19,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
-import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
   ensureMediaDevicePermissionEffect,
   useMediaDevices,
@@ -59,6 +59,8 @@ function volumeToSlider(volume: number) {
 function sliderToVolume(value: number) {
   return Number(((value / 100) * VOICE_OUTPUT_VOLUME_MAX).toFixed(2))
 }
+
+const VOLUME_STOPS = [{ value: 0 }, { value: 100 }] as const
 
 function DeviceSelectField({
   label,
@@ -110,12 +112,10 @@ function DeviceSelectField({
 }
 
 function VolumeSliderField({
-  id,
   label,
   value,
   onChange,
 }: {
-  id: string
   label: string
   value: number
   onChange: (value: number) => void
@@ -123,17 +123,16 @@ function VolumeSliderField({
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
-      <Slider
-        id={id}
-        value={[volumeToSlider(value)]}
-        min={0}
-        max={100}
+      <PresetSlider
+        stops={VOLUME_STOPS}
+        value={volumeToSlider(value)}
+        mode="continuous"
         step={1}
-        onValueChange={(value) => {
-          const next = typeof value === 'number' ? value : value[0]
-          if (next == null) return
-          onChange(sliderToVolume(next))
-        }}
+        showLabels={false}
+        showMarks={false}
+        onValueChange={(next) => onChange(sliderToVolume(next))}
+        formatValue={(next) => `${next}%`}
+        aria-label={label}
       />
     </div>
   )
@@ -286,7 +285,6 @@ export function SettingsVoicePanel() {
               }}
             />
             <VolumeSliderField
-              id="voice-input-volume"
               label={ts('micVolume')}
               value={prefs.inputVolume}
               onChange={(value) => {
@@ -307,7 +305,6 @@ export function SettingsVoicePanel() {
               }}
             />
             <VolumeSliderField
-              id="voice-output-volume"
               label={ts('volume')}
               value={prefs.outputVolume}
               onChange={(value) => {

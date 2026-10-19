@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronRightIcon, Settings2Icon } from '#/components/icons'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@syrnike13/ui/primitives/popover'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
 import { Slider } from '@syrnike13/ui/primitives/slider'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
-  voiceStagePopoverCheckboxClass,
+  voiceStagePopoverContentClass,
   voiceStagePopoverHintClass,
   voiceStagePopoverMenuItemClass,
   voiceStagePopoverNavRowClass,
   voiceStagePopoverSectionTitleClass,
-  voiceStagePopoverSubmenuClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
@@ -252,11 +261,10 @@ export function VoiceStageMicSettingsMenuContent() {
         <span className={voiceStagePopoverSectionTitleClass}>
           {t('devices.dontHear')}
         </span>
-        <input
-          type="checkbox"
-          className={voiceStagePopoverCheckboxClass}
+        <Checkbox
           checked={prefs.deafened}
-          onChange={() => voice.toggleDeafen()}
+          aria-label={t('devices.dontHear')}
+          onCheckedChange={() => voice.toggleDeafen()}
         />
       </label>
 
@@ -348,6 +356,8 @@ function MicSettingsSeparator() {
   return <Separator className="my-0.5" />
 }
 
+const DEFAULT_DEVICE_VALUE = '__default__'
+
 function MicSettingsDeviceRow({
   title,
   subtitle,
@@ -363,94 +373,104 @@ function MicSettingsDeviceRow({
 }) {
   const t = useTranslations('voice')
   const selectable = devices.filter((device) => device.deviceId.length > 0)
+  const [open, setOpen] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelClose = () => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current)
+    closeTimer.current = null
+  }
+  const scheduleClose = () => {
+    cancelClose()
+    closeTimer.current = setTimeout(() => setOpen(false), 160)
+  }
+  useEffect(() => cancelClose, [])
+  const show = () => {
+    cancelClose()
+    setOpen(true)
+  }
+
+  function select(value: string) {
+    onSelect(value === DEFAULT_DEVICE_VALUE ? undefined : value)
+    setOpen(false)
+  }
 
   return (
-    <MicSettingsSubmenu
-      trigger={
-        <>
-          <span className="min-w-0 flex-1">
-            <span className={voiceStagePopoverSectionTitleClass}>{title}</span>
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-              {subtitle}
-            </span>
-          </span>
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-        </>
-      }
-    >
-      <button
-        type="button"
-        className={micSettingsMenuItemClass(!selectedId)}
-        onClick={() => onSelect(undefined)}
-      >
-        <span className="min-w-0 flex-1 truncate">
-          {t('devices.default')}
-        </span>
-        {!selectedId ? (
-          <CheckIcon className="size-4 shrink-0 text-primary" />
-        ) : (
-          <span className="size-4 shrink-0" aria-hidden />
-        )}
-      </button>
-      {selectable.map((device) => {
-        const selected = selectedId === device.deviceId
-        return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
           <button
-            key={device.deviceId}
             type="button"
-            className={micSettingsMenuItemClass(selected)}
-            onClick={() => onSelect(device.deviceId)}
+            className={cn(
+              // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover row class
+              voiceStagePopoverNavRowClass,
+            )}
+            onPointerEnter={show}
+            onPointerLeave={scheduleClose}
+          />
+        }
+      >
+        <span className="min-w-0 flex-1">
+          <span className={voiceStagePopoverSectionTitleClass}>{title}</span>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+            {subtitle}
+          </span>
+        </span>
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={6}
+        className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverContentClass,
+          'w-56 p-1',
+        )}
+        onPointerEnter={cancelClose}
+        onPointerLeave={scheduleClose}
+      >
+        <RadioGroup
+          value={selectedId ?? DEFAULT_DEVICE_VALUE}
+          aria-label={title}
+          className="gap-0.5"
+          onValueChange={select}
+        >
+          <label
+            className={cn(
+              voiceStagePopoverMenuItemClass,
+              'h-8 cursor-pointer justify-between',
+            )}
           >
             <span className="min-w-0 flex-1 truncate">
-              {deviceLabel(device, t)}
+              {t('devices.default')}
             </span>
-            {selected ? (
-              <CheckIcon className="size-4 shrink-0 text-primary" />
-            ) : (
-              <span className="size-4 shrink-0" aria-hidden />
-            )}
-          </button>
-        )
-      })}
-    </MicSettingsSubmenu>
+            <RadioGroupItem
+              value={DEFAULT_DEVICE_VALUE}
+              aria-label={t('devices.default')}
+            />
+          </label>
+          {selectable.map((device) => (
+            <label
+              key={device.deviceId}
+              className={cn(
+                voiceStagePopoverMenuItemClass,
+                'h-8 cursor-pointer justify-between',
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {deviceLabel(device, t)}
+              </span>
+              <RadioGroupItem
+                value={device.deviceId}
+                aria-label={deviceLabel(device, t)}
+              />
+            </label>
+          ))}
+        </RadioGroup>
+      </PopoverContent>
+    </Popover>
   )
-}
-
-function MicSettingsSubmenu({
-  trigger,
-  children,
-}: {
-  trigger: ReactNode
-  children: ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <div className="relative" onPointerLeave={() => setOpen(false)}>
-      <button
-        type="button"
-        className={voiceStagePopoverNavRowClass}
-        onPointerEnter={() => setOpen(true)}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-      >
-        {trigger}
-      </button>
-      {open ? (
-        <div
-          className={voiceStagePopoverSubmenuClass}
-          onPointerEnter={() => setOpen(true)}
-        >
-          {children}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function micSettingsMenuItemClass(selected: boolean) {
-  return cn(voiceStagePopoverMenuItemClass, selected && 'bg-accent/60')
 }
 
 function MicInputMeter({ levels }: { levels: readonly number[] }) {

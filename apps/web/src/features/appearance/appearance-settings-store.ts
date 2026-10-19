@@ -11,6 +11,7 @@ import {
 import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
 import { applyThemeToDocument, listThemes } from '@syrnike13/ui/tokens'
+import { applyAppearanceScale } from '#/features/appearance/appearance-scale'
 import {
   loadDesktopLocalSettingsEffect,
   updateDesktopLocalSettingsEffect,
@@ -125,6 +126,11 @@ function persist() {
   }
 }
 
+function applyAppearance(settings: AppearanceSettings) {
+  applyThemeToDocument(settings)
+  applyAppearanceScale(settings.scale)
+}
+
 function patch(
   partial: Partial<AppearanceSettings>,
   options: { persist?: boolean } = {},
@@ -134,7 +140,7 @@ function patch(
   )
   stateRevision += 1
   if (options.persist !== false) persist()
-  applyThemeToDocument(state)
+  applyAppearance(state)
   emit()
 }
 
@@ -146,7 +152,7 @@ export const hydrateAppearanceSettingsFromDesktopEffect = Effect.fn(
   if (!settings || revision !== stateRevision) return
   yield* Effect.sync(() => {
     state = withKnownThemeId(normalizeAppearanceSettings(settings.appearance))
-    applyThemeToDocument(state)
+    applyAppearance(state)
     emit()
   })
 })
@@ -169,6 +175,11 @@ export const appearanceSettingsStore = {
   setColorMode(colorMode: AppearanceColorMode) {
     if (state.colorMode === colorMode) return
     patch({ colorMode })
+  },
+
+  setScale(scale: number) {
+    if (state.scale === scale) return
+    patch({ scale })
   },
 
   previewGradient(gradient: AppearanceGradientSettings) {

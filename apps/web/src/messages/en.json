@@ -112,6 +112,9 @@
       "displayMode": "Display mode",
       "lightDark": "Light / dark",
       "colorModeHint": "How to display the selected palette",
+      "scale": "Scale",
+      "interfaceScale": "Interface scale",
+      "interfaceScaleHint": "Text, controls and spacing across the app",
       "modes": {
         "light": "Light",
         "dark": "Dark",

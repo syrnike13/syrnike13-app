@@ -273,6 +273,7 @@ import {
 } from '@syrnike13/ui/primitives/sheet'
 import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 import { Slider } from '@syrnike13/ui/primitives/slider'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import {
@@ -708,6 +709,113 @@ function ButtonGallery() {
   )
 }
 
+const ZOOM_STOPS = [
+  { value: 50, major: true },
+  { value: 67 },
+  { value: 75 },
+  { value: 80 },
+  { value: 90 },
+  { value: 100, major: true },
+  { value: 110 },
+  { value: 125 },
+  { value: 150, major: true },
+  { value: 175 },
+  { value: 200, major: true },
+]
+
+function PresetSliderDemo() {
+  const [zoom, setZoom] = useState(100)
+  const [even, setEven] = useState(50)
+  const [continuous, setContinuous] = useState(37)
+  const [released, setReleased] = useState(100)
+  const [bare, setBare] = useState(40)
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Value layout · snap · major labels only on narrow
+        </p>
+        <PresetSlider
+          stops={ZOOM_STOPS}
+          value={zoom}
+          onValueChange={setZoom}
+          formatValue={(value) => `${value}%`}
+          aria-label="Interface scale"
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Index layout · evenly spaced stops
+        </p>
+        <PresetSlider
+          stops={[
+            { value: 0, label: 'Off' },
+            { value: 25 },
+            { value: 50, major: true },
+            { value: 75 },
+            { value: 100 },
+          ]}
+          value={even}
+          layout="index"
+          onValueChange={setEven}
+          formatValue={(value) => `${value}%`}
+          aria-label="Evenly spaced"
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Continuous · labels are guides
+        </p>
+        <PresetSlider
+          stops={[
+            { value: 0, major: true },
+            { value: 25 },
+            { value: 50, major: true },
+            { value: 75 },
+            { value: 100, major: true },
+          ]}
+          value={continuous}
+          mode="continuous"
+          step={1}
+          onValueChange={setContinuous}
+          formatValue={(value) => `${value}%`}
+          aria-label="Continuous"
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Release snap · value applies on pointer up
+        </p>
+        <PresetSlider
+          stops={ZOOM_STOPS}
+          value={released}
+          drag="release"
+          onValueChange={setReleased}
+          formatValue={(value) => `${value}%`}
+          aria-label="Release snap"
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Bare · plain slider without labels or ticks
+        </p>
+        <PresetSlider
+          stops={[{ value: 0 }, { value: 100 }]}
+          value={bare}
+          mode="continuous"
+          step={1}
+          showLabels={false}
+          showMarks={false}
+          onValueChange={setBare}
+          formatValue={(value) => `${value}%`}
+          aria-label="Bare slider"
+        />
+      </div>
+    </div>
+  )
+}
+
 function FormGallery() {
   const [date, setDate] = useState<Date | undefined>(new Date())
   const [otp, setOtp] = useState('')
@@ -798,6 +906,13 @@ function FormGallery() {
           <Slider defaultValue={[40]} max={100} step={1} aria-label="Volume" />
           <Slider defaultValue={[20, 70]} max={100} step={1} aria-label="Range" />
         </div>
+      </Demo>
+      <Demo
+        title="Preset slider"
+        hint="Labelled stops, snapping, value and index layouts."
+        wide
+      >
+        <PresetSliderDemo />
       </Demo>
       <Demo title="Select" hint="Grouped options.">
         <Select defaultValue="general">

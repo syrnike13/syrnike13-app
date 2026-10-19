@@ -392,6 +392,42 @@ describe('desktop local settings contract', () => {
     ).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
 
+  it('normalizes the interface scale and clamps malformed values', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        appearance: { scale: 125 },
+      }).appearance.scale,
+    ).toBe(125)
+    expect(
+      normalizeDesktopLocalSettings({ appearance: { scale: 500 } }).appearance
+        .scale,
+    ).toBe(150)
+    expect(
+      normalizeDesktopLocalSettings({ appearance: { scale: 10 } }).appearance
+        .scale,
+    ).toBe(80)
+    expect(
+      normalizeDesktopLocalSettings({ appearance: { scale: 'big' } }).appearance
+        .scale,
+    ).toBe(100)
+    expect(
+      normalizeDesktopLocalSettings({ appearance: { scale: 87 } }).appearance
+        .scale,
+    ).toBe(85)
+  })
+
+  it('keeps valid scale patches and ignores malformed ones', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({ appearance: { scale: 110 } }),
+    ).toEqual({ appearance: { scale: 110 } })
+    expect(
+      normalizeDesktopLocalSettingsPatch({ appearance: { scale: 300 } }),
+    ).toEqual({ appearance: { scale: 150 } })
+    expect(
+      normalizeDesktopLocalSettingsPatch({ appearance: { scale: 'big' } }),
+    ).toEqual({})
+  })
+
   it('normalizes custom appearance gradients', () => {
     expect(
       normalizeAppearanceGradientSettings({

@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import {
   BanIcon,
-  CheckIcon,
   CopyIcon,
   HeadphonesIcon,
   MessageCircleIcon,
@@ -16,6 +15,7 @@ import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -207,7 +207,7 @@ function UserRolesContextMenuSub({
 
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger className="gap-2 [&>svg:last-child]:hidden">
+      <ContextMenuSubTrigger className="gap-2">
         <SettingsIcon />
         {t('roles')}
       </ContextMenuSubTrigger>
@@ -221,13 +221,14 @@ function UserRolesContextMenuSub({
           const iconUrl = roleIconUrl(role.icon)
 
           return (
-            <ContextMenuItem
+            <ContextMenuCheckboxItem
               key={role._id}
+              checked={assigned}
               disabled={disabled}
-              className="grid icon-text-icon-grid gap-2"
-              onClick={(event) => {
-                event.preventDefault()
-                if (!disabled) void toggleRole(role._id, !assigned)
+              closeOnClick={false}
+              className="gap-2"
+              onCheckedChange={(checked) => {
+                if (!disabled) void toggleRole(role._id, checked === true)
               }}
             >
               {iconUrl ? (
@@ -269,23 +270,7 @@ function UserRolesContextMenuSub({
               >
                 {role.name}
               </span>
-              <span
-                data-role-indicator={
-                  assigned ? (disabled ? 'locked' : 'assigned') : 'available'
-                }
-                className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-sm border',
-                  assigned && !disabled
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background text-transparent',
-                  assigned &&
-                    disabled &&
-                    'border-border bg-muted text-muted-foreground',
-                )}
-              >
-                {assigned ? <CheckIcon className="size-3" /> : null}
-              </span>
-            </ContextMenuItem>
+            </ContextMenuCheckboxItem>
           )
         })}
       </ContextMenuSubContent>

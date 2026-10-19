@@ -33,6 +33,13 @@
   --tracking-normal: 0em;
   --spacing: 0.25rem;
   --theme-toast-surface: var(--popover);
+  /* Readable success text: the brand chart green is too light on light surfaces. */
+  --success-strong: color-mix(in oklab, var(--success) 25%, var(--foreground));
+}
+
+.dark {
+  /* Slightly deepen the pale brand green so the selected value reads as green. */
+  --success-strong: color-mix(in oklab, var(--success) 80%, var(--background));
 }
 
 @theme inline {
@@ -72,6 +79,7 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
   --color-warning: var(--warning);
   --color-scrim: var(--scrim);
   --color-on-scrim: var(--on-scrim);

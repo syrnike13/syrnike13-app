@@ -11,6 +11,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@syrnike13/ui/primitives/popover'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   voiceStagePopoverContentClass,
@@ -155,43 +159,26 @@ export function useScreenShareQuality() {
   }
 }
 
-function RadioMark({ checked }: { checked: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'flex size-4.5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-        checked ? 'border-primary' : 'border-muted-foreground/60',
-      )}
-    >
-      {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-    </span>
-  )
-}
-
 function RadioRow({
   label,
+  value,
   checked,
-  onSelect,
 }: {
   label: string
+  value: string
   checked: boolean
-  onSelect: () => void
 }) {
   return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={checked}
+    <label
       className={cn(
         voiceStagePopoverMenuItemClass,
         'w-full cursor-pointer justify-between gap-3',
+        checked && 'bg-accent/60 text-foreground',
       )}
-      onClick={onSelect}
     >
       <span className="min-w-0 truncate">{label}</span>
-      <RadioMark checked={checked} />
-    </button>
+      <RadioGroupItem value={value} aria-label={label} />
+    </label>
   )
 }
 
@@ -207,16 +194,24 @@ export function ScreenShareFpsOptions() {
   const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label={t('sharePicker.frameRate')}>
+    <RadioGroup
+      value={String(quality.fps)}
+      aria-label={t('sharePicker.frameRate')}
+      className="gap-0.5"
+      onValueChange={(next) => {
+        const fps = Number(next)
+        if (Number.isFinite(fps)) quality.setFps(fps)
+      }}
+    >
       {quality.fpsValues.map((fps) => (
         <RadioRow
           key={fps}
           label={t('sharePicker.fpsValue', { fps })}
+          value={String(fps)}
           checked={quality.fps === fps}
-          onSelect={() => quality.setFps(fps)}
         />
       ))}
-    </div>
+    </RadioGroup>
   )
 }
 
@@ -224,16 +219,23 @@ export function ScreenShareResolutionOptions() {
   const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label={t('sharePicker.resolution')}>
+    <RadioGroup
+      value={quality.resolution}
+      aria-label={t('sharePicker.resolution')}
+      className="gap-0.5"
+      onValueChange={(next) =>
+        quality.setResolution(next as StreamResolution)
+      }
+    >
       {quality.resolutions.map((resolution) => (
         <RadioRow
           key={resolution}
           label={quality.resolutionLabel(resolution)}
+          value={resolution}
           checked={quality.resolution === resolution}
-          onSelect={() => quality.setResolution(resolution)}
         />
       ))}
-    </div>
+    </RadioGroup>
   )
 }
 
@@ -287,8 +289,6 @@ export function StreamSettingsSubmenu({
         render={
           <button
             type="button"
-            aria-haspopup="menu"
-            aria-expanded={open}
             className={cn(
               // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover row class
               voiceStagePopoverNavRowClass,
@@ -296,7 +296,6 @@ export function StreamSettingsSubmenu({
             )}
             onPointerEnter={show}
             onPointerLeave={scheduleClose}
-            onFocus={show}
           />
         }
       >
@@ -307,7 +306,6 @@ export function StreamSettingsSubmenu({
         <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
       <PopoverContent
-        role="menu"
         side={side}
         align="start"
         sideOffset={6}

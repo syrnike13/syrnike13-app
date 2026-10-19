@@ -11,6 +11,6 @@ export const profileMenuRowClass = cn(
   'hover:bg-accent/70 hover:text-foreground',
   'active:bg-accent/80',
   'focus-visible:bg-accent/70 focus-visible:text-foreground focus-visible:outline-none',
-  'data-[state=open]:bg-accent/60 data-[state=open]:text-foreground',
+  'data-[popup-open]:bg-accent/60 data-[popup-open]:text-foreground',
   'disabled:pointer-events-none disabled:opacity-50',
 )

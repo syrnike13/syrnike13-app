@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from '@syrnike13/ui/i18n'
+import { usePortalContainer } from '@syrnike13/ui/primitives/portal-container'
 import type { SuggestionProps } from '@tiptap/suggestion'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -105,6 +106,7 @@ export function MentionSuggestionMenu({
   surfaceClassName = 'bg-popover text-popover-foreground',
 }: MentionSuggestionMenuProps) {
   const t = useTranslations('chat')
+  const portalContainer = usePortalContainer()
   const menuRef = useRef<HTMLDivElement>(null)
   const selectedItemRef = useRef<HTMLButtonElement>(null)
   const [coords, setCoords] = useState<{
@@ -225,6 +227,6 @@ export function MentionSuggestionMenu({
         </div>
       ) : null}
     </div>,
-    document.body,
+    portalContainer ?? document.body,
   )
 }

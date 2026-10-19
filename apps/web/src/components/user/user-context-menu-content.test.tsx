@@ -115,6 +115,32 @@ vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
       {children}
     </button>
   ),
+  ContextMenuCheckboxItem: ({
+    children,
+    className,
+    disabled,
+    checked,
+    onCheckedChange,
+  }: {
+    children: ReactNode
+    className?: string
+    disabled?: boolean
+    checked?: boolean
+    onCheckedChange?: (checked: boolean) => void
+  }) => (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      className={className}
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) onCheckedChange?.(checked !== true)
+      }}
+    >
+      {children}
+    </button>
+  ),
   ContextMenuSeparator: () => <hr />,
   ContextMenuSub: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
@@ -373,7 +399,7 @@ describe('UserContextMenuContent', () => {
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
     await waitFor(() => {
       expect(serverApiMocks.editServerMember).toHaveBeenCalledWith(
@@ -397,11 +423,11 @@ describe('UserContextMenuContent', () => {
     const firstRender = render(
       <UserContextMenuContent user={targetUser} serverId="server-1" />,
     )
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
     firstRender.unmount()
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
     expect(serverApiMocks.editServerMember).toHaveBeenCalledTimes(1)
     resolveEdit?.({
@@ -422,12 +448,12 @@ describe('UserContextMenuContent', () => {
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Member/ }).disabled).toBe(true)
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Member/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ }).disabled).toBe(true)
     expect(
-      screen.getByRole('button', { name: /Assignable/ }).className,
+      screen.getByRole('menuitemcheckbox', { name: /Assignable/ }).className,
     ).not.toContain('data-[disabled]:bg-accent/45')
 
     resolveEdit?.({
@@ -436,7 +462,7 @@ describe('UserContextMenuContent', () => {
       roles: [],
     })
     await waitFor(() => {
-      expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(
+      expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ }).disabled).toBe(
         false,
       )
     })
@@ -498,33 +524,28 @@ describe('UserContextMenuContent', () => {
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
     const rolesTrigger = screen.getByRole('button', { name: /Роли/ })
-    expect(rolesTrigger.className).toContain('svg:last-child')
     expect(rolesTrigger.className).toContain('gap-2')
 
-    const assignable = screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ })
+    const assignable = screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ })
     expect(assignable.disabled).toBe(false)
-    expect(assignable.className).toContain('icon-text-icon-grid')
+    expect(assignable.getAttribute('aria-checked')).toBe('false')
 
-    const assignedRemovable = screen.getByRole<HTMLButtonElement>('button', {
+    const assignedRemovable = screen.getByRole<HTMLButtonElement>('menuitemcheckbox', {
       name: /Assigned Removable/,
     })
     expect(assignedRemovable.disabled).toBe(false)
     expect(assignedRemovable.className).not.toContain('bg-accent/60')
-    expect(
-      assignedRemovable.querySelector('[data-role-indicator="assigned"]'),
-    ).toBeTruthy()
+    expect(assignedRemovable.getAttribute('aria-checked')).toBe('true')
 
-    const assignedLocked = screen.getByRole('button', {
+    const assignedLocked = screen.getByRole('menuitemcheckbox', {
       name: /Assigned Locked/,
     })
     expect(assignedLocked).toHaveProperty('disabled', true)
-    expect(
-      assignedLocked.querySelector('[data-role-indicator="locked"]'),
-    ).toBeTruthy()
+    expect(assignedLocked.getAttribute('aria-checked')).toBe('true')
     expect(assignedLocked.className).not.toContain(
       'data-[disabled]:bg-accent/45',
     )
-    expect(screen.queryByRole('button', { name: /Hidden/ })).toBeNull()
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Hidden/ })).toBeNull()
     expect(
       screen.queryByRole('button', { pressed: true }),
     ).toBeNull()

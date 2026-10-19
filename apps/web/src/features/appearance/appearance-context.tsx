@@ -30,6 +30,7 @@ type AppearanceContextValue = {
   themes: ThemeDefinition[]
   setThemeId: (themeId: string) => void
   setColorMode: (colorMode: AppearanceColorMode) => void
+  setScale: (scale: number) => void
 }
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null)
@@ -65,6 +66,10 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     appearanceSettingsStore.setColorMode(colorMode)
   }, [])
 
+  const setScale = useCallback((scale: number) => {
+    appearanceSettingsStore.setScale(scale)
+  }, [])
+
   const resolvedVariant = useMemo(
     () => resolveThemeVariant(settings, prefersDark),
     [settings, prefersDark],
@@ -77,8 +82,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       themes: listThemes(),
       setThemeId,
       setColorMode,
+      setScale,
     }),
-    [resolvedVariant, setColorMode, setThemeId, settings],
+    [resolvedVariant, setColorMode, setScale, setThemeId, settings],
   )
 
   return (

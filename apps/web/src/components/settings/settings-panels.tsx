@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react'
 import {
+  APPEARANCE_SCALE_MAX,
+  APPEARANCE_SCALE_MIN,
+  APPEARANCE_SCALE_STEP,
+  DEFAULT_APPEARANCE_SETTINGS,
+} from '@syrnike13/platform'
+import {
   useLocale,
   useTranslations,
   type Translator,
@@ -17,6 +23,7 @@ import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
@@ -335,9 +342,29 @@ export function SettingsAccountPanel() {
   )
 }
 
+const SCALE_MAJOR_VALUES = new Set([
+  APPEARANCE_SCALE_MIN,
+  DEFAULT_APPEARANCE_SETTINGS.scale,
+  APPEARANCE_SCALE_MAX,
+])
+
+const SCALE_STOPS = Array.from(
+  {
+    length:
+      Math.floor(
+        (APPEARANCE_SCALE_MAX - APPEARANCE_SCALE_MIN) /
+          APPEARANCE_SCALE_STEP,
+      ) + 1,
+  },
+  (_, index) => {
+    const value = APPEARANCE_SCALE_MIN + index * APPEARANCE_SCALE_STEP
+    return { value, major: SCALE_MAJOR_VALUES.has(value) }
+  },
+)
+
 export function SettingsAppearancePanel() {
   const t = useTranslations('settings.appearance')
-  const { setColorMode, settings } = useAppearance()
+  const { setColorMode, setScale, settings } = useAppearance()
 
   return (
     <div className="space-y-6">
@@ -352,6 +379,21 @@ export function SettingsAppearancePanel() {
           <ColorModeSegment
             value={settings.colorMode}
             onChange={setColorMode}
+          />
+        </SettingsRow>
+      </SettingsBlock>
+      <SettingsBlock title={t('scale')}>
+        <SettingsRow
+          label={t('interfaceScale')}
+          hint={t('interfaceScaleHint')}
+          stacked
+        >
+          <PresetSlider
+            stops={SCALE_STOPS}
+            value={settings.scale}
+            onValueChange={setScale}
+            formatValue={(value) => `${value}%`}
+            aria-label={t('interfaceScale')}
           />
         </SettingsRow>
       </SettingsBlock>
