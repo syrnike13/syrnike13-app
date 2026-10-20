@@ -479,6 +479,12 @@ html {
   padding-inline: 2rem;
 }
 
+.auth-card [data-slot='card-footer'] {
+  border-top: 0;
+  background: transparent;
+  padding-block: 0;
+}
+
 .auth-card [data-slot='card-header'] {
   gap: 0.75rem;
 }
@@ -582,7 +588,7 @@ html {
 
 .auth-secondary-action {
   display: flex;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
@@ -616,7 +622,7 @@ html {
 
 .auth-support-links a {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: 2rem;
   align-items: center;
   border-radius: 0.375rem;
   color: var(--muted-foreground);
@@ -644,6 +650,11 @@ html {
   .auth-card [data-slot='card-content'],
   .auth-card [data-slot='card-footer'] {
     padding-inline: 1.25rem;
+  }
+
+  .auth-secondary-action,
+  .auth-support-links a {
+    min-height: 2.75rem;
   }
 }
 
@@ -920,7 +931,7 @@ html {
   transition-property: top;
 }
 
-/* Discord guild banner scroll effect: fade over 88px, lift up to 90px. */
+/* Guild banner scroll effect: fade over 88px, lift up to 90px. */
 @utility banner-scroll {
   opacity: var(--banner-opacity, 1);
   transform: translateY(var(--banner-shift, 0px));
