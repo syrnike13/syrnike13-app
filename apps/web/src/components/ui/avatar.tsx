@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Avatar as AvatarPrimitive } from "radix-ui"
 
+import { useImageRetry } from "#/hooks/use-image-retry"
 import { cn } from "#/lib/utils.ts"
 
 function Avatar({
@@ -27,12 +28,20 @@ function AvatarImage({
   className,
   src,
   alt,
+  onLoadingStatusChange,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  const retry = useImageRetry(src)
+
   if (!src) return null
 
   return (
     <AvatarPrimitive.Image
+      key={retry.attempt}
+      onLoadingStatusChange={(status) => {
+        onLoadingStatusChange?.(status)
+        if (status === "error") retry.onError()
+      }}
       data-slot="avatar-image"
       src={src}
       alt={alt}

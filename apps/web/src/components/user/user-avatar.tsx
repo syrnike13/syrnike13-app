@@ -12,6 +12,7 @@ import {
   presenceRingColorVar,
   resolvePresenceBadgeLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
+import { useImageRetry } from '#/hooks/use-image-retry'
 import { userAvatarUrl } from '#/lib/media'
 import { presenceDotClass, presenceDotTitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
@@ -146,6 +147,7 @@ export function UserAvatar({
     className,
     fallbackClassName,
   )
+  const animatedRetry = useImageRetry(animatedAvatarSrc)
 
   function startHoverAnimation() {
     setHovered(true)
@@ -190,8 +192,10 @@ export function UserAvatar({
             )}
           />
         ) : null}
-        {mountAnimatedOverlay && animatedAvatarSrc ? (
+        {mountAnimatedOverlay && animatedAvatarSrc && !animatedRetry.failed ? (
           <img
+            key={animatedRetry.attempt}
+            onError={animatedRetry.onError}
             src={animatedAvatarSrc}
             alt=""
             aria-hidden="true"
