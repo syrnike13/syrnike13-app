@@ -17,7 +17,6 @@ import { Toaster } from '#/components/ui/sonner'
 import { SquircleNoScript } from '@syrnike13/ui/primitives/squircle'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
-import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { DesktopStartupUpdateGate } from '#/features/desktop/desktop-startup-update-gate'
 import { DiagnosticErrorReporter } from '#/features/diagnostics/diagnostic-error-reporter'
@@ -156,7 +155,6 @@ function RootComponent() {
               <NativeScrollbarEnhancer />
               <Outlet />
               <Toaster richColors closeButton />
-              <AgentationDevtools />
             </SyncProvider>
           </AuthProvider>
         </DesktopStartupUpdateGate>
