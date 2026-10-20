@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
+import { ChevronRightIcon, Settings2Icon } from '#/components/icons'
 import { Effect, Fiber } from 'effect'
 
 import { Slider } from '#/components/ui/slider'
+import {
+  defaultDeviceMenuLabel,
+  deviceMenuLabel,
+  selectableDevices,
+  VoiceDeviceMenuItem,
+} from '#/components/voice/voice-device-menu'
 import {
   voiceStagePopoverCheckboxClass,
   voiceStagePopoverHintClass,
@@ -28,21 +34,13 @@ import { cn } from '#/lib/utils'
 
 const METER_BAR_COUNT = 25
 
-function deviceLabel(device: MediaDeviceInfo) {
-  return device.label.trim() || 'Устройство'
-}
-
 function resolveSelectedDeviceLabel(
   devices: MediaDeviceInfo[],
   preferredId: string | undefined,
 ) {
-  const selectable = devices.filter((device) => device.deviceId.length > 0)
-  if (!preferredId) {
-    const first = selectable[0]
-    return first ? `По умолчанию (${deviceLabel(first)})` : 'По умолчанию'
-  }
-  const match = selectable.find((device) => device.deviceId === preferredId)
-  return match ? deviceLabel(match) : 'Устройство'
+  if (!preferredId) return defaultDeviceMenuLabel(devices)
+  const match = selectableDevices(devices).find((device) => device.deviceId === preferredId)
+  return match ? deviceMenuLabel(match) : 'Устройство'
 }
 
 function outputVolumeToSlider(outputVolume: number) {
@@ -339,8 +337,6 @@ function MicSettingsDeviceRow({
   selectedId: string | undefined
   onSelect: (deviceId: string | undefined) => void
 }) {
-  const selectable = devices.filter((device) => device.deviceId.length > 0)
-
   return (
     <MicSettingsSubmenu
       trigger={
@@ -355,38 +351,19 @@ function MicSettingsDeviceRow({
         </>
       }
     >
-      <button
-        type="button"
-        className={micSettingsMenuItemClass(!selectedId)}
-        onClick={() => onSelect(undefined)}
-      >
-        <span className="min-w-0 flex-1 truncate">По умолчанию</span>
-        {!selectedId ? (
-          <CheckIcon className="size-4 shrink-0 text-primary" />
-        ) : (
-          <span className="size-4 shrink-0" aria-hidden />
-        )}
-      </button>
-      {selectable.map((device) => {
-        const selected = selectedId === device.deviceId
-        return (
-          <button
-            key={device.deviceId}
-            type="button"
-            className={micSettingsMenuItemClass(selected)}
-            onClick={() => onSelect(device.deviceId)}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {deviceLabel(device)}
-            </span>
-            {selected ? (
-              <CheckIcon className="size-4 shrink-0 text-primary" />
-            ) : (
-              <span className="size-4 shrink-0" aria-hidden />
-            )}
-          </button>
-        )
-      })}
+      <VoiceDeviceMenuItem
+        label="По умолчанию"
+        selected={!selectedId}
+        onSelect={() => onSelect(undefined)}
+      />
+      {selectableDevices(devices).map((device) => (
+        <VoiceDeviceMenuItem
+          key={device.deviceId}
+          label={deviceMenuLabel(device)}
+          selected={selectedId === device.deviceId}
+          onSelect={() => onSelect(device.deviceId)}
+        />
+      ))}
     </MicSettingsSubmenu>
   )
 }
@@ -422,10 +399,6 @@ function MicSettingsSubmenu({
       ) : null}
     </div>
   )
-}
-
-function micSettingsMenuItemClass(selected: boolean) {
-  return cn(voiceStagePopoverMenuItemClass, selected && 'bg-accent/60')
 }
 
 function MicInputMeter({ levels }: { levels: readonly number[] }) {

@@ -447,6 +447,37 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(stale.close).toHaveBeenCalledOnce()
   })
 
+  it('draws a restarted local camera whose sequence starts again', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, cameraFrameMessage(7, 900, new FakeVideoFrame()))
+    const consumer = canvasStub()
+    registry.getTrack('local-camera')!.attachCanvas(consumer.canvas)
+    runtimeWindow.flushAnimationFrames()
+
+    // The camera was turned off and on: a new native capture numbers its
+    // frames from one again within the same voice session and runtime epoch.
+    const restarted = new FakeVideoFrame()
+    deliver(registry, cameraFrameMessage(8, 1, restarted))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(consumer.drawImage).toHaveBeenCalledWith(restarted, 0, 0, 640, 360)
+    expect(restarted.close).toHaveBeenCalledOnce()
+  })
+
+  it('keeps dropping stale frames from an older camera capture', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, cameraFrameMessage(8, 1, new FakeVideoFrame()))
+    const consumer = canvasStub()
+    registry.getTrack('local-camera')!.attachCanvas(consumer.canvas)
+    const late = new FakeVideoFrame()
+
+    deliver(registry, cameraFrameMessage(7, 900, late))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(consumer.drawImage).not.toHaveBeenCalled()
+    expect(late.close).toHaveBeenCalledOnce()
+  })
+
   it('lists an unsubscribed screen publication before any frame exists', () => {
     const registry = new NativeVideoRegistry()
 
@@ -835,6 +866,29 @@ function publicationMessage(state: 'available' | 'unavailable') {
       sessionId: 'session',
       generation: 1,
     },
+  }
+}
+
+function cameraFrameMessage(
+  captureGeneration: number,
+  sequence: number,
+  frame: FakeVideoFrame,
+) {
+  return {
+    type: 'syrnike-native-video-frame',
+    metadata: {
+      sessionId: 'session',
+      generation: 1,
+      trackId: 'local-camera',
+      participantIdentity: 'user:native',
+      source: 'camera',
+      local: true,
+      sequence,
+      captureGeneration,
+      rendererEpoch: 0,
+      runtimeEpoch: 0,
+    },
+    frame,
   }
 }
 

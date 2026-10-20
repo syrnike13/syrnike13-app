@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInactiveMediaPaths, type MediaEngineSnapshot, type MediaInventory, type MediaExportedFrame } from './contract'
-import { MediaFrameController } from './media-frame-controller'
+import { MediaFrameController, rendererFrameMetadata } from './media-frame-controller'
 import type { MediaRuntimeSupervisor } from './media-runtime-supervisor'
 import { TextureLeaseBridge } from './texture-lease-bridge'
 import { ElectronFrameTransfers } from './electron-frame-transfers'
@@ -63,6 +63,22 @@ function fixture() {
 
 describe('product media frame controller', () => {
   afterEach(() => vi.useRealTimers())
+
+  it('tells the renderer when a restarted camera capture numbers frames from one again', () => {
+    const frame = (generation: number, sequence: number) => ({
+      generation, sequence, slot: 0, kind: 'camera_preview' as const, revision: 3,
+      rendererId: 'renderer', publicationId: 'local-camera', participantIdentity: 'local',
+      width: 1280, height: 720, timestamp: 5, ingressUs: 5,
+    })
+    const context = { sessionId: 'session', epoch: 4, rendererEpoch: 2, publicationSource: undefined }
+
+    const before = rendererFrameMetadata(frame(7, 900), context)
+    const after = rendererFrameMetadata(frame(8, 1), context)
+
+    expect(before).toMatchObject({ trackId: 'local-camera', source: 'camera', local: true, generation: 4, sequence: 900, captureGeneration: 7 })
+    // Same session, epoch and track: only the capture generation orders them.
+    expect(after).toMatchObject({ generation: 4, sequence: 1, captureGeneration: 8 })
+  })
 
   it('bounds retained textures globally until native release completes', () => {
     const gpuCallbacks: Array<() => void> = []

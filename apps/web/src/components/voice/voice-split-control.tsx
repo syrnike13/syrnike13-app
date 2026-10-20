@@ -90,6 +90,8 @@ function SplitControlChevron({
   success,
   title,
   popoverContent,
+  popoverOpen,
+  onPopoverOpenChange,
 }: {
   surface: VoiceSplitControlSurface
   disabled: boolean
@@ -97,11 +99,13 @@ function SplitControlChevron({
   success?: boolean
   title: string
   popoverContent: ReactNode
+  popoverOpen?: boolean
+  onPopoverOpenChange?: (open: boolean) => void
 }) {
   const segmentState = { danger, success }
 
   return (
-    <Popover>
+    <Popover open={popoverOpen} onOpenChange={onPopoverOpenChange}>
       <VoiceControlTooltip title={title}>
         <PopoverTrigger asChild>
           <button
@@ -142,6 +146,8 @@ export function VoiceSplitControl({
   chevronTitle,
   onMainClick,
   popoverContent,
+  popoverOpen,
+  onPopoverOpenChange,
   children,
 }: {
   surface: VoiceSplitControlSurface
@@ -152,6 +158,9 @@ export function VoiceSplitControl({
   chevronTitle: string
   onMainClick: () => void
   popoverContent: ReactNode
+  /** Управляемое открытие поповера (например, при сбое устройства). */
+  popoverOpen?: boolean
+  onPopoverOpenChange?: (open: boolean) => void
   children: ReactNode
 }) {
   const segmentState = { danger, success }
@@ -177,6 +186,8 @@ export function VoiceSplitControl({
           success={success}
           title={chevronTitle}
           popoverContent={popoverContent}
+          popoverOpen={popoverOpen}
+          onPopoverOpenChange={onPopoverOpenChange}
         />
       </div>
     </TooltipProvider>

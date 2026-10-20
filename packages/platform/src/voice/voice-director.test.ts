@@ -1075,6 +1075,40 @@ describe('VoiceDirector', () => {
     expect(harness.engine.connected).toHaveLength(1)
   })
 
+  it('restarts a failed camera when the same device is enabled again', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    const enable = { type: 'setCamera', enabled: true, deviceId: '12' } as const
+    harness.director.dispatch(enable)
+    harness.director.dispatch(enable)
+    expect(harness.engine.retriedMedia).toEqual([])
+
+    harness.engine.emit({
+      type: 'mediaState',
+      kind: 'camera',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media: {
+        state: 'failed',
+        error: {
+          code: 'camera_input_failed',
+          message: 'Camera demand could not be applied',
+          retryable: true,
+          stage: 'camera',
+        },
+      },
+    })
+    const desiredUpdates = harness.engine.desired.length
+    harness.director.dispatch(enable)
+    expect(harness.engine.retriedMedia).toEqual(['camera'])
+    expect(harness.engine.desired).toHaveLength(desiredUpdates)
+
+    // Choosing another device changes the intent and needs no extra retry.
+    harness.director.dispatch({ ...enable, deviceId: '13' })
+    expect(harness.engine.retriedMedia).toEqual(['camera'])
+    expect(harness.engine.desired).toHaveLength(desiredUpdates + 1)
+  })
+
   it('does not reconnect Room when one media track fails', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')

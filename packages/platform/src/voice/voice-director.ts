@@ -227,13 +227,18 @@ export class VoiceDirector {
       case 'configureRemoteAudio':
         this.engine.updateRemoteAudioSettings(command.settings)
         return
-      case 'setCamera':
-        this.updateDesiredMedia({
+      case 'setCamera': {
+        const changed = this.updateDesiredMedia({
           cameraEnabled: command.enabled,
           cameraDeviceId: command.deviceId,
           cameraProfile: command.profile ?? this.desiredMedia.cameraProfile,
         })
+        // Re-enabling the same camera after a failure is a restart: the
+        // unchanged intent alone never reaches the engine again.
+        if (!changed && command.enabled && this.snapshotValue.camera.state === 'failed')
+          this.engine.retryMedia('camera')
         return
+      }
       case 'setScreen':
         this.updateDesiredMedia({
           screenEnabled: command.enabled,
@@ -955,7 +960,7 @@ export class VoiceDirector {
 
   private updateDesiredMedia(
     patch: Partial<VoiceMediaDesiredState>,
-  ) {
+  ): boolean {
     const previousUserMuted = this.desiredMedia.userMuted
     const previousUserDeafened = this.desiredMedia.userDeafened
     const nextBase = { ...this.desiredMedia, ...patch }
@@ -963,7 +968,7 @@ export class VoiceDirector {
       ...nextBase,
       effectiveMuted: computeEffectiveMuted(nextBase),
     }
-    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return
+    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return false
     this.desiredMedia = nextDesired
     this.engine.updateDesiredMedia(this.desiredMedia)
     this.updateSnapshot({
@@ -983,6 +988,7 @@ export class VoiceDirector {
     ) {
       this.requestSelfStateSync()
     }
+    return true
   }
 
   private requestSelfStateSync() {

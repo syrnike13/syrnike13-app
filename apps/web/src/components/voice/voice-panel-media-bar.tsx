@@ -12,6 +12,7 @@ import {
 } from '#/components/icons'
 
 import { TooltipProvider } from '#/components/ui/tooltip'
+import { CameraDevicePickerAnchor } from '#/components/voice/voice-camera-split-control'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -113,7 +114,8 @@ export function VoicePanelMediaBar() {
   const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
     availability: voiceMedia.mediaAvailability.camera,
-    active: cameraOn,
+    // A camera whose device failed is still "on": the button turns it off.
+    active: cameraOn || voiceMedia.cameraDeviceFailed,
     connecting,
     activeTitle: 'Выключить камеру',
     inactiveTitle: 'Включить камеру',
@@ -131,18 +133,20 @@ export function VoicePanelMediaBar() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
-        <PanelMediaButton
-          title={cameraControl.title}
-          active={cameraOn}
-          disabled={cameraControl.disabled}
-          onClick={voiceMedia.toggleCamera}
-        >
-          {cameraOn ? (
-            <VideoIcon className="size-[1.125rem]" />
-          ) : (
-            <VideoOffIcon className="size-[1.125rem]" />
-          )}
-        </PanelMediaButton>
+        <CameraDevicePickerAnchor className="flex min-w-0 flex-1">
+          <PanelMediaButton
+            title={cameraControl.title}
+            active={cameraOn}
+            disabled={cameraControl.disabled}
+            onClick={voiceMedia.toggleCamera}
+          >
+            {cameraOn ? (
+              <VideoIcon className="size-[1.125rem]" />
+            ) : (
+              <VideoOffIcon className="size-[1.125rem]" />
+            )}
+          </PanelMediaButton>
+        </CameraDevicePickerAnchor>
 
         <PanelMediaButton
           title={screenShareControl.title}
