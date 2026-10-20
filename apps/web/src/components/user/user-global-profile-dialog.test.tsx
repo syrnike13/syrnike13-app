@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -118,7 +118,7 @@ describe('UserGlobalProfileDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Alpha/ }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'channel-a' },
       search: { m: undefined },
     })

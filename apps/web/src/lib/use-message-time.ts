@@ -8,7 +8,7 @@ import {
   messageDayKind,
 } from '#/lib/message-time'
 
-/** Discord-формат: «Сегодня в 19:44», «Вчера в 19:44», иначе полная дата. */
+/** Формат: «Сегодня в 19:44», «Вчера в 19:44», иначе полная дата. */
 export function useMessageTimestamp() {
   const { locale } = useLocale()
   const t = useTranslations('chat')

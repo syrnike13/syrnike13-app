@@ -47,7 +47,7 @@ function OnboardPage() {
     if (!auth.onboardingChecked) return
     if (!auth.needsOnboarding) {
       void navigate({
-        to: '/app',
+        to: '/',
         search: { tab: 'online' },
         replace: true,
       })

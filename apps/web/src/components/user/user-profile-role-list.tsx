@@ -25,7 +25,7 @@ type UserProfileRoleListProps = {
   user: User
   serverId?: string
   roles?: MemberRoleEntry[]
-  /** Заголовок «Роли» (в модалке Discord он виден). */
+  /** Заголовок «Роли» (в модалке он виден). */
   heading?: boolean
   /** Свернуть лишние роли в «+N». */
   maxVisible?: number
@@ -38,7 +38,7 @@ function roleDotColour(colour: string | null) {
 }
 
 /**
- * Список ролей Discord: высота 24px, радиус 8px, точка 12px,
+ * Список ролей: высота 24px, радиус 8px, точка 12px,
  * подпись 12/16, крестик 24×24, «+N» для скрытых ролей.
  */
 export function UserProfileRoleList({

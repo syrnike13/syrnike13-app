@@ -94,7 +94,7 @@ describe('mini player controls and pointer interactions', () => {
     )
     expect(state.stage.setFocusedMediaId).toHaveBeenCalledWith('alice:screen')
     expect(state.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice' },
       search: { m: undefined },
     })

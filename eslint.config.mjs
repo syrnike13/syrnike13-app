@@ -5,12 +5,13 @@ import { defineConfig } from 'eslint/config'
 /**
  * Design-system linting for Tailwind v4.
  * Rules and policy: packages/ui/AGENTS.md, DESIGN.md.
- * Discord metrics reference: docs/discord-design-reference.md.
+ * Client metrics reference: docs/client-metrics-reference.md.
  */
 // `packages/ui/src/primitives` contains literal shadcn base-nova sources and is
 // checked by tooling/scripts/check-ui.mjs, not by this linter.
 const UI_SCOPES = [
   'apps/web/src/**/*.{ts,tsx}',
+  'apps/landing/src/**/*.{ts,tsx}',
   'apps/admin/src/**/*.{ts,tsx}',
 ]
 
@@ -46,7 +47,7 @@ export default defineConfig([
         ui: '@syrnike13/ui/primitives',
         mergeFunctions: ['cn'],
         variantFunctions: ['cva'],
-        note: 'Design rules: packages/ui/AGENTS.md, DESIGN.md; Discord reference: docs/discord-design-reference.md.',
+        note: 'Design rules: packages/ui/AGENTS.md, DESIGN.md; client metrics: docs/client-metrics-reference.md.',
       },
     },
     rules: {

@@ -299,7 +299,7 @@ export function VoiceStreamMiniPlayer() {
     if (!voice.stageChannelId) return
     voice.setFocusedMediaId(item.id)
     void navigate({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: voice.stageChannelId },
       search: { m: undefined },
     })

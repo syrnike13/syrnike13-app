@@ -17,5 +17,5 @@ export const QUICK_REACTIONS = [
   '💯',
 ] as const
 
-/** Три эмодзи на плавающей панели при наведении (как в Discord). */
+/** Три эмодзи на плавающей панели при наведении. */
 export const HOVER_BAR_REACTIONS = ['👍', '❤️', '😂'] as const

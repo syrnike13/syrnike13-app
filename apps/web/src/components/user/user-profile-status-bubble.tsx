@@ -6,7 +6,7 @@ type UserProfileStatusBubbleProps = {
 }
 
 /**
- * Облачко кастомного статуса рядом с аватаром (как в Discord):
+ * Облачко кастомного статуса рядом с аватаром:
  * два «хвостовых» пузырька, ведущие от аватара к облаку с текстом.
  */
 export function UserProfileStatusBubble({

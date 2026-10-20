@@ -49,7 +49,7 @@ export function HomeSidebar({
       <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
         <CommandPaletteTrigger />
         <Link
-          to={prefix}
+          to={prefix || '/'}
           search={{ tab: 'online' }}
           activeOptions={{ exact: true }}
           activeProps={{ className: activeNavItemClassName }}

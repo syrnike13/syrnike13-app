@@ -1,6 +1,6 @@
 import { ulidToDate } from '#/lib/ulid'
 
-/** Discord рвёт группу сообщений одного автора после 7 минут. */
+/** Группа сообщений одного автора рвётся после 7 минут. */
 export const MESSAGE_GROUP_BREAK_MS = 7 * 60 * 1000
 
 function startOfLocalDay(date: Date): number {

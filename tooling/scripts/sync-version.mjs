@@ -48,6 +48,7 @@ function syncGeneratedVersionFiles() {
 
 syncPackageJson('package.json')
 syncPackageJson('apps/web/package.json')
+syncPackageJson('apps/landing/package.json')
 syncPackageJson('apps/admin/package.json')
 syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')

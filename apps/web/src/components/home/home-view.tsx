@@ -308,7 +308,7 @@ export function HomeView({ tab }: HomeViewProps) {
   useEffect(() => {
     if (tab === 'pending' && !hasPending) {
       void navigate({
-        to: prefix,
+        to: prefix || '/',
         search: { tab: 'online' },
         replace: true,
       })
@@ -375,7 +375,7 @@ export function HomeView({ tab }: HomeViewProps) {
             {visibleTabs.map((item) => (
               <Link
                 key={item.id}
-                to={prefix}
+                to={prefix || '/'}
                 search={{ tab: item.id }}
                 className={cn(
                   buttonVariants({

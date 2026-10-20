@@ -67,7 +67,7 @@ vi.mock('#/features/api/channels-api', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
 }))
 
 function textChannel(
@@ -164,7 +164,7 @@ describe('ChannelSettingsOverviewPanel', () => {
     expect(syncStore.getState().channels['channel-1']).toBeUndefined()
     await waitFor(() => {
       expect(mocks.navigate).toHaveBeenCalledWith({
-        to: '/app/c/$channelId',
+        to: '/c/$channelId',
         params: { channelId: 'channel-2' },
         search: { m: undefined },
       })

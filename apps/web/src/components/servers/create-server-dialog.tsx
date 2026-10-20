@@ -86,7 +86,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                   params: { channelId: firstChannel._id },
                   search: { m: undefined },
                 })
-              : navigate({ to: prefix, search: { tab: 'online' } }),
+              : navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
@@ -134,7 +134,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                     params: { channelId: channel._id },
                     search: { m: undefined },
                   })
-                : navigate({ to: prefix, search: { tab: 'online' } }),
+                : navigate({ to: prefix || '/', search: { tab: 'online' } }),
             catch: (cause) => cause,
           })
           return

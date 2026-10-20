@@ -21,7 +21,7 @@ import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
-/** Компактная подсказка пинга, как в Discord. */
+/** Компактная подсказка пинга. */
 const pingTooltipClass =
   'px-2 py-1 text-xs leading-none font-medium'
 
@@ -143,7 +143,7 @@ export function VoiceConnectionStrip() {
             {statusLabel}
           </p>
           <Link
-            to={prefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId'}
+            to={prefix === '/m' ? '/m/c/$channelId' : '/c/$channelId'}
             params={{ channelId: voice.channelId }}
             search={{ m: undefined }}
             className="block truncate text-xs leading-4 text-muted-foreground hover:text-foreground hover:underline"

@@ -4,7 +4,7 @@ Status: approved for implementation planning on June 15, 2026.
 
 ## Goal
 
-Implement a Discord-like global badge system for user profiles. The system must replace the current numeric badge bitfield with a scalable badge catalog plus per-user assignments, add uploaded PNG/WebP badge icons, and provide a separated admin UI inside the existing web app.
+Implement a global badge system for user profiles. The system must replace the current numeric badge bitfield with a scalable badge catalog plus per-user assignments, add uploaded PNG/WebP badge icons, and provide a separated admin UI inside the existing web app.
 
 ## Existing Code Being Replaced
 

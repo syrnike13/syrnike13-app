@@ -226,7 +226,7 @@ export function ChannelView({
     if (!syncReady || !observedChannelRef.current) return
 
     void navigate({
-      to: routePrefix,
+      to: routePrefix || '/',
       search: { tab: 'online' },
       replace: true,
     })

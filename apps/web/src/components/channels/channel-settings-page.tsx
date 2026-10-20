@@ -170,7 +170,7 @@ export function ChannelSettingsPage({
     if (!settingsChannel) return
 
     if (!isServerSettingsChannel) {
-      void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
+      void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
       return
     }
 

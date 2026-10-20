@@ -16,7 +16,7 @@ type UserProfileMutualsProps = {
   className?: string
 }
 
-/** Строка общих друзей/серверов из поповера Discord. */
+/** Строка общих друзей/серверов в поповере профиля. */
 export function UserProfileMutuals({
   mutualFriends,
   mutualFriendsCount,

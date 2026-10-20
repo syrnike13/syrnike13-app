@@ -42,7 +42,7 @@ const chatState = vi.hoisted(() => ({
 }))
 const routerMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  pathname: '/app/c/test',
+  pathname: '/c/test',
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -317,7 +317,7 @@ describe('ChannelView direct message header', () => {
     cancelDirectMessageCallMock.mockClear()
     declineDirectMessageCallMock.mockClear()
     routerMocks.navigate.mockClear()
-    routerMocks.pathname = '/app/c/test'
+    routerMocks.pathname = '/c/test'
     voiceState.channelId = null
     voiceState.status = 'idle'
     chatState.channel = directMessageChannel

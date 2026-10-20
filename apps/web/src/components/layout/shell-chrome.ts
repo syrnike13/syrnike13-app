@@ -107,11 +107,11 @@ export const shellDivider = 'border-shell-divider' as const
 export const shellColumnHeaderClass =
   'sticky top-0 z-10 flex h-12.25 shrink-0 items-center gap-2 border-b border-shell-divider' as const
 
-/** Баннер сервера Discord: 130px, из них 49px перекрывает шапка колонки. */
+/** Баннер сервера: 130px, из них 49px перекрывает шапка колонки. */
 export const GUILD_BANNER_HEIGHT_CLASS = 'h-32.5' as const
 /** Высота видимой части баннера под шапкой: 130 − 49 = 81px. */
 export const GUILD_BANNER_CONTENT_OFFSET_CLASS = 'h-20.25' as const
-/** Discord гасит баннер за 88px скролла и поднимает максимум на 90px. */
+/** Баннер гаснет за 88px скролла и поднимается максимум на 90px. */
 export const GUILD_BANNER_FADE_DISTANCE_PX = 88
 export const GUILD_BANNER_MAX_SHIFT_PX = 90
 
@@ -129,7 +129,7 @@ export function floatingBarReservePx(heightPx: number): number {
   return heightPx + FLOATING_BAR_BOTTOM_OFFSET_PX
 }
 
-/** Радиус плавающих панелей Discord: 8px. Форму даёт `<Squircle>`. */
+/** Радиус плавающих панелей: 8px. Форму даёт `<Squircle>`. */
 export const FLOATING_BAR_CORNER_RADIUS_PX = 8
 
 export const floatingBarSquircleProps = {

@@ -72,7 +72,7 @@ export function CommandPalette() {
   const [searchingMessages, setSearchingMessages] = useState(false)
 
   const channelMatch = useMatch({
-    from: '/app/c/$channelId',
+    from: '/_app/c/$channelId',
     shouldThrow: false,
   })
   const activeChannelId = channelMatch?.params?.channelId
@@ -108,7 +108,7 @@ export function CommandPalette() {
           syncStore.setSelectedServerId(null)
         }
         void navigate({
-          to: '/app/c/$channelId',
+          to: '/c/$channelId',
           params: { channelId: hit.channelId },
           search: { m: hit.message._id },
         })

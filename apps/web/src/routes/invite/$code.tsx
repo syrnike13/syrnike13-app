@@ -68,7 +68,7 @@ function InviteJoinPage() {
             yield* Effect.tryPromise({
               try: () =>
                 navigate({
-                  to: '/app/c/$channelId',
+                  to: '/c/$channelId',
                   params: { channelId: channel._id },
                   search: { m: undefined },
                 }),
@@ -77,7 +77,7 @@ function InviteJoinPage() {
         } else {
             yield* Effect.tryPromise({
               try: () =>
-                navigate({ to: '/app', search: { tab: 'online' } }),
+                navigate({ to: '/', search: { tab: 'online' } }),
               catch: (cause) => cause,
             })
         }
@@ -92,7 +92,7 @@ function InviteJoinPage() {
           yield* Effect.tryPromise({
             try: () =>
               navigate({
-                to: '/app/c/$channelId',
+                to: '/c/$channelId',
                 params: { channelId: response.channel._id },
                 search: { m: undefined },
               }),

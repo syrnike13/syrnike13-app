@@ -59,7 +59,7 @@ function formatDate(iso: string, locale: string) {
 const profileIconActionClass = 'size-8 shrink-0 text-muted-foreground'
 
 /**
- * Левая карточка полного профиля Discord: 400px, баннер 140px,
+ * Левая карточка полного профиля: 400px, баннер 140px,
  * аватар 120px, имя 24/32 w600, секции 12/16 w500.
  */
 export function UserGlobalProfileSidebar({

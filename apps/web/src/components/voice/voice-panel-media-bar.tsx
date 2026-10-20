@@ -185,7 +185,7 @@ export function VoicePanelMediaBar() {
                       to:
                         routePrefix === '/m'
                           ? '/m/c/$channelId'
-                          : '/app/c/$channelId',
+                          : '/c/$channelId',
                       params: { channelId },
                       search: { m: undefined },
                     }),

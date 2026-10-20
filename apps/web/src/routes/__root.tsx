@@ -67,11 +67,13 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         !isDesktopOverlayPath(location.pathname)
       ) {
         const mobilePath = mapAppPathToMobile(location.pathname)
-        throw redirect({
-          to: mobilePath ?? '/m',
-          search: location.search,
-          replace: true,
-        })
+        if (mobilePath) {
+          throw redirect({
+            to: mobilePath,
+            search: location.search,
+            replace: true,
+          })
+        }
       }
     }
     if (!isDesktopRuntime()) return

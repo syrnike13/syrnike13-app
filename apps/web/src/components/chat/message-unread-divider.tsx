@@ -2,7 +2,7 @@ type MessageUnreadDividerProps = {
   label: string
 }
 
-/** Discord: красная линия «Новые сообщения» перед первым непрочитанным. */
+/** Красная линия «Новые сообщения» перед первым непрочитанным. */
 export function MessageUnreadDivider({ label }: MessageUnreadDividerProps) {
   return (
     <div

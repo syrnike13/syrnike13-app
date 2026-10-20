@@ -7,7 +7,7 @@ import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
-/** Палитра пресетов в духе Discord (18 цветов). */
+/** Палитра пресетов ролей (18 цветов). */
 export const ROLE_COLOUR_PRESETS = [
   '#1abc9c',
   '#2ecc71',

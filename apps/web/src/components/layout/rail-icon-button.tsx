@@ -49,7 +49,7 @@ type RailActiveIndicatorProps = {
   unread?: boolean
 }
 
-/** Discord-style полоска слева у пункта рельса. */
+/** Полоска активности слева у пункта рельса. */
 export function RailActiveIndicator({
   active,
   unread = false,

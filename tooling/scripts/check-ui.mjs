@@ -20,6 +20,7 @@ export const SCOPES = [
   'apps/web/src/components',
   'apps/web/src/features',
   'apps/web/src/routes',
+  'apps/landing/src',
   'apps/admin/src',
 ]
 
@@ -170,6 +171,7 @@ function isIconRegistry(path) {
   return (
     path.startsWith('packages/ui/src/icons/') ||
     path.startsWith('apps/web/src/components/icons/') ||
+    path.startsWith('apps/landing/src/components/icons') ||
     path.startsWith('apps/admin/src/components/icons')
   )
 }

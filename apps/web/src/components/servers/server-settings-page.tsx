@@ -146,7 +146,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
       })
       return
     }
-    void navigate({ to: prefix, search: { tab: 'online' } })
+    void navigate({ to: prefix || '/', search: { tab: 'online' } })
   }, [channels, navigate, prefix])
 
   async function deleteOwnedServer() {
@@ -164,7 +164,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           toast.success(t('serverDeleted'))
         })
         yield* Effect.tryPromise({
-          try: () => navigate({ to: prefix, search: { tab: 'online' } }),
+          try: () => navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
@@ -183,7 +183,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   useEffect(() => {
     if (!server) return
     if (!settingsAccess || !canOpenSettings) {
-      void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
+      void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
       return
     }
     if (!canViewCurrentTab) {

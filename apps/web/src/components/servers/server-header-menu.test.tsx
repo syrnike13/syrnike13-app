@@ -83,7 +83,7 @@ vi.mock('#/features/api/servers-api', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
 }))
 
 function upsertServer(owner = 'user-1') {
@@ -120,7 +120,7 @@ describe('ServerHeaderMenu', () => {
     expect(triggerClass).toContain('hover:backdrop-blur-sm')
   })
 
-  it('renders the server name with the Discord header weight', () => {
+  it('renders the server name with the header weight', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
     expect(screen.getByText('Server').className).toContain('font-semibold')
@@ -253,7 +253,7 @@ describe('ServerHeaderMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Роли' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/servers/$serverId/settings',
+      to: '/servers/$serverId/settings',
       params: { serverId: 'server-1' },
       search: { tab: 'roles' },
     })
@@ -262,7 +262,7 @@ describe('ServerHeaderMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Журнал аудита' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/servers/$serverId/settings',
+      to: '/servers/$serverId/settings',
       params: { serverId: 'server-1' },
       search: { tab: 'audit' },
     })

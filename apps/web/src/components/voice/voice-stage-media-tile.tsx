@@ -64,7 +64,7 @@ type StageMediaTileProps = {
 
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 
-/** Нейтральный серый фон превью стрима (как в Discord), без палитры аватара. */
+/** Нейтральный серый фон превью стрима, без палитры аватара. */
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =

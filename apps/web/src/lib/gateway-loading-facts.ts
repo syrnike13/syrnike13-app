@@ -1,4 +1,4 @@
-/** Keys for the connection screen facts (Discord-style "Did you know"). */
+/** Keys for the connection screen facts ("Did you know"). */
 export const GATEWAY_LOADING_FACT_KEYS = [
   'facts.1',
   'facts.2',

@@ -15,13 +15,13 @@ import { postLoginPath } from '#/lib/auth-post-login-path'
 import { apiErrorMessage } from '#/lib/api/error-message'
 
 /**
- * Общий gate для авторизованных зон (`/app`, `/m`).
+ * Общий gate для авторизованных зон (`/`, `/m`).
  *
  * Поднимает VoiceProvider (одна голосовая сессия), проверяет auth/onboarding/sync,
  * показывает GatewayLoadingScreen / ProfileLoadErrorScreen на время загрузки,
  * навешивает ActivityPresenceManager и SettingsModalProvider.
  *
- * Используется layout-роутами `/app` и `/m`, поэтому VoiceProvider один
+ * Используется layout-роутами `/` и `/m`, поэтому VoiceProvider один
  * в любой момент времени — пользователь не может быть одновременно
  * в десктопной и мобильной зоне.
  */

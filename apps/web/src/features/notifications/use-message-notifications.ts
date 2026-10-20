@@ -40,7 +40,7 @@ function notificationTitle(
 }
 
 function activeChannelIdFromPath() {
-  const match = window.location.pathname.match(/\/app\/c\/([^/]+)/)
+  const match = window.location.pathname.match(/\/c\/([^/]+)/)
   return match?.[1] ?? null
 }
 
@@ -79,7 +79,7 @@ export function useMessageNotifications() {
 
       notification.onclick = () => {
         window.focus()
-        window.location.href = `/app/c/${message.channel}`
+        window.location.href = `/c/${message.channel}`
         notification.close()
       }
     })

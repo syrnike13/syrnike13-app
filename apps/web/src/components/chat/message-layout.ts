@@ -1,4 +1,4 @@
-/** Discord cozy-строка: 2px 24px 2px 72px. */
+/** Строка сообщения (cozy): 2px 24px 2px 72px. */
 export const MESSAGE_ROW_CLASS =
   'group relative flex w-full min-w-0 items-start gap-4 py-0.5 pr-6 pl-18'
 

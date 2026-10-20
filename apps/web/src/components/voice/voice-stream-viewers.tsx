@@ -59,7 +59,7 @@ export function streamViewersSummary(
   })
 }
 
-/** Who watches a screen share, shown on its tile as in Discord. */
+/** Who watches a screen share, shown on its tile. */
 export function VoiceStreamViewers({
   viewers,
   variant,
@@ -139,7 +139,7 @@ function StreamViewerAvatars({
   }
   useEffect(() => cancelClose, [])
 
-  // With overflow the last avatar slot becomes "+N", as in Discord.
+  // With overflow the last avatar slot becomes "+N".
   const overflow = viewers.length > MAX_VISIBLE_VIEWERS
   const visible = viewers.slice(
     0,

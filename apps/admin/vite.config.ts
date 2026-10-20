@@ -20,12 +20,12 @@ const uiEntry = path.resolve(adminRoot, '../../packages/ui/src')
 const config = defineConfig({
   envDir: path.resolve(adminRoot, 'env'),
   server: {
-    port: 3001,
+    port: 3002,
     host: true,
     strictPort: true,
   },
   preview: {
-    port: 3001,
+    port: 3002,
     host: true,
     strictPort: true,
   },

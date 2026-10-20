@@ -319,7 +319,7 @@ export function ChannelSettingsOverviewPanel({
                   params: { channelId: fallback },
                   search: { m: undefined },
                 })
-              : navigate({ to: prefix, search: { tab: 'online' } }),
+              : navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

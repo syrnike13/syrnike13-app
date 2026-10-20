@@ -44,7 +44,7 @@ describe('ImageLightbox', () => {
     cleanup()
   })
 
-  it('renders a Discord-like fullscreen viewer with original image actions', () => {
+  it('renders a fullscreen viewer with original image actions', () => {
     const onOpenChange = vi.fn()
 
     render(

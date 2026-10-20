@@ -1,6 +1,6 @@
 # UI syrnike13: правила, компоненты, эталоны
 
-Единственный источник дизайн-правил для `packages/ui`, `apps/web` и `apps/admin`. Корневой `AGENTS.md` содержит только короткую выжимку и ссылку сюда.
+Единственный источник дизайн-правил для `packages/ui`, `apps/web`, `apps/landing` и `apps/admin`. Корневой `AGENTS.md` содержит только короткую выжимку и ссылку сюда.
 
 **Главное правило:** все примитивы — **буквальный исходник shadcn/ui `base-nova`** (Base UI), скопированный в `packages/ui/src/primitives/<name>/index.tsx`. Не пишите локальные компоненты, «похожие на shadcn», не добавляйте самописные варианты и не оборачивайте примитивы без необходимости. Если нужного компонента нет — добавьте его из registry `base-nova`, а не собирайте заново.
 
@@ -63,7 +63,7 @@
 - **Размеры в rem**, по возможности классами Tailwind. `px` — только для границ, focus-offset и canvas.
 - **Адаптивность встроена.** Вёрстка обязана работать на 375px: `min-w-0`, `truncate`, `flex-col sm:flex-row`.
 - **Иконки — только через реестр** `@syrnike13/ui/icons` или app-local `components/icons`. Прямые импорты `@remixicon/react`, `@iconify/react`, `iconoir-react`, `lucide-react` внутри shadcn-исходников допустимы только в `icon-placeholder`.
-- **Строки интерфейса — только через i18n.** Web: `useTranslations` из `@syrnike13/ui/i18n`, ключи в `apps/web/src/messages/{en,ru}.json`. Admin: `apps/admin/src/messages/{en,ru}.json`. Это касается и `aria-label`, `placeholder`, `title`.
+- **Строки интерфейса — только через i18n.** Web: `useTranslations` из `@syrnike13/ui/i18n`, ключи в `apps/web/src/messages/{en,ru}.json`. Landing: `apps/landing/src/messages/{en,ru}.json`. Admin: `apps/admin/src/messages/{en,ru}.json`. Это касается и `aria-label`, `placeholder`, `title`.
 - **Контракты desktop не ломать:** `.dark`, `data-theme`, `data-theme-gradient`, имена семантических CSS-переменных, `.theme-surface-*`, `.gradient-surface-*`, `.shell-title-bar-drag/no-drag`, `data-overlay-panel`, `data-participant-*`, `data-slot="scroll-area-viewport"`, прозрачность overlay, popout-клонирование стилей.
 
 ## Добавление компонента из shadcn
@@ -100,4 +100,4 @@ pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build
 ```
 
-Вид проверяйте в `pnpm web:dev` (:3000) и `pnpm admin:dev` (:3001): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3000/dev/ui`. В dev-сборке web справа снизу есть **Prism tuning**: живые проценты `surfaceMix`/`raisedMix`, экспорт JSON для переноса значений в `DEFAULT_PRISM_TUNING`.
+Вид проверяйте в `pnpm web:dev` (:3001), `pnpm landing:dev` (:3000) и `pnpm admin:dev` (:3002): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3001/dev/ui`. В dev-сборке web справа снизу есть **Prism tuning**: живые проценты `surfaceMix`/`raisedMix`, экспорт JSON для переноса значений в `DEFAULT_PRISM_TUNING`.

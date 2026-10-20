@@ -115,7 +115,7 @@ function PeopleRailButton({
   const label = getChannelLabel(channel, users, currentUserId, tChat)
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
+  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
 

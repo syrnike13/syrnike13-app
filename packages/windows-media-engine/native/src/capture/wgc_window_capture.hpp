@@ -15,8 +15,8 @@ struct WgcWindowCaptureDiagnostics : WgcMonitorCaptureDiagnostics {
   std::uint64_t stale_session_resets = 0;
 };
 
-// Like Discord ("stale frame, asking for repaint" / "resetting"): a shown
-// window without frames is asked to repaint, then its session is recreated.
+// A shown window without frames is asked to repaint, then its session is
+// recreated. The window is never captured as a frozen last frame.
 inline constexpr auto kWindowStaleRepaintAfter = std::chrono::seconds{2};
 inline constexpr auto kWindowStaleResetAfterRepaint = std::chrono::seconds{1};
 inline constexpr auto kWindowStaleResetInterval = std::chrono::seconds{10};

@@ -435,11 +435,6 @@
       "toLogin": "Перейти ко входу"
     }
   },
-  "landing": {
-    "tagline": "голос, чат, серверы",
-    "downloadFor": "Скачать для {platform}",
-    "openInBrowser": "Открыть в браузере"
-  },
   "layout": {
     "loading": {
       "factTitle": "А вы знали?",
@@ -723,7 +718,7 @@
       "joinServer": "Зайти на сервер",
       "joinTitle": "Зайти на сервер",
       "inviteLabel": "Ссылка или код приглашения",
-      "invitePlaceholder": "https://syrnike13.ru/invite/…",
+      "invitePlaceholder": "https://app.syrnike13.ru/invite/…",
       "join": "Присоединиться",
       "back": "Назад",
       "created": "Сервер «{name}» создан",

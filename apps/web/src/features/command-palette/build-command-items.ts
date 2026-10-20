@@ -62,8 +62,8 @@ export function buildCommandItems({
   const q = query.trim()
 
   const navEntries = [
-    { id: 'nav-home', labelKey: 'nav.home', to: '/app', search: { tab: 'online' } },
-    { id: 'nav-friends', labelKey: 'nav.friends', to: '/app', search: { tab: 'all' } },
+    { id: 'nav-home', labelKey: 'nav.home', to: '/', search: { tab: 'online' } },
+    { id: 'nav-friends', labelKey: 'nav.friends', to: '/', search: { tab: 'all' } },
     { id: 'nav-settings', labelKey: 'nav.settings' },
   ] as const
 
@@ -114,11 +114,11 @@ export function buildCommandItems({
           )
           if (first) {
             void navigate({
-              to: '/app/c/$channelId',
+              to: '/c/$channelId',
               params: { channelId: first._id },
             })
           } else {
-            void navigate({ to: '/app' })
+            void navigate({ to: '/' })
           }
         },
       },
@@ -161,7 +161,7 @@ export function buildCommandItems({
             setSelectedServerId(null)
           }
           void navigate({
-            to: '/app/c/$channelId',
+            to: '/c/$channelId',
             params: { channelId: channel._id },
           })
         },
@@ -192,11 +192,11 @@ export function buildCommandItems({
           )
           if (dm) {
             void navigate({
-              to: '/app/c/$channelId',
+              to: '/c/$channelId',
               params: { channelId: dm._id },
             })
           } else {
-            void navigate({ to: '/app', search: { tab: 'all' } })
+            void navigate({ to: '/', search: { tab: 'all' } })
           }
         },
       },

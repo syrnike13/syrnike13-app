@@ -153,7 +153,7 @@ describe('VoiceRtcDebugView', () => {
     expect(setRtcDebugEnabled).toHaveBeenCalledWith(true)
   })
 
-  it('renders Discord-like debug sections from a snapshot', () => {
+  it('renders debug sections from a snapshot', () => {
     render(<VoiceRtcDebugView />)
 
     expect(screen.getByText(t('debug.selectedIceCandidate'))).toBeTruthy()

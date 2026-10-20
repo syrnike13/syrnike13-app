@@ -29,7 +29,7 @@ import { apiErrorMessage } from '#/lib/api/error-message'
 export const Route = createFileRoute('/login/reset')({
   beforeLoad: () => {
     if (loadSession()) {
-      throw redirect({ to: '/app', search: { tab: 'online' } })
+      throw redirect({ to: '/', search: { tab: 'online' } })
     }
   },
   component: ResetRequestPage,

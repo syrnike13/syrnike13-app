@@ -20,7 +20,7 @@ import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 /**
- * Мобильная раскладка в стиле Discord mobile.
+ * Мобильная раскладка мессенджера.
  *
  * Список: узкая рельса серверов слева + список каналов/DM рядом; снизу —
  * плавающая панель аккаунта (`MobileUserPanel`).

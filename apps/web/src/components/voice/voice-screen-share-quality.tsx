@@ -254,7 +254,7 @@ export function ScreenShareQualitySections() {
 }
 
 /**
- * Строка меню со вложенным подменю (как в Discord). Подменю — отдельный
+ * Строка меню со вложенным подменю. Подменю — отдельный
  * поповер в портале: сам упирается в края окна, не обрезается контейнером.
  */
 export function StreamSettingsSubmenu({
@@ -324,7 +324,7 @@ export function StreamSettingsSubmenu({
   )
 }
 
-/** Меню под стрелкой у кнопки демонстрации (как в Discord). */
+/** Меню под стрелкой у кнопки демонстрации. */
 export function VoiceStreamSettingsMenuContent({
   submenuSide = 'right',
 }: {

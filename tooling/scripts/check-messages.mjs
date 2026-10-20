@@ -9,6 +9,7 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..')
 
 export const MESSAGE_PAIRS = [
   ['apps/web/src/messages/en.json', 'apps/web/src/messages/ru.json'],
+  ['apps/landing/src/messages/en.json', 'apps/landing/src/messages/ru.json'],
   ['apps/admin/src/messages/en.json', 'apps/admin/src/messages/ru.json'],
   ['packages/ui/src/i18n/messages/en.json', 'packages/ui/src/i18n/messages/ru.json'],
 ]

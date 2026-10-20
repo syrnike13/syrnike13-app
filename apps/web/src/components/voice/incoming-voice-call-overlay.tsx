@@ -158,7 +158,7 @@ export function IncomingVoiceCallOverlay({
                   return Effect.tryPromise({
                     try: () =>
                       navigate({
-                        to: '/app/c/$channelId',
+                        to: '/c/$channelId',
                         params: { channelId: call.channelId },
                         search: { m: undefined },
                       }),

@@ -30,7 +30,7 @@ const directMessageChannel = {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -260,7 +260,7 @@ describe('UserContextMenuContent', () => {
       )
     })
     expect(navigateMock).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })

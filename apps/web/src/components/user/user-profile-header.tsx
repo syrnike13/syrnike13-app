@@ -22,7 +22,7 @@ type UserProfileHeaderProps = {
 }
 
 /**
- * Баннер и аватар профиля. Геометрия Discord:
+ * Баннер и аватар профиля. Геометрия:
  * поповер/панель — баннер 105px, аватар 80px; модалка — 140px и 120px.
  */
 export function UserProfileHeader({

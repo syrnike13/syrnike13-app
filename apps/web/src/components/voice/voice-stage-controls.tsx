@@ -1142,7 +1142,7 @@ function StageViewSettings({
 }: {
   compact?: boolean
   overlay?: boolean
-  /** overlay: «…» как в Discord; legacy: шестерёнка */
+  /** overlay: «…»; legacy: шестерёнка */
   trigger?: 'settings' | 'more'
 }) {
   const t = useTranslations('voice')

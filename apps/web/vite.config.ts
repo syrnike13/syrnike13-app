@@ -29,13 +29,13 @@ const squircleReactEntry = path.resolve(
 const config = defineConfig({
   envDir: path.resolve(webRoot, 'env'),
   server: {
-    port: 3000,
+    port: 3001,
     /** IPv4 + IPv6: иначе Electron (127.0.0.1) и браузер (localhost) попадают на разные сокеты. */
     host: true,
     strictPort: true,
   },
   preview: {
-    port: 3000,
+    port: 3001,
     host: true,
     strictPort: true,
   },

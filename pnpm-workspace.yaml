@@ -1,5 +1,6 @@
 packages:
   - apps/web
+  - apps/landing
   - apps/admin
   - apps/desktop
   - packages/api-types

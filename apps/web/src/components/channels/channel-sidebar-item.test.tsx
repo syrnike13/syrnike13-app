@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
   deleteChannel: vi.fn((_token: string, _channelId: string) => Effect.void),
-  pathname: '/app/',
+  pathname: '/',
   voice: {
     channelId: 'voice-main' as string | null,
     status: 'connected' as 'idle' | 'connecting' | 'connected',
@@ -42,7 +42,7 @@ vi.mock('@tanstack/react-router', () => ({
     onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void
     params: { channelId: string }
   }) => (
-    <a href={`/app/c/${params.channelId}`} onClick={onClick}>
+    <a href={`/c/${params.channelId}`} onClick={onClick}>
       {children}
     </a>
   ),
@@ -228,7 +228,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.openVoiceChannelDrawer.mockClear()
     mocks.deleteChannel.mockReturnValue(Effect.void)
     mocks.deleteChannel.mockClear()
-    mocks.pathname = '/app/'
+    mocks.pathname = '/'
     mocks.voice.channelId = 'voice-main'
     mocks.voice.status = 'connected'
     mocks.voice.join = mocks.join
@@ -247,7 +247,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
@@ -298,7 +298,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
@@ -340,7 +340,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(requestOpen).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })

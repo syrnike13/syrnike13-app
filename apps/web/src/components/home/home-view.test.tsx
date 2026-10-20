@@ -20,10 +20,10 @@ vi.mock('@tanstack/react-router', () => ({
   }: {
     children: ReactNode
     search?: Record<string, unknown>
-  }) => <a href={`/app?tab=${String(search?.tab ?? '')}`}>{children}</a>,
+  }) => <a href={`/?tab=${String(search?.tab ?? '')}`}>{children}</a>,
   useNavigate: () => mocks.navigate,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

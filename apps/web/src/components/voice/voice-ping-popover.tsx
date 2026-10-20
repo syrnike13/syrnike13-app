@@ -136,7 +136,7 @@ export function VoicePingPopoverContent({
         </p>
 
         <Link
-          to="/app/voice-debug"
+          to="/voice-debug"
           className={cn(
             buttonVariants({ variant: 'secondary', size: 'sm' }),
             'w-full',

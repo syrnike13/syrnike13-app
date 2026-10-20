@@ -116,11 +116,12 @@ export function ChannelSidebarItem({
   const [movingVoiceMember, setMovingVoiceMember] = useState(false)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isMobile = pathname.startsWith('/m')
-  const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
+  const channelPath = isMobile ? '/m/c/$channelId' : '/c/$channelId'
+  const channelRouteId = isMobile ? '/m/c/$channelId' : '/_app/c/$channelId'
   const mobileVoiceChannelDrawer = useOptionalMobileVoiceChannelDrawer()
   const token = auth.session?.token
   const channelRouteMatch = useMatch({
-    from: channelRoute,
+    from: channelRouteId,
     shouldThrow: false,
   })
   const server = useSyncStore((s) =>
@@ -143,7 +144,7 @@ export function ChannelSidebarItem({
   function openChannelSettings() {
     const hostChannelId = activeChannelId ?? channel._id
     void navigate({
-      to: channelRoute,
+      to: channelPath,
       params: { channelId: hostChannelId },
       search: channelSettingsSearch({
         settingsChannel: channel._id,
@@ -181,12 +182,12 @@ export function ChannelSidebarItem({
           try: () =>
             fallback
               ? navigate({
-                  to: channelRoute,
+                  to: channelPath,
                   params: { channelId: fallback },
                   search: { m: undefined },
                 })
               : navigate({
-                  to: isMobile ? '/m' : '/app',
+                  to: isMobile ? '/m' : '/',
                   search: { tab: 'online' },
                 }),
           catch: (cause) => cause,
@@ -255,7 +256,7 @@ export function ChannelSidebarItem({
   }
 
   async function copyLink() {
-    const url = publicAppUrl(`/app/c/${channel._id}`)
+    const url = publicAppUrl(`/c/${channel._id}`)
     await Effect.runPromise(
       writeClipboardTextEffect(url).pipe(
         Effect.matchEffect({
@@ -323,7 +324,7 @@ export function ChannelSidebarItem({
     void voice.join(channel._id)
     if (action === 'open') {
       void navigate({
-        to: channelRoute,
+        to: channelPath,
         params: { channelId: channel._id },
         search: { m: undefined },
       })
@@ -343,7 +344,7 @@ export function ChannelSidebarItem({
     if (active) return
 
     void navigate({
-      to: channelRoute,
+      to: channelPath,
       params: { channelId: channel._id },
       search: { m: undefined },
     })
@@ -456,7 +457,7 @@ export function ChannelSidebarItem({
           <RailUnreadIndicator className="-left-2" />
         ) : null}
         <Link
-          to={channelRoute}
+          to={channelPath}
           params={{ channelId: channel._id }}
           search={{ m: undefined }}
           className={cn(

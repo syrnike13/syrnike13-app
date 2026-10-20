@@ -102,7 +102,7 @@ export function ServerHeaderMenu({
           setRemoveDialogOpen(false)
         })
         yield* Effect.tryPromise({
-          try: () => navigate({ to: '/app', search: { tab: 'online' } }),
+          try: () => navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

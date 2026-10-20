@@ -24,7 +24,7 @@ vi.mock('@tanstack/react-router', () => ({
   }: {
     children: ReactNode
     params: { channelId: string }
-  }) => <a href={`/app/c/${params.channelId}`}>{children}</a>,
+  }) => <a href={`/c/${params.channelId}`}>{children}</a>,
   useNavigate: () => mocks.navigate,
 }))
 
@@ -36,7 +36,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
 }))
 
 vi.mock('#/components/channels/channel-settings-permissions-panel', () => ({

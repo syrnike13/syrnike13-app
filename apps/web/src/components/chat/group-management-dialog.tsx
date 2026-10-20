@@ -365,7 +365,7 @@ function GroupManagementDialogContent({
         })
         yield* Effect.tryPromise({
           try: () =>
-            navigate({ to: `${prefix}`, search: { tab: 'online' } }),
+            navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

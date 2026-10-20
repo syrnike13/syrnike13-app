@@ -79,7 +79,7 @@ so the server answers the publisher and offers subscribers `stereo=1`.
 ## Audio/video synchronization
 
 Receivers synchronize screen audio with screen video in WebRTC itself, as
-browsers and Discord do:
+browsers do:
 
 - The LiveKit fork enables `room.sync_streams` by default, so a sender's screen
   video and screen audio (and camera and microphone) share one sync group. LiveKit

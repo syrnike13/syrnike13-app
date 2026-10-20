@@ -21,7 +21,7 @@ import { cn } from '#/lib/utils'
  * Drawer голосового канала для мобильной оболочки.
  *
  * Монтируется только из `m/route.tsx`, поэтому guard `useIsCompact` не нужен —
- * в десктопной зоне `/app` компонент не появляется.
+ * в десктопной зоне `/` компонент не появляется.
  */
 export function MobileVoiceChannelDrawer() {
   const t = useTranslations('voice')

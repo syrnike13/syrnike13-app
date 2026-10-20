@@ -22,7 +22,7 @@ const gatewayStatusKeys = {
 } as const
 
 /**
- * Плавающая панель аккаунта для мобильной оболочки (Discord-style pill).
+ * Плавающая панель аккаунта для мобильной оболочки (pill).
  *
  * Голосовые контролы — в `MobileVoiceFloatingTile`. Тап по pill → `/m/profile`.
  */

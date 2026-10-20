@@ -1,8 +1,8 @@
-import { Link } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ComponentProps, PropsWithChildren } from 'react'
 
 import { HomeIcon } from '#/components/icons'
+import { PUBLIC_SITE_ORIGIN } from '#/lib/public-site'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { Card } from '@syrnike13/ui/primitives/card'
 import { config as appConfig } from '#/lib/config'
@@ -19,10 +19,10 @@ export function AuthLayout({ children }: PropsWithChildren) {
       <main className="auth-stage">
         <header className="auth-stage-header">
           {!isDesktop ? (
-            <Link to="/" className="auth-home-link">
+            <a href={PUBLIC_SITE_ORIGIN} className="auth-home-link">
               <HomeIcon aria-hidden="true" />
               {t('home')}
-            </Link>
+            </a>
           ) : null}
         </header>
 

@@ -8,6 +8,7 @@ on:
       - apps/web/src/features/**
       - apps/web/src/routes/**
       - apps/web/src/styles.css
+      - apps/landing/src/**
       - apps/admin/src/**
       - tooling/scripts/check-ui*
       - tooling/ui-baseline.json
@@ -22,6 +23,7 @@ on:
       - apps/web/src/features/**
       - apps/web/src/routes/**
       - apps/web/src/styles.css
+      - apps/landing/src/**
       - apps/admin/src/**
       - tooling/scripts/check-ui*
       - tooling/ui-baseline.json

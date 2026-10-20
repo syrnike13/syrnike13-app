@@ -80,7 +80,7 @@ export function MessageAttachments({
             style={
               {
                 '--mosaic-aspect': mosaic.aspectRatio,
-                // Discord: 550×350 max, ширина выводится из ratio до загрузки.
+                // Максимум 550×350: ширина выводится из ratio до загрузки.
                 '--mosaic-width': `min(100%, 34.375rem, calc(21.875rem * ${mosaic.aspectRatio}))`,
               } as CSSVars
             }
@@ -219,7 +219,7 @@ function SingleImageAttachment({
       style={
         {
           '--single-aspect': aspectRatio,
-          // Discord: 550×350 max. Ширина до load выводится из ratio,
+          // Максимум 550×350. Ширина до load выводится из ratio,
           // иначе w-fit схлопывается и лента прыгает.
           '--single-width': `min(100%, 34.375rem, calc(21.875rem * ${aspectRatio}))`,
         } as CSSVars

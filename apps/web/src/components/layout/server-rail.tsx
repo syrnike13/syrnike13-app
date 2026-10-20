@@ -158,7 +158,7 @@ function ServerRailTooltip({
  * Рельс серверов.
  *
  * `variant`:
- *  - `desktop` — клик по серверу ведёт в первый канал (`/app/c/$id`);
+ *  - `desktop` — клик по серверу ведёт в первый канал (`/c/$id`);
  *    активность определяется контекстным сервером активного канала.
  *  - `mobile` — клик по серверу ведёт на `/m` + устанавливает `selectedServerId`;
  *    активность определяется `selectedServerId` из syncStore.
@@ -182,14 +182,15 @@ export function ServerRail({
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
-  const homePath = variant === 'mobile' ? '/m/' : '/app/'
-  const channelPath = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/app'
+  const homeRouteId = variant === 'mobile' ? '/m/' : '/_app/'
+  const channelRouteId =
+    variant === 'mobile' ? '/m/c/$channelId' : '/_app/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/'
 
-  const homeMatch = useMatch({ from: homePath, shouldThrow: false })
-  const channelMatch = useMatch({ from: channelPath, shouldThrow: false })
+  const homeMatch = useMatch({ from: homeRouteId, shouldThrow: false })
+  const channelMatch = useMatch({ from: channelRouteId, shouldThrow: false })
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const feedbackPath = `${homeTo}/feedback`
+  const feedbackPath = variant === 'mobile' ? '/m/feedback' : '/feedback'
   const isFeedbackPath =
     pathname === feedbackPath || pathname.startsWith(`${feedbackPath}/`)
   const activeChannelId =
@@ -382,8 +383,8 @@ function ServerRailButton({
     />
   )
 
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/app'
+  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/'
   const tooltipContent = (
     <ServerRailTooltip
       serverName={server.name}

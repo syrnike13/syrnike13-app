@@ -12,7 +12,7 @@ import { mapMobilePathToApp, shouldUseMobileLayout } from '#/lib/device-routing'
 /**
  * Layout route для `/m` — мобильная раскладка.
  *
- * Общий auth-gate и VoiceProvider — в `AuthedGate` (shared с `/app`).
+ * Общий auth-gate и VoiceProvider — в `AuthedGate` (shared с `/`).
  * Здесь — только mobile-специфичная обвязка: shell, voice drawer.
  *
  * `CommandPaletteProvider` нужен, потому что `HomeSidebar` использует
@@ -20,7 +20,7 @@ import { mapMobilePathToApp, shouldUseMobileLayout } from '#/lib/device-routing'
  * провайдер служит только контейнером для UI-триггера.
  *
  * Десктоп-браузер с широким экраном, зашедший на `/m/*`, уходит обратно на
- * `/app/*` с сохранением path- и search-параметров.
+ * `/*` с сохранением path- и search-параметров.
  */
 export const Route = createFileRoute('/m')({
   beforeLoad: ({ location }) => {
@@ -31,7 +31,7 @@ export const Route = createFileRoute('/m')({
     if (!shouldUseMobileLayout()) {
       const appPath = mapMobilePathToApp(location.pathname)
       throw redirect({
-        to: appPath ?? '/app',
+        to: appPath ?? '/',
         search: location.search,
         replace: true,
       })
