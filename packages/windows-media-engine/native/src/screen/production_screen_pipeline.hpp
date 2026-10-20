@@ -77,9 +77,19 @@ struct ProductionScreenPipelineStats {
   AdaptiveReason decision_reason = AdaptiveReason::healthy;
   BitrateUpdateResult bitrate;
   std::uint32_t target_bitrate = 0;
+  // What the network allows now and the local-pressure cap (0: none).
+  std::uint32_t network_target_bitrate = 0;
+  std::uint32_t local_ceiling_bitrate = 0;
+  std::uint32_t admitted_fps = 0;
   std::uint64_t bitrate_updates = 0;
   bool quality_warning = false;
 };
+
+// Capture admission interval for the policy's frame rate (0: the preset's).
+[[nodiscard]] constexpr std::int64_t screenAdmissionIntervalUs(
+    std::uint32_t admitted_fps, std::uint32_t preset_fps) noexcept {
+  return 1'000'000 / static_cast<std::int64_t>(admitted_fps ? admitted_fps : preset_fps);
+}
 
 using ScreenPublicationAdapterFactory = std::function<std::shared_ptr<ScreenPublicationAdapter>(
     std::function<void()> request_key_frame)>;
@@ -124,6 +134,7 @@ class ProductionScreenPipeline final {
   void run() noexcept;
   void handleEvent(ScreenPublicationEvent event) noexcept;
   void runAdaptiveControl();
+  void requestStartBitrate();
   void reconfigure(std::size_t target_profile, std::uint64_t desired_revision);
   [[nodiscard]] ScreenCommandResult drainGeneration(std::chrono::steady_clock::time_point deadline,
                                                     bool capture_stopped) noexcept;
@@ -155,6 +166,14 @@ class ProductionScreenPipeline final {
   std::size_t selected_preset_ = 4;
   std::uint64_t bitrate_command_ = 0;
   std::uint64_t bitrate_completed_ = 0;
+  // Capture admission rate chosen by the policy; 0 means the preset's.
+  std::uint32_t admitted_fps_ = 0;
+  // A frame rate waiting for its bitrate command's confirmation.
+  struct PendingFrameRate {
+    std::uint64_t revision = 0;
+    std::uint32_t frame_rate = 0;
+  };
+  std::optional<PendingFrameRate> pending_fps_;
   AdaptivePolicyState policy_state_;
   std::optional<ProductionScreenPipelineStats> previous_policy_stats_;
   std::uint64_t last_policy_ms_ = 0;

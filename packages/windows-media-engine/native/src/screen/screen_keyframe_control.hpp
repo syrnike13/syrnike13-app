@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -21,8 +22,13 @@ class ScreenKeyframeControl final {
   [[nodiscard]] std::uint64_t pending() const noexcept { return requested_ - acknowledged_; }
   [[nodiscard]] std::uint32_t attempts() const noexcept { return attempts_; }
  private:
-  std::uint64_t generation_ = 0, requested_ = 0, issued_ = 0, acknowledged_ = 0;
+  // A retry must not invalidate the keyframe still answering an earlier
+  // attempt: with sparse input that keyframe completes after the retry.
+  struct Attempt { std::uint64_t watermark = 0, after_sequence = 0; };
+  static constexpr std::uint32_t kMaxAttempts = 3;
+  std::uint64_t generation_ = 0, requested_ = 0, acknowledged_ = 0;
   std::uint64_t issued_after_sequence_ = 0;
+  std::array<Attempt, kMaxAttempts> issued_{};
   std::uint32_t attempts_ = 0;
   std::optional<std::uint64_t> last_request_ms_;
   std::optional<std::uint64_t> last_poll_ms_;
