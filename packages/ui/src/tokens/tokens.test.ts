@@ -1,14 +1,12 @@
 import { expect, test } from 'vitest'
 
 import {
-  BRAND_LOCKED_THEME_TOKEN_KEYS,
-  BRAND_THEME_TOKENS,
   THEME_CATALOG,
   cssColorToHex,
   getThemeSurfaceVariables,
   getThemeTokens,
 } from './index'
-import { DEFAULT_THEME_ID, type ThemeVariant } from './types'
+import { DEFAULT_THEME_ID } from './types'
 
 test('catalog contains the Prism anchor presets', () => {
   expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
@@ -75,22 +73,6 @@ test('structural borders share one Prism role', () => {
   }
 })
 
-test('brand-locked tokens stay identical across themes', () => {
-  for (const variant of ['light', 'dark'] as const) {
-    for (const theme of THEME_CATALOG) {
-      const tokens = getThemeTokens(
-        { themeId: theme.id, colorMode: variant },
-        variant === 'dark',
-      )
-      for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
-        expect(tokens[key], `${theme.id}/${variant}/${key}`).toBe(
-          BRAND_THEME_TOKENS[variant as ThemeVariant][key],
-        )
-      }
-    }
-  }
-})
-
 test('tuning changes generated surfaces', () => {
   const settings = { themeId: 'glina', colorMode: 'dark' as const }
   const base = getThemeTokens(settings, true)
@@ -111,7 +93,7 @@ test('anchor overrides replace catalog colors', () => {
 
   expect(overridden.background).toBe('#112233')
   expect(overridden.background).not.toBe(base.background)
-  // `primary` stays brand-locked; the anchor reaches Prism-derived roles.
+  expect(overridden.primary).toBe('#ff8800')
   expect(overridden['sidebar-primary']).toBe('#ff8800')
 })
 

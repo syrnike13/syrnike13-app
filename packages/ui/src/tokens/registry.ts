@@ -5,7 +5,6 @@ import {
   type PrismTuningPatch,
 } from './prism'
 import {
-  BRAND_THEME_TOKENS,
   prismTokensToThemeTokens,
   THEME_TOKEN_KEYS,
   type ThemeTokens,
@@ -45,13 +44,6 @@ export function resolveThemeVariant(
   return settings.colorMode
 }
 
-export function applyBrandLockedThemeTokens(
-  tokens: ThemeTokens,
-  variant: ThemeVariant,
-): ThemeTokens {
-  return { ...tokens, ...BRAND_THEME_TOKENS[variant] }
-}
-
 export function getThemeTokens(
   settings: ThemeSettings,
   prefersDark = false,
@@ -65,10 +57,7 @@ export function getThemeTokens(
     variant,
     tuning,
   )
-  return applyBrandLockedThemeTokens(
-    prismTokensToThemeTokens(prismTokens, variant),
-    variant,
-  )
+  return prismTokensToThemeTokens(prismTokens, variant)
 }
 
 export function getThemeSurfaceVariables(

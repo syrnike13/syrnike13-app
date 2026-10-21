@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 
 import {
-  BRAND_LOCKED_THEME_TOKEN_KEYS,
-  BRAND_THEME_TOKENS,
   THEME_CATALOG,
   THEME_TOKEN_KEYS,
   getThemeById,
@@ -74,22 +72,6 @@ describe('theme registry', () => {
         false,
       ),
     ).toBe('light')
-  })
-
-  it('keeps brand-locked tokens fixed for every theme', () => {
-    for (const theme of THEME_CATALOG) {
-      for (const variant of ['light', 'dark'] as const) {
-        const tokens = getThemeTokens(
-          { ...DEFAULT_APPEARANCE_SETTINGS, themeId: theme.id, colorMode: variant },
-          variant === 'dark',
-        )
-        for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
-          expect(tokens[key], `${theme.id}/${variant}/${key}`).toBe(
-            BRAND_THEME_TOKENS[variant][key],
-          )
-        }
-      }
-    }
   })
 
   it('derives surfaces from Prism roles', () => {

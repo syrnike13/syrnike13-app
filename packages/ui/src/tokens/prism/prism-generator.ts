@@ -24,7 +24,7 @@ const SURFACE_MIX = {
   sidebar: 6,
   border: 18,
   accent: 17,
-  hover: 0,
+  hover: 10,
   selection: 18,
 } as const
 
@@ -34,7 +34,23 @@ const RAISED_MIX = { light: 14, dark: 5 } as const
  * Minimum OKLab lightness gap between an interaction fill and every neutral surface it can sit
  * on (background, card, popover, sidebar, raised), so hover never vanishes on one of them.
  */
-const MIN_INTERACTION_DELTA = { accent: 0.045, hover: 0.04 } as const
+const MIN_INTERACTION_DELTA = { accent: 0.045, hover: 0.02 } as const
+
+/** Semantic state colors that do not depend on the theme hue. */
+const DESTRUCTIVE = 'oklch(0.7040 0.1910 22.2160)'
+const DESTRUCTIVE_CONTRAST = {
+  light: 'oklch(0.5156 0.1810 22.5393)',
+  dark: 'oklch(63.7% 0.237 25.331)',
+} as const
+
+/** Data-visualisation palette; charts keep distinct hues in every theme. */
+const CHART_COLORS = [
+  'oklch(0.8092 0.1122 345.1956)',
+  'oklch(0.8757 0.0979 83.6546)',
+  'oklch(0.9075 0.0946 165.0540)',
+  'oklch(0.8406 0.0699 242.1914)',
+  'oklch(0.7865 0.1232 309.4396)',
+] as const
 
 export type PrismSurfaceMixKey = keyof typeof SURFACE_MIX
 export type PrismInteractionDeltaKey = keyof typeof MIN_INTERACTION_DELTA
@@ -245,5 +261,13 @@ export function generatePrismTokens(
     '--sidebar-accent-foreground': readableForeground(foreground, sidebarAccent),
     '--sidebar-border': border,
     '--sidebar-ring': accent,
+    '--destructive': DESTRUCTIVE,
+    '--destructive-foreground': 'oklch(1 0 0)',
+    '--destructive-contrast': DESTRUCTIVE_CONTRAST[mode],
+    '--chart-1': CHART_COLORS[0],
+    '--chart-2': CHART_COLORS[1],
+    '--chart-3': CHART_COLORS[2],
+    '--chart-4': CHART_COLORS[3],
+    '--chart-5': CHART_COLORS[4],
   }
 }
