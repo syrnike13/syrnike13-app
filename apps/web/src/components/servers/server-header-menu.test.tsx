@@ -141,14 +141,22 @@ describe('ServerHeaderMenu', () => {
     vi.clearAllMocks()
   })
 
-  it('labels the owner destructive action as deleting the server', () => {
+  it('shows the invite action next to the server menu', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    expect(
+      screen.getByRole('button', { name: 'Пригласить на сервер' }),
+    ).toBeTruthy()
+  })
+
+  it('does not expose a server removal action to the owner', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
 
     expect(
-      screen.getByRole('menuitem', { name: 'Удалить сервер' }),
-    ).toBeTruthy()
+      screen.queryByRole('menuitem', { name: 'Удалить сервер' }),
+    ).toBeNull()
     expect(
       screen.queryByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeNull()
@@ -168,43 +176,6 @@ describe('ServerHeaderMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: 'Удалить сервер' }),
     ).toBeNull()
-  })
-
-  it('confirms server deletion in a dialog before calling the API', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Удалить сервер' }),
-    )
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
-
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-slot="dialog-content"]'),
-      ).toBeTruthy()
-    })
-    const dialog = document.querySelector<HTMLElement>(
-      '[data-slot="dialog-content"]',
-    )!
-    expect(dialog.textContent).toContain('Server')
-
-    fireEvent.click(
-      within(dialog).getByRole('button', {
-        name: 'Удалить сервер',
-      }),
-    )
-
-    await waitFor(() => {
-      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
-        'session-token',
-        'server-1',
-      )
-    })
   })
 
   it('confirms leaving a server in a dialog before calling the API', async () => {

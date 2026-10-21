@@ -8,7 +8,6 @@ import {
   SettingsIcon,
   ShieldFillIcon,
   ShieldIcon,
-  Trash2Icon,
   UserPlusIcon,
 } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
@@ -74,6 +73,7 @@ export function ServerHeaderMenu({
         auth.user?._id,
       )
     : null
+  const canLeave = Boolean(menuPermissions?.leave && !isOwner)
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
@@ -86,7 +86,7 @@ export function ServerHeaderMenu({
     action()
   }
 
-  async function handleRemoveServer() {
+  async function handleLeaveServer() {
     const token = auth.session?.token
     if (!token || !server) return
 
@@ -98,7 +98,7 @@ export function ServerHeaderMenu({
         yield* Effect.sync(() => {
           syncStore.removeServer(serverId)
           syncStore.setSelectedServerId(null)
-          toast.success(isOwner ? t('deleted') : t('left'))
+          toast.success(t('left'))
           setRemoveDialogOpen(false)
         })
         yield* Effect.tryPromise({
@@ -109,10 +109,7 @@ export function ServerHeaderMenu({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              apiErrorMessage(
-                error,
-                isOwner ? t('deleteError') : t('leaveError'),
-              ),
+              apiErrorMessage(error, t('leaveError')),
             )
           }),
         ),
@@ -153,7 +150,8 @@ export function ServerHeaderMenu({
             <button
               type="button"
               className={cn(
-                'flex h-8 min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
+                'flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
+                !menuPermissions?.invite && 'flex-1',
                 overBanner &&
                   'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
                 menuOpen &&
@@ -174,7 +172,7 @@ export function ServerHeaderMenu({
             )}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={4}>
+        <DropdownMenuContent align="start" sideOffset={4} className="min-w-56">
           {menuPermissions?.invite ? (
             <DropdownMenuItem
               onClick={() => openDialog(() => setInviteOpen(true))}
@@ -245,23 +243,22 @@ export function ServerHeaderMenu({
             </DropdownMenuItem>
           ) : null}
           {showAdminSection &&
-          (menuPermissions?.leave || menuPermissions?.copyId) ? (
+          (canLeave || menuPermissions?.copyId) ? (
             <DropdownMenuSeparator />
           ) : null}
-          {menuPermissions?.leave ? (
+          {canLeave ? (
             <DropdownMenuItem
-              variant="destructive"
               disabled={removingServer}
               onClick={() => {
                 setMenuOpen(false)
                 setRemoveDialogOpen(true)
               }}
             >
-              {isOwner ? <Trash2Icon /> : <LogOutIcon />}
-              {isOwner ? t('delete') : t('leave')}
+              <LogOutIcon />
+              {t('leave')}
             </DropdownMenuItem>
           ) : null}
-          {menuPermissions?.leave && menuPermissions?.copyId ? (
+          {canLeave && menuPermissions?.copyId ? (
             <DropdownMenuSeparator />
           ) : null}
           {menuPermissions?.copyId ? (
@@ -273,7 +270,21 @@ export function ServerHeaderMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {menuPermissions?.leave ? (
+      {menuPermissions?.invite ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="ml-auto size-8 shrink-0"
+          aria-label={t('invite')}
+          title={t('invite')}
+          onClick={() => setInviteOpen(true)}
+        >
+          <UserPlusIcon className="size-4" />
+        </Button>
+      ) : null}
+
+      {canLeave ? (
         <Dialog
           open={removeDialogOpen}
           onOpenChange={(open) => {
@@ -283,12 +294,10 @@ export function ServerHeaderMenu({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {isOwner
-                  ? t('deleteTitle', { name: serverName })
-                  : t('leaveTitle', { name: serverName })}
+                {t('leaveTitle', { name: serverName })}
               </DialogTitle>
               <DialogDescription>
-                {isOwner ? t('deleteDescription') : t('leaveDescription')}
+                {t('leaveDescription')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -304,9 +313,9 @@ export function ServerHeaderMenu({
                 type="button"
                 variant="destructive"
                 disabled={removingServer}
-                onClick={() => void handleRemoveServer()}
+                onClick={() => void handleLeaveServer()}
               >
-                {isOwner ? t('delete') : t('leave')}
+                {t('leave')}
               </Button>
             </DialogFooter>
           </DialogContent>
