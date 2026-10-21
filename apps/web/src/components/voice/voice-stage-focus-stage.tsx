@@ -27,6 +27,8 @@ const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
 const STRIP_TOGGLE_INSET_PX = 8
 const STRIP_EXIT_DURATION_MS = 200
+/** Keep the strip readable instead of shrinking every participant into it. */
+const MAX_VISIBLE_STRIP_ITEMS = 6
 
 function stripToggleTopPx(focusHeight: number, stripCollapsed: boolean) {
   if (focusHeight <= 0) return undefined
@@ -63,12 +65,13 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
     DEFAULT_STREAM_ASPECT_RATIO,
   )
   const stripItems = mediaItems.filter((item) => item.id !== focusedItem.id)
+  const visibleStripItems = stripItems.slice(0, MAX_VISIBLE_STRIP_ITEMS)
   const [stripCollapsed, setStripCollapsed] = useState(false)
   const [stripMounted, setStripMounted] = useState(true)
   const { layout, stripMetrics } = useVoiceStageFocusSizing(
     layoutRef,
     streamAspectRatio,
-    stripItems.length,
+    visibleStripItems.length,
     stripCollapsed,
   )
 
@@ -128,7 +131,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
             </div>
           </div>
 
-          {stripItems.length > 0 ? (
+          {visibleStripItems.length > 0 ? (
             <div
               className={cn(
                 'grid w-full motion-rows duration-200 ease-out motion-reduce:transition-none',
@@ -147,7 +150,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                 >
                   {stripMounted ? (
                     <VoiceStageFilmstrip
-                      items={mediaItems}
+                      items={visibleStripItems}
                       focusedMediaId={focusedItem.id}
                       tightTop
                       tileWidth={stripMetrics.width}
@@ -160,7 +163,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
             </div>
           ) : null}
 
-          {stripItems.length > 0 && stripToggleTop != null ? (
+          {visibleStripItems.length > 0 && stripToggleTop != null ? (
             <div
               data-voice-stage-chrome
               className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 top-(--strip-toggle-top) motion-top duration-200 ease-out motion-reduce:transition-none"

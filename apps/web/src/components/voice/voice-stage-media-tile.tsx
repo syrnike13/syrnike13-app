@@ -28,10 +28,6 @@ import {
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
-import {
-  VoiceStreamViewers,
-  type StreamViewer,
-} from '#/components/voice/voice-stream-viewers'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   formatUserVolumeLabel,
@@ -51,8 +47,6 @@ type StageMediaTileProps = {
   user?: User
   participant?: UserVoiceState
   displayName: string
-  /** Кто смотрит стрим (только для плиток экрана). */
-  viewers?: readonly StreamViewer[]
   /** Полупрозрачная плитка на время подключения к LiveKit. */
   dimmed?: boolean
   speaking?: boolean
@@ -79,28 +73,18 @@ function screenStreamOwnerLabelPositionClass(variant: StageMediaTileVariant) {
     : 'bottom-2 left-2 px-2 py-1 text-xs'
 }
 
-/** Keeps the bottom-left label clear of the bottom-right viewers chip. */
-function viewersReserveClass(variant: StageMediaTileVariant) {
-  return variant === 'strip'
-    ? 'max-w-label-inset'
-    : 'max-w-label-inset-wide'
-}
-
 function ScreenStreamOwnerLabel({
   displayName,
   variant,
-  hasViewers = false,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers?: boolean
 }) {
   return (
     <div
       className={cn(
         screenStreamOwnerLabelClass,
         screenStreamOwnerLabelPositionClass(variant),
-        hasViewers && viewersReserveClass(variant),
       )}
     >
       <MonitorIcon className="size-3 shrink-0 opacity-90" aria-hidden />
@@ -113,12 +97,10 @@ function UnsubscribedScreenStreamTile({
   displayName,
   variant,
   onSubscribe,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
   onSubscribe: () => void
-  hasViewers: boolean
 }) {
   const t = useTranslations('voice')
 
@@ -149,11 +131,7 @@ function UnsubscribedScreenStreamTile({
         </Button>
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -161,11 +139,9 @@ function UnsubscribedScreenStreamTile({
 function LoadingScreenStreamTile({
   displayName,
   variant,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers: boolean
 }) {
   const t = useTranslations('voice')
 
@@ -187,11 +163,7 @@ function LoadingScreenStreamTile({
         />
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -199,11 +171,9 @@ function LoadingScreenStreamTile({
 function PausedScreenStreamTile({
   displayName,
   variant,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers: boolean
 }) {
   const t = useTranslations('voice')
 
@@ -222,11 +192,7 @@ function PausedScreenStreamTile({
         <span>{t('stage.streamPaused')}</span>
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -236,13 +202,11 @@ function FailedScreenStreamTile({
   error,
   variant,
   onRetry,
-  hasViewers,
 }: {
   displayName: string
   error: string
   variant: StageMediaTileVariant
   onRetry: () => void
-  hasViewers: boolean
 }) {
   const t = useTranslations('voice')
 
@@ -270,11 +234,7 @@ function FailedScreenStreamTile({
           {t('actions.retry')}
         </Button>
       </div>
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -284,7 +244,6 @@ export function StageMediaTile({
   user,
   participant,
   displayName,
-  viewers = [],
   dimmed = false,
   speaking = false,
   variant,
@@ -302,8 +261,6 @@ export function StageMediaTile({
     isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
   )
   const palette = useVoiceTilePalette(user, item.userId)
-  const streamViewers = item.kind === 'screen' ? viewers : []
-  const hasViewers = streamViewers.length > 0
   const isFailedScreen = isScreen && Boolean(item.error)
   const isUnsubscribedScreen =
     isScreen && !isFailedScreen && !item.isLocal && item.subscribed === false
@@ -413,26 +370,22 @@ export function StageMediaTile({
               error={item.error ?? t('stage.screenShareError')}
               variant={variant}
               onRetry={() => onSetSubscribed(item.id, true)}
-              hasViewers={hasViewers}
             />
           ) : isUnsubscribedScreen ? (
             <UnsubscribedScreenStreamTile
               displayName={displayName}
               variant={variant}
               onSubscribe={() => onSetSubscribed(item.id, true)}
-              hasViewers={hasViewers}
             />
           ) : isPausedScreen ? (
             <PausedScreenStreamTile
               displayName={displayName}
               variant={variant}
-              hasViewers={hasViewers}
             />
           ) : isLoadingScreen ? (
             <LoadingScreenStreamTile
               displayName={displayName}
               variant={variant}
-              hasViewers={hasViewers}
             />
           ) : (
             <>
@@ -502,7 +455,6 @@ export function StageMediaTile({
                 variant === 'strip'
                   ? 'bottom-1.5 left-1 max-w-media-inset-sm px-1.5 py-0.5 text-xs leading-tight'
                   : 'bottom-2 left-2 max-w-media-inset-xl px-2 py-1 text-xs',
-                hasViewers && viewersReserveClass(variant),
               )}
             >
               {participant ? (
@@ -518,17 +470,6 @@ export function StageMediaTile({
               ) : null}
               <span className="min-w-0 truncate">{mediaLabel}</span>
             </div>
-          ) : null}
-
-          {hasViewers ? (
-            <VoiceStreamViewers
-              viewers={streamViewers}
-              variant={variant === 'strip' ? 'count' : 'avatars'}
-              className={cn(
-                'absolute z-20',
-                variant === 'strip' ? 'right-1 bottom-1.5' : 'right-2 bottom-2',
-              )}
-            />
           ) : null}
         </ContextMenuTrigger>
       <ContextMenuContent className="z-420 min-w-64 border-on-media/10">

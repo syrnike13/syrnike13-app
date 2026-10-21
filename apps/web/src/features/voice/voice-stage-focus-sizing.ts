@@ -8,7 +8,8 @@ const COLLAPSED_STRIP_CHROME_PX = 36
 const STRIP_ROW_PADDING_PX = 8
 const STRIP_TILE_GAP_PX = 8
 const STRIP_TILE_MAX_WIDTH_PX = 224
-const STRIP_TILE_MIN_WIDTH_PX = 128
+/** Guard against measurement/subpixel rounding triggering a horizontal scrollbar. */
+const STRIP_FIT_SAFETY_PX = 32
 
 export type VoiceStageFocusLayout = {
   focus: { width: number; height: number }
@@ -22,13 +23,13 @@ function stripTileWidthForContainer(
   if (stripCount <= 0) return 0
 
   const available =
-    containerWidth - STRIP_ROW_PADDING_PX - (stripCount - 1) * STRIP_TILE_GAP_PX
+    containerWidth -
+    STRIP_ROW_PADDING_PX -
+    (stripCount - 1) * STRIP_TILE_GAP_PX -
+    STRIP_FIT_SAFETY_PX
 
   const perTile = available / stripCount
-  return Math.max(
-    STRIP_TILE_MIN_WIDTH_PX,
-    Math.min(STRIP_TILE_MAX_WIDTH_PX, perTile),
-  )
+  return Math.max(0, Math.min(STRIP_TILE_MAX_WIDTH_PX, perTile))
 }
 
 function stripRowHeight(stripTileWidth: number): number {

@@ -13,6 +13,7 @@ import { HolidayProvider } from '@syrnike13/ui/holidays'
 import { HomeIcon, BellIcon, SearchIcon, SmileIcon } from '#/components/icons'
 
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
+import { resetDevVoiceGhosts } from '#/features/voice/dev-voice-stage-ghosts'
 import { DevToolsOverlay } from './dev-tools-overlay'
 
 const HALLOWEEN = () => new Date(2026, 9, 31, 12)
@@ -46,11 +47,13 @@ function sliderInput(name: string) {
 
 beforeEach(() => {
   localStorage.clear()
+  resetDevVoiceGhosts()
 })
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  resetDevVoiceGhosts()
 })
 
 it('switches holidays from the shared DEV panel', () => {
@@ -84,8 +87,36 @@ it('switches holidays from the shared DEV panel', () => {
   expect(document.documentElement.dataset.holiday).toBeUndefined()
 })
 
-it('opens the theme workbench and exports one JSON for every theme', () => {
+it('controls the visual voice stage ghosts', () => {
   renderDevTools()
+
+  fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Voice' }))
+
+  expect(screen.getByText('Voice stage ghosts')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Hide Nova' }))
+  expect(
+    screen.getByRole('switch', { name: 'Show Nova' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Show Nova' }))
+  expect(
+    screen.getByRole('switch', { name: 'Hide Nova' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Mute Nova' }))
+  expect(
+    screen.getByRole('button', { name: 'Unmute Nova' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: /Stop Nova.s demo/ }))
+  expect(
+    screen.getByRole('button', { name: /Start Nova.s demo/ }),
+  ).toBeInTheDocument()
+})
+
+it('opens the theme workbench and exports one JSON for every theme', () => {  renderDevTools()
 
   fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
   fireEvent.click(screen.getByRole('tab', { name: 'Themes' }))

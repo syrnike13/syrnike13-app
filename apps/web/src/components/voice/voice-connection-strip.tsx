@@ -157,8 +157,8 @@ export function VoiceConnectionStrip() {
         <Button
           type="button"
           size="icon"
-          variant="destructive"
-          className="size-8 shrink-0"
+          variant="ghost"
+          className="size-8 shrink-0 text-destructive hover:text-destructive"
           aria-label={t('disconnect')}
           onClick={voice.leave}
         >

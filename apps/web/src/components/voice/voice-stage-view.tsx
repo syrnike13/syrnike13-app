@@ -62,6 +62,7 @@ import {
 import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
+import { useDevVoiceStageGhosts } from '#/features/voice/dev-voice-stage-ghosts'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   filterStageVideoMediaItems,
@@ -83,7 +84,10 @@ import {
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { streamViewerIds } from '#/features/voice/stream-viewers'
-import type { StreamViewer } from '#/components/voice/voice-stream-viewers'
+import {
+  VoiceStreamViewers,
+  type StreamViewer,
+} from '#/components/voice/voice-stream-viewers'
 import {
   buildVoiceStageViewSessions,
   type VoiceStageViewSession,
@@ -162,7 +166,7 @@ export function VoiceStageView({
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
   const channelId = channel._id
-  const users = useSyncStore((s) => s.users)
+  const syncedUsers = useSyncStore((s) => s.users)
   const server = useSyncStore((s) =>
     channel.channel_type === 'TextChannel'
       ? s.servers[channel.server]
@@ -180,6 +184,14 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
   const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession
   const connecting = voiceSession.status === 'connecting' && inVoiceSession
+  const devGhosts = useDevVoiceStageGhosts({ enabled: inThisVoiceCall })
+  const users = useMemo(
+    () =>
+      Object.keys(devGhosts.users).length > 0
+        ? { ...syncedUsers, ...devGhosts.users }
+        : syncedUsers,
+    [devGhosts.users, syncedUsers],
+  )
   const channelActivitiesEnabled = uiFeatureFlags.channelActivities
   const channelActivity = useChannelActivity(
     channelId,
@@ -224,12 +236,19 @@ export function VoiceStageView({
     return voiceStage.registerStageView(channelId)
   }, [channelId, popoutSurface, voiceStage.registerStageView])
 
-  const participants = useChannelVoiceParticipantsWithLocalOverride(
+  const realParticipants = useChannelVoiceParticipantsWithLocalOverride(
     channelId,
     storeParticipants,
     inVoiceSession ? auth.user?._id : undefined,
     inVoiceSession ? voiceSession.micPublishing : undefined,
     inVoiceSession ? voiceSession.deafened : undefined,
+  )
+  const participants = useMemo(
+    () =>
+      devGhosts.participants.length > 0
+        ? [...realParticipants, ...devGhosts.participants]
+        : realParticipants,
+    [devGhosts.participants, realParticipants],
   )
   const activityVoiceMembersKey = useMemo(
     () =>
@@ -256,10 +275,30 @@ export function VoiceStageView({
       new Map(participants.map((participant) => [participant.id, participant])),
     [participants],
   )
-  const mediaItems =
-    voiceStage.stageChannelId === channelId
-      ? voiceStage.stageMediaItems
-      : EMPTY_STAGE_MEDIA_ITEMS
+  const mediaItems = useMemo(() => {
+    const stageItems =
+      voiceStage.stageChannelId === channelId
+        ? voiceStage.stageMediaItems
+        : EMPTY_STAGE_MEDIA_ITEMS
+    return devGhosts.mediaItems.length > 0
+      ? [...devGhosts.mediaItems, ...stageItems]
+      : stageItems
+  }, [
+    channelId,
+    devGhosts.mediaItems,
+    voiceStage.stageChannelId,
+    voiceStage.stageMediaItems,
+  ])
+  const speakingUserIds = useMemo<ReadonlySet<string>>(
+    () =>
+      devGhosts.speakingUserIds.size > 0
+        ? new Set([
+            ...voiceSession.speakingUserIds,
+            ...devGhosts.speakingUserIds,
+          ])
+        : voiceSession.speakingUserIds,
+    [devGhosts.speakingUserIds, voiceSession.speakingUserIds],
+  )
   const gridMediaItems = useMemo(
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
@@ -468,6 +507,14 @@ export function VoiceStageView({
     return viewersByOwner
   }, [auth.user, participants, resolveParticipantDisplayName, users])
 
+  const focusedViewers = useMemo(
+    () =>
+      focusedItem?.kind === 'screen'
+        ? (streamViewersByOwner.get(focusedItem.userId) ?? [])
+        : [],
+    [focusedItem, streamViewersByOwner],
+  )
+
   const viewSessions = useMemo(
     () =>
       buildVoiceStageViewSessions({
@@ -531,7 +578,7 @@ export function VoiceStageView({
         participants={options?.rosterParticipants ?? participants}
         users={users}
         currentUser={auth.user}
-        speakingUserIds={voiceSession.speakingUserIds}
+        speakingUserIds={speakingUserIds}
         displayName={resolveParticipantDisplayName}
         dimmedUserId={connecting && auth.user?._id ? auth.user._id : undefined}
         compact={options?.compact}
@@ -545,7 +592,7 @@ export function VoiceStageView({
       participants,
       resolveParticipantDisplayName,
       users,
-      voiceSession.speakingUserIds,
+      speakingUserIds,
     ],
   )
 
@@ -579,11 +626,6 @@ export function VoiceStageView({
             (isLocal ? (auth.user ?? undefined) : undefined)
           }
           participant={participantsById.get(item.userId)}
-          viewers={
-            item.kind === 'screen'
-              ? streamViewersByOwner.get(item.userId)
-              : undefined
-          }
           displayName={voiceParticipantDisplayName(
             item.userId,
             users,
@@ -594,7 +636,7 @@ export function VoiceStageView({
           speaking={
             inThisVoiceCall &&
             item.kind !== 'screen' &&
-            voiceSession.speakingUserIds.has(item.userId)
+            speakingUserIds.has(item.userId)
           }
           variant={variant}
           onFocus={focusMedia}
@@ -611,11 +653,10 @@ export function VoiceStageView({
       focusMedia,
       inThisVoiceCall,
       participantsById,
-      streamViewersByOwner,
       t,
       users,
       voiceStage.setStageMediaSubscribed,
-      voiceSession.speakingUserIds,
+      speakingUserIds,
     ],
   )
 
@@ -831,6 +872,13 @@ export function VoiceStageView({
                   </>
                 ) : null}
               </span>
+              {focusedViewers.length > 0 ? (
+                <VoiceStreamViewers
+                  viewers={focusedViewers}
+                  variant="avatars"
+                  className="ml-1 shrink-0"
+                />
+              ) : null}
               {focusedMediaHeader?.showOnAir ? (
                 <VoiceOnAirBadge className="ml-1 shrink-0" />
               ) : null}
@@ -857,6 +905,13 @@ export function VoiceStageView({
             <span className="min-w-0 truncate">
               {focusedMediaHeader.displayName}
             </span>
+            {focusedViewers.length > 0 ? (
+              <VoiceStreamViewers
+                viewers={focusedViewers}
+                variant="avatars"
+                className="ml-1 shrink-0"
+              />
+            ) : null}
             {focusedMediaHeader.showOnAir ? (
               <VoiceOnAirBadge className="ml-1 shrink-0" />
             ) : null}

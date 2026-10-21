@@ -20,9 +20,14 @@ import { BugIcon, XIcon } from '#/components/icons'
 
 import { HolidayPreviewPanel } from './holiday-preview-panel'
 import { PrismWorkbenchPanel } from './prism-workbench-panel'
+import { VoiceStagePreviewPanel } from './voice-stage-preview-panel'
 import { usePrismWorkbench } from './use-prism-workbench'
+import {
+  isDevVoiceGhostsModified,
+  useDevVoiceGhostsState,
+} from '#/features/voice/dev-voice-stage-ghosts'
 
-const DEV_TABS = ['holidays', 'themes'] as const
+const DEV_TABS = ['holidays', 'themes', 'voice'] as const
 
 type DevTab = (typeof DEV_TABS)[number]
 
@@ -51,8 +56,11 @@ export function DevToolsOverlay() {
   const [tab, setTab] = useState<DevTab>('holidays')
   const workbench = usePrismWorkbench(open && tab === 'themes')
   const holiday = useHolidayPreview()
+  const ghosts = useDevVoiceGhostsState()
 
-  const modified = workbench.isCustom || holiday.override !== 'auto'
+  const ghostsModified = isDevVoiceGhostsModified(ghosts)
+  const modified =
+    workbench.isCustom || holiday.override !== 'auto' || ghostsModified
 
   if (!open) {
     return (
@@ -110,6 +118,10 @@ export function DevToolsOverlay() {
                 Themes
                 {workbench.isCustom ? <ModifiedDot /> : null}
               </TabsTrigger>
+              <TabsTrigger value="voice">
+                Voice
+                {ghostsModified ? <ModifiedDot /> : null}
+              </TabsTrigger>
             </TabsList>
           </div>
           <TabsContent
@@ -140,6 +152,13 @@ export function DevToolsOverlay() {
               onPreviewVariantChange={workbench.setPreviewVariant}
               onResetAll={workbench.resetAll}
             />
+          </TabsContent>
+          <TabsContent
+            value="voice"
+            keepMounted
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <VoiceStagePreviewPanel />
           </TabsContent>
         </Tabs>
       </Card>

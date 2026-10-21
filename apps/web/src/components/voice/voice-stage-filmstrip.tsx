@@ -36,22 +36,16 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
   return (
     <div
       className={cn(
-        'relative shrink-0',
+        'relative w-full min-w-0 shrink-0',
         many &&
           'before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-4 before:bg-gradient-to-r before:from-media-backdrop/80 before:to-transparent',
         many &&
           'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-10 after:w-6 after:bg-gradient-to-l after:from-media-backdrop/80 after:to-transparent',
       )}
     >
-      {many ? (
-        <span className="pointer-events-none absolute top-0 right-1 z-20 rounded bg-media-backdrop/75 px-1.5 py-px text-xs font-semibold tabular-nums text-on-media/90">
-          +{stripItems.length}
-        </span>
-      ) : null}
       <div
         className={cn(
-          'overflow-x-auto overscroll-x-contain scroll-smooth py-0.5',
-          'scrollbar-thin [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
+          'w-full overflow-x-auto overscroll-x-contain scroll-smooth py-0.5 no-scrollbar',
           many && 'px-1',
         )}
       >
