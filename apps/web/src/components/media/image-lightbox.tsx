@@ -238,7 +238,6 @@ export function ImageLightbox({
         className={cn(
           'fixed inset-0 z-300 flex max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
           'rounded-none bg-transparent p-0 ring-0 sm:max-w-none',
-          'data-closed:fade-out-0 data-open:fade-in-0',
         )}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>

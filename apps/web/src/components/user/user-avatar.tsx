@@ -96,6 +96,10 @@ type UserAvatarProps = {
   presenceRingClassName?: string
   /** Кольцо вокруг бейджа уведомлений */
   notificationRingClassName?: string
+  /** Сообщает о загрузке основного изображения аватара. */
+  onImageLoadingChange?: (
+    status: 'idle' | 'loading' | 'loaded' | 'error',
+  ) => void
 }
 
 export function UserAvatar({
@@ -109,6 +113,7 @@ export function UserAvatar({
   speaking = false,
   presenceRingClassName = 'border-card',
   notificationRingClassName = 'border-card',
+  onImageLoadingChange,
 }: UserAvatarProps) {
   const t = useTranslations('chat')
   const [hovered, setHovered] = useState(false)
@@ -200,6 +205,7 @@ export function UserAvatar({
           <AvatarImage
             src={avatarSrc}
             alt={name}
+            onLoadingStatusChange={onImageLoadingChange}
             className={cn(
               mountAnimatedOverlay && 'transition-opacity duration-150',
               showAnimatedOverlay && 'opacity-0',

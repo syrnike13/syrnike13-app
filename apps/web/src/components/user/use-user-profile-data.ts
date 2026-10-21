@@ -20,5 +20,6 @@ export function useUserProfileData(userId: string) {
     bannerUrl: userBannerUrl(profileQuery.data?.background, {
       animated: true,
     }),
+    isPending: profileQuery.isPending,
   }
 }

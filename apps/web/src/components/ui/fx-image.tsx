@@ -22,9 +22,11 @@ export type FxImageProps = {
   fill?: boolean
   rounded?: FxImageRounded
   objectFit?: 'cover' | 'contain'
+  onLoad?: React.ReactEventHandler<HTMLImageElement>
+  onError?: React.ReactEventHandler<HTMLImageElement>
 } & Omit<
   React.HTMLAttributes<HTMLDivElement>,
-  'children' | 'className'
+  'children' | 'className' | 'onLoad' | 'onError'
 >
 
 export function FxImage({
@@ -37,6 +39,8 @@ export function FxImage({
   fill = false,
   rounded = 'none',
   objectFit = 'cover',
+  onLoad,
+  onError,
   ...wrapperProps
 }: FxImageProps) {
   const roundedCls = roundedClass[rounded]
@@ -85,6 +89,8 @@ export function FxImage({
         draggable={draggable}
         loading="lazy"
         decoding="async"
+        onLoad={onLoad}
+        onError={onError}
       />
     </Wrapper>
   )

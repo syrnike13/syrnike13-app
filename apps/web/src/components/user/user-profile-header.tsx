@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
@@ -6,6 +6,7 @@ import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
+import { userAvatarUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import { cn } from '#/lib/utils'
 
@@ -18,6 +19,8 @@ type UserProfileHeaderProps = {
   bannerActions?: ReactNode
   /** Клик по аватару открывает полный профиль. */
   onAvatarClick?: () => void
+  /** Сообщает, готовы ли баннер и аватар к показу. */
+  onMediaLoadingChange?: (loading: boolean) => void
   className?: string
 }
 
@@ -30,12 +33,30 @@ export function UserProfileHeader({
   variant = 'popover',
   bannerActions,
   onAvatarClick,
+  onMediaLoadingChange,
   className,
 }: UserProfileHeaderProps) {
   const t = useTranslations('users')
-  const { bannerUrl } = useUserProfileData(user._id)
+  const { bannerUrl, isPending } = useUserProfileData(user._id)
+  const [bannerLoadedUrl, setBannerLoadedUrl] = useState<string | null>(null)
+  const [bannerFailedUrl, setBannerFailedUrl] = useState<string | null>(null)
+  const [loadedAvatarKey, setLoadedAvatarKey] = useState<string | null>(null)
   const customStatus = user.status?.text?.trim()
   const modal = variant === 'modal'
+
+  const bannerFailed = bannerUrl != null && bannerFailedUrl === bannerUrl
+  const bannerLoaded = bannerUrl != null && bannerLoadedUrl === bannerUrl
+  const avatarKey = `${user._id}:${user.avatar ?? ''}`
+  const hasAvatarImage = Boolean(userAvatarUrl(user.avatar, { animated: false }))
+  const avatarReady = !hasAvatarImage || loadedAvatarKey === avatarKey
+  const mediaLoading =
+    isPending ||
+    (bannerUrl != null && !bannerLoaded && !bannerFailed) ||
+    !avatarReady
+
+  useEffect(() => {
+    onMediaLoadingChange?.(mediaLoading)
+  }, [mediaLoading, onMediaLoadingChange])
 
   const avatar = (
     <UserAvatar
@@ -51,6 +72,11 @@ export function UserProfileHeader({
       )}
       animated="always"
       showPresence
+      onImageLoadingChange={(status) => {
+        if (status === 'loaded' || status === 'error') {
+          setLoadedAvatarKey(avatarKey)
+        }
+      }}
       presenceRingClassName={
         variant === 'modal'
           ? 'border-secondary'
@@ -66,16 +92,18 @@ export function UserProfileHeader({
       <div
         className={userProfileBannerClassName(
           modal ? 'h-35 rounded-t-xl' : 'rounded-t-lg',
-          !bannerUrl &&
+          (!bannerUrl || bannerFailed) &&
             'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
         )}
       >
-        {bannerUrl ? (
+        {bannerUrl && !bannerFailed ? (
           <>
             <FxImage
               src={bannerUrl}
               wrapperClassName="block h-full w-full"
               className="h-full w-full object-cover"
+              onLoad={() => setBannerLoadedUrl(bannerUrl)}
+              onError={() => setBannerFailedUrl(bannerUrl)}
             />
             <div
               className="pointer-events-none absolute inset-0 z-1 bg-media-backdrop/20"
