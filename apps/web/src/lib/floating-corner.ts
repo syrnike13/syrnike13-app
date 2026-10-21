@@ -61,13 +61,13 @@ export function nearestFloatingCorner(
 export function floatingCornerPositionClass(corner: FloatingCorner): string {
   switch (corner) {
     case 'top-left':
-      return 'top-[calc(0.5rem+env(safe-area-inset-top))] left-2'
+      return 'safe-top-2 left-2'
     case 'top-right':
-      return 'top-[calc(0.5rem+env(safe-area-inset-top))] right-2'
+      return 'safe-top-2 right-2'
     case 'bottom-left':
-      return 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-2'
+      return 'safe-bottom-18 left-2'
     case 'bottom-right':
-      return 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-2'
+      return 'safe-bottom-18 right-2'
     default: {
       const _exhaustive: never = corner
       return _exhaustive

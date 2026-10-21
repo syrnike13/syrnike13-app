@@ -10,7 +10,8 @@ import {
 } from '@syrnike13/platform'
 import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
-import { applyThemeToDocument } from '#/features/appearance/apply-theme'
+import { applyThemeToDocument, listThemes } from '@syrnike13/ui/tokens'
+import { applyAppearanceScale } from '#/features/appearance/appearance-scale'
 import {
   loadDesktopLocalSettingsEffect,
   updateDesktopLocalSettingsEffect,
@@ -25,6 +26,12 @@ const UnknownAppearanceJsonSchema = Schema.String.pipe(
 const AppearanceSettingsJsonSchema = Schema.fromJsonString(
   AppearanceSettingsSchema,
 )
+
+function withKnownThemeId(settings: AppearanceSettings): AppearanceSettings {
+  return listThemes().some((theme) => theme.id === settings.themeId)
+    ? settings
+    : { ...settings, themeId: DEFAULT_THEME_ID }
+}
 
 function migrateLegacyTheme(): AppearanceSettings | null {
   if (typeof window === 'undefined') return null
@@ -55,9 +62,11 @@ export function readStoredAppearanceSettings(): AppearanceSettings {
   try {
     const raw = localStorage.getItem(APPEARANCE_STORAGE_KEY)
     if (raw) {
-      return normalizeAppearanceSettings(
-        Option.getOrUndefined(
-          Schema.decodeUnknownOption(UnknownAppearanceJsonSchema)(raw),
+      return withKnownThemeId(
+        normalizeAppearanceSettings(
+          Option.getOrUndefined(
+            Schema.decodeUnknownOption(UnknownAppearanceJsonSchema)(raw),
+          ),
         ),
       )
     }
@@ -117,14 +126,21 @@ function persist() {
   }
 }
 
+function applyAppearance(settings: AppearanceSettings) {
+  applyThemeToDocument(settings)
+  applyAppearanceScale(settings.scale)
+}
+
 function patch(
   partial: Partial<AppearanceSettings>,
   options: { persist?: boolean } = {},
 ) {
-  state = normalizeAppearanceSettings({ ...state, ...partial })
+  state = withKnownThemeId(
+    normalizeAppearanceSettings({ ...state, ...partial }),
+  )
   stateRevision += 1
   if (options.persist !== false) persist()
-  applyThemeToDocument(state)
+  applyAppearance(state)
   emit()
 }
 
@@ -135,8 +151,8 @@ export const hydrateAppearanceSettingsFromDesktopEffect = Effect.fn(
   const settings = yield* loadDesktopLocalSettingsEffect()
   if (!settings || revision !== stateRevision) return
   yield* Effect.sync(() => {
-    state = normalizeAppearanceSettings(settings.appearance)
-    applyThemeToDocument(state)
+    state = withKnownThemeId(normalizeAppearanceSettings(settings.appearance))
+    applyAppearance(state)
     emit()
   })
 })
@@ -159,6 +175,11 @@ export const appearanceSettingsStore = {
   setColorMode(colorMode: AppearanceColorMode) {
     if (state.colorMode === colorMode) return
     patch({ colorMode })
+  },
+
+  setScale(scale: number) {
+    if (state.scale === scale) return
+    patch({ scale })
   },
 
   previewGradient(gradient: AppearanceGradientSettings) {

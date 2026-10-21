@@ -1,25 +1,27 @@
 import { useNavigate } from '@tanstack/react-router'
-import { RiRefreshLine } from '@remixicon/react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { type ReactNode, useEffect } from 'react'
 
+import { RefreshIcon } from '#/components/icons'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'
 import { VoiceProvider } from '#/features/voice/voice-provider'
 import { useSyncReady } from '#/features/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 /**
- * Общий gate для авторизованных зон (`/app`, `/m`).
+ * Общий gate для авторизованных зон (`/`, `/m`).
  *
  * Поднимает VoiceProvider (одна голосовая сессия), проверяет auth/onboarding/sync,
  * показывает GatewayLoadingScreen / ProfileLoadErrorScreen на время загрузки,
  * навешивает ActivityPresenceManager и SettingsModalProvider.
  *
- * Используется layout-роутами `/app` и `/m`, поэтому VoiceProvider один
+ * Используется layout-роутами `/` и `/m`, поэтому VoiceProvider один
  * в любой момент времени — пользователь не может быть одновременно
  * в десктопной и мобильной зоне.
  */
@@ -76,7 +78,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   ) {
     return (
       <ProfileLoadErrorScreen
-        message={auth.profileLoadError.message}
+        error={auth.profileLoadError}
         retry={auth.retryProfileLoad}
       />
     )
@@ -102,20 +104,22 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
 }
 
 function ProfileLoadErrorScreen({
-  message,
+  error,
   retry,
 }: {
-  message: string
+  error: Error
   retry: () => Effect.Effect<void, unknown>
 }) {
+  const t = useTranslations('auth')
+
   return (
-    <div className="gradient-surface-content fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
+    <div className="gradient-surface-content fixed inset-0 z-200 flex items-center justify-center bg-background px-6 text-foreground">
       <div className="flex w-full max-w-md flex-col items-center text-center">
-        <p className="text-xs font-bold tracking-[0.12em] text-foreground uppercase">
-          Профиль недоступен
+        <p className="text-xs font-bold tracking-widest text-foreground uppercase">
+          {t('gate.profileUnavailable')}
         </p>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          {message || 'Не удалось загрузить профиль'}
+          {apiErrorMessage(error, t('gate.profileLoadError'))}
         </p>
         <Button
           type="button"
@@ -124,8 +128,8 @@ function ProfileLoadErrorScreen({
             void Effect.runPromise(retry())
           }}
         >
-          <RiRefreshLine aria-hidden="true" />
-          Повторить
+          <RefreshIcon aria-hidden="true" />
+          {t('gate.retry')}
         </Button>
       </div>
     </div>

@@ -74,7 +74,7 @@ const groupChannel = {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -150,7 +150,7 @@ describe('IncomingVoiceCallOverlay', () => {
     expect(voiceJoinMock).toHaveBeenCalledWith(CHANNEL_ID)
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith({
-        to: '/app/c/$channelId',
+        to: '/c/$channelId',
         params: { channelId: CHANNEL_ID },
         search: { m: undefined },
       })

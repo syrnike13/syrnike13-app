@@ -1,25 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_APPEARANCE_SETTINGS,
-  DEFAULT_THEME_ID,
-} from '@syrnike13/platform'
+import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 
-import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
+import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
 import {
   allThemeCssVariables,
-  getThemeById,
   getThemeTokens,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 
 describe('getDefaultThemeCss', () => {
   it('emits default theme variables for :root and .dark', () => {
-    const theme = getThemeById(DEFAULT_THEME_ID)
+    const lightTokens = getThemeTokens(
+      { ...DEFAULT_APPEARANCE_SETTINGS, colorMode: 'light' },
+      false,
+    )
+    const darkTokens = getThemeTokens(
+      { ...DEFAULT_APPEARANCE_SETTINGS, colorMode: 'dark' },
+      true,
+    )
     const css = getDefaultThemeCss()
 
     expect(css).toContain(':root {')
     expect(css).toContain('.dark {')
     expect(css).toContain(
-      `--destructive-contrast: ${theme.variants.dark!['destructive-contrast']};`,
+      `--destructive-contrast: ${darkTokens['destructive-contrast']};`,
     )
     expect(css).toContain(
       `--background: ${
@@ -32,7 +35,7 @@ describe('getDefaultThemeCss', () => {
       };`,
     )
     expect(css).toContain(
-      `--theme-surface-content: ${theme.variants.light!.card};`,
+      `--theme-surface-content: ${lightTokens.card};`,
     )
   })
 })

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import {
   HOTKEY_ACTIONS,
   canRegisterHotkeyAction,
@@ -11,20 +13,28 @@ import {
   shouldCaptureRecordedInput,
 } from './hotkey-combo'
 
+const t = createTranslator(ru, 'ru', 'settings.hotkeys')
+
 describe('hotkey combo helpers', () => {
   it('formats physical combos for the settings UI', () => {
     expect(
-      comboDisplayLabel({
-        codes: ['AltLeft', 'Mouse5'],
-      }),
+      comboDisplayLabel(
+        {
+          codes: ['AltLeft', 'Mouse5'],
+        },
+        t,
+      ),
     ).toBe('Left Alt+Mouse5')
   })
 
   it('formats left and right modifiers separately', () => {
     expect(
-      comboDisplayLabel({
-        codes: ['ControlLeft', 'ControlRight'],
-      }),
+      comboDisplayLabel(
+        {
+          codes: ['ControlLeft', 'ControlRight'],
+        },
+        t,
+      ),
     ).toBe('Left Ctrl+Right Ctrl')
   })
 

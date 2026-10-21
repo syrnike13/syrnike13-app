@@ -4,9 +4,9 @@ import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
 const sizeMap = {
-  sm: { box: 'size-8 text-[9px]', img: 'size-4' },
-  md: { box: 'size-10 text-[10px]', img: 'size-6' },
-  lg: { box: 'size-12 text-[10px]', img: 'size-7' },
+  sm: { box: 'size-8 text-3xs', img: 'size-4' },
+  md: { box: 'size-10 text-3xs', img: 'size-6' },
+  lg: { box: 'size-12 text-3xs', img: 'size-7' },
   xl: { box: 'size-16 text-xs', img: 'size-10' },
 } as const
 
@@ -27,7 +27,7 @@ export function BadgeIcon({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/50 text-muted-foreground',
+        'inline-flex shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground',
         sizes.box,
         className,
       )}

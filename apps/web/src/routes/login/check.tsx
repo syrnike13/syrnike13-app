@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 import {
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import {
   isEmailVerificationEnabled,
   useSyrnikeConfig,
@@ -19,6 +21,7 @@ export const Route = createFileRoute('/login/check')({
 })
 
 function CheckEmailPage() {
+  const t = useTranslations('auth')
   const configQuery = useSyrnikeConfig()
   const email = getPendingVerifyEmail()
 
@@ -30,15 +33,15 @@ function CheckEmailPage() {
       <AuthLayout>
         <AuthCard>
           <CardHeader>
-            <CardTitle>Подтверждение не требуется</CardTitle>
+            <CardTitle>{t('check.notRequiredTitle')}</CardTitle>
             <CardDescription>
-              Можно сразу вернуться ко входу и продолжить.
+              {t('check.notRequiredDescription')}
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button className="w-full" asChild>
-              <Link to="/login">Ко входу</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         </AuthCard>
       </AuthLayout>
@@ -49,29 +52,27 @@ function CheckEmailPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>Проверьте почту</CardTitle>
+          <CardTitle>{t('check.title')}</CardTitle>
           <CardDescription className="space-y-2">
-            <p>
-              Мы отправили письмо с подтверждением. Обычно оно приходит в течение
-              10 минут.
-            </p>
+            <p>{t('check.sent')}</p>
             {email ? (
               <p className="rounded-xl bg-muted px-4 py-3 font-mono text-sm text-foreground">
                 {email}
               </p>
             ) : null}
-            <p className="text-sm">
-              Перейдите по ссылке в письме, чтобы завершить регистрацию.
-            </p>
+            <p className="text-sm">{t('check.followLink')}</p>
           </CardDescription>
         </CardHeader>
         <CardFooter className="flex flex-col gap-2">
-          <Button className="w-full" asChild>
-            <Link to="/login">Ко входу</Link>
-          </Button>
-          <Button variant="ghost" className="w-full" asChild>
-            <Link to="/login/resend">Отправить письмо снова</Link>
-          </Button>
+          <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+            {t('toLogin')}
+          </Link>
+          <Link
+            to="/login/resend"
+            className={cn(buttonVariants({ variant: 'ghost' }), 'w-full')}
+          >
+            {t('check.resend')}
+          </Link>
         </CardFooter>
       </AuthCard>
     </AuthLayout>

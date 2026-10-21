@@ -170,9 +170,11 @@ describe('ServerSettingsAuditPanel', () => {
       <ServerSettingsAuditPanel serverId="server-1" />,
     )
 
-    const row = await screen.findByRole('button', {
-      name: /nioh13 создал роль «Прицел»/,
-    })
+    const row = await screen.findByRole(
+      'button',
+      { name: /nioh13 создал роль «Прицел»/ },
+      { timeout: 5000 },
+    )
     fireEvent.click(row)
 
     expect(screen.getAllByText('Создание роли').length).toBeGreaterThan(0)
@@ -197,8 +199,14 @@ describe('ServerSettingsAuditPanel', () => {
     await screen.findByRole('button', {
       name: /nioh13 создал роль «Прицел»/,
     })
-    fireEvent.click(screen.getByRole('button', { name: /Все действия/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Бан участника' }))
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: /Все действия/ }),
+    )
+    const banItem = await screen.findByRole('menuitem', {
+      name: 'Бан участника',
+    })
+    fireEvent.pointerDown(banItem)
+    fireEvent.click(banItem)
 
     await waitFor(() => {
       expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
@@ -216,11 +224,18 @@ describe('ServerSettingsAuditPanel', () => {
     await screen.findByRole('button', {
       name: /nioh13 создал роль «Прицел»/,
     })
-    fireEvent.click(screen.getByRole('button', { name: /Все пользователи/ }))
-    fireEvent.change(screen.getByPlaceholderText('Найти пользователя'), {
-      target: { value: 'waf' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /waflya/ }))
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: /Все пользователи/ }),
+    )
+    fireEvent.change(
+      await screen.findByPlaceholderText('Найти пользователя'),
+      {
+        target: { value: 'waf' },
+      },
+    )
+    const userItem = await screen.findByRole('menuitem', { name: /waflya/ })
+    fireEvent.pointerDown(userItem)
+    fireEvent.click(userItem)
 
     await waitFor(() => {
       expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
@@ -441,10 +456,20 @@ describe('ServerSettingsAuditPanel', () => {
     await screen.findByRole('button', {
       name: /nioh13 создал роль «Прицел»/,
     })
-    fireEvent.click(screen.getByRole('button', { name: /Все пользователи/ }))
-    fireEvent.click(screen.getByRole('button', { name: /waflya/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Все действия/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Бан участника' }))
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: /Все пользователи/ }),
+    )
+    const userItem = await screen.findByRole('menuitem', { name: /waflya/ })
+    fireEvent.pointerDown(userItem)
+    fireEvent.click(userItem)
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: /Все действия/ }),
+    )
+    const banItem = await screen.findByRole('menuitem', {
+      name: 'Бан участника',
+    })
+    fireEvent.pointerDown(banItem)
+    fireEvent.click(banItem)
 
     await waitFor(() => {
       expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(

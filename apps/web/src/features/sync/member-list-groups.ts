@@ -1,4 +1,5 @@
 import type { Member, Server, User } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 import { getUserPresence, isUserOnline } from '#/lib/presence'
 
@@ -148,6 +149,7 @@ export type MemberSidebarListItem =
 /** Плоский список для сайдбара: участники не размонтируются при смене секции. */
 export function flattenMemberListSections(
   sections: MemberListSection[],
+  t: Translator,
 ): MemberSidebarListItem[] {
   const items: MemberSidebarListItem[] = []
 
@@ -163,14 +165,14 @@ export function flattenMemberListSections(
       items.push({
         kind: 'header',
         key: 'header-online',
-        title: 'В сети',
+        title: t('online'),
         count: section.members.length,
       })
     } else {
       items.push({
         kind: 'header',
         key: 'header-offline',
-        title: 'Не в сети',
+        title: t('offline'),
         count: section.members.length,
       })
     }

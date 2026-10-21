@@ -8,19 +8,23 @@ import type {
 import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
 import { FxImage } from '#/components/ui/fx-image'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
@@ -97,6 +101,9 @@ export function ServerSettingsRoleEditor({
   member: Member | undefined
   onDeleteRequested: () => void
 }) {
+  const t = useTranslations('servers.roles')
+  const tm = useTranslations('media')
+  const tp = useTranslations('settings.permissions')
   const canEditRole = canManageRole(
     server,
     member,
@@ -140,14 +147,14 @@ export function ServerSettingsRoleEditor({
 
   const roleEditorTabs = useMemo(
     (): { id: RoleEditorTab; label: string }[] => [
-      { id: 'display', label: 'Отображение' },
-      { id: 'permissions', label: 'Права' },
+      { id: 'display', label: t('tabs.display') },
+      { id: 'permissions', label: t('tabs.permissions') },
       {
         id: 'members',
-        label: `Управление участниками (${memberCount})`,
+        label: t('tabs.members', { count: memberCount }),
       },
     ],
-    [memberCount],
+    [memberCount, t],
   )
 
   const headerRoleName = (name.trim() || role.name).toUpperCase()
@@ -222,7 +229,7 @@ export function ServerSettingsRoleEditor({
   const save = useCallback(async (): Promise<boolean> => {
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error('Укажите название роли')
+      toast.error(t('nameRequired'))
       return false
     }
 
@@ -246,7 +253,7 @@ export function ServerSettingsRoleEditor({
             iconChanged)
         ) {
           const iconAttachmentId = iconFile
-            ? yield* uploadMediaFileEffect(token, 'icons', iconFile)
+            ? yield* uploadMediaFileEffect(token, 'icons', iconFile, tm)
             : undefined
           const trimmedColour = colour.trim()
           const fieldsToRemove: FieldsRole[] = []
@@ -302,9 +309,8 @@ export function ServerSettingsRoleEditor({
         Effect.as(true),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить роль',
-            )
+            console.error('[role-editor] save failed', error)
+            toast.error(t('saveError'))
             return false
           }),
         ),
@@ -343,33 +349,30 @@ export function ServerSettingsRoleEditor({
       <div className="space-y-0">
         <div className="flex items-center justify-between gap-4">
           <h2 className="min-w-0 truncate text-xs font-bold tracking-wide uppercase">
-            Редактирование роли — {headerRoleName}
+            {t('editTitle', { name: headerRoleName })}
           </h2>
           {canEditRole ? (
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <PopoverTrigger asChild>
-                <Button
+              <PopoverTrigger render={<Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title="Действия с ролью"
-                >
+                  title={t('roleActions')} />}>
                   <MoreHorizontalIcon className="size-4" />
-                </Button>
-              </PopoverTrigger>
+                </PopoverTrigger>
               <PopoverContent className="w-48 p-1" align="end">
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="h-9 w-full justify-start px-2 font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  variant="destructive"
+                  className="h-9 w-full justify-start px-2 font-normal"
                   onClick={() => {
                     setMenuOpen(false)
                     onDeleteRequested()
                   }}
                 >
                   <Trash2Icon className="size-4" />
-                  Удалить роль
+                  {t('deleteRole')}
                 </Button>
               </PopoverContent>
             </Popover>
@@ -378,7 +381,7 @@ export function ServerSettingsRoleEditor({
 
         <nav
           className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-b border-border"
-          aria-label="Разделы редактирования роли"
+          aria-label={t('sectionsAria')}
         >
           {roleEditorTabs.map((tab) => {
             const active = activeTab === tab.id
@@ -406,12 +409,12 @@ export function ServerSettingsRoleEditor({
         <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="role-name">
-              Название
+              {t('name')}
               <span className="text-destructive" aria-hidden>
                 {' '}
                 *
               </span>
-              <span className="sr-only"> (обязательно)</span>
+              <span className="sr-only">{t('required')}</span>
             </Label>
             <Input
               id="role-name"
@@ -432,10 +435,8 @@ export function ServerSettingsRoleEditor({
 
           <div className="space-y-3 rounded-md border border-border px-3 py-3">
             <div>
-              <p className="text-sm font-medium">Иконка роли</p>
-              <p className="text-xs text-muted-foreground">
-                Рекомендуется квадратное изображение.
-              </p>
+              <p className="text-sm font-medium">{t('roleIcon')}</p>
+              <p className="text-xs text-muted-foreground">{t('iconHint')}</p>
             </div>
             <div className="flex items-center gap-3">
               {previewIconUrl ? (
@@ -447,34 +448,33 @@ export function ServerSettingsRoleEditor({
                 />
               ) : (
                 <div className="flex size-12 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
-                  Нет
+                  {t('none')}
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={!canEditRole || saving}
-                  asChild
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'secondary', size: 'sm' }),
+                    'cursor-pointer',
+                    (!canEditRole || saving) &&
+                      'pointer-events-none opacity-50',
+                  )}
                 >
-                  <label className="cursor-pointer">
-                    Загрузить
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={!canEditRole || saving}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (!file) return
-                        setIconFile(file)
-                        setRemoveIcon(false)
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                </Button>
+                  {t('upload')}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={!canEditRole || saving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) return
+                      setIconFile(file)
+                      setRemoveIcon(false)
+                      event.target.value = ''
+                    }}
+                  />
+                </label>
                 {previewIconUrl ? (
                   <Button
                     type="button"
@@ -486,7 +486,7 @@ export function ServerSettingsRoleEditor({
                       setRemoveIcon(true)
                     }}
                   >
-                    Удалить
+                    {t('delete')}
                   </Button>
                 ) : null}
               </div>
@@ -501,16 +501,16 @@ export function ServerSettingsRoleEditor({
 
           <div className="space-y-0">
             <SettingsToggleRow
-              label="Отображать роль отдельно от участников"
-              hint="Участники с этой ролью будут в отдельной группе в списке."
+              label={t('hoistLabel')}
+              hint={t('hoistHint')}
               checked={hoist}
               disabled={!canEditRole}
               onCheckedChange={setHoist}
             />
 
             <SettingsToggleRow
-              label="Позволять любому пинговать «@» эту роль"
-              hint="Если выключено, упоминать роль смогут только участники с правом «Упоминать роли»."
+              label={t('mentionableLabel')}
+              hint={t('mentionableHint')}
               checked={mentionable}
               disabled={!canEditRole}
               onCheckedChange={setMentionable}
@@ -523,17 +523,17 @@ export function ServerSettingsRoleEditor({
         <div className="space-y-4">
           <div>
             <p className="text-sm text-muted-foreground">
-              Нажмите на переключатель: наследуется → разрешено → запрещено.
+              {t('permissionToggleHint')}
             </p>
           </div>
 
           <section className="space-y-2">
             <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Расширенные права
+              {t('advancedPermissions')}
             </h4>
             <SettingsToggleRow
-              label={ADMINISTRATOR_PERMISSION.label}
-              hint={ADMINISTRATOR_PERMISSION.hint}
+              label={tp(ADMINISTRATOR_PERMISSION.labelKey)}
+              hint={tp(ADMINISTRATOR_PERMISSION.hintKey)}
               checked={administratorEnabled}
               disabled={
                 !canEditPermissions ||
@@ -552,9 +552,9 @@ export function ServerSettingsRoleEditor({
           </section>
 
           {SERVER_PERMISSION_GROUPS.map((group) => (
-            <section key={group.title} className="space-y-2">
+            <section key={group.titleKey} className="space-y-2">
               <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                {group.title}
+                {tp(group.titleKey)}
               </h4>
               <ul className="space-y-1">
                 {group.permissions.map((permission) => {
@@ -568,9 +568,9 @@ export function ServerSettingsRoleEditor({
                       key={permission.flag}
                       className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
                     >
-                      <span className="text-sm">{permission.label}</span>
+                      <span className="text-sm">{tp(permission.labelKey)}</span>
                       <PermissionStateButton
-                        label={permission.label}
+                        label={tp(permission.labelKey)}
                         state={getPermissionTriState(
                           permissions,
                           permission.flag,
@@ -602,7 +602,7 @@ export function ServerSettingsRoleEditor({
 
       {!canEditRole && !canEditPermissions ? (
         <p className="text-sm text-muted-foreground">
-          Недостаточно прав для изменения этой роли.
+          {t('insufficientPermissions')}
         </p>
       ) : null}
     </div>

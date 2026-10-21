@@ -1,38 +1,11 @@
-import {
-  CircleCheckIcon,
-  InfoIcon,
-  Loader2Icon,
-  OctagonXIcon,
-  TriangleAlertIcon,
-} from '#/components/icons'
+import { Toaster as SharedToaster } from '@syrnike13/ui/primitives/sonner'
+import type { ToasterProps } from 'sonner'
+
 import { useAppearance } from '#/features/appearance/appearance-context'
-import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
-const Toaster = ({ ...props }: ToasterProps) => {
+function Toaster(props: ToasterProps) {
   const { resolvedVariant } = useAppearance()
-
-  return (
-    <Sonner
-      theme={resolvedVariant}
-      className="toaster group"
-      icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
-        loading: <Loader2Icon className="size-4 animate-spin" />,
-      }}
-      style={
-        {
-          '--normal-bg': 'var(--theme-toast-surface)',
-          '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
-          '--border-radius': 'var(--radius)',
-        } as React.CSSProperties
-      }
-      {...props}
-    />
-  )
+  return <SharedToaster theme={resolvedVariant} {...props} />
 }
 
 export { Toaster }

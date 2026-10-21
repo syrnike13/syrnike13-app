@@ -2,8 +2,7 @@
 
 `RemoteAudioPlayout` (`native/src/audio/remote_audio_playout.*`) turns remote
 LiveKit audio into sound on one MMCSS "Pro Audio" thread. The output device
-clocks the whole path, the same model WebRTC's audio device module and Discord
-use: there is no second or third timer that can drift from the device.
+clocks the whole path, the same model WebRTC's audio device module uses: there is no second or third timer that can drift from the device.
 
 ```mermaid
 flowchart LR

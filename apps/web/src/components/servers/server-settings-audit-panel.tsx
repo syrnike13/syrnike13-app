@@ -1,6 +1,12 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Option, Schema } from 'effect'
+import {
+  useLocale,
+  useTranslations,
+  type AppLocale,
+  type Translator,
+} from '@syrnike13/ui/i18n'
 import type {
   Channel,
   Server,
@@ -14,7 +20,6 @@ import type { AppIcon } from '#/components/icons'
 import {
   BanIcon,
   ChevronDownIcon,
-  ChevronUpIcon,
   CircleCheckIcon,
   HashIcon,
   InfoIcon,
@@ -29,10 +34,16 @@ import {
   UserMinusIcon,
   UsersIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { FloatingMenu, FloatingMenuItem } from '#/components/ui/floating-menu'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerAuditLog } from '#/features/api/servers-api'
@@ -54,13 +65,7 @@ type AuditLabelContext = {
 
 type AuditChanges = ServerAuditLogEntry['changes']
 
-type MenuPosition = {
-  x: number
-  y: number
-}
-
 type ActionPresentation = {
-  label: string
   icon: AppIcon
   tone?: 'green' | 'red' | 'yellow' | 'blue'
 }
@@ -85,167 +90,83 @@ const AUDIT_ACTIONS: AuditActionType[] = [
   'ServerPermissionUpdate',
 ]
 
-const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
-  ServerUpdate: 'Изменение сервера',
-  RoleCreate: 'Создание роли',
-  RoleUpdate: 'Изменение роли',
-  RoleDelete: 'Удаление роли',
-  RoleReorder: 'Изменение порядка ролей',
-  ChannelCreate: 'Создание канала',
-  ChannelUpdate: 'Изменение канала',
-  ChannelDelete: 'Удаление канала',
-  MemberUpdate: 'Изменение участника',
-  MemberKick: 'Исключение участника',
-  MemberBan: 'Бан участника',
-  MemberUnban: 'Разбан участника',
-  MemberTimeout: 'Тайм-аут участника',
-  InviteCreate: 'Создание приглашения',
-  InviteUpdate: 'Изменение приглашения',
-  InviteRevoke: 'Отзыв приглашения',
-  InviteDelete: 'Удаление приглашения',
-  ChannelPermissionUpdate: 'Изменение прав канала',
-  ServerPermissionUpdate: 'Изменение прав сервера',
-}
-
 const ACTION_PRESENTATION: Record<AuditActionType, ActionPresentation> = {
   ServerUpdate: {
-    label: AUDIT_ACTION_LABELS.ServerUpdate,
     icon: ServerIcon,
     tone: 'yellow',
   },
   RoleCreate: {
-    label: AUDIT_ACTION_LABELS.RoleCreate,
     icon: ShieldIcon,
     tone: 'green',
   },
   RoleUpdate: {
-    label: AUDIT_ACTION_LABELS.RoleUpdate,
     icon: ShieldIcon,
     tone: 'yellow',
   },
   RoleDelete: {
-    label: AUDIT_ACTION_LABELS.RoleDelete,
     icon: ShieldIcon,
     tone: 'red',
   },
   RoleReorder: {
-    label: AUDIT_ACTION_LABELS.RoleReorder,
     icon: ShieldIcon,
     tone: 'blue',
   },
   ChannelCreate: {
-    label: AUDIT_ACTION_LABELS.ChannelCreate,
     icon: HashIcon,
     tone: 'green',
   },
   ChannelUpdate: {
-    label: AUDIT_ACTION_LABELS.ChannelUpdate,
     icon: HashIcon,
     tone: 'yellow',
   },
   ChannelDelete: {
-    label: AUDIT_ACTION_LABELS.ChannelDelete,
     icon: HashIcon,
     tone: 'red',
   },
   MemberUpdate: {
-    label: AUDIT_ACTION_LABELS.MemberUpdate,
     icon: UserIcon,
     tone: 'yellow',
   },
   MemberKick: {
-    label: AUDIT_ACTION_LABELS.MemberKick,
     icon: UserMinusIcon,
     tone: 'red',
   },
   MemberBan: {
-    label: AUDIT_ACTION_LABELS.MemberBan,
     icon: BanIcon,
     tone: 'red',
   },
   MemberUnban: {
-    label: AUDIT_ACTION_LABELS.MemberUnban,
     icon: CircleCheckIcon,
     tone: 'green',
   },
   MemberTimeout: {
-    label: AUDIT_ACTION_LABELS.MemberTimeout,
     icon: InfoIcon,
     tone: 'yellow',
   },
   InviteCreate: {
-    label: AUDIT_ACTION_LABELS.InviteCreate,
     icon: PlusCircleIcon,
     tone: 'green',
   },
   InviteUpdate: {
-    label: AUDIT_ACTION_LABELS.InviteUpdate,
     icon: PencilIcon,
     tone: 'yellow',
   },
   InviteRevoke: {
-    label: AUDIT_ACTION_LABELS.InviteRevoke,
     icon: Trash2Icon,
     tone: 'red',
   },
   InviteDelete: {
-    label: AUDIT_ACTION_LABELS.InviteDelete,
     icon: Trash2Icon,
     tone: 'red',
   },
   ChannelPermissionUpdate: {
-    label: AUDIT_ACTION_LABELS.ChannelPermissionUpdate,
     icon: SettingsIcon,
     tone: 'yellow',
   },
   ServerPermissionUpdate: {
-    label: AUDIT_ACTION_LABELS.ServerPermissionUpdate,
     icon: SettingsIcon,
     tone: 'yellow',
   },
-}
-
-const AUDIT_STATUS_LABELS: Record<ServerAuditLogEntry['status'], string> = {
-  Pending: 'В процессе',
-  Succeeded: 'Выполнено',
-  Failed: 'Ошибка',
-}
-
-const CHANGE_FIELD_LABELS: Record<string, string> = {
-  analytics: 'Аналитика',
-  avatar: 'Аватар',
-  can_publish: 'Микрофон на сервере',
-  can_receive: 'Звук на сервере',
-  categories: 'Категории',
-  channel: 'Канал',
-  channels: 'Каналы',
-  colour: 'Цвет',
-  color: 'Цвет',
-  default_permissions: 'Права по умолчанию',
-  delete_message_seconds: 'Удаление сообщений',
-  description: 'Описание',
-  discoverable: 'Публичный сервер',
-  expires_at: 'Истекает',
-  flags: 'Флаги',
-  hoist: 'Показывать отдельно',
-  icon: 'Иконка',
-  max_uses: 'Лимит использований',
-  mentionable: 'Можно упоминать',
-  name: 'Название',
-  nickname: 'Никнейм',
-  nsfw: 'NSFW',
-  owner: 'Владелец',
-  permissions: 'Права',
-  ranks: 'Порядок ролей',
-  reason: 'Причина',
-  role: 'Роль',
-  roles: 'Роли',
-  slowmode: 'Медленный режим',
-  system_messages: 'Системные сообщения',
-  temporary: 'Временное членство',
-  timeout: 'Тайм-аут',
-  voice: 'Голосовые настройки',
-  voice_channel: 'Голосовой канал',
 }
 
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
@@ -321,52 +242,15 @@ function humanAuditSentence(
   action: AuditActionType,
   target: ServerAuditLogTarget,
   context: AuditLabelContext,
+  t: Translator,
   changes?: AuditChanges,
 ) {
   const targetText = targetName(target, context, changes)
-
-  switch (action) {
-    case 'InviteCreate':
-      return `${actorLabel} создал ссылку-приглашение ${targetText}`
-    case 'InviteRevoke':
-    case 'InviteDelete':
-      return `${actorLabel} удалил ссылку-приглашение ${targetText}`
-    case 'RoleCreate':
-      return `${actorLabel} создал роль ${targetText}`
-    case 'RoleUpdate':
-      return `${actorLabel} обновляет роль ${targetText}`
-    case 'RoleDelete':
-      return `${actorLabel} удалил роль ${targetText}`
-    case 'RoleReorder':
-      return `${actorLabel} изменил порядок ролей`
-    case 'ChannelCreate':
-      return `${actorLabel} создал канал ${targetText}`
-    case 'ChannelUpdate':
-      return `${actorLabel} обновляет канал ${targetText}`
-    case 'ChannelDelete':
-      return `${actorLabel} удалил канал ${targetText}`
-    case 'MemberUpdate':
-      return `${actorLabel} изменил участника ${targetText}`
-    case 'MemberKick':
-      return `${actorLabel} исключил участника ${targetText}`
-    case 'MemberBan':
-      return `${actorLabel} забанил участника ${targetText}`
-    case 'MemberUnban':
-      return `${actorLabel} снял бан с участника ${targetText}`
-    case 'MemberTimeout':
-      return `${actorLabel} изменил тайм-аут участника ${targetText}`
-    case 'ServerPermissionUpdate':
-      return `${actorLabel} изменил права сервера`
-    case 'ChannelPermissionUpdate':
-      return `${actorLabel} изменил права канала ${targetText}`
-    case 'ServerUpdate':
-    default:
-      return `${actorLabel} обновляет сервер`
-  }
+  return t(`sentences.${action}`, { actor: actorLabel, target: targetText })
 }
 
-function formatAuditTime(timestamp: number) {
-  return new Intl.DateTimeFormat('ru-RU', {
+function formatAuditTime(timestamp: number, locale: AppLocale) {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -375,7 +259,12 @@ function formatAuditTime(timestamp: number) {
   }).format(new Date(timestamp))
 }
 
-function formatRoleList(value: unknown, server?: Server) {
+function formatRoleList(
+  value: unknown,
+  t: Translator,
+  server?: Server,
+  locale: AppLocale = 'ru',
+) {
   if (!Array.isArray(value)) return undefined
 
   return value
@@ -386,25 +275,30 @@ function formatRoleList(value: unknown, server?: Server) {
         typeof item[0] === 'string' &&
         typeof item[1] === 'number'
       ) {
-        return `${roleLabel(item[0], server)}: позиция ${item[1] + 1}`
+        return t('rolePosition', {
+          role: roleLabel(item[0], server),
+          position: item[1] + 1,
+        })
       }
-      return formatAuditChangeValue(item, undefined, server)
+      return formatAuditChangeValue(item, undefined, server, {}, t, locale)
     })
     .join(', ')
 }
 
 function formatAuditChangeValue(
   value: unknown,
-  key?: string,
-  server?: Server,
-  channels: Record<string, Channel> = {},
+  key: string | undefined,
+  server: Server | undefined,
+  channels: Record<string, Channel>,
+  t: Translator,
+  locale: AppLocale = 'ru',
 ): string {
   if (value === null || value === undefined || value === '') {
     return '—'
   }
 
   if ((key === 'roles' || key === 'ranks') && Array.isArray(value)) {
-    return formatRoleList(value, server) ?? '—'
+    return formatRoleList(value, t, server, locale) ?? '—'
   }
 
   if (
@@ -415,12 +309,12 @@ function formatAuditChangeValue(
   }
 
   if (typeof value === 'boolean') {
-    return value ? 'Да' : 'Нет'
+    return value ? t('yes') : t('no')
   }
 
   if (typeof value === 'number') {
     if ((key === 'expires_at' || key === 'timeout') && value > 0) {
-      return formatAuditTime(value)
+      return formatAuditTime(value, locale)
     }
     return String(value)
   }
@@ -431,7 +325,9 @@ function formatAuditChangeValue(
 
   if (Array.isArray(value)) {
     return value
-      .map((item) => formatAuditChangeValue(item, key, server, channels))
+      .map((item) =>
+        formatAuditChangeValue(item, key, server, channels, t, locale),
+      )
       .join(', ')
   }
 
@@ -449,28 +345,21 @@ function formatAuditChangeValue(
   }
 }
 
-function changeFieldLabel(key: string) {
-  return CHANGE_FIELD_LABELS[key] ?? key.replaceAll('_', ' ')
-}
-
-function menuPositionFromButton(button: HTMLButtonElement): MenuPosition {
-  const rect = button.getBoundingClientRect()
-  return {
-    x: Math.max(8, rect.left),
-    y: rect.bottom + 4,
-  }
+function changeFieldLabel(key: string, t: Translator) {
+  const path = `fields.${key}`
+  return t.has(path) ? t(path) : key.replaceAll('_', ' ')
 }
 
 function iconToneClass(tone: ActionPresentation['tone']) {
   switch (tone) {
     case 'green':
-      return 'text-emerald-400'
+      return 'text-success'
     case 'red':
-      return 'text-red-400'
+      return 'text-destructive'
     case 'yellow':
-      return 'text-amber-400'
+      return 'text-warning'
     case 'blue':
-      return 'text-sky-400'
+      return 'text-chart-4'
     default:
       return 'text-muted-foreground'
   }
@@ -496,74 +385,62 @@ function AuditActionFilter({
   value: AuditActionType | ''
   onChange: (value: AuditActionType | '') => void
 }) {
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
+  const t = useTranslations('audit')
   const selected = value ? ACTION_PRESENTATION[value] : null
   const SelectedIcon = selected?.icon
 
   return (
     <div className="space-y-1.5">
-      <Label>Фильтр по действиям</Label>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        aria-haspopup="menu"
-        aria-expanded={menuPosition ? true : undefined}
-        onClick={(event) => {
-          const nextPosition = menuPositionFromButton(event.currentTarget)
-          setMenuPosition((current) => current ? null : nextPosition)
-        }}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          {SelectedIcon ? (
-            <SelectedIcon
-              className={cn('size-4 shrink-0', iconToneClass(selected.tone))}
+      <Label>{t('filters.actions')}</Label>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full justify-between"
             />
-          ) : (
-            <SettingsIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate">
-            {selected?.label ?? 'Все действия'}
-          </span>
-        </span>
-        {menuPosition ? (
-          <ChevronUpIcon className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      <FloatingMenu
-        open={Boolean(menuPosition)}
-        x={menuPosition?.x ?? 0}
-        y={menuPosition?.y ?? 0}
-        onClose={() => setMenuPosition(null)}
-        className="max-h-80 w-64 overflow-y-auto"
-      >
-        <FloatingMenuItem
-          onClick={() => {
-            onChange('')
-            setMenuPosition(null)
-          }}
+          }
         >
-          <SettingsIcon className="size-4 text-muted-foreground" />
-          Все действия
-        </FloatingMenuItem>
-        {AUDIT_ACTIONS.map((action) => {
-          const presentation = ACTION_PRESENTATION[action]
-
-          return (
-            <FloatingMenuItem
-              key={action}
-              onClick={() => {
-                onChange(action)
-                setMenuPosition(null)
-              }}
-            >
-              <AuditActionIcon action={action} />
-              <span className="truncate">{presentation.label}</span>
-            </FloatingMenuItem>
-          )
-        })}
-      </FloatingMenu>
+          <span className="flex min-w-0 items-center gap-2">
+            {SelectedIcon ? (
+              <SelectedIcon
+                className={cn('size-4 shrink-0', iconToneClass(selected.tone))}
+              />
+            ) : (
+              <SettingsIcon className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate">
+              {value ? t(`actions.${value}`) : t('filters.allActions')}
+            </span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
+          <DropdownMenuItem
+            onClick={() => {
+              onChange('')
+            }}
+          >
+            <SettingsIcon className="size-4 text-muted-foreground" />
+            {t('filters.allActions')}
+          </DropdownMenuItem>
+          {AUDIT_ACTIONS.map((action) => {
+            return (
+              <DropdownMenuItem
+                key={action}
+                onClick={() => {
+                  onChange(action)
+                }}
+              >
+                <AuditActionIcon action={action} />
+                <span className="truncate">{t(`actions.${action}`)}</span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
@@ -577,7 +454,7 @@ function AuditUserFilter({
   value: string
   onChange: (userId: string) => void
 }) {
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
+  const t = useTranslations('audit')
   const [query, setQuery] = useState('')
   const selected = value ? users.find((user) => user._id === value) : undefined
   const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU')
@@ -590,82 +467,74 @@ function AuditUserFilter({
 
   return (
     <div className="space-y-1.5">
-      <Label>Фильтр по пользователям</Label>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        aria-haspopup="menu"
-        aria-expanded={menuPosition ? true : undefined}
-        onClick={(event) => {
-          const nextPosition = menuPositionFromButton(event.currentTarget)
-          setMenuPosition((current) => current ? null : nextPosition)
-        }}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          {selected ? (
-            <UserAvatar user={selected} className="size-5 shrink-0" />
-          ) : (
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate">
-            {selected ? userLabel(selected, selected._id) : 'Все пользователи'}
-          </span>
-        </span>
-        {menuPosition ? (
-          <ChevronUpIcon className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      <FloatingMenu
-        open={Boolean(menuPosition)}
-        x={menuPosition?.x ?? 0}
-        y={menuPosition?.y ?? 0}
-        onClose={() => setMenuPosition(null)}
-        className="max-h-80 w-[260px] overflow-y-auto"
-      >
-        <div className="sticky top-0 z-10 bg-popover p-1">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              placeholder="Найти пользователя"
-              className="h-8 pl-8"
-              onChange={(event) => setQuery(event.target.value)}
+      <Label>{t('filters.users')}</Label>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full justify-between"
             />
-          </div>
-        </div>
-        <FloatingMenuItem
-          onClick={() => {
-            onChange('')
-            setQuery('')
-            setMenuPosition(null)
-          }}
+          }
         >
-          <UsersIcon className="size-4 text-muted-foreground" />
-          Все пользователи
-        </FloatingMenuItem>
-        {visibleUsers.map((user) => (
-          <FloatingMenuItem
-            key={user._id}
+          <span className="flex min-w-0 items-center gap-2">
+            {selected ? (
+              <UserAvatar user={selected} className="size-5 shrink-0" />
+            ) : (
+              <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate">
+              {selected
+                ? userLabel(selected, selected._id)
+                : t('filters.allUsers')}
+            </span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="max-h-80 w-65 overflow-y-auto">
+          <div className="sticky top-0 z-10 bg-popover p-1">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                placeholder={t('filters.searchUser')}
+                className="pl-8"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+          </div>
+          <DropdownMenuItem
             onClick={() => {
-              onChange(user._id)
+              onChange('')
               setQuery('')
-              setMenuPosition(null)
             }}
           >
-            <UserAvatar user={user} className="size-5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">
-              {userLabel(user, user._id)}
-            </span>
-          </FloatingMenuItem>
-        ))}
-        {visibleUsers.length === 0 ? (
-          <p className="px-2 py-2 text-sm text-muted-foreground">
-            Пользователи не найдены
-          </p>
-        ) : null}
-      </FloatingMenu>
+            <UsersIcon className="size-4 text-muted-foreground" />
+            {t('filters.allUsers')}
+          </DropdownMenuItem>
+          {visibleUsers.map((user) => (
+            <DropdownMenuItem
+              key={user._id}
+              onClick={() => {
+                onChange(user._id)
+                setQuery('')
+              }}
+            >
+              <UserAvatar user={user} className="size-5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                {userLabel(user, user._id)}
+              </span>
+            </DropdownMenuItem>
+          ))}
+          {visibleUsers.length === 0 ? (
+            <p className="px-2 py-2 text-sm text-muted-foreground">
+              {t('filters.noUsers')}
+            </p>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
@@ -677,6 +546,8 @@ function AuditEntryRow({
   entry: ServerAuditLogEntry
   currentUserId?: string
 }) {
+  const t = useTranslations('audit')
+  const { locale } = useLocale()
   const [open, setOpen] = useState(false)
   const actor = useSyncStore((s) => s.users[entry.actor_id])
   const server = useSyncStore((s) => s.servers[entry.server_id])
@@ -690,6 +561,7 @@ function AuditEntryRow({
     entry.action.type,
     entry.target,
     context,
+    t,
     entry.changes,
   )
 
@@ -711,12 +583,12 @@ function AuditEntryRow({
             {sentence}
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            {formatAuditTime(entry.created_at)}
+            {formatAuditTime(entry.created_at, locale)}
           </span>
         </span>
         {entry.status !== 'Succeeded' ? (
           <span className="rounded bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-            {AUDIT_STATUS_LABELS[entry.status]}
+            {t(`status.${entry.status}`)}
           </span>
         ) : null}
         <ChevronDownIcon
@@ -728,18 +600,18 @@ function AuditEntryRow({
       </button>
 
       {open ? (
-        <dl className="grid gap-x-3 gap-y-1 border-t border-border/70 px-14 py-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
-          <dt className="text-muted-foreground">Действие</dt>
-          <dd>{AUDIT_ACTION_LABELS[entry.action.type]}</dd>
+        <dl className="grid gap-x-3 gap-y-1 border-t border-border px-14 py-3 text-sm audit-label-grid">
+          <dt className="text-muted-foreground">{t('detail.action')}</dt>
+          <dd>{t(`actions.${entry.action.type}`)}</dd>
           {entry.reason ? (
             <>
-              <dt className="text-muted-foreground">Причина</dt>
+              <dt className="text-muted-foreground">{t('detail.reason')}</dt>
               <dd className="min-w-0 break-words">{entry.reason}</dd>
             </>
           ) : null}
           {changeKeys.length > 0 ? (
             <>
-              <dt className="text-muted-foreground">Изменения</dt>
+              <dt className="text-muted-foreground">{t('detail.changes')}</dt>
               <dd className="min-w-0 space-y-1">
                 {changeKeys.map((key, index) => {
                   const change = entry.changes[key]
@@ -749,15 +621,17 @@ function AuditEntryRow({
                       key={key}
                       className="whitespace-normal break-words leading-relaxed"
                     >
-                      <span className="mr-2 font-mono text-xs text-emerald-400">
+                      <span className="mr-2 font-mono text-xs text-success">
                         {String(index + 1).padStart(2, '0')}
                       </span>
-                      {changeFieldLabel(key)}:{' '}
+                      {changeFieldLabel(key, t)}:{' '}
                       {formatAuditChangeValue(
                         change?.before,
                         key,
                         server,
                         channels,
+                        t,
+                        locale,
                       )}{' '}
                       →{' '}
                       {formatAuditChangeValue(
@@ -765,6 +639,8 @@ function AuditEntryRow({
                         key,
                         server,
                         channels,
+                        t,
+                        locale,
                       )}
                     </p>
                   )
@@ -781,6 +657,7 @@ function AuditEntryRow({
 export function ServerSettingsAuditPanel({
   serverId,
 }: ServerSettingsAuditPanelProps) {
+  const t = useTranslations('audit')
   const auth = useAuth()
   const token = auth.session?.token
   const usersById = useSyncStore((s) => s.users)
@@ -826,13 +703,13 @@ export function ServerSettingsAuditPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold">Журнал аудита</h3>
+        <h3 className="text-base font-semibold">{t('title')}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Последние административные действия на сервере.
+          {t('description')}
         </p>
       </div>
 
-      <section className="grid gap-3 border-b border-border/60 pb-4 md:grid-cols-[minmax(13rem,16rem)_minmax(13rem,16rem)_auto]">
+      <section className="grid gap-3 border-b border-border pb-4 settings-audit-grid">
         <AuditUserFilter
           users={users}
           value={actorFilter}
@@ -849,19 +726,19 @@ export function ServerSettingsAuditPanel({
               setActionFilter('')
             }}
           >
-            Сбросить
+            {t('reset')}
           </Button>
         </div>
       </section>
 
       {auditQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Загрузка...</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       ) : auditQuery.error ? (
-        <p className="text-sm text-destructive">
-          Не удалось загрузить журнал аудита.
-        </p>
+        <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Записей пока нет</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('empty')}</EmptyDescription>
+        </Empty>
       ) : (
         <>
           <ul className="space-y-2">
@@ -880,7 +757,7 @@ export function ServerSettingsAuditPanel({
               disabled={auditQuery.isFetchingNextPage}
               onClick={() => void auditQuery.fetchNextPage()}
             >
-              Загрузить ещё
+              {t('loadMore')}
             </Button>
           ) : null}
         </>

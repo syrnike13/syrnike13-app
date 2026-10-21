@@ -1,12 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
 
@@ -15,6 +17,8 @@ export const Route = createFileRoute('/login')({
 })
 
 function LoginPage() {
+  const t = useTranslations('login')
+  const tCommon = useTranslations('common')
   const auth = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -36,7 +40,7 @@ function LoginPage() {
           : auth.login({ email, password }),
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось войти')
+      toast.error(error instanceof Error ? error.message : t('error'))
     } finally {
       setSubmitting(false)
     }
@@ -52,26 +56,26 @@ function LoginPage() {
             <SparklesIcon className="size-4" aria-hidden />
           </span>
           <div>
-            <div className="text-[15px] font-semibold">syrnike13 admin</div>
+            <div className="text-base font-semibold">{t('brand')}</div>
             {nightly ? (
-              <div className="text-[10px] font-medium uppercase text-warning">Nightly</div>
+              <div className="text-xs font-medium uppercase text-warning">
+                {tCommon('nightly')}
+              </div>
             ) : null}
           </div>
         </div>
 
-        <form
-          onSubmit={submit}
-          className="rounded-md border border-border/70 bg-card p-5"
-        >
-          <h1 className="text-[15px] font-semibold">Вход</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            {auth.mfaChallenge ? 'Пароль 2FA' : 'Аккаунт администратора'}
+        <Card className="p-5">
+          <form onSubmit={submit}>
+          <h1 className="text-base font-semibold">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {auth.mfaChallenge ? t('mfaSubtitle') : t('subtitle')}
           </p>
 
           <div className="mt-5 space-y-4">
             {auth.mfaChallenge ? (
               <div className="space-y-2">
-                <Label htmlFor="mfa">Пароль 2FA</Label>
+                <Label htmlFor="mfa">{t('mfaLabel')}</Label>
                 <Input
                   id="mfa"
                   type="password"
@@ -84,7 +88,7 @@ function LoginPage() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t('email')}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -95,7 +99,7 @@ function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Пароль</Label>
+                  <Label htmlFor="password">{t('password')}</Label>
                   <Input
                     id="password"
                     type="password"
@@ -108,20 +112,22 @@ function LoginPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Входим...' : 'Войти'}
+              {submitting ? t('submitting') : t('submit')}
             </Button>
 
             {auth.mfaChallenge ? (
-              <button
+              <Button
                 type="button"
-                className="w-full text-center text-[13px] text-muted-foreground hover:text-foreground"
+                variant="ghost"
+                className="w-full text-muted-foreground"
                 onClick={() => auth.cancelMfa()}
               >
-                Назад
-              </button>
+                {t('back')}
+              </Button>
             ) : null}
           </div>
-        </form>
+          </form>
+        </Card>
       </div>
     </main>
   )

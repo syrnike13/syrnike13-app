@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -12,15 +12,16 @@ import {
 } from '#/components/auth/hcaptcha-widget'
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   CardContent,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/card'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { createAccountEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -36,6 +37,7 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 const REGISTER_FIELD_NAMES = [
   'email',
@@ -65,6 +67,8 @@ export const Route = createFileRoute('/login/register')({
 })
 
 function RegisterPage() {
+  const t = useTranslations('auth')
+  const tValidation = useTranslations('validation')
   const auth = useAuth()
   const navigate = useNavigate()
   const configQuery = useSyrnikeConfig()
@@ -84,7 +88,7 @@ function RegisterPage() {
     defaultValues: { email: '', password: '', confirm: '', invite: '' },
     onSubmit: async ({ value }) => {
       if (!configReady) {
-        toast.error('Подождите, загружаем настройки сервера…')
+        toast.error(t('register.waitConfig'))
         return
       }
 
@@ -100,7 +104,7 @@ function RegisterPage() {
           const fieldName = issue.path?.[0]
           if (!isRegisterFieldName(fieldName)) continue
 
-          nextErrors[fieldName] ??= issue.message
+          nextErrors[fieldName] ??= tValidation(issue.message)
           firstInvalidField ??= fieldName
         }
 
@@ -116,7 +120,7 @@ function RegisterPage() {
       setFieldErrors({})
 
       if (captchaRequired && !siteKey) {
-        toast.error('Captcha не настроена на сервере')
+        toast.error(t('register.captchaNotConfigured'))
         return
       }
 
@@ -131,7 +135,7 @@ function RegisterPage() {
             : undefined
           if (captchaRequired && !captcha) {
             return yield* Effect.fail(
-              new Error('Не удалось пройти captcha'),
+              new Error(t('register.captchaFailed')),
             )
           }
 
@@ -145,7 +149,7 @@ function RegisterPage() {
           if (emailVerification) {
             yield* Effect.sync(() => {
               setPendingVerifyEmail(parsed.data.email)
-              toast.success('Проверьте почту для подтверждения аккаунта')
+              toast.success(t('register.verifyEmail'))
             })
             yield* Effect.tryPromise({
               try: () => navigate({ to: '/login/check', replace: true }),
@@ -158,7 +162,7 @@ function RegisterPage() {
             email: parsed.data.email,
             password: parsed.data.password,
           })
-          yield* Effect.sync(() => toast.success('Аккаунт создан'))
+          yield* Effect.sync(() => toast.success(t('register.created')))
           yield* Effect.tryPromise({
             try: () =>
               navigate({
@@ -171,9 +175,7 @@ function RegisterPage() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось зарегистрироваться',
+                apiErrorMessage(error, t('register.error')),
               )
             }),
           ),
@@ -197,7 +199,7 @@ function RegisterPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>Создать аккаунт</CardTitle>
+          <CardTitle>{t('register.title')}</CardTitle>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -209,7 +211,7 @@ function RegisterPage() {
             <form.Field name="email">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="reg-email">Email</Label>
+                  <Label htmlFor="reg-email">{t('email')}</Label>
                   <Input
                     className="auth-input"
                     id="reg-email"
@@ -235,7 +237,7 @@ function RegisterPage() {
             <form.Field name="password">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="reg-password">Пароль</Label>
+                  <Label htmlFor="reg-password">{t('passwordLabel')}</Label>
                   <PasswordInput
                     id="reg-password"
                     autoComplete="new-password"
@@ -260,7 +262,7 @@ function RegisterPage() {
               {(field) => (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="reg-password-confirm">
-                    Повторите пароль
+                    {t('confirmPassword')}
                   </Label>
                   <PasswordInput
                     id="reg-password-confirm"
@@ -288,7 +290,7 @@ function RegisterPage() {
               <form.Field name="invite">
                 {(field) => (
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="reg-invite">Код приглашения</Label>
+                    <Label htmlFor="reg-invite">{t('register.inviteCode')}</Label>
                     <Input
                       className="auth-input"
                       id="reg-invite"
@@ -322,15 +324,13 @@ function RegisterPage() {
               disabled={submitting || !configReady}
             >
               {submitting || configQuery.isPending ? (
-                <Loader2Icon
-                  className="animate-spin"
-                  data-icon="inline-start"
-                />
+                <Spinner data-icon="inline-start" />
               ) : null}
-              Зарегистрироваться
+              {t('register.submit')}
             </Button>
             <p className="auth-secondary-action">
-              Уже с нами? <Link to="/login">Войти</Link>
+              {t('register.alreadyRegistered')}{' '}
+              <Link to="/login">{t('login.submit')}</Link>
             </p>
           </CardFooter>
         </form>

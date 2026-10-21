@@ -30,4 +30,18 @@ describe('MentionPill', () => {
     expect(screen.getByText('@server-name')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('keeps mention text on the message foreground, not the accent foreground', () => {
+    render(<MentionPill label="@alice" />)
+    const plain = screen.getByText('@alice')
+    expect(plain.className).toContain('text-foreground')
+    expect(plain.className).not.toContain('text-primary-foreground')
+
+    cleanup()
+
+    render(<MentionPill label="@bob" nameColour="#ffb000" />)
+    const coloured = screen.getByText('@bob')
+    expect(coloured.className).toContain('text-foreground')
+    expect(coloured.className).not.toContain('text-primary-foreground')
+  })
 })

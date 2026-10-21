@@ -40,9 +40,35 @@ Secrets:
 
 Variables:
 
-- `SYRNIKE_DOMAIN`: public domain. Use `syrnike13.ru` for production.
+- `SYRNIKE_DOMAIN`: landing domain. Use `syrnike13.ru` for production.
+- `SYRNIKE_APP_DOMAIN`: application domain. Use `app.syrnike13.ru` for production.
 - `SYRNIKE_REVERSE_PROXY`: `false` for built-in Caddy on ports 80/443, `true` when another reverse proxy is in front.
 - `SYRNIKE_VIDEO_ENABLED`: `true` to enable camera and screen sharing, `false` to disable.
+
+## DNS
+
+Create A/AAAA records for both hostnames and point them at the deployment
+server before enabling the app host in Caddy:
+
+- `syrnike13.ru` — landing site.
+- `app.syrnike13.ru` — web application, invites and deep links.
+
+Nightly uses `beta.syrnike13.ru` for the landing and `app.beta.syrnike13.ru` for
+the application.
+
+## Existing Hosts
+
+On an existing server, update the server-local `Syrnike.toml` before the first
+deploy with the app domain:
+
+```toml
+[hosts]
+app = "https://app.syrnike13.ru"
+```
+
+Otherwise email verification and password-reset links keep pointing at the
+landing domain; Caddy redirects them, but the canonical app origin should be
+the app host.
 
 ## First Deploy
 
@@ -162,26 +188,29 @@ The landing page links to stable URLs that always point at the latest desktop re
 
 Caddy serves these from symlinks in `data/desktop/`. The desktop release workflow updates the symlinks from `latest*.yml` after each upload via `tooling/scripts/update-download-aliases.sh`.
 
-Health check:
+Health checks:
 
 ```bash
 curl -fsSI "https://syrnike13.ru/downloads/syrnike13.dmg" | head -5
+curl -fsSI "https://syrnike13.ru/" | head -5
+curl -fsSI "https://app.syrnike13.ru/" | head -5
 ```
 
 ## Nightly Channel
 
 The `develop` branch publishes and deploys the independent nightly environment.
 
-- Public URL: `https://beta.syrnike13.ru`
+- Landing URL: `https://beta.syrnike13.ru`
+- Application URL: `https://app.beta.syrnike13.ru`
 - Server path: `/opt/syrnike13-nightly`
 - Compose project: `syrnike13-nightly`
 - Docker tags: `nightly` and `nightly-<sha>`
 - Desktop delivery: GitHub prerelease `nightly`; no auto-update feed.
 
 Production Caddy remains the edge proxy for both domains. It joins the shared
-external Docker network `syrnike13-edge` and routes `beta.syrnike13.ru` to
-nightly service aliases such as `syrnike13-nightly-web` and
-`syrnike13-nightly-api`.
+external Docker network `syrnike13-edge` and routes `beta.syrnike13.ru`
+to the nightly landing and `app.beta.syrnike13.ru` to the nightly web app.
+API and media stay on `beta.syrnike13.ru`.
 
 Nightly keeps its own server-local runtime files and data:
 

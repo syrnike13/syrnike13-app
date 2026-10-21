@@ -70,7 +70,7 @@ describe('apiRequest', () => {
     ).rejects.toMatchObject({
       name: 'ApiError',
       status: 200,
-      message: 'API вернул ответ, не соответствующий контракту',
+      message: 'The API response does not match the contract',
     })
   })
 

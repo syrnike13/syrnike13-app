@@ -1,1 +1,0 @@
-export const CUSTOM_GRADIENT_CONTROLS_ENABLED = false

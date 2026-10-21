@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   HeadphonesIcon,
   MicOffIcon,
@@ -25,6 +26,7 @@ import {
   MOBILE_VOICE_FLOATING_TILE_SIZE_PX,
   MOBILE_VOICE_TILE_CORNER_STORAGE_KEY,
 } from '#/lib/floating-corner'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 /**
@@ -34,6 +36,8 @@ import { cn } from '#/lib/utils'
  * каналов. Перетаскивается и прилипает к углу экрана; тап открывает drawer.
  */
 export function MobileVoiceFloatingTile() {
+  const t = useTranslations('layout.voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
@@ -79,8 +83,8 @@ export function MobileVoiceFloatingTile() {
 
   const channelLabel =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
-      : 'Голосовой канал'
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
+      : t('channel')
   const title = server ? `${server.name} / ${channelLabel}` : channelLabel
 
   const micMuted = isMicVisuallyMuted({
@@ -111,22 +115,23 @@ export function MobileVoiceFloatingTile() {
   return (
     <div
       className={cn(
-        'pointer-events-none fixed z-[60]',
+        'pointer-events-none fixed z-60',
         !isDragging && floatingCornerPositionClass(corner),
+        dragPoint && 'left-(--floating-tile-left) top-(--floating-tile-top)',
       )}
       style={
         dragPoint
-          ? {
-              left: dragPoint.x - half,
-              top: dragPoint.y - half,
-            }
+          ? ({
+              '--floating-tile-left': `${dragPoint.x - half}px`,
+              '--floating-tile-top': `${dragPoint.y - half}px`,
+            } as CSSVars)
           : undefined
       }
     >
       <button
         type="button"
         title={title}
-        aria-label={`Голос: ${title}. Перетащите в угол или нажмите для управления`}
+        aria-label={t('dragHint', { title })}
         className={cn(
           'gradient-surface-floating pointer-events-auto relative flex size-14 touch-none items-center justify-center rounded-2xl bg-card shadow-lg ring-1 ring-shell-divider transition-shadow active:shadow-md',
           isDragging && 'scale-105 shadow-xl ring-chart-3/40',
@@ -171,25 +176,25 @@ export function MobileVoiceFloatingTile() {
         {(micMuted || soundOff || cameraOn || sharingScreen) && (
           <span className="absolute bottom-1 left-1 flex items-center gap-0.5">
             {micMuted ? (
-              <span className="flex size-4 items-center justify-center rounded-full bg-destructive/90 text-white">
+              <span className="flex size-4 items-center justify-center rounded-full bg-destructive/90 text-on-solid">
                 <MicOffIcon className="size-2.5" aria-hidden />
               </span>
             ) : null}
             {soundOff ? (
               <span
-                className="flex size-4 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-foreground"
-                title="Звук выключен"
+                className="flex size-4 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground"
+                title={t('soundOff')}
               >
                 !
               </span>
             ) : null}
             {cameraOn ? (
-              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-white">
+              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-on-solid">
                 <VideoIcon className="size-2.5" aria-hidden />
               </span>
             ) : null}
             {sharingScreen ? (
-              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-white">
+              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-on-solid">
                 <MonitorUpIcon className="size-2.5" aria-hidden />
               </span>
             ) : null}

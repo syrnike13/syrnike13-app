@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -8,17 +8,17 @@ import {
   SettingsIcon,
   ShieldFillIcon,
   ShieldIcon,
-  Trash2Icon,
   UserPlusIcon,
 } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -26,19 +26,21 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '#/components/ui/popover'
-import { Separator } from '#/components/ui/separator'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -48,41 +50,12 @@ type ServerHeaderMenuProps = {
   overBanner?: boolean
 }
 
-function ServerHeaderMenuItem({
-  children,
-  icon,
-  onClick,
-  destructive,
-  disabled,
-}: {
-  children: ReactNode
-  icon: ReactNode
-  onClick?: () => void
-  destructive?: boolean
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent',
-        destructive && 'text-destructive hover:text-destructive',
-        disabled && 'pointer-events-none opacity-50',
-      )}
-      onClick={onClick}
-    >
-      <span>{children}</span>
-      <span className="shrink-0 opacity-70">{icon}</span>
-    </button>
-  )
-}
-
 export function ServerHeaderMenu({
   serverId,
   serverName,
   overBanner = false,
 }: ServerHeaderMenuProps) {
+  const t = useTranslations('servers.menu')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -100,6 +73,7 @@ export function ServerHeaderMenu({
         auth.user?._id,
       )
     : null
+  const canLeave = Boolean(menuPermissions?.leave && !isOwner)
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
@@ -112,7 +86,7 @@ export function ServerHeaderMenu({
     action()
   }
 
-  async function handleRemoveServer() {
+  async function handleLeaveServer() {
     const token = auth.session?.token
     if (!token || !server) return
 
@@ -124,22 +98,18 @@ export function ServerHeaderMenu({
         yield* Effect.sync(() => {
           syncStore.removeServer(serverId)
           syncStore.setSelectedServerId(null)
-          toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
+          toast.success(t('left'))
           setRemoveDialogOpen(false)
         })
         yield* Effect.tryPromise({
-          try: () => navigate({ to: '/app', search: { tab: 'online' } }),
+          try: () => navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : isOwner
-                  ? 'Не удалось удалить сервер'
-                  : 'Не удалось покинуть сервер',
+              apiErrorMessage(error, t('leaveError')),
             )
           }),
         ),
@@ -161,10 +131,10 @@ export function ServerHeaderMenu({
       writeClipboardTextEffect(serverId).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error('Не удалось скопировать')),
+            Effect.sync(() => toast.error(t('copyError'))),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success('ID сервера скопирован')
+              toast.success(t('copied'))
               setMenuOpen(false)
             }),
         }),
@@ -174,48 +144,45 @@ export function ServerHeaderMenu({
 
   return (
     <>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent',
-              overBanner &&
-                'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
-              menuOpen &&
-                (overBanner
-                  ? 'bg-background/60 backdrop-blur-sm'
-                  : 'bg-accent'),
-            )}
-            aria-expanded={menuOpen}
-          >
-            <span className="min-w-0 flex-1 truncate text-sm font-black">
-              {serverName}
-            </span>
-            <ChevronDownIcon
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
               className={cn(
-                'size-4 shrink-0 opacity-70 transition-transform',
-                menuOpen && 'rotate-180',
+                'flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
+                !menuPermissions?.invite && 'flex-1',
+                overBanner &&
+                  'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
+                menuOpen &&
+                  (overBanner
+                    ? 'bg-background/60 backdrop-blur-sm'
+                    : 'bg-accent'),
               )}
             />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          sideOffset={4}
-          className="w-[var(--radix-popover-trigger-width)] p-1"
+          }
         >
+          <span className="min-w-0 flex-1 truncate text-base leading-5 font-semibold tracking-tight">
+            {serverName}
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              'size-4 shrink-0 opacity-70 transition-transform',
+              menuOpen && 'rotate-180',
+            )}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={4} className="min-w-56">
           {menuPermissions?.invite ? (
-            <ServerHeaderMenuItem
-              icon={<UserPlusIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setInviteOpen(true))}
             >
-              Пригласить на сервер
-            </ServerHeaderMenuItem>
+              <UserPlusIcon />
+              {t('invite')}
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.settings ? (
-            <ServerHeaderMenuItem
-              icon={<SettingsIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -225,12 +192,12 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Настройки сервера
-            </ServerHeaderMenuItem>
+              <SettingsIcon />
+              {t('settings')}
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.roles ? (
-            <ServerHeaderMenuItem
-              icon={<ShieldFillIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -240,12 +207,12 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Роли
-            </ServerHeaderMenuItem>
+              <ShieldFillIcon />
+              {t('roles')}
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.audit ? (
-            <ServerHeaderMenuItem
-              icon={<ShieldIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
@@ -255,63 +222,69 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Журнал аудита
-            </ServerHeaderMenuItem>
+              <ShieldIcon />
+              {t('audit')}
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
-            <ServerHeaderMenuItem
-              icon={<PlusCircleIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setCreateChannelOpen(true))}
             >
-              Создать канал
-            </ServerHeaderMenuItem>
+              <PlusCircleIcon />
+              {t('createChannel')}
+            </DropdownMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
-            <ServerHeaderMenuItem
-              icon={<FolderPlusIcon className="size-4" />}
+            <DropdownMenuItem
               onClick={() => openDialog(() => setCreateCategoryOpen(true))}
             >
-              Создать категорию
-            </ServerHeaderMenuItem>
+              <FolderPlusIcon />
+              {t('createCategory')}
+            </DropdownMenuItem>
           ) : null}
           {showAdminSection &&
-          (menuPermissions?.leave || menuPermissions?.copyId) ? (
-            <Separator className="my-1" />
+          (canLeave || menuPermissions?.copyId) ? (
+            <DropdownMenuSeparator />
           ) : null}
-          {menuPermissions?.leave ? (
-            <ServerHeaderMenuItem
-              icon={
-                isOwner ? (
-                  <Trash2Icon className="size-4" />
-                ) : (
-                  <LogOutIcon className="size-4" />
-                )
-              }
-              destructive
+          {canLeave ? (
+            <DropdownMenuItem
               disabled={removingServer}
               onClick={() => {
                 setMenuOpen(false)
                 setRemoveDialogOpen(true)
               }}
             >
-              {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
-            </ServerHeaderMenuItem>
+              <LogOutIcon />
+              {t('leave')}
+            </DropdownMenuItem>
           ) : null}
-          {menuPermissions?.leave && menuPermissions?.copyId ? (
-            <Separator className="my-1" />
+          {canLeave && menuPermissions?.copyId ? (
+            <DropdownMenuSeparator />
           ) : null}
           {menuPermissions?.copyId ? (
-            <ServerHeaderMenuItem
-              icon={<CopyIcon className="size-4" />}
-              onClick={() => void copyServerId()}
-            >
-              Копировать ID сервера
-            </ServerHeaderMenuItem>
+            <DropdownMenuItem onClick={() => void copyServerId()}>
+              <CopyIcon />
+              {t('copyId')}
+            </DropdownMenuItem>
           ) : null}
-        </PopoverContent>
-      </Popover>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      {menuPermissions?.leave ? (
+      {menuPermissions?.invite ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="ml-auto size-8 shrink-0"
+          aria-label={t('invite')}
+          title={t('invite')}
+          onClick={() => setInviteOpen(true)}
+        >
+          <UserPlusIcon className="size-4" />
+        </Button>
+      ) : null}
+
+      {canLeave ? (
         <Dialog
           open={removeDialogOpen}
           onOpenChange={(open) => {
@@ -321,14 +294,10 @@ export function ServerHeaderMenu({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {isOwner
-                  ? `Удалить сервер «${serverName}»?`
-                  : `Покинуть сервер «${serverName}»?`}
+                {t('leaveTitle', { name: serverName })}
               </DialogTitle>
               <DialogDescription>
-                {isOwner
-                  ? 'Это действие необратимо. Сервер и его каналы будут удалены.'
-                  : 'Вы потеряете доступ к каналам этого сервера.'}
+                {t('leaveDescription')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -338,15 +307,15 @@ export function ServerHeaderMenu({
                 disabled={removingServer}
                 onClick={() => setRemoveDialogOpen(false)}
               >
-                Отмена
+                {t('cancel')}
               </Button>
               <Button
                 type="button"
                 variant="destructive"
                 disabled={removingServer}
-                onClick={() => void handleRemoveServer()}
+                onClick={() => void handleLeaveServer()}
               >
-                {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
+                {t('leave')}
               </Button>
             </DialogFooter>
           </DialogContent>

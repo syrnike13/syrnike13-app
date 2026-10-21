@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { SuggestionProps } from '@tiptap/suggestion'
@@ -69,6 +70,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
     },
     ref,
   ) {
+    const t = useTranslations('chat')
     const editorRootRef = useRef<HTMLDivElement>(null)
     const mentionMenuId = `composer-mentions-${useId().replaceAll(':', '')}`
     const mentionMenuAnchorRef = menuAnchorRef ?? editorRootRef
@@ -170,6 +172,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       () =>
         [
           ...createMessageExtensions({
+            spoilerTitle: t('spoilerShow'),
             mentionSuggestion: {
               items: ({ query }) => mentionItemsRef.current(query),
               render: () => ({
@@ -197,7 +200,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
             showOnlyWhenEditable: false,
           }),
         ],
-      [],
+      [t],
     )
 
     const editor = useEditor({
@@ -211,11 +214,11 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
 
           return {
             class: cn(
-              'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none md:text-sm',
+              'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none',
               editorClassNameRef.current,
             ),
             role: 'textbox',
-            'aria-label': 'Сообщение',
+            'aria-label': t('messageLabel'),
             'aria-multiline': 'true',
             'aria-autocomplete': 'list',
             ...(activeMention?.items.length

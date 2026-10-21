@@ -226,7 +226,7 @@ function getEmbeddedStageSurface(container: HTMLElement): HTMLElement {
 }
 
 function expectFixedBlackStageSurface(surface: HTMLElement) {
-  expect(surface.classList.contains('bg-black')).toBe(true)
+  expect(surface.classList.contains('bg-media-backdrop')).toBe(true)
   expect(surface.classList.contains('gradient-surface-content')).toBe(false)
   expect(surface.classList.contains('gradient-stage-empty')).toBe(false)
 }

@@ -1,9 +1,11 @@
 import type { Channel } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { openDirectMessageEffect } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type NavigateToDmChannel = (channelId: string) => Promise<void> | void
 
@@ -22,7 +24,7 @@ const defaultDeps: DmActionDeps = {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
+  return apiErrorMessage(error, fallback)
 }
 
 const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
@@ -30,6 +32,7 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
     token: string,
     userId: string,
     navigateToChannel: NavigateToDmChannel,
+    t: Translator,
     deps: DmActionDeps,
   ) {
     const action = Effect.gen(function*() {
@@ -51,7 +54,7 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
     return yield* action.pipe(
       Effect.tapError((error) =>
         Effect.sync(() => {
-          deps.toastError(errorMessage(error, 'Не удалось открыть ЛС'))
+          deps.toastError(errorMessage(error, t('dmOpenError')))
         }),
       ),
     )
@@ -62,12 +65,14 @@ export function openDirectMessageChannel(
   token: string,
   userId: string,
   navigateToChannel: NavigateToDmChannel,
+  t: Translator,
   deps: DmActionDeps = defaultDeps,
 ) {
   return openDirectMessageChannelEffect(
     token,
     userId,
     navigateToChannel,
+    t,
     deps,
   )
 }

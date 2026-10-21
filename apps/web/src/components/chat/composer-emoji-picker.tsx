@@ -1,12 +1,13 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { SmileIcon } from '#/components/icons'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { listServerCustomEmojis } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { QUICK_REACTIONS } from '#/lib/reactions'
@@ -24,27 +25,28 @@ export function ComposerEmojiPicker({
   onInsert,
   triggerClassName,
 }: ComposerEmojiPickerProps) {
+  const t = useTranslations('chat')
   const customEmojis = useSyncStore((s) =>
     serverId ? listServerCustomEmojis(s, serverId) : [],
   )
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
-          className={triggerClassName ?? 'size-9 shrink-0'}
+          className={
+            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+            triggerClassName ?? 'size-8 shrink-0'
+          }
           disabled={disabled}
-          title="Emoji"
-        >
-          <SmileIcon className="size-4" />
-        </Button>
-      </PopoverTrigger>
+          title={t('emoji')} />}>
+          <SmileIcon className="size-5" />
+        </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">
-          Emoji
+          {t('emoji')}
         </p>
         <div className="grid max-h-40 grid-cols-8 gap-0.5 overflow-y-auto">
           {QUICK_REACTIONS.map((emoji) => (
@@ -63,7 +65,7 @@ export function ComposerEmojiPicker({
         {customEmojis.length > 0 ? (
           <>
             <p className="mb-2 mt-3 px-1 text-xs font-medium text-muted-foreground">
-              Серверные
+              {t('serverEmojis')}
             </p>
             <div className="grid max-h-32 grid-cols-8 gap-0.5 overflow-y-auto">
               {customEmojis.map((emoji) => (

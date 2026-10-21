@@ -1165,7 +1165,7 @@ The control plane crosses web, backend, Electron and C++. Partial deployment is
 more dangerous than the current known failure. Use atomic contract switches and
 reviewable phases; do not maintain two permanent modes.
 
-### Risk: preserving Discord-fast moves
+### Risk: preserving fast moves
 
 The retained source and persistent pipeline must remain live while a candidate
 is reconciled. Rebuilding ownership must not accidentally turn every move into

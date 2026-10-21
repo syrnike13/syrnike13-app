@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from '#/components/icons'
 
 import {
@@ -8,6 +10,7 @@ import {
 import { useShellHistoryNav } from '#/features/navigation/use-shell-history-nav'
 import { usePlatform } from '#/platform/use-platform'
 import { config } from '#/lib/config'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const titleBarIconButtonClass =
@@ -16,7 +19,7 @@ const titleBarIconButtonClass =
 const titleBarIconButtonDefaultClass = cn(titleBarIconButtonClass, 'size-7')
 
 const titleBarWindowButtonClass =
-  'shell-title-bar-window-button inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground'
+  'shell-title-bar-window-button inline-flex h-(--titlebar-height) w-(--titlebar-button-width) shrink-0 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground'
 
 type ShellHistoryNavButtonsProps = {
   layout?: 'default' | 'macos' | 'windows'
@@ -27,6 +30,7 @@ export function ShellHistoryNavButtons({
   layout = 'default',
   heightPx,
 }: ShellHistoryNavButtonsProps) {
+  const t = useTranslations('layout.nav')
   const { canGoBack, canGoForward, goBack, goForward } = useShellHistoryNav()
   const isMac = layout === 'macos'
   const isWindows = layout === 'windows'
@@ -42,7 +46,9 @@ export function ShellHistoryNavButtons({
     <div
       className={cn(
         'flex shrink-0 items-center',
-        isFullHeight && 'h-full',
+        isWindows && heightPx != null
+          ? 'h-(--titlebar-nav-height) pl-(--titlebar-nav-inset)'
+          : isFullHeight && 'h-full',
         isMac && 'gap-1 pr-1',
         isWindows && 'gap-0.5',
         !isFullHeight && 'h-full gap-0.5 px-1',
@@ -50,14 +56,17 @@ export function ShellHistoryNavButtons({
       )}
       style={
         isWindows && heightPx != null
-          ? { height: heightPx, paddingLeft: SHELL_TITLEBAR_WIN32_NAV_INSET_PX }
+          ? ({
+              '--titlebar-nav-height': `${heightPx}px`,
+              '--titlebar-nav-inset': `${SHELL_TITLEBAR_WIN32_NAV_INSET_PX}px`,
+            } as CSSVars)
           : undefined
       }
     >
       <button
         type="button"
         className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
-        aria-label="Назад"
+        aria-label={t('back')}
         disabled={!canGoBack}
         onClick={goBack}
       >
@@ -66,14 +75,14 @@ export function ShellHistoryNavButtons({
       <button
         type="button"
         className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
-        aria-label="Вперёд"
+        aria-label={t('forward')}
         disabled={!canGoForward}
         onClick={goForward}
       >
         <ChevronRightIcon className="size-4" />
       </button>
       {isNightly ? (
-        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-[10px] font-medium leading-none text-chart-2">
+        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-xs font-medium leading-none text-chart-2">
           nightly
         </span>
       ) : null}
@@ -86,27 +95,27 @@ type ShellWindowControlsProps = {
 }
 
 export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
+  const t = useTranslations('layout.nav')
   const { desktop } = usePlatform()
   if (!desktop) return null
-
-  const buttonStyle = {
-    height: heightPx,
-    width: SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
-  }
 
   return (
     <div
       className={cn(
-        'shell-title-bar-window-controls flex shrink-0',
+        'shell-title-bar-window-controls flex h-(--titlebar-height) shrink-0',
         shellTitleBarNoDragClass,
       )}
-      style={{ height: heightPx }}
+      style={
+        {
+          '--titlebar-height': `${heightPx}px`,
+          '--titlebar-button-width': `${SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX}px`,
+        } as CSSVars
+      }
     >
       <button
         type="button"
         className={titleBarWindowButtonClass}
-        style={buttonStyle}
-        aria-label="Свернуть"
+        aria-label={t('minimize')}
         onClick={() => desktop.window.minimize()}
       >
         <MinusIcon className="size-3.5" />
@@ -114,8 +123,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
       <button
         type="button"
         className={titleBarWindowButtonClass}
-        style={buttonStyle}
-        aria-label="Развернуть"
+        aria-label={t('maximize')}
         onClick={() => desktop.window.maximize()}
       >
         <SquareIcon className="size-3" />
@@ -126,8 +134,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
           titleBarWindowButtonClass,
           'hover:bg-destructive hover:text-destructive-foreground',
         )}
-        style={buttonStyle}
-        aria-label="Закрыть"
+        aria-label={t('close')}
         onClick={() => desktop.window.close()}
       >
         <XIcon className="size-3.5" />

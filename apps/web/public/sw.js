@@ -18,7 +18,7 @@ function voiceCallNotificationTag(data) {
 }
 
 function voiceCallNotificationUrl(data) {
-  return data.url || (data.channel_id ? `/app/c/${data.channel_id}` : undefined)
+  return data.url || (data.channel_id ? `/c/${data.channel_id}` : undefined)
 }
 
 async function handleVoiceCallPush(data) {

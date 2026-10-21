@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { BellIcon, ChevronDownIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { selectHomeNotificationBadge } from '#/features/notifications/notification-selectors'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
@@ -12,20 +13,22 @@ import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { userStatusSubtitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
-const gatewayLabels = {
-  idle: 'Не подключён',
-  connecting: 'Подключение…',
-  connected: 'в сети',
-  disconnected: 'Нет связи',
-  reconnecting: 'Переподключение…',
+const gatewayStatusKeys = {
+  idle: 'status.idle',
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  disconnected: 'status.disconnected',
+  reconnecting: 'status.reconnecting',
 } as const
 
 /**
- * Плавающая панель аккаунта для мобильной оболочки (Discord-style pill).
+ * Плавающая панель аккаунта для мобильной оболочки (pill).
  *
  * Голосовые контролы — в `MobileVoiceFloatingTile`. Тап по pill → `/m/profile`.
  */
 export function MobileUserPanel() {
+  const t = useTranslations('layout.user')
+  const tc = useTranslations('chat')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceStage = useVoiceStage()
@@ -42,11 +45,11 @@ export function MobileUserPanel() {
   const gatewayReconnecting = auth.gatewayState === 'reconnecting'
 
   const statusLabel = gatewayConnected
-    ? userStatusSubtitle(user)
-    : gatewayLabels[auth.gatewayState]
+    ? userStatusSubtitle(user, tc)
+    : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
-    <div className="pointer-events-none absolute bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 right-2 z-50">
+    <div className="pointer-events-none absolute safe-bottom-2 left-2 right-2 z-50">
       <div className="pointer-events-auto">
         <div className="relative h-14 w-full">
           <div
@@ -91,9 +94,9 @@ export function MobileUserPanel() {
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full bg-background/60 hover:bg-background/80"
-            title="Уведомления"
-            aria-label="Уведомления"
+            className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full"
+            title={t('notifications')}
+            aria-label={t('notifications')}
             onClick={() => openSettings('notifications')}
           >
             <BellIcon className="size-5" />

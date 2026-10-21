@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 
 import { DownloadIcon } from '#/components/icons'
-import { shellTitleBarNoDragClass } from '#/components/layout/shell-chrome'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { usePlatform } from '#/platform/use-platform'
 import type { DesktopUpdateState } from '@syrnike13/platform'
 import { cn } from '#/lib/utils'
@@ -22,6 +22,7 @@ export function DesktopUpdateTitleBarButton({
 }: {
   className?: string
 }) {
+  const t = useTranslations('desktopUpdates')
   const { desktop } = usePlatform()
   const [state, setState] = useState<DesktopUpdateState | null>(null)
 
@@ -59,30 +60,32 @@ export function DesktopUpdateTitleBarButton({
 
   const ready = state.status === 'ready'
   const tooltip = ready
-    ? `Доступно обновление v${state.version}. Нажмите, чтобы перезапустить и установить.`
-    : `Загрузка обновления… ${Math.round(state.percent)}%`
+    ? t('available', { version: state.version })
+    : t('downloading', { percent: Math.round(state.percent) })
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={tooltip}
-            disabled={!ready}
-            className={cn(
-              'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
-              'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
-              'disabled:pointer-events-none disabled:opacity-50',
-              shellTitleBarNoDragClass,
-              className,
-            )}
-            onClick={() => {
-              if (ready) desktop.updates.install()
-            }}
-          >
-            <DownloadIcon className="size-4" aria-hidden />
-          </button>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={tooltip}
+              disabled={!ready}
+              className={cn(
+                'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
+                'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
+                'disabled:pointer-events-none disabled:opacity-50',
+                'shell-title-bar-no-drag',
+                className,
+              )}
+              onClick={() => {
+                if (ready) desktop.updates.install()
+              }}
+            />
+          }
+        >
+          <DownloadIcon className="size-4" aria-hidden />
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
           {tooltip}

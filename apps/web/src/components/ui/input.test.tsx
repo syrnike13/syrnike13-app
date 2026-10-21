@@ -1,21 +1,21 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { Input } from '#/components/ui/input'
-import { Textarea } from '#/components/ui/textarea'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 
 describe('form control surfaces', () => {
-  it('assigns the shared gradient input surface to Input', () => {
+  it('renders the shadcn Base UI input', () => {
     const markup = renderToStaticMarkup(<Input aria-label="Название" />)
 
     expect(markup).toContain('data-slot="input"')
-    expect(markup).toContain('gradient-surface-input')
+    expect(markup).toContain('border-input')
   })
 
-  it('assigns the shared gradient input surface to Textarea', () => {
+  it('renders the shadcn Base UI textarea', () => {
     const markup = renderToStaticMarkup(<Textarea aria-label="Описание" />)
 
     expect(markup).toContain('data-slot="textarea"')
-    expect(markup).toContain('gradient-surface-input')
+    expect(markup).toContain('border-input')
   })
 })

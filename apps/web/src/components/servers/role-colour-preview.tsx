@@ -1,11 +1,12 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { FxImage } from '#/components/ui/fx-image'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import {
-  getThemeById,
-  themeHasVariant,
+  getThemeTokens,
   type ThemeVariant,
-} from '#/features/appearance/theme-registry'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+} from '@syrnike13/ui/tokens'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type RoleColourPreviewProps = {
@@ -15,13 +16,18 @@ type RoleColourPreviewProps = {
   className?: string
 }
 
-function chatPaletteFromTheme(themeId: string, variant: ThemeVariant) {
-  const theme = getThemeById(themeId)
-  const tokens = theme.variants[variant]
-  if (!tokens) return null
+function chatPaletteFromTheme(
+  themeId: string,
+  variant: ThemeVariant,
+  label: string,
+) {
+  const tokens = getThemeTokens(
+    { themeId, colorMode: variant },
+    variant === 'dark',
+  )
   return {
     id: variant,
-    label: variant === 'light' ? 'Светлая тема' : 'Тёмная тема',
+    label,
     surface: tokens.background,
     text: tokens.foreground,
     muted: tokens['muted-foreground'],
@@ -34,23 +40,22 @@ export function RoleColourPreview({
   iconUrl,
   className,
 }: RoleColourPreviewProps) {
+  const t = useTranslations('servers.roles')
   const { settings } = useAppearance()
-  const theme = getThemeById(settings.themeId)
-  const displayName = name.trim() || 'Новая роль'
-  const roleStyle = roleColourStyle(colour.trim() || null)
+  const displayName = name.trim() || t('newRole')
+  const roleColour = colour.trim() ? normalizeRoleColour(colour) : undefined
 
-  const palettes = (['light', 'dark'] as const).flatMap((variant) => {
-    if (!themeHasVariant(theme, variant)) return []
-    const palette = chatPaletteFromTheme(settings.themeId, variant)
-    return palette ? [palette] : []
+  const palettes = (['light', 'dark'] as const).map((variant) => {
+    const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
+    return chatPaletteFromTheme(settings.themeId, variant, label)
   })
 
   return (
     <div className={cn('space-y-3', className)}>
       <div>
-        <p className="text-sm font-medium">Предпросмотр в чате</p>
+        <p className="text-sm font-medium">{t('previewTitle')}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Как имя роли выглядит в сообщениях в разных режимах палитры.
+          {t('previewHint')}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -59,15 +64,18 @@ export function RoleColourPreview({
             key={palette.id}
             className="overflow-hidden rounded-md border border-border"
           >
-            <div className="border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
               {palette.label}
             </div>
             <div
-              className="space-y-2 px-3 py-3 text-sm"
-              style={{
-                backgroundColor: palette.surface,
-                color: palette.text,
-              }}
+              className="space-y-2 bg-(--palette-surface) px-3 py-3 text-sm text-(--palette-text)"
+              style={
+                {
+                  '--palette-surface': palette.surface,
+                  '--palette-text': palette.text,
+                  '--palette-muted': palette.muted,
+                } as CSSVars
+              }
             >
               <div className="flex items-center gap-2">
                 {iconUrl ? (
@@ -79,22 +87,41 @@ export function RoleColourPreview({
                   />
                 ) : (
                   <span
-                    className="size-2.5 rounded-full"
-                    style={{ backgroundColor: normalizeRoleColour(colour) }}
+                    className="size-2.5 rounded-full bg-(--role-dot)"
+                    style={
+                      { '--role-dot': normalizeRoleColour(colour) } as CSSVars
+                    }
                   />
                 )}
-                <span className="font-semibold" style={roleStyle}>
+                <span
+                  className={cn(
+                    'font-semibold',
+                    roleColour && 'text-(--role-color)',
+                  )}
+                  style={
+                    roleColour
+                      ? ({ '--role-color': roleColour } as CSSVars)
+                      : undefined
+                  }
+                >
                   {displayName}
                 </span>
               </div>
               <p>
-                <span className="font-medium" style={{ color: palette.text }}>
-                  Участник
+                <span className="font-medium">{t('member')}</span>
+                <span className="text-(--palette-muted)"> — </span>
+                <span
+                  className={cn(roleColour && 'text-(--role-color)')}
+                  style={
+                    roleColour
+                      ? ({ '--role-color': roleColour } as CSSVars)
+                      : undefined
+                  }
+                >
+                  @{displayName}
                 </span>
-                <span style={{ color: palette.muted }}> — </span>
-                <span style={roleStyle}>@{displayName}</span>
-                <span style={{ color: palette.muted }}>
-                  , добро пожаловать на сервер!
+                <span className="text-(--palette-muted)">
+                  {t('welcome')}
                 </span>
               </p>
             </div>

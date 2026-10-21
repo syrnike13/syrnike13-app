@@ -73,7 +73,7 @@ describe('FeedbackView', () => {
   it('hides unsupported catalogue controls when showing own feedback', async () => {
     renderFeedbackView()
 
-    expect(screen.getByPlaceholderText('Найти обращение')).not.toBeNull()
+    expect(await screen.findByPlaceholderText('Найти обращение')).not.toBeNull()
     expect(screen.getByLabelText('Сортировка')).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Фильтры/ }))

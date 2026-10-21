@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Channel, User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 import { toast } from 'sonner'
 
@@ -11,7 +12,20 @@ import {
 } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import {
   Dialog,
   DialogContent,
@@ -19,10 +33,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   addGroupMemberEffect,
   deleteChannelEffect,
@@ -37,12 +51,18 @@ import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type GroupChannel = Extract<Channel, { channel_type: 'Group' }>
 
 type GroupManagementDialogProps = {
   channel: GroupChannel
 }
+
+type PendingConfirmation =
+  | { type: 'remove'; user: User }
+  | { type: 'transfer'; user: User }
+  | { type: 'leave'; suffix: string }
 
 export function GroupManagementDialog({
   ...props
@@ -57,6 +77,9 @@ export function GroupManagementDialog({
 function GroupManagementDialogContent({
   channel,
 }: GroupManagementDialogProps) {
+  const t = useTranslations('chat.group')
+  const tc = useTranslations('chat')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -73,6 +96,8 @@ function GroupManagementDialogContent({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [confirmation, setConfirmation] =
+    useState<PendingConfirmation | null>(null)
 
   const token = auth.session?.token
   const currentUserId = auth.user?._id
@@ -102,9 +127,7 @@ function GroupManagementDialogContent({
       Effect.catch((error) =>
         Effect.sync(() => {
           toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось загрузить участников',
+            apiErrorMessage(error, t('membersLoadError')),
           )
         }),
       ),
@@ -158,7 +181,7 @@ function GroupManagementDialogContent({
     if (!token) return false
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error('Название группы не может быть пустым')
+      toast.error(t('nameRequired'))
       return false
     }
 
@@ -179,6 +202,7 @@ function GroupManagementDialogContent({
             token,
             'icons',
             iconFile,
+            tm,
           )
         } else if (removeIcon && channel.icon) {
           data.remove = [...(data.remove ?? []), 'Icon']
@@ -187,7 +211,7 @@ function GroupManagementDialogContent({
         const updated = yield* editChannelEffect(token, channel._id, data)
         if (updated.channel_type !== 'Group') {
           return yield* Effect.fail(
-            new Error('Сервер вернул некорректный тип канала'),
+            new Error(t('invalidChannel')),
           )
         }
         yield* Effect.sync(() => {
@@ -198,13 +222,13 @@ function GroupManagementDialogContent({
           setSavedDescription(updated.description ?? '')
           setIconFile(null)
           setRemoveIcon(false)
-          toast.success('Группа обновлена')
+          toast.success(t('updated'))
         })
       }).pipe(
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -247,13 +271,15 @@ function GroupManagementDialogContent({
         })
         yield* refreshMembers()
         yield* Effect.sync(() =>
-          toast.success(`${user.display_name ?? user.username} добавлен`),
+          toast.success(
+            t('memberAdded', { name: user.display_name ?? user.username }),
+          ),
         )
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось добавить',
+              apiErrorMessage(error, t('addError')),
             )
           }),
         ),
@@ -264,7 +290,6 @@ function GroupManagementDialogContent({
 
   async function removeMember(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
-    if (!window.confirm(`Удалить @${user.username} из группы?`)) return
     setBusy(true)
     await Effect.runPromise(
       removeGroupMemberEffect(token, channel._id, user._id).pipe(
@@ -278,13 +303,13 @@ function GroupManagementDialogContent({
             setMembers((current) =>
               current.filter((item) => item._id !== user._id),
             )
-            toast.success('Участник удалён')
+            toast.success(t('memberRemoved'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить',
+              apiErrorMessage(error, t('removeError')),
             )
           }),
         ),
@@ -295,22 +320,19 @@ function GroupManagementDialogContent({
 
   async function transferOwnership(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
-    if (!window.confirm(`Передать группу @${user.username}?`)) return
     setBusy(true)
     await Effect.runPromise(
       transferGroupOwnershipEffect(token, channel._id, user._id).pipe(
         Effect.tap((updated) =>
           Effect.sync(() => {
             syncStore.upsertChannel(updated)
-            toast.success('Владелец группы изменён')
+            toast.success(t('ownerChanged'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось передать группу',
+              apiErrorMessage(error, t('transferError')),
             )
           }),
         ),
@@ -319,16 +341,20 @@ function GroupManagementDialogContent({
     )
   }
 
-  async function leaveGroup() {
+  function requestLeave() {
     if (!token) return
     const nextOwner =
       isOwner && members.length > 1
         ? members.find((member) => member._id !== currentUserId)
         : undefined
     const suffix = nextOwner
-      ? ` Владелец станет @${nextOwner.username}.`
+      ? t('leaveOwnerSuffix', { username: nextOwner.username })
       : ''
-    if (!window.confirm(`Выйти из группы?${suffix}`)) return
+    setConfirmation({ type: 'leave', suffix })
+  }
+
+  async function leaveGroup() {
+    if (!token) return
     setBusy(true)
     await Effect.runPromise(
       Effect.gen(function*() {
@@ -339,14 +365,14 @@ function GroupManagementDialogContent({
         })
         yield* Effect.tryPromise({
           try: () =>
-            navigate({ to: `${prefix}`, search: { tab: 'online' } }),
+            navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось выйти',
+              apiErrorMessage(error, t('leaveError')),
             )
             setBusy(false)
           }),
@@ -359,56 +385,57 @@ function GroupManagementDialogContent({
     channel.icon && !removeIcon ? attachmentPreviewUrl(channel.icon) : null
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
+      <DialogTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
           className="size-8"
-          title="Настройки группы"
-          aria-label="Настройки группы"
-        >
+          title={t('settings')}
+          aria-label={t('settings')} />}>
           <SettingsIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden">
+        </DialogTrigger>
+      <DialogContent className="flex max-h-dialog max-w-2xl flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Настройки группы</DialogTitle>
+          <DialogTitle>{t('settings')}</DialogTitle>
           <DialogDescription>
-            Профиль группы, участники и владение.
+            {t('description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Профиль</h3>
+            <h3 className="text-sm font-semibold">{t('profile')}</h3>
             <div className="flex items-center gap-3">
               <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
                 {iconFile ? (
                   <span className="px-2 text-center text-xs">{iconFile.name}</span>
                 ) : currentIconUrl ? (
-                  <img src={currentIconUrl} alt="Иконка группы" className="size-full object-cover" />
+                  <img src={currentIconUrl} alt={t('iconAlt')} className="size-full object-cover" />
                 ) : (
                   <SettingsIcon className="size-6" />
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button asChild type="button" variant="outline" size="sm">
-                  <label className="cursor-pointer">
-                    Загрузить иконку
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={busy}
-                      onChange={(event) => {
-                        setIconFile(event.target.files?.[0] ?? null)
-                        setRemoveIcon(false)
-                      }}
-                    />
-                  </label>
-                </Button>
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'cursor-pointer',
+                  )}
+                >
+                  {t('uploadIcon')}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={busy}
+                    onChange={(event) => {
+                      setIconFile(event.target.files?.[0] ?? null)
+                      setRemoveIcon(false)
+                    }}
+                  />
+                </label>
                 {channel.icon || iconFile ? (
                   <Button
                     type="button"
@@ -420,13 +447,13 @@ function GroupManagementDialogContent({
                       setRemoveIcon(Boolean(channel.icon))
                     }}
                   >
-                    Удалить иконку
+                    {t('removeIcon')}
                   </Button>
                 ) : null}
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="group-settings-name">Название</Label>
+              <Label htmlFor="group-settings-name">{t('name')}</Label>
               <Input
                 id="group-settings-name"
                 value={name}
@@ -436,7 +463,7 @@ function GroupManagementDialogContent({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="group-settings-description">Описание</Label>
+              <Label htmlFor="group-settings-description">{t('descriptionLabel')}</Label>
               <Textarea
                 id="group-settings-description"
                 value={description}
@@ -450,9 +477,9 @@ function GroupManagementDialogContent({
 
           <section className="space-y-3 border-t border-border pt-5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Участники</h3>
+              <h3 className="text-sm font-semibold">{t('members')}</h3>
               <span className="text-xs text-muted-foreground">
-                {loadingMembers ? 'Загрузка…' : members.length}
+                {loadingMembers ? t('loading') : members.length}
               </span>
             </div>
             <div className="space-y-1">
@@ -462,7 +489,7 @@ function GroupManagementDialogContent({
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {member.display_name ?? member.username}
                     {member._id === channel.owner ? (
-                      <span className="ml-2 text-xs text-muted-foreground">владелец</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{t('owner')}</span>
                     ) : null}
                   </span>
                   {isOwner && member._id !== currentUserId ? (
@@ -472,17 +499,21 @@ function GroupManagementDialogContent({
                         variant="ghost"
                         size="sm"
                         disabled={busy}
-                        onClick={() => void transferOwnership(member)}
+                        onClick={() =>
+                          setConfirmation({ type: 'transfer', user: member })
+                        }
                       >
-                        Передать
+                        {t('transfer')}
                       </Button>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        title="Удалить участника"
+                        title={t('removeMember')}
                         disabled={busy}
-                        onClick={() => void removeMember(member)}
+                        onClick={() =>
+                          setConfirmation({ type: 'remove', user: member })
+                        }
                       >
                         <UserMinusIcon className="size-4" />
                       </Button>
@@ -494,7 +525,7 @@ function GroupManagementDialogContent({
 
             {candidates.length > 0 ? (
               <div className="space-y-2 rounded-md border border-border p-3">
-                <p className="text-xs font-semibold text-muted-foreground">Добавить друга</p>
+                <p className="text-xs font-semibold text-muted-foreground">{t('addFriend')}</p>
                 {candidates.map((candidate) => (
                   <div key={candidate._id} className="flex items-center gap-2">
                     <UserAvatar user={candidate} className="size-7" />
@@ -508,7 +539,7 @@ function GroupManagementDialogContent({
                       disabled={busy}
                       onClick={() => void addMember(candidate)}
                     >
-                      Добавить
+                      {t('add')}
                     </Button>
                   </div>
                 ))}
@@ -521,15 +552,63 @@ function GroupManagementDialogContent({
               type="button"
               variant="destructive"
               disabled={busy}
-              onClick={() => void leaveGroup()}
+              onClick={requestLeave}
             >
               <LogOutIcon className="size-4" />
-              Выйти из группы
+              {t('leave')}
             </Button>
           </section>
         </div>
         <UnsavedChangesBar placement="flow" />
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={confirmation !== null}
+      onOpenChange={(next) => {
+        if (!next) setConfirmation(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {confirmation?.type === 'remove'
+              ? t('removeConfirm', { username: confirmation.user.username })
+              : confirmation?.type === 'transfer'
+                ? t('transferConfirm', {
+                    username: confirmation.user.username,
+                  })
+                : t('leaveConfirm', {
+                    suffix:
+                      confirmation?.type === 'leave' ? confirmation.suffix : '',
+                  })}
+          </AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant={confirmation?.type === 'transfer' ? 'default' : 'destructive'}
+            onClick={() => {
+              const pending = confirmation
+              setConfirmation(null)
+              if (!pending) return
+              if (pending.type === 'remove') void removeMember(pending.user)
+              else if (pending.type === 'transfer') {
+                void transferOwnership(pending.user)
+              } else {
+                void leaveGroup()
+              }
+            }}
+          >
+            {confirmation?.type === 'remove'
+              ? t('removeMember')
+              : confirmation?.type === 'transfer'
+                ? t('transfer')
+                : t('leave')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

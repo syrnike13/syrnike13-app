@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
@@ -32,13 +33,14 @@ import {
   CHANNEL_PERMISSION_GROUPS,
   getAllowedPermissionTriStates,
   getPermissionTriState,
+  normalizeRoleColour,
   overrideFieldFromRole,
   overrideFieldToApi,
-  roleColourStyle,
   setPermissionTriState,
   sortRolesByHierarchy,
   type PermissionOverrideField,
 } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
@@ -76,6 +78,8 @@ function ChannelPermissionEditor({
   initialPermissions: PermissionOverrideField | null | undefined
   canEdit: boolean
 }) {
+  const t = useTranslations('channels.permissions')
+  const tp = useTranslations('settings.permissions')
   const [permissions, setPermissions] = useState<PermissionOverrideField>(() =>
     overrideFieldFromRole(initialPermissions),
   )
@@ -128,11 +132,8 @@ function ChannelPermissionEditor({
         Effect.as(true),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось сохранить права',
-            )
+            console.error('[channel-permissions] save failed', error)
+            toast.error(t('saveError'))
             return false
           }),
         ),
@@ -156,17 +157,17 @@ function ChannelPermissionEditor({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold">Права — {roleName}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Нажмите на переключатель: наследуется → разрешено → запрещено.
-        </p>
+        <h3 className="text-base font-semibold">
+          {t('title', { role: roleName })}
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t('hint')}</p>
       </div>
 
       <div className="space-y-4">
         {CHANNEL_PERMISSION_GROUPS.map((group) => (
-          <section key={group.title} className="space-y-2">
+          <section key={group.titleKey} className="space-y-2">
             <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              {group.title}
+              {tp(group.titleKey)}
             </h4>
             <ul className="space-y-1">
               {group.permissions.map((permission) => {
@@ -180,9 +181,9 @@ function ChannelPermissionEditor({
                     key={permission.flag}
                     className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
                   >
-                    <span className="text-sm">{permission.label}</span>
+                    <span className="text-sm">{tp(permission.labelKey)}</span>
                     <PermissionStateButton
-                      label={permission.label}
+                      label={tp(permission.labelKey)}
                       state={getPermissionTriState(permissions, permission.flag)}
                       allowedStates={allowedStates}
                       disabled={!canEdit}
@@ -202,8 +203,8 @@ function ChannelPermissionEditor({
 
       {!canEdit ? (
         <p className="text-sm text-muted-foreground">
-          Недостаточно прав для изменения прав{' '}
-          {userTargetId ? 'этого участника' : 'этой роли'}.
+          {t('insufficient')}{' '}
+          {userTargetId ? t('thisMember') : t('thisRole')}.
         </p>
       ) : null}
     </div>
@@ -236,7 +237,16 @@ function RoleListItem({
           className="size-5"
         />
       ) : null}
-      <span className="truncate" style={roleColourStyle(role.colour)}>
+      <span
+        className={cn('truncate', role.colour && 'text-(--role-color)')}
+        style={
+          role.colour
+            ? ({
+                '--role-color': normalizeRoleColour(role.colour),
+              } as CSSVars)
+            : undefined
+        }
+      >
         {role.name}
       </span>
     </button>
@@ -284,6 +294,7 @@ export function ChannelSettingsPermissionsPanel({
   server: Server
   member: Member | undefined
 }) {
+  const t = useTranslations('channels.permissions')
   const auth = useAuth()
   const roles = useMemo(
     () => (server.roles ? sortRolesByHierarchy(Object.values(server.roles)) : []),
@@ -366,7 +377,7 @@ export function ChannelSettingsPermissionsPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-1 lg:items-stretch">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 settings-shell-grid lg:grid-rows-1 lg:items-stretch">
       <aside className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
         <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24 max-lg:max-h-56">
           <div className="space-y-2 pr-2">
@@ -384,7 +395,7 @@ export function ChannelSettingsPermissionsPanel({
             </button>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">Нет ролей</p>
+              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
             ) : (
               <div className="space-y-1">
                 {roles.map((role) => (
@@ -400,11 +411,11 @@ export function ChannelSettingsPermissionsPanel({
 
             <div className="space-y-1 pt-3">
               <p className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Участники
+                {t('members')}
               </p>
               {members.length === 0 ? (
                 <p className="px-1 text-sm text-muted-foreground">
-                  Нет участников
+                  {t('noMembers')}
                 </p>
               ) : (
                 members.map((entry) => {

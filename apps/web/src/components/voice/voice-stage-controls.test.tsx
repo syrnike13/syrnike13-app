@@ -149,19 +149,21 @@ describe('VoiceStageControls', () => {
       screen.getByRole('button', { name: 'Отключиться от голоса' }),
     ).toBeTruthy()
 
-    fireEvent.pointerDown(
+    fireEvent.mouseDown(
       screen.getByRole('button', { name: 'Выбрать, что завершить' }),
       { button: 0, ctrlKey: false },
     )
+
+    const streamExitItem = await screen.findByRole('menuitem', {
+      name: 'Прекратить просмотр — Alice',
+    })
 
     expect(
       screen.queryByRole('menuitem', { name: 'Отключиться от голоса' }),
     ).toBeNull()
 
     expect(
-      screen
-        .getByRole('menuitem', { name: 'Прекратить просмотр — Alice' })
-        .querySelector('[data-voice-stage-exit-icon="stream"]'),
+      streamExitItem.querySelector('[data-voice-stage-exit-icon="stream"]'),
     ).not.toBeNull()
 
     const activityExitItem = await screen.findByRole('menuitem', {

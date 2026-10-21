@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
   buildStageMediaItems,
@@ -9,6 +11,8 @@ import {
   type StageMediaItem,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 const LOCAL_USER_ID = 'local-user'
 const REMOTE_USER_ID = 'remote-user'
@@ -465,9 +469,9 @@ describe('withConnectingLocalAvatarItem', () => {
 
 describe('stageMediaKindLabel', () => {
   it('maps stream kinds to Russian labels', () => {
-    expect(stageMediaKindLabel('screen')).toBe('Экран')
-    expect(stageMediaKindLabel('camera')).toBe('Камера')
-    expect(stageMediaKindLabel('avatar')).toBeNull()
+    expect(stageMediaKindLabel('screen', t)).toBe('Экран')
+    expect(stageMediaKindLabel('camera', t)).toBe('Камера')
+    expect(stageMediaKindLabel('avatar', t)).toBeNull()
   })
 })
 

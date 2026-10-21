@@ -1,3 +1,5 @@
+import type { Translator } from '@syrnike13/ui/i18n'
+
 import { stageScreenMediaUserId } from '#/features/voice/voice-stage-subscription'
 
 type VoiceStageViewSessionBase = Readonly<{
@@ -62,8 +64,9 @@ export function buildVoiceStageViewSessions({
 
 export function voiceStageViewSessionExitLabel(
   session: VoiceStageViewSession,
+  t: Translator,
 ) {
   return session.kind === 'activity'
-    ? `Выйти из активности — ${session.label}`
-    : `Прекратить просмотр — ${session.label}`
+    ? t('stage.exitActivity', { name: session.label })
+    : t('stage.stopWatchingName', { name: session.label })
 }

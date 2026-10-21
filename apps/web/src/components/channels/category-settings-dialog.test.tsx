@@ -28,7 +28,7 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({
     children,
     open,

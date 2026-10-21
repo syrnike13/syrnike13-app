@@ -1,8 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@syrnike13/ui/primitives/empty'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -27,15 +34,16 @@ import { cn } from '#/lib/utils'
 type DebugSection = 'general' | 'transport' | 'outgoing' | 'incoming' | 'screen'
 type MediaTab = 'audio' | 'video'
 
-const sections: Array<{ id: DebugSection; label: string }> = [
-  { id: 'general', label: 'General' },
-  { id: 'transport', label: 'Передача данных' },
-  { id: 'outgoing', label: 'Исходящие' },
-  { id: 'incoming', label: 'Входящие' },
-  { id: 'screen', label: 'Демонстрация экрана' },
+const sections: Array<{ id: DebugSection; labelKey: string }> = [
+  { id: 'general', labelKey: 'debug.general' },
+  { id: 'transport', labelKey: 'debug.transport' },
+  { id: 'outgoing', labelKey: 'debug.outgoing' },
+  { id: 'incoming', labelKey: 'debug.incoming' },
+  { id: 'screen', labelKey: 'debug.screenShare' },
 ]
 
 export function VoiceRtcDebugView() {
+  const t = useTranslations('voice')
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
   const voiceTelemetry = useVoiceTelemetry()
@@ -67,17 +75,19 @@ export function VoiceRtcDebugView() {
   const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
-    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background text-foreground lg:flex-row">
+    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-card text-card-foreground lg:flex-row">
       <aside className="gradient-surface-navigation shrink-0 border-b border-border bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-60 lg:border-r lg:border-b-0 lg:px-5 lg:py-8">
         <div className="mb-4 lg:mb-6">
-          <h1 className="text-lg font-bold leading-none">RTC диагностика</h1>
+          <h1 className="text-lg font-bold leading-none">{t('debug.title')}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {voiceSession.status === 'connected' ? 'Подключено' : 'Отключено'}
+            {voiceSession.status === 'connected'
+              ? t('debug.connected')
+              : t('debug.disconnected')}
           </p>
         </div>
 
         <p className="mb-2 hidden text-xs font-bold uppercase text-muted-foreground lg:block">
-          Разделы
+          {t('debug.sections')}
         </p>
         <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
           {sections.map((item) => (
@@ -91,7 +101,7 @@ export function VoiceRtcDebugView() {
                   'bg-sidebar-accent text-sidebar-accent-foreground',
               )}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </nav>
@@ -140,13 +150,17 @@ function DebugSectionBody({
   participantCount: number
   stageMediaCount: number
 }) {
+  const t = useTranslations('voice')
+
   if (!snapshot) {
     return (
-      <div className="rounded border border-dashed border-border px-6 py-12 text-center">
-        <h2 className="text-base font-bold">Собираем RTC stats</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Первый снимок обычно появляется через секунду после открытия экрана.
-        </p>
+      <div className="rounded border border-dashed border-border px-6 py-12">
+        <Empty className="p-0">
+          <EmptyHeader>
+            <EmptyTitle>{t('debug.collectingTitle')}</EmptyTitle>
+            <EmptyDescription>{t('debug.collectingHint')}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </div>
     )
   }
@@ -172,7 +186,7 @@ function DebugSectionBody({
   if (section === 'outgoing') {
     return (
       <RtpSection
-        title="Исходящие"
+        title={t('debug.outgoing')}
         streams={snapshot.outbound}
         history={history}
         direction="outbound"
@@ -183,7 +197,7 @@ function DebugSectionBody({
   if (section === 'incoming') {
     return (
       <RtpSection
-        title="Входящие"
+        title={t('debug.incoming')}
         streams={snapshot.inbound}
         history={history}
         direction="inbound"
@@ -211,6 +225,7 @@ function GeneralSection({
   participantCount: number
   stageMediaCount: number
 }) {
+  const t = useTranslations('voice')
   const quality = rtcConnectionQuality(snapshot)
   const rates = snapshot.rates
 
@@ -218,11 +233,13 @@ function GeneralSection({
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-foreground">Состояние соединения</h2>
+          <h2 className="text-lg font-bold text-foreground">
+            {t('debug.connectionState')}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {snapshot.source === 'windows_native'
-              ? 'Windows native LiveKit runtime'
-              : 'Browser WebRTC getStats()'}
+              ? t('debug.sourceWindowsNative')
+              : t('debug.sourceBrowser')}
           </p>
         </div>
         <QualityBadge quality={quality} />
@@ -230,42 +247,44 @@ function GeneralSection({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <OverviewCard
-          label="Пинг"
+          label={t('debug.ping')}
           value={formatRtcMs(snapshot.transport.pingMs)}
           history={history}
           metric={(sample) => sample.transport.pingMs}
         />
         <OverviewCard
-          label="Потери пакетов"
+          label={t('debug.packetLoss')}
           value={formatRtcPercent(rates?.quality.packetLossPercent)}
           history={history}
           metric={(sample) => sample.rates?.quality.packetLossPercent}
         />
         <OverviewCard
-          label="Джиттер"
+          label={t('debug.jitter')}
           value={formatRtcMs(rates?.quality.jitterMs)}
           history={history}
           metric={(sample) => sample.rates?.quality.jitterMs}
         />
         <OverviewCard
-          label="Дроп кадров"
+          label={t('debug.frameDrop')}
           value={formatRtcPercent(rates?.quality.framesDroppedPercent)}
           detail={
             rates?.quality.framesDroppedPerSecond == null
               ? undefined
-              : `${rates.quality.framesDroppedPerSecond.toFixed(1)} кадр/с`
+              : t('debug.frameDropRate', {
+                  rate: rates.quality.framesDroppedPerSecond.toFixed(1),
+                })
           }
           history={history}
           metric={(sample) => sample.rates?.quality.framesDroppedPercent}
         />
         <OverviewCard
-          label="Входящий поток"
+          label={t('debug.incomingStream')}
           value={formatRtcBitrate(rates?.transport.inboundBitrate)}
           history={history}
           metric={(sample) => sample.rates?.transport.inboundBitrate}
         />
         <OverviewCard
-          label="Исходящий поток"
+          label={t('debug.outgoingStream')}
           value={formatRtcBitrate(rates?.transport.outboundBitrate)}
           history={history}
           metric={(sample) => sample.rates?.transport.outboundBitrate}
@@ -273,22 +292,31 @@ function GeneralSection({
       </div>
 
       <div className="mt-8">
-        <MetricGrid title="Сессия">
-          <MetricRow label="Voice Node" value={nodeName ?? '—'} />
-          <MetricRow label="Channel" value={channelId ?? '—'} />
-          <MetricRow label="Local Identity" value={localIdentity ?? '—'} />
-          <MetricRow label="Participant Count" value={participantCount} />
-          <MetricRow label="Stage Media Items" value={stageMediaCount} />
+        <MetricGrid title={t('debug.session')}>
+          <MetricRow label={t('debug.voiceNode')} value={nodeName ?? '—'} />
+          <MetricRow label={t('debug.channel')} value={channelId ?? '—'} />
           <MetricRow
-            label="Selected ICE Candidate"
+            label={t('debug.localIdentity')}
+            value={localIdentity ?? '—'}
+          />
+          <MetricRow
+            label={t('debug.participantCount')}
+            value={participantCount}
+          />
+          <MetricRow
+            label={t('debug.stageMediaItems')}
+            value={stageMediaCount}
+          />
+          <MetricRow
+            label={t('debug.selectedIceCandidate')}
             value={snapshot.transport.selectedCandidatePairId ?? '—'}
           />
           <MetricRow
-            label="Скрытые аудиосэмплы"
+            label={t('debug.hiddenAudioSamples')}
             value={formatRtcPercent(rates?.quality.concealedAudioPercent)}
           />
           <MetricRow
-            label="Источник статистики"
+            label={t('debug.statsSource')}
             value={snapshot.source ?? 'web'}
           />
         </MetricGrid>
@@ -306,57 +334,68 @@ function TransportSection({
   history: readonly RtcDebugSnapshot[]
   nodeName: string | null
 }) {
+  const t = useTranslations('voice')
+
   return (
-    <MetricGrid title="Передача данных">
+    <MetricGrid title={t('debug.dataTransfer')}>
       <MetricRow
-        label="Available Outgoing Bitrate"
+        label={t('debug.availableOutgoingBitrate')}
         value={formatRtcBitrate(snapshot.transport.availableOutgoingBitrate)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.availableOutgoingBitrate} />}
       />
       <MetricRow
-        label="Available Incoming Bitrate"
+        label={t('debug.availableIncomingBitrate')}
         value={formatRtcBitrate(snapshot.transport.availableIncomingBitrate)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.availableIncomingBitrate} />}
       />
       <MetricRow
-        label="Ping"
+        label={t('debug.ping')}
         value={formatRtcMs(snapshot.transport.pingMs)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.pingMs} />}
       />
-      <MetricRow label="Local Address" value={snapshot.transport.localAddress ?? '—'} />
-      <MetricRow label="Remote Address" value={snapshot.transport.remoteAddress ?? '—'} />
-      <MetricRow label="Pacer Delay" value="N/A" />
       <MetricRow
-        label="Outbound Bitrate Estimate"
+        label={t('debug.localAddress')}
+        value={snapshot.transport.localAddress ?? '—'}
+      />
+      <MetricRow
+        label={t('debug.remoteAddress')}
+        value={snapshot.transport.remoteAddress ?? '—'}
+      />
+      <MetricRow
+        label={t('debug.pacerDelay')}
+        value={RTC_DEBUG_BROWSER_UNAVAILABLE}
+      />
+      <MetricRow
+        label={t('debug.outboundBitrateEstimate')}
         value={formatRtcBitrate(snapshot.rates?.transport.outboundBitrate)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.rates?.transport.outboundBitrate} />}
       />
       <MetricRow
-        label="Inbound Bitrate Estimate"
+        label={t('debug.inboundBitrateEstimate')}
         value={formatRtcBitrate(snapshot.rates?.transport.inboundBitrate)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.rates?.transport.inboundBitrate} />}
       />
       <MetricRow
-        label="Packets Received"
+        label={t('debug.packetsReceived')}
         value={formatRtcInteger(snapshot.transport.packetsReceived)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.packetsReceived} />}
       />
       <MetricRow
-        label="Packets Sent"
+        label={t('debug.packetsSent')}
         value={formatRtcInteger(snapshot.transport.packetsSent)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.packetsSent} />}
       />
       <MetricRow
-        label="Bytes Received"
+        label={t('debug.bytesReceived')}
         value={formatRtcBytes(snapshot.transport.bytesReceived)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.bytesReceived} />}
       />
       <MetricRow
-        label="Bytes Sent"
+        label={t('debug.bytesSent')}
         value={formatRtcBytes(snapshot.transport.bytesSent)}
         chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.bytesSent} />}
       />
-      <MetricRow label="Hostname" value={nodeName ?? '—'} />
+      <MetricRow label={t('debug.hostname')} value={nodeName ?? '—'} />
     </MetricGrid>
   )
 }
@@ -372,6 +411,7 @@ function RtpSection({
   history: readonly RtcDebugSnapshot[]
   direction: 'outbound' | 'inbound'
 }) {
+  const t = useTranslations('voice')
   const [tab, setTab] = useState<MediaTab>('audio')
   const filtered = streams.filter((stream) => stream.kind === tab)
 
@@ -380,7 +420,9 @@ function RtpSection({
       <SectionHeader title={title} />
       <MediaTabs value={tab} onChange={setTab} />
       {filtered.length === 0 ? (
-        <EmptyPanel text={`Нет ${tab === 'audio' ? 'audio' : 'video'} RTP streams.`} />
+        <EmptyPanel
+          text={tab === 'audio' ? t('debug.noAudioRtp') : t('debug.noVideoRtp')}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-x-8 gap-y-7 xl:grid-cols-2">
           {filtered.map((stream) => (
@@ -406,6 +448,7 @@ function RtpStreamCard({
   history: readonly RtcDebugSnapshot[]
   direction: 'outbound' | 'inbound'
 }) {
+  const t = useTranslations('voice')
   const rate = (sample: RtcDebugSnapshot) =>
     direction === 'outbound'
       ? sample.rates?.outbound[stream.id]
@@ -417,81 +460,162 @@ function RtpStreamCard({
     <MetricGroup title={`${stream.pcRole} / ${stream.kind} / ${stream.mid ?? stream.ssrc ?? stream.id}`}>
       <MetricRow label="SSRC" value={formatRtcValue(stream.ssrc)} />
       <MetricRow label="MID" value={stream.mid ?? '—'} />
-      <MetricRow label="Codec" value={stream.codec ?? '—'} />
+      <MetricRow label={t('debug.codec')} value={stream.codec ?? '—'} />
       <MetricRow
-        label="Bitrate"
+        label={t('debug.bitrate')}
         value={formatRtcBitrate(currentRate)}
         chart={<RtcDebugMetricChart history={history} value={rate} />}
       />
-      <MetricRow label="Bitrate (Target)" value={formatRtcBitrate(stream.targetBitrate)} />
-      <MetricRow label="Packets Sent" value={formatRtcInteger(stream.packetsSent)} />
-      <MetricRow label="Packets Received" value={formatRtcInteger(stream.packetsReceived)} />
-      <MetricRow label="Packets Lost" value={formatRtcInteger(stream.packetsLost)} />
       <MetricRow
-        label="Packet Loss"
+        label={t('debug.bitrateTarget')}
+        value={formatRtcBitrate(stream.targetBitrate)}
+      />
+      <MetricRow
+        label={t('debug.packetsSent')}
+        value={formatRtcInteger(stream.packetsSent)}
+      />
+      <MetricRow
+        label={t('debug.packetsReceived')}
+        value={formatRtcInteger(stream.packetsReceived)}
+      />
+      <MetricRow
+        label={t('debug.packetsLost')}
+        value={formatRtcInteger(stream.packetsLost)}
+      />
+      <MetricRow
+        label={t('debug.packetLoss')}
         value={formatRtcPercent(stream.packetLossPercent)}
       />
       <MetricRow
-        label="Round Trip Time"
+        label={t('debug.roundTripTime')}
         value={formatRtcMs(stream.roundTripTimeMs)}
       />
-      <MetricRow label="Bytes Sent" value={formatRtcBytes(stream.bytesSent)} />
-      <MetricRow label="Bytes Received" value={formatRtcBytes(stream.bytesReceived)} />
       <MetricRow
-        label="Retransmitted Packets"
+        label={t('debug.bytesSent')}
+        value={formatRtcBytes(stream.bytesSent)}
+      />
+      <MetricRow
+        label={t('debug.bytesReceived')}
+        value={formatRtcBytes(stream.bytesReceived)}
+      />
+      <MetricRow
+        label={t('debug.retransmittedPackets')}
         value={formatRtcInteger(
           stream.retransmittedPacketsSent ??
             stream.retransmittedPacketsReceived,
         )}
       />
       <MetricRow
-        label="Retransmitted Bytes"
+        label={t('debug.retransmittedBytes')}
         value={formatRtcBytes(
           stream.retransmittedBytesSent ?? stream.retransmittedBytesReceived,
         )}
       />
       <MetricRow
-        label="Discarded Packets"
+        label={t('debug.discardedPackets')}
         value={formatRtcInteger(stream.packetsDiscarded)}
       />
       <MetricRow label="NACK" value={formatRtcInteger(stream.nackCount)} />
       <MetricRow label="FIR" value={formatRtcInteger(stream.firCount)} />
       <MetricRow label="PLI" value={formatRtcInteger(stream.pliCount)} />
-      <MetricRow label="Encode FPS" value={formatRtcFps(stream.framesPerSecond)} />
-      <MetricRow label="Frame Size" value={formatFrameSize(stream.frameWidth, stream.frameHeight)} />
-      <MetricRow label="Frames Sent" value={formatRtcInteger(stream.framesSent)} />
-      <MetricRow label="Frames Received" value={formatRtcInteger(stream.framesReceived)} />
-      <MetricRow label="Frames Rendered" value={formatRtcInteger(stream.framesRendered)} />
-      <MetricRow label="Frames Encoded" value={formatRtcInteger(stream.framesEncoded)} />
-      <MetricRow label="Frames Decoded" value={formatRtcInteger(stream.framesDecoded)} />
-      <MetricRow label="Frames Dropped" value={formatRtcInteger(stream.framesDropped)} />
-      <MetricRow label="Freeze Count" value={formatRtcInteger(stream.freezeCount)} />
-      <MetricRow label="Freeze Duration" value={formatRtcValue(stream.totalFreezesDuration)} />
       <MetricRow
-        label="Jitter"
+        label={t('debug.encodeFps')}
+        value={formatRtcFps(stream.framesPerSecond)}
+      />
+      <MetricRow
+        label={t('debug.frameSize')}
+        value={formatFrameSize(stream.frameWidth, stream.frameHeight)}
+      />
+      <MetricRow
+        label={t('debug.framesSent')}
+        value={formatRtcInteger(stream.framesSent)}
+      />
+      <MetricRow
+        label={t('debug.framesReceived')}
+        value={formatRtcInteger(stream.framesReceived)}
+      />
+      <MetricRow
+        label={t('debug.framesRendered')}
+        value={formatRtcInteger(stream.framesRendered)}
+      />
+      <MetricRow
+        label={t('debug.framesEncoded')}
+        value={formatRtcInteger(stream.framesEncoded)}
+      />
+      <MetricRow
+        label={t('debug.framesDecoded')}
+        value={formatRtcInteger(stream.framesDecoded)}
+      />
+      <MetricRow
+        label={t('debug.framesDropped')}
+        value={formatRtcInteger(stream.framesDropped)}
+      />
+      <MetricRow
+        label={t('debug.freezeCount')}
+        value={formatRtcInteger(stream.freezeCount)}
+      />
+      <MetricRow
+        label={t('debug.freezeDuration')}
+        value={formatRtcValue(stream.totalFreezesDuration)}
+      />
+      <MetricRow
+        label={t('debug.jitter')}
         value={formatRtcMs(
           stream.jitter == null ? undefined : stream.jitter * 1000,
         )}
       />
-      <MetricRow label="Quality Limitation Reason" value={stream.qualityLimitationReason ?? '—'} />
       <MetricRow
-        label="Encoder"
+        label={t('debug.qualityLimitationReason')}
+        value={stream.qualityLimitationReason ?? '—'}
+      />
+      <MetricRow
+        label={t('debug.encoder')}
         value={stream.encoderImplementation ?? '—'}
       />
       <MetricRow
-        label="Decoder"
+        label={t('debug.decoder')}
         value={stream.decoderImplementation ?? '—'}
       />
-      <MetricRow label="Audio Level" value={formatRtcValue(stream.audioLevel)} />
-      <MetricRow label="Total Audio Energy" value={formatRtcValue(stream.totalAudioEnergy)} />
-      <MetricRow label="Samples Duration" value={formatRtcValue(stream.totalSamplesDuration)} />
-      <MetricRow label="Samples Received" value={formatRtcInteger(stream.totalSamplesReceived)} />
-      <MetricRow label="Concealed Samples" value={formatRtcInteger(stream.concealedSamples)} />
-      <MetricRow label="Silent Concealed Samples" value={formatRtcInteger(stream.silentConcealedSamples)} />
-      <MetricRow label="Concealment Events" value={formatRtcInteger(stream.concealmentEvents)} />
-      <MetricRow label="Jitter Buffer Delay" value={formatRtcValue(stream.jitterBufferDelay)} />
-      <MetricRow label="Jitter Buffer Target" value={formatRtcValue(stream.jitterBufferTargetDelay)} />
-      <MetricRow label="Jitter Buffer Emitted" value={formatRtcInteger(stream.jitterBufferEmittedCount)} />
+      <MetricRow
+        label={t('debug.audioLevel')}
+        value={formatRtcValue(stream.audioLevel)}
+      />
+      <MetricRow
+        label={t('debug.totalAudioEnergy')}
+        value={formatRtcValue(stream.totalAudioEnergy)}
+      />
+      <MetricRow
+        label={t('debug.samplesDuration')}
+        value={formatRtcValue(stream.totalSamplesDuration)}
+      />
+      <MetricRow
+        label={t('debug.samplesReceived')}
+        value={formatRtcInteger(stream.totalSamplesReceived)}
+      />
+      <MetricRow
+        label={t('debug.concealedSamples')}
+        value={formatRtcInteger(stream.concealedSamples)}
+      />
+      <MetricRow
+        label={t('debug.silentConcealedSamples')}
+        value={formatRtcInteger(stream.silentConcealedSamples)}
+      />
+      <MetricRow
+        label={t('debug.concealmentEvents')}
+        value={formatRtcInteger(stream.concealmentEvents)}
+      />
+      <MetricRow
+        label={t('debug.jitterBufferDelay')}
+        value={formatRtcValue(stream.jitterBufferDelay)}
+      />
+      <MetricRow
+        label={t('debug.jitterBufferTarget')}
+        value={formatRtcValue(stream.jitterBufferTargetDelay)}
+      />
+      <MetricRow
+        label={t('debug.jitterBufferEmitted')}
+        value={formatRtcInteger(stream.jitterBufferEmittedCount)}
+      />
     </MetricGroup>
   )
 }
@@ -503,112 +627,167 @@ function ScreenShareSection({
   snapshot: RtcDebugSnapshot
   history: readonly RtcDebugSnapshot[]
 }) {
+  const t = useTranslations('voice')
   const screenShares = snapshot.screenShares
 
   return (
     <div>
-      <SectionHeader title="Демонстрация экрана" />
+      <SectionHeader title={t('debug.screenShare')} />
       {screenShares.length === 0 ? (
-        <EmptyPanel text="Активных screen share плиток нет." />
+        <EmptyPanel text={t('debug.noScreenShareTiles')} />
       ) : (
         <div className="grid grid-cols-1 gap-x-8 gap-y-7 xl:grid-cols-2">
           {screenShares.map((share) => (
             <MetricGroup
               key={share.id}
-              title={`${share.isLocal ? 'Local' : 'Remote'} / ${share.ownerUserId}`}
+              title={`${share.isLocal ? t('debug.local') : t('debug.remote')} / ${share.ownerUserId}`}
             >
-              <MetricRow label="Publication ID" value={share.publicationId ?? '—'} />
-              <MetricRow label="Owner" value={share.ownerUserId} />
-              <MetricRow label="Subscribed" value={formatRtcValue(share.subscribed)} />
-              <MetricRow label="Live" value={formatRtcValue(share.live)} />
-              <MetricRow label="Capture Width" value={formatRtcInteger(share.captureWidth)} />
-              <MetricRow label="Capture Height" value={formatRtcInteger(share.captureHeight)} />
-              <MetricRow label="Capture FPS" value={formatRtcFps(share.captureFrameRate)} />
-              <MetricRow label="Display Surface" value={share.displaySurface ?? '—'} />
-              <MetricRow label="Cursor" value={share.cursor ?? '—'} />
-              <MetricRow label="Logical Surface" value={formatRtcValue(share.logicalSurface)} />
-              <MetricRow label="Resize Mode" value={share.resizeMode ?? '—'} />
-              <MetricRow label="Content Hint" value={share.contentHint ?? '—'} />
-              <MetricRow label="Codec" value={share.codec ?? '—'} />
-              <MetricRow label="Max Bitrate" value={formatRtcBitrate(share.maxBitrate)} />
-              <MetricRow label="Max Framerate" value={formatRtcFps(share.maxFramerate)} />
-              <MetricRow label="Simulcast" value={formatRtcValue(share.simulcast)} />
-              <MetricRow label="Degradation Preference" value={share.degradationPreference ?? '—'} />
-              <MetricRow label="Capture Backend" value={share.captureBackend ?? '—'} />
-              <MetricRow label="Capture Method" value={share.captureMethod ?? '—'} />
               <MetricRow
-                label="Capture Video Published"
+                label={t('debug.publicationId')}
+                value={share.publicationId ?? '—'}
+              />
+              <MetricRow label={t('debug.owner')} value={share.ownerUserId} />
+              <MetricRow
+                label={t('debug.subscribed')}
+                value={formatRtcValue(share.subscribed)}
+              />
+              <MetricRow
+                label={t('debug.live')}
+                value={formatRtcValue(share.live)}
+              />
+              <MetricRow
+                label={t('debug.captureWidth')}
+                value={formatRtcInteger(share.captureWidth)}
+              />
+              <MetricRow
+                label={t('debug.captureHeight')}
+                value={formatRtcInteger(share.captureHeight)}
+              />
+              <MetricRow
+                label={t('debug.captureFps')}
+                value={formatRtcFps(share.captureFrameRate)}
+              />
+              <MetricRow
+                label={t('debug.displaySurface')}
+                value={share.displaySurface ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.cursor')}
+                value={share.cursor ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.logicalSurface')}
+                value={formatRtcValue(share.logicalSurface)}
+              />
+              <MetricRow
+                label={t('debug.resizeMode')}
+                value={share.resizeMode ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.contentHint')}
+                value={share.contentHint ?? '—'}
+              />
+              <MetricRow label={t('debug.codec')} value={share.codec ?? '—'} />
+              <MetricRow
+                label={t('debug.maxBitrate')}
+                value={formatRtcBitrate(share.maxBitrate)}
+              />
+              <MetricRow
+                label={t('debug.maxFramerate')}
+                value={formatRtcFps(share.maxFramerate)}
+              />
+              <MetricRow
+                label={t('debug.simulcast')}
+                value={formatRtcValue(share.simulcast)}
+              />
+              <MetricRow
+                label={t('debug.degradationPreference')}
+                value={share.degradationPreference ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.captureBackend')}
+                value={share.captureBackend ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.captureMethod')}
+                value={share.captureMethod ?? '—'}
+              />
+              <MetricRow
+                label={t('debug.captureVideoPublished')}
                 value={formatRtcValue(share.captureVideoPublished)}
               />
               <MetricRow
-                label="Capture Video Frames"
+                label={t('debug.captureVideoFrames')}
                 value={formatRtcInteger(share.captureVideoFrames)}
               />
               <MetricRow
-                label="Capture Interval Frames"
+                label={t('debug.captureIntervalFrames')}
                 value={formatRtcInteger(share.captureVideoIntervalFrames)}
               />
               <MetricRow
-                label="Capture Late Frames"
+                label={t('debug.captureLateFrames')}
                 value={formatRtcInteger(share.captureVideoLateFrames)}
               />
               <MetricRow
-                label="Capture No Frames"
+                label={t('debug.captureNoFrames')}
                 value={formatRtcInteger(share.captureVideoNoFrameCount)}
               />
               <MetricRow
-                label="Capture Repeated Frames"
+                label={t('debug.captureRepeatedFrames')}
                 value={formatRtcInteger(share.captureVideoRepeatedFrameCount)}
               />
               <MetricRow
-                label="Capture Recoverable Lost"
+                label={t('debug.captureRecoverableLost')}
                 value={formatRtcInteger(share.captureVideoRecoverableLostCount)}
               />
               <MetricRow
-                label="Avg Capture"
+                label={t('debug.avgCapture')}
                 value={formatRtcMicroseconds(share.captureVideoAvgCaptureUs)}
               />
               <MetricRow
-                label="Avg Readback"
+                label={t('debug.avgReadback')}
                 value={formatRtcMicroseconds(share.captureVideoAvgReadbackUs)}
               />
               <MetricRow
-                label="Avg Scale"
+                label={t('debug.avgScale')}
                 value={formatRtcMicroseconds(share.captureVideoAvgScaleUs)}
               />
               <MetricRow
-                label="Avg Publish"
+                label={t('debug.avgPublish')}
                 value={formatRtcMicroseconds(share.captureVideoAvgPublishUs)}
               />
               <MetricRow
-                label="Capture Source Size"
+                label={t('debug.captureSourceSize')}
                 value={formatFrameSize(share.captureVideoSourceWidth, share.captureVideoSourceHeight)}
               />
               <MetricRow
-                label="Capture Content Size"
+                label={t('debug.captureContentSize')}
                 value={formatFrameSize(share.captureVideoContentWidth, share.captureVideoContentHeight)}
               />
               <MetricRow
-                label="Capture Thread MMCSS"
+                label={t('debug.captureThreadMmcss')}
                 value={formatRtcValue(share.captureThreadMmcss)}
               />
               <MetricRow
-                label="Hybrid DXGI Frames"
+                label={t('debug.hybridDxgiFrames')}
                 value={formatHybridFrameCount(share.hybridDxgiFrames)}
               />
               <MetricRow
-                label="Hybrid GDI BitBlt Frames"
+                label={t('debug.hybridGdiBitBltFrames')}
                 value={formatHybridFrameCount(share.hybridGdiBitBltFrames)}
               />
               <MetricRow
-                label="Hybrid GDI PrintWindow Frames"
+                label={t('debug.hybridGdiPrintWindowFrames')}
                 value={formatHybridFrameCount(share.hybridGdiPrintWindowFrames)}
               />
               <MetricRow
-                label="Hybrid Graphics Capture Frames"
+                label={t('debug.hybridGraphicsCaptureFrames')}
                 value={formatHybridFrameCount(share.hybridGraphicsCaptureFrames)}
               />
-              <MetricRow label="Hybrid Videohook Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
+              <MetricRow
+                label={t('debug.hybridVideohookFrames')}
+                value={RTC_DEBUG_BROWSER_UNAVAILABLE}
+              />
               <ScreenShareBitrateRows
                 shareId={share.id}
                 sentBitrate={share.sentBitrate}
@@ -634,6 +813,7 @@ function ScreenShareBitrateRows({
   receivedBitrate?: number
   history: readonly RtcDebugSnapshot[]
 }) {
+  const t = useTranslations('voice')
   const sentHistoryValue = (sample: RtcDebugSnapshot) =>
     sample.screenShares.find((share) => share.id === shareId)?.sentBitrate
   const receivedHistoryValue = (sample: RtcDebugSnapshot) =>
@@ -643,14 +823,14 @@ function ScreenShareBitrateRows({
     <>
       {sentBitrate != null ? (
         <MetricRow
-          label="Live Sent Bitrate"
+          label={t('debug.liveSentBitrate')}
           value={formatRtcBitrate(sentBitrate)}
           chart={<RtcDebugMetricChart history={history} value={sentHistoryValue} />}
         />
       ) : null}
       {receivedBitrate != null ? (
         <MetricRow
-          label="Live Received Bitrate"
+          label={t('debug.liveReceivedBitrate')}
           value={formatRtcBitrate(receivedBitrate)}
           chart={<RtcDebugMetricChart history={history} value={receivedHistoryValue} />}
         />
@@ -695,6 +875,8 @@ function OverviewCard({
 }
 
 function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
+  const t = useTranslations('voice')
+
   return (
     <div
       className={cn(
@@ -719,12 +901,12 @@ function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
         aria-hidden
       />
       {quality === 'good'
-        ? 'Хорошее соединение'
+        ? t('debug.goodConnection')
         : quality === 'fair'
-          ? 'Нестабильное соединение'
+          ? t('debug.unstableConnection')
           : quality === 'poor'
-            ? 'Плохое соединение'
-            : 'Собираем данные'}
+            ? t('debug.poorConnection')
+            : t('debug.collecting')}
     </div>
   )
 }
@@ -774,7 +956,7 @@ function MetricRow({
     <section className="min-w-0">
       <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border py-2">
         <div className="min-w-0 text-sm font-bold text-foreground">{label}</div>
-        <div className="max-w-[55%] truncate text-right text-sm tabular-nums text-muted-foreground">
+        <div className="max-w-55/100 truncate text-right text-sm tabular-nums text-muted-foreground">
           {value}
         </div>
       </div>
@@ -794,6 +976,8 @@ function MediaTabs({
   value: MediaTab
   onChange: (tab: MediaTab) => void
 }) {
+  const t = useTranslations('voice')
+
   return (
     <div className="mb-7 flex gap-6 border-b border-border">
       {(['audio', 'video'] as const).map((tab) => (
@@ -806,7 +990,7 @@ function MediaTabs({
             value === tab && 'border-primary text-primary',
           )}
         >
-          {tab === 'audio' ? 'Audio' : 'Video'}
+          {tab === 'audio' ? t('debug.audio') : t('debug.video')}
         </button>
       ))}
     </div>
@@ -815,19 +999,25 @@ function MediaTabs({
 
 function EmptyPanel({ text }: { text: string }) {
   return (
-    <div className="rounded border border-dashed border-border px-6 py-12 text-center text-sm text-muted-foreground">
-      {text}
+    <div className="rounded border border-dashed border-border px-6 py-12">
+      <Empty className="p-0">
+        <EmptyDescription>{text}</EmptyDescription>
+      </Empty>
     </div>
   )
 }
 
 function DebugEmptyState() {
+  const t = useTranslations('voice')
+
   return (
-    <div className="rounded border border-dashed border-border px-6 py-12 text-center">
-      <h2 className="text-base font-bold">Нет активного голосового подключения</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Подключись к voice channel, затем открой эту страницу ещё раз из ping UI.
-      </p>
+    <div className="rounded border border-dashed border-border px-6 py-12">
+      <Empty className="p-0">
+        <EmptyHeader>
+          <EmptyTitle>{t('debug.noVoiceTitle')}</EmptyTitle>
+          <EmptyDescription>{t('debug.noVoiceHint')}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </div>
   )
 }

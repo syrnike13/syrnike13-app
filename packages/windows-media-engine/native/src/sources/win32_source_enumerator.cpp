@@ -888,14 +888,14 @@ class Win32SourceEnumerator final : public SourceEnumerator {
       return TRUE;
     }
     if (!IsWindow(window)) return TRUE;
-    // Like Discord (WebRTC's window list), only windows with a taskbar
-    // presence: no tool windows, no owned windows without WS_EX_APPWINDOW.
+    // Following WebRTC's window list, only windows with a taskbar
+    // presence are kept: no tool windows, no owned windows without WS_EX_APPWINDOW.
     const auto ex_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
     if ((ex_style & WS_EX_APPWINDOW) == 0 &&
         ((ex_style & WS_EX_TOOLWINDOW) != 0 || GetWindow(window, GW_OWNER) != nullptr))
       return TRUE;
     // Content protection (WDA_MONITOR, WDA_EXCLUDEFROMCAPTURE) captures as
-    // black; Discord reports it as DisplayAffinity. It is not a usable source.
+    // black; it is reported as DisplayAffinity and is not a usable source.
     DWORD affinity = WDA_NONE;
     if (GetWindowDisplayAffinity(window, &affinity) != FALSE && affinity != WDA_NONE)
       return TRUE;

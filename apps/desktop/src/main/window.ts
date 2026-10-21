@@ -90,7 +90,7 @@ export function createMainWindow(loadUrl: string) {
     return { action: 'allow' }
   })
 
-  void win.loadURL(new URL('/app', loadUrl).toString())
+  void win.loadURL(new URL('/', loadUrl).toString())
 
   if (!app.isPackaged) {
     win.webContents.on('before-input-event', (event, input) => {

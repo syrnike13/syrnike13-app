@@ -1,4 +1,6 @@
+// design-allow-file restyle-shared: rail uses the Squircle brand shape and product hover states.
 import { useMatch, useRouterState } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   HashIcon,
   HomeIcon,
@@ -9,8 +11,8 @@ import type { Server, User } from '@syrnike13/api-types'
 import { useState, type ReactNode } from 'react'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { ScrollArea } from '#/components/ui/scroll-area'
-import { Squircle } from '#/components/ui/squircle'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import { CreateServerDialog } from '#/components/servers/create-server-dialog'
 import { PeopleRailSection } from '#/components/layout/people-rail-section'
 import { RailIconButton } from '#/components/layout/rail-icon-button'
@@ -26,13 +28,11 @@ import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railColumnInsetClass,
   railGlyphClass,
-  railIconButtonClass,
-  railIconIdleClass,
   railIconSquircleProps,
-  railServerScrollAreaClass,
   railServerScrollContentClass,
-  shellLowestSurface,
+  shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -62,6 +62,7 @@ function ServerRailTooltipAvatarRow({
   users: Record<string, User | undefined>
   currentUser?: User | null
 }) {
+  const t = useTranslations('layout.rail')
   if (participants.length === 0) return null
 
   const visibleParticipants = participants.slice(0, MAX_TOOLTIP_AVATARS)
@@ -91,7 +92,7 @@ function ServerRailTooltipAvatarRow({
               <UserAvatar
                 user={user}
                 className="size-7 ring-2 ring-popover"
-                fallbackClassName="size-7 text-[11px]"
+                fallbackClassName="size-7 text-xs"
                 showPresence={false}
                 animated="never"
               />
@@ -100,8 +101,8 @@ function ServerRailTooltipAvatarRow({
         })}
         {hiddenCount > 0 ? (
           <li
-            aria-label={`Ещё ${hiddenCount}`}
-            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-[11px] font-black text-muted-foreground ring-2 ring-popover"
+            aria-label={t('more', { count: hiddenCount })}
+            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-xs font-black text-muted-foreground ring-2 ring-popover"
           >
             +{hiddenCount}
           </li>
@@ -122,6 +123,7 @@ function ServerRailTooltip({
   users: Record<string, User | undefined>
   currentUser?: User | null
 }) {
+  const t = useTranslations('layout.serverTooltip')
   const voiceParticipants = participants.filter(
     (participant) => !participant.screensharing,
   )
@@ -134,7 +136,7 @@ function ServerRailTooltip({
       <div className="truncate text-sm font-black">{serverName}</div>
       <ServerRailTooltipAvatarRow
         kind="voice"
-        label="Участники голосовых каналов"
+        label={t('voiceParticipants')}
         icon={<Volume2BoldIcon aria-hidden="true" className="size-4" />}
         participants={voiceParticipants}
         users={users}
@@ -142,7 +144,7 @@ function ServerRailTooltip({
       />
       <ServerRailTooltipAvatarRow
         kind="screen-share"
-        label="Демонстрируют экран"
+        label={t('screenSharing')}
         icon={<MonitorUpIcon aria-hidden="true" className="size-4" />}
         participants={screenSharingParticipants}
         users={users}
@@ -156,7 +158,7 @@ function ServerRailTooltip({
  * Рельс серверов.
  *
  * `variant`:
- *  - `desktop` — клик по серверу ведёт в первый канал (`/app/c/$id`);
+ *  - `desktop` — клик по серверу ведёт в первый канал (`/c/$id`);
  *    активность определяется контекстным сервером активного канала.
  *  - `mobile` — клик по серверу ведёт на `/m` + устанавливает `selectedServerId`;
  *    активность определяется `selectedServerId` из syncStore.
@@ -172,6 +174,7 @@ export function ServerRail({
   reserveUserPanelSpace?: boolean
   userPanelReservePx?: number
 }) {
+  const t = useTranslations('layout.rail')
   const auth = useAuth()
   const ready = useSyncStore((s) => s.ready)
   const servers = useSyncStore(listServers)
@@ -179,14 +182,15 @@ export function ServerRail({
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
-  const homePath = variant === 'mobile' ? '/m/' : '/app/'
-  const channelPath = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/app'
+  const homeRouteId = variant === 'mobile' ? '/m/' : '/_app/'
+  const channelRouteId =
+    variant === 'mobile' ? '/m/c/$channelId' : '/_app/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/'
 
-  const homeMatch = useMatch({ from: homePath, shouldThrow: false })
-  const channelMatch = useMatch({ from: channelPath, shouldThrow: false })
+  const homeMatch = useMatch({ from: homeRouteId, shouldThrow: false })
+  const channelMatch = useMatch({ from: channelRouteId, shouldThrow: false })
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const feedbackPath = `${homeTo}/feedback`
+  const feedbackPath = variant === 'mobile' ? '/m/feedback' : '/feedback'
   const isFeedbackPath =
     pathname === feedbackPath || pathname.startsWith(`${feedbackPath}/`)
   const activeChannelId =
@@ -204,7 +208,9 @@ export function ServerRail({
     (variant === 'desktop' || !selectedServerId)
 
   const railBottomReserveStyle = reserveUserPanelSpace
-    ? { paddingBottom: userPanelReservePx }
+    ? ({
+        '--rail-bottom-reserve': `${userPanelReservePx}px`,
+      } as CSSVars)
     : undefined
 
   if (!ready) {
@@ -212,14 +218,16 @@ export function ServerRail({
         <div
           className={cn(
             'flex h-full w-18 shrink-0 flex-col items-center',
-            'pt-1 pb-3',
-            shellLowestSurface,
+            reserveUserPanelSpace
+              ? 'pb-(--rail-bottom-reserve)'
+              : 'pb-3',
+            shellNavSurface,
           )}
           style={railBottomReserveStyle}
         >
           <Squircle
             {...railIconSquircleProps}
-            className={cn(railIconButtonClass, 'animate-pulse bg-muted')}
+            className={cn('size-10', 'animate-pulse bg-muted')}
           />
         </div>
     )
@@ -229,8 +237,8 @@ export function ServerRail({
     <div
       className={cn(
         'flex h-full w-18 shrink-0 flex-col',
-        'pt-1 pb-3',
-        shellLowestSurface,
+        reserveUserPanelSpace ? 'pb-(--rail-bottom-reserve)' : 'pb-3',
+        shellNavSurface,
       )}
       style={railBottomReserveStyle}
     >
@@ -242,7 +250,7 @@ export function ServerRail({
       >
         <RailIconButton
           active={homeActive}
-          title="Главная"
+          title={t('home')}
           to={homeTo}
           search={{ tab: 'online' }}
           onClick={() => syncStore.setSelectedServerId(null)}
@@ -262,7 +270,7 @@ export function ServerRail({
         />
 
         <ScrollArea
-          className={cn('min-h-0 flex-1', railServerScrollAreaClass)}
+          className={cn('min-h-0 flex-1', '-ml-1 rail-overflow-width')}
         >
           <div
             className={cn(
@@ -285,11 +293,11 @@ export function ServerRail({
               <Squircle
                 {...railIconSquircleProps}
                 className={cn(
-                  railIconButtonClass,
-                  railIconIdleClass,
+                  'size-10',
+                  'bg-card text-foreground hover:bg-secondary hover:text-foreground',
                   'flex items-center justify-center text-foreground',
                 )}
-                title="Нет серверов"
+                title={t('noServers')}
               >
                 <HashIcon className={railGlyphClass} />
               </Squircle>
@@ -375,8 +383,8 @@ function ServerRailButton({
     />
   )
 
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/app'
+  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/'
   const tooltipContent = (
     <ServerRailTooltip
       serverName={server.name}

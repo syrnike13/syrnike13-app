@@ -3,8 +3,11 @@
 @plugin '@tailwindcss/typography';
 
 @import 'tw-animate-css';
+@import '@syrnike13/ui/styles.css';
 
 @custom-variant dark (&:is(.dark *));
+
+@source '../../../packages/ui/src';
 
 :root {
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
@@ -30,6 +33,13 @@
   --tracking-normal: 0em;
   --spacing: 0.25rem;
   --theme-toast-surface: var(--popover);
+  /* Readable success text: the brand chart green is too light on light surfaces. */
+  --success-strong: color-mix(in oklab, var(--success) 25%, var(--foreground));
+}
+
+.dark {
+  /* Slightly deepen the pale brand green so the selected value reads as green. */
+  --success-strong: color-mix(in oklab, var(--success) 80%, var(--background));
 }
 
 @theme inline {
@@ -47,17 +57,35 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-hover: var(--hover);
+  --color-hover-foreground: var(--hover-foreground);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-contrast: var(--destructive-contrast);
   --color-border: var(--border);
-  --color-input: var(--input);
+  /* Prism separates the input surface (`--input`) from its outline. */
+  --color-input: var(--input-border);
+  --color-input-border: var(--input-border);
+  --color-divider: var(--divider);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-foreground: var(--surface-raised-foreground);
+  --color-disabled-foreground: var(--disabled-foreground);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-warning: var(--warning);
+  --color-scrim: var(--scrim);
+  --color-on-scrim: var(--on-scrim);
+  --color-on-solid: var(--on-solid);
+  --color-on-media: var(--on-media);
+  --color-media-backdrop: var(--media-backdrop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -235,6 +263,18 @@ html {
       transition: none;
     }
   }
+}
+
+/* Chat feed draws its own overlay scrollbar so rows can reach the edge. */
+.chat-feed-scroll {
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+
+.chat-feed-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .theme-surface-lowest {
@@ -438,8 +478,7 @@ html {
   width: 100%;
   max-width: none;
   gap: 0;
-  border: 1px solid
-    color-mix(in oklch, var(--foreground) 18%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 1rem;
   background: var(--theme-surface-raised, var(--card));
   padding-block: 2rem;
@@ -450,6 +489,12 @@ html {
 .auth-card [data-slot='card-content'],
 .auth-card [data-slot='card-footer'] {
   padding-inline: 2rem;
+}
+
+.auth-card [data-slot='card-footer'] {
+  border-top: 0;
+  background: transparent;
+  padding-block: 0;
 }
 
 .auth-card [data-slot='card-header'] {
@@ -497,10 +542,6 @@ html {
   transition:
     border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
     box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.auth-card .auth-input:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--foreground) 22%, var(--border));
 }
 
 .auth-card .auth-input:focus-visible {
@@ -559,7 +600,7 @@ html {
 
 .auth-secondary-action {
   display: flex;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
@@ -593,7 +634,7 @@ html {
 
 .auth-support-links a {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: 2rem;
   align-items: center;
   border-radius: 0.375rem;
   color: var(--muted-foreground);
@@ -622,6 +663,11 @@ html {
   .auth-card [data-slot='card-footer'] {
     padding-inline: 1.25rem;
   }
+
+  .auth-secondary-action,
+  .auth-support-links a {
+    min-height: 2.75rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -649,21 +695,126 @@ html {
     color-mix(in oklab, var(--foreground) 24%, transparent);
 }
 
-@keyframes gateway-logo-wobble {
-  0%,
+@keyframes cake-piece-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-34px);
+  }
+  8% { opacity: 1; }
   100% {
-    transform: rotate(0deg);
-  }
-  25% {
-    transform: rotate(-14deg);
-  }
-  75% {
-    transform: rotate(14deg);
+    opacity: 1;
+    transform: none;
   }
 }
 
-.gateway-logo-wobble {
-  animation: gateway-logo-wobble 1.6s ease-in-out infinite;
+.cake-logo {
+  overflow: visible;
+}
+
+.cake-logo-piece {
+  animation: cake-piece-fall var(--cake-fall-duration) steps(17, end)
+    var(--cake-piece-delay) both;
+}
+
+.cake-tetromino-blocks {
+  fill: var(--primary);
+}
+
+.cake-tetromino-blocks rect {
+  stroke: var(--background);
+  stroke-width: 0.12;
+}
+
+.cake-logo-piece[data-shape='I'] .cake-tetromino-blocks { fill: var(--chart-1); }
+.cake-logo-piece[data-shape='O'] .cake-tetromino-blocks { fill: var(--chart-2); }
+.cake-logo-piece[data-shape='T'] .cake-tetromino-blocks { fill: var(--chart-3); }
+.cake-logo-piece[data-shape='S'] .cake-tetromino-blocks { fill: var(--chart-4); }
+.cake-logo-piece[data-shape='Z'] .cake-tetromino-blocks { fill: var(--chart-5); }
+.cake-logo-piece[data-shape='L'] .cake-tetromino-blocks { fill: var(--warning); }
+
+.cake-logo-mask {
+  mask-type: alpha;
+}
+
+.cake-logo-artwork {
+  image-rendering: pixelated;
+}
+
+/* Halloween set dressing: the logo itself never changes in this scene. */
+.cake-halloween-decor,
+.cake-bat {
+  pointer-events: none;
+}
+
+.cake-cobweb {
+  opacity: 0.55;
+}
+
+.cake-spider-thread {
+  fill: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+.cake-spider {
+  animation: cake-spider-drop 1200ms steps(9, end) 120ms both;
+}
+
+@keyframes cake-spider-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+  8% {
+    opacity: 1;
+  }
+  48% {
+    transform: translateY(6px);
+  }
+  76% {
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+}
+
+.cake-bat {
+  animation: cake-bat-cross 900ms steps(10, end) 1500ms both;
+}
+
+@keyframes cake-bat-cross {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  10% {
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-20px, -1px);
+  }
+  78% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    opacity: 0;
+    transform: translate(-44px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cake-logo:not([data-motion-preview]),
+  .cake-logo:not([data-motion-preview]) .cake-logo-piece,
+  .cake-logo:not([data-motion-preview]) .cake-spider,
+  .cake-logo:not([data-motion-preview]) .cake-bat {
+    animation: none;
+  }
+
+  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks {
+    display: none;
+  }
 }
 
 .profile-unsaved-bar {
@@ -789,6 +940,16 @@ html {
   margin: 0;
 }
 
+/*
+ * Лента измеряет строки сразу. content-visibility подменяет высоту
+ * невидимых строк оценкой 10rem; после первого рендера фактическая высота
+ * меняется и MessageScroller теряет позицию «у конца».
+ */
+[data-slot='message-scroller-item'] {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 /* Mobile safe-area helpers. Require viewport-fit=cover in the meta viewport. */
 .safe-pt {
   padding-top: env(safe-area-inset-top);
@@ -804,4 +965,368 @@ html {
   [role='button'] {
     touch-action: manipulation;
   }
+}
+
+/* Design-system utilities introduced by the @shadcn/lint cleanup. */
+@theme {
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 0.875rem;
+  --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
+  --color-role-default: #4e5058;
+  --radius-shell: 0.75rem;
+}
+
+/* Settings shell: centered 64rem column with a 13.625rem nav. */
+@utility settings-page-grid {
+  grid-template-columns:
+    calc((100vw - min(100vw, 64rem)) / 2 + 13.625rem)
+    minmax(0, calc(64rem - 13.625rem))
+    calc((100vw - min(100vw, 64rem)) / 2);
+}
+
+@utility controls-grid {
+  grid-template-columns: 1fr auto 1fr;
+}
+
+@utility member-table-grid {
+  grid-template-columns: minmax(12rem, 1.4fr) minmax(9rem, 1fr) 8.5rem 3rem;
+}
+
+@utility icon-text-grid {
+  grid-template-columns: 1rem minmax(0, 1fr);
+}
+
+@utility icon-text-icon-grid {
+  grid-template-columns: 1rem minmax(0, 1fr) 1rem;
+}
+
+@utility settings-shell-grid {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+@utility settings-audit-grid {
+  grid-template-columns: minmax(13rem, 16rem) minmax(13rem, 16rem) auto;
+}
+
+@utility settings-profile-grid {
+  grid-template-columns: minmax(0, 1fr) 17.5rem;
+}
+
+@utility settings-hotkeys-grid {
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) auto auto;
+}
+
+@utility settings-panels-grid {
+  grid-template-columns: minmax(0, 1fr) 22rem;
+}
+
+@utility promo-open-rows {
+  grid-template-rows: 52px 1fr;
+}
+
+@utility promo-closed-rows {
+  grid-template-rows: 52px 0fr;
+}
+
+@utility collapsed-rows {
+  grid-template-rows: 0fr;
+}
+
+@utility expanded-rows {
+  grid-template-rows: 1fr;
+}
+
+@utility motion-size {
+  transition-property: width, height;
+}
+
+@utility motion-rows {
+  transition-property: grid-template-rows;
+}
+
+@utility motion-top {
+  transition-property: top;
+}
+
+/* Guild banner scroll effect: fade over 88px, lift up to 90px. */
+@utility banner-scroll {
+  opacity: var(--banner-opacity, 1);
+  transform: translateY(var(--banner-shift, 0px));
+}
+
+@utility safe-pt-3 {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+}
+
+@utility safe-pb-2 {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+@utility safe-pb-3 {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+@utility safe-bottom-2 {
+  bottom: calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+@utility safe-top-2 {
+  top: calc(0.5rem + env(safe-area-inset-top));
+}
+
+@utility safe-bottom-18 {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+@utility voice-stage-safe-pb {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@utility tile-palette {
+  background-image: linear-gradient(
+    to bottom right,
+    var(--tile-from),
+    var(--tile-to)
+  );
+}
+
+@utility text-stage-tile {
+  font-size: min(1.125rem, 26cqh);
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+}
+
+@utility lightbox-transform {
+  transform: var(--lightbox-transform);
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility rail-overflow-width {
+  width: calc(100% + 0.25rem);
+}
+
+@utility avatar-badge {
+  font-size: var(--badge-font);
+  box-shadow: 0 0 0 var(--badge-ring) var(--badge-ring-color);
+}
+
+@utility presence-dot {
+  box-shadow: 0 0 0 var(--dot-ring) var(--dot-ring-color);
+}
+
+@utility motion-width {
+  transition-property: width;
+}
+
+@utility motion-height {
+  transition-property: height;
+}
+
+@utility media-picker-rows {
+  grid-template-rows: 1fr auto;
+}
+
+@utility audit-label-grid {
+  grid-template-columns: 7rem minmax(0, 1fr);
+}
+
+@utility safe-bottom-3 {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+@utility size-media-avatar {
+  width: min(58cqh, 36cqw, 4.75rem);
+  height: min(58cqh, 36cqw, 4.75rem);
+}
+
+/* Viewport/surface constraints. */
+/* Settings modal sizing: full screen below 1280, then 92vw, then 55vw. */
+.settings-modal {
+  width: 100vw;
+  height: 100dvh;
+  transition:
+    opacity 120ms ease-out,
+    scale 120ms ease-out;
+}
+
+.settings-modal[data-starting-style],
+.settings-modal[data-ending-style] {
+  opacity: 0;
+  scale: 0.985;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-modal {
+    transition: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  .settings-modal {
+    width: 92vw;
+    height: 88vh;
+  }
+}
+
+@media (min-width: 1920px) {
+  .settings-modal {
+    width: 55vw;
+  }
+}
+
+@utility h-profile-dialog {
+  height: min(50rem, 90vh);
+}
+
+@utility w-profile-dialog {
+  width: min(60.125rem, calc(100vw - 2rem));
+}
+
+@utility h-mobile-voice-drawer {
+  height: min(52dvh, 26.25rem);
+}
+
+@utility h-mobile-voice-drawer-tall {
+  height: min(85dvh, 45rem);
+}
+
+@utility min-h-voice-tile {
+  min-height: min(50vh, 24rem);
+}
+
+@utility min-h-voice-tile-sm {
+  min-height: min(50vh, 20rem);
+}
+
+@utility max-h-dialog {
+  max-height: 90vh;
+}
+
+@utility max-h-dialog-sm {
+  max-height: 85vh;
+}
+
+@utility max-h-dialog-xs {
+  max-height: 80vh;
+}
+
+@utility max-h-feedback {
+  max-height: 70vh;
+}
+
+@utility max-h-lightbox {
+  max-height: calc(100vh - 5rem);
+}
+
+@utility max-h-lightbox-image {
+  max-height: calc(100vh - 9rem);
+}
+
+@utility max-h-dev-overlay {
+  max-height: min(82vh, 46rem);
+}
+
+@utility max-h-prism-tuning {
+  max-height: calc(min(82vh, 46rem) - 3.5rem);
+}
+
+@utility max-h-prism-tuning-body {
+  max-height: min(82vh, 46rem);
+}
+
+@utility max-h-roles-dialog {
+  max-height: min(16rem, calc(90vh - 10rem));
+}
+
+@utility max-h-role-members {
+  max-height: min(32rem, 90vh);
+}
+
+@utility max-h-command-palette {
+  max-height: min(60vh, 26.25rem);
+}
+
+@utility max-h-voice-popover {
+  max-height: min(70vh, 32rem);
+}
+
+@utility max-h-mobile-voice-drawer {
+  max-height: min(92dvh, 51.25rem);
+}
+
+@utility max-w-media-inset-sm {
+  max-width: calc(100% - 0.5rem);
+}
+
+@utility max-w-media-inset {
+  max-width: calc(100% - 0.75rem);
+}
+
+@utility max-w-media-inset-lg {
+  max-width: calc(100% - 1rem);
+}
+
+@utility max-w-media-inset-xl {
+  max-width: calc(100% - 3.5rem);
+}
+
+@utility max-w-viewport-inset {
+  max-width: calc(100vw - 2rem);
+}
+
+@utility max-w-lightbox {
+  max-width: calc(100vw - 5rem);
+}
+
+@utility max-w-landing-card {
+  max-width: min(100vw - 2rem, 22rem);
+}
+
+@utility max-w-lightbox-caption {
+  max-width: min(20rem, calc(100vw - 8rem));
+}
+
+@utility max-w-label-inset {
+  max-width: calc(100% - 3rem);
+}
+
+@utility max-w-label-inset-wide {
+  max-width: calc(100% - 6.5rem);
+}
+
+@utility w-picker-inset {
+  width: calc(100% - 2rem);
+}
+
+@utility w-voice-ping-popover {
+  width: min(20rem, calc(100vw - 2rem));
+}
+
+@utility w-user-panel-popover {
+  width: min(18.75rem, calc(100vw - 1rem));
+}
+
+@utility w-profile-popover {
+  width: min(18.75rem, calc(100vw - 1rem));
+}
+
+@utility max-h-profile-popover {
+  max-height: min(40rem, calc(100dvh - 2rem));
+}
+
+@utility w-incoming-call {
+  width: min(22.5rem, calc(100vw - 2rem));
+}
+
+@utility w-voice-chat-panel {
+  width: min(26.25rem, 40vw);
+}
+
+@utility w-screen-share-picker {
+  width: min(96vw, 66.667vh);
 }

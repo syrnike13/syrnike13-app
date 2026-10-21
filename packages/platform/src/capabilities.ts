@@ -3,7 +3,7 @@ import type { DesktopOs, SyrnikeRuntime } from './api'
 export type PlatformCapabilities = {
   /** Раздел «Приложение» в настройках. */
   desktopSettings: boolean
-  /** Discord-подобная активность (заглушка IPC, UI готов). */
+  /** Rich presence (заглушка IPC, UI готов). */
   richPresence: boolean
   /** Системные уведомления вне вкладки. */
   nativeNotifications: boolean

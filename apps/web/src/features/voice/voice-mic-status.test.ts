@@ -1,18 +1,25 @@
 import { describe, expect, it } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import {
   describeMicDeviceError,
   isVoiceConnectionReady,
   isMicVisuallyMuted,
-  MIC_BLOCKED_WITHOUT_ERROR,
+  micBlockedWithoutError,
   shouldResetMicPreferenceOnIssue,
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
+
+const tMic = createTranslator(ru, 'ru', 'voice.micIssue')
+const tPhase = createTranslator(ru, 'ru', 'voice.status')
+const blockedMicIssue = micBlockedWithoutError(tMic)
 
 describe('describeMicDeviceError', () => {
   it('maps permission errors', () => {
     const issue = describeMicDeviceError(
       new DOMException('denied', 'NotAllowedError'),
+      tMic,
     )
     expect(issue.label).toBe('Нет доступа к микрофону')
   })
@@ -20,6 +27,7 @@ describe('describeMicDeviceError', () => {
   it('maps missing device errors', () => {
     const issue = describeMicDeviceError(
       new DOMException('missing', 'NotFoundError'),
+      tMic,
     )
     expect(issue.label).toBe('Микрофон не найден')
   })
@@ -104,25 +112,27 @@ describe('isVoiceConnectionReady', () => {
 
 describe('voiceConnectionPhaseLabel', () => {
   it('uses specific connection stage labels', () => {
-    expect(voiceConnectionPhaseLabel('joining_channel')).toBe(
+    expect(voiceConnectionPhaseLabel('joining_channel', tPhase)).toBe(
       'Подключение к каналу…',
     )
-    expect(voiceConnectionPhaseLabel('fetching_rtc_token')).toBe(
+    expect(voiceConnectionPhaseLabel('fetching_rtc_token', tPhase)).toBe(
       'Получение RTC-сессии…',
     )
-    expect(voiceConnectionPhaseLabel('connecting_rtc')).toBe(
+    expect(voiceConnectionPhaseLabel('connecting_rtc', tPhase)).toBe(
       'Подключение к RTC…',
     )
-    expect(voiceConnectionPhaseLabel('connecting_microphone')).toBe(
+    expect(voiceConnectionPhaseLabel('connecting_microphone', tPhase)).toBe(
       'Подключение голосового потока…',
     )
-    expect(voiceConnectionPhaseLabel('connected')).toBe('Голос подключён')
+    expect(voiceConnectionPhaseLabel('connected', tPhase)).toBe(
+      'Голос подключён',
+    )
   })
 })
 
-describe('MIC_BLOCKED_WITHOUT_ERROR', () => {
+describe('micBlockedWithoutError', () => {
   it('has fallback copy', () => {
-    expect(MIC_BLOCKED_WITHOUT_ERROR.label.length).toBeGreaterThan(0)
+    expect(blockedMicIssue.label.length).toBeGreaterThan(0)
   })
 })
 
@@ -132,7 +142,7 @@ describe('shouldResetMicPreferenceOnIssue', () => {
       shouldResetMicPreferenceOnIssue({
         wantsMic: true,
         micPublishing: false,
-        micIssue: MIC_BLOCKED_WITHOUT_ERROR,
+        micIssue: blockedMicIssue,
       }),
     ).toBe(true)
   })

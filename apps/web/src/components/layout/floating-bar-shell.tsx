@@ -1,14 +1,14 @@
+// design-allow-file restyle-shared: brand floating shell built on Squircle.
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import {
   floatingBarRingProps,
-  floatingBarSurfaceClass,
   floatingBarSquircleProps,
 } from '#/components/layout/shell-chrome'
 import {
   Squircle,
   type SquircleRingOptions,
-} from '#/components/ui/squircle'
+} from '@syrnike13/ui/primitives/squircle'
 import { cn } from '#/lib/utils'
 
 type FloatingBarShellProps = {
@@ -40,7 +40,11 @@ export function FloatingBarShell({
       <Squircle
         {...floatingBarSquircleProps}
         ring={ring}
-        className={cn(floatingBarSurfaceClass, surfaceClassName)}
+        className={cn(
+          'gradient-surface-floating w-full overflow-hidden bg-secondary text-secondary-foreground',
+          // eslint-disable-next-line shadcn/require-static-classes -- caller-owned surface styling
+          surfaceClassName,
+        )}
         {...surfaceProps}
       >
         {children}
