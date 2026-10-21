@@ -122,7 +122,7 @@ function SettingsDesktopModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-settings-modal max-h-settings-modal w-settings-modal max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl"
+        className="settings-modal flex max-w-none gap-0 overflow-hidden p-0 max-xl:rounded-none sm:max-w-none"
       >
         <DialogTitle className="sr-only">{t('userSettingsTitle')}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -130,7 +130,7 @@ function SettingsDesktopModal() {
         </DialogDescription>
 
         <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-          <div className="border-b border-border p-3">
+          <div className="p-3">
             <Button
               type="button"
               variant={section === 'profile' ? 'secondary' : 'ghost'}
@@ -166,9 +166,6 @@ function SettingsDesktopModal() {
 
           <ScrollArea className="h-0 min-h-0 flex-1">
             <nav className="flex flex-col gap-0.5 p-2">
-              <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                {t('userSettings')}
-              </p>
               {navItems.map((item) => {
                 const Icon = item.icon
                 const active = section === item.id
@@ -186,11 +183,11 @@ function SettingsDesktopModal() {
                   </Button>
                 )
               })}
-              <div className="mt-2 border-t border-border pt-2">
+              <div className="mt-2">
                 <Button
                   type="button"
-                  variant="destructive"
-                  className="h-9 w-full justify-start gap-2 px-2"
+                  variant="ghost"
+                  className="h-9 w-full justify-start gap-2 px-2 text-destructive hover:text-destructive"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}
                 >
@@ -204,13 +201,13 @@ function SettingsDesktopModal() {
 
         <ProfileDraftProvider>
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
-            <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
-              <h2 className="text-xl font-semibold">
+            <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-2">
+              <h2 className="text-base font-semibold">
                 {settingsSectionTitle(section, t)}
               </h2>
               <Button
                 type="button"
-                variant="ghost"
+                variant="ghost-hover"
                 size="icon"
                 className="size-8"
                 onClick={() => setOpen(false)}

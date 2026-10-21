@@ -391,6 +391,7 @@ export function SettingsAppearancePanel() {
           <PresetSlider
             stops={SCALE_STOPS}
             value={settings.scale}
+            drag="release"
             onValueChange={setScale}
             formatValue={(value) => `${value}%`}
             aria-label={t('interfaceScale')}
