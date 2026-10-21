@@ -37,8 +37,10 @@ import { syncStore } from '#/features/sync/sync-store'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
+  FLOATING_BAR_BOTTOM_OFFSET_PX,
   FLOATING_BAR_INSET_X_CLASS,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { canMessageUser } from '#/features/authorization/authorization'
 
@@ -146,12 +148,22 @@ export function ChannelChatPanel({
         ) : null}
       </PanelHeader>
 
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-(--chat-feed-inset)"
+        style={
+          {
+            '--chat-feed-inset': `${composerHeight / 2}px`,
+          } as CSSVars
+        }
+      >
         <MessageList
           ref={messageListRef}
           channelId={channelId}
           serverId={serverIdForSelection ?? undefined}
           scrollPaddingBottom={composerHeight + 48}
+          scrollbarInsetBottom={
+            composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
+          }
           highlightMessageId={listHighlightMessageId}
           messages={messages}
           users={users}

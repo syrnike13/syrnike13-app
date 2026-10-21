@@ -4,7 +4,9 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type Ref,
+  type RefObject,
   type UIEvent,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
@@ -46,6 +48,8 @@ type MessageListProps = {
   ref?: Ref<MessageListHandle>
   /** Доп. отступ снизу, когда композер плавает над лентой */
   scrollPaddingBottom?: number
+  /** На сколько пикселей поднять нижнюю границу overlay-скроллбара. */
+  scrollbarInsetBottom?: number
   /** Подсветить сообщение в ленте (ответ, deep link). */
   highlightMessageId?: string
   messages: Message[]
@@ -112,11 +116,158 @@ type MessageListBodyProps = MessageListProps & {
   unreadAnchorId: string | null
 }
 
+function ChatScrollbar({
+  viewportRef,
+  revision,
+  trackInsetBottom,
+}: {
+  viewportRef: RefObject<HTMLDivElement | null>
+  revision: number
+  trackInsetBottom: number
+}) {
+  const [thumb, setThumb] = useState<{ top: number; height: number } | null>(
+    null,
+  )
+  const [active, setActive] = useState(false)
+  const hideTimer = useRef<number | null>(null)
+  const drag = useRef<{
+    startY: number
+    startScrollTop: number
+    ratio: number
+  } | null>(null)
+
+  const update = useCallback(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const { clientHeight, scrollHeight, scrollTop } = viewport
+    const trackHeight = Math.max(0, clientHeight - trackInsetBottom)
+    if (scrollHeight <= clientHeight + 1 || trackHeight <= 0) {
+      setThumb(null)
+      return
+    }
+
+    const height = Math.min(
+      trackHeight,
+      Math.max(24, (clientHeight / scrollHeight) * trackHeight),
+    )
+    const maxTop = Math.max(0, trackHeight - height)
+    const offset = scrollHeight - clientHeight
+
+    setThumb({
+      top: offset > 0 ? (scrollTop / offset) * maxTop : 0,
+      height,
+    })
+  }, [trackInsetBottom, viewportRef])
+
+  const show = useCallback(() => {
+    setActive(true)
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setActive(false), 900)
+  }, [])
+
+  useEffect(() => {
+    update()
+  }, [revision, update])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const onScroll = () => {
+      update()
+      show()
+    }
+
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => update())
+    observer?.observe(viewport)
+    const content = viewport.firstElementChild
+    if (content) observer?.observe(content)
+
+    return () => {
+      viewport.removeEventListener('scroll', onScroll)
+      observer?.disconnect()
+      if (hideTimer.current !== null) {
+        window.clearTimeout(hideTimer.current)
+        hideTimer.current = null
+      }
+    }
+  }, [show, update, viewportRef])
+
+  if (!thumb) return null
+
+  return (
+    <div
+      className={cn(
+        'pointer-events-none absolute top-0 right-0 bottom-(--chat-scrollbar-inset) z-10 w-2 opacity-0 transition-opacity duration-150 group-hover/message-scroller:opacity-100',
+        active && 'opacity-100',
+      )}
+      style={
+        {
+          '--chat-scrollbar-inset': `${trackInsetBottom}px`,
+        } as CSSVars
+      }
+      aria-hidden="true"
+    >
+      <div
+        className="pointer-events-auto absolute right-0.5 top-(--chat-scroll-thumb-top) h-(--chat-scroll-thumb-height) w-1 cursor-grab rounded-full bg-foreground/25 transition-colors hover:bg-foreground/40 active:cursor-grabbing"
+        style={
+          {
+            '--chat-scroll-thumb-top': `${thumb.top}px`,
+            '--chat-scroll-thumb-height': `${thumb.height}px`,
+          } as CSSVars
+        }
+        onPointerDown={(event) => {
+          const viewport = viewportRef.current
+          if (!viewport) return
+
+          event.preventDefault()
+          event.currentTarget.setPointerCapture(event.pointerId)
+          drag.current = {
+            startY: event.clientY,
+            startScrollTop: viewport.scrollTop,
+            ratio:
+              (viewport.scrollHeight - viewport.clientHeight) /
+              Math.max(
+                1,
+                viewport.clientHeight - trackInsetBottom - thumb.height,
+              ),
+          }
+          show()
+        }}
+        onPointerMove={(event) => {
+          const state = drag.current
+          const viewport = viewportRef.current
+          if (!state || !viewport) return
+
+          viewport.scrollTop =
+            state.startScrollTop +
+            (event.clientY - state.startY) * state.ratio
+        }}
+        onPointerUp={(event) => {
+          drag.current = null
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId)
+          }
+        }}
+        onPointerCancel={() => {
+          drag.current = null
+        }}
+      />
+    </div>
+  )
+}
+
 function MessageListBody({
   ref,
   channelId,
   serverId,
   scrollPaddingBottom,
+  scrollbarInsetBottom = 0,
   highlightMessageId,
   messages,
   users,
@@ -280,6 +431,7 @@ function MessageListBody({
         <MessageScrollerViewport
           ref={viewportRef}
           aria-label={t('messagesLabel')}
+          className="chat-feed-scroll"
           onScroll={handleScroll}
         >
           <MessageScrollerContent className="flex flex-col gap-0 pt-4 pb-(--scroll-padding)">
@@ -321,6 +473,12 @@ function MessageListBody({
             })}
           </MessageScrollerContent>
         </MessageScrollerViewport>
+
+        <ChatScrollbar
+          viewportRef={viewportRef}
+          revision={messages.length}
+          trackInsetBottom={scrollbarInsetBottom}
+        />
 
         {loadingOlder ? (
           <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">

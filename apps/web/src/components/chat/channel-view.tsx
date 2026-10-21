@@ -60,6 +60,7 @@ import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
+  FLOATING_BAR_BOTTOM_OFFSET_PX,
   FLOATING_BAR_INSET_X_CLASS,
   shellChromeSurface,
   shellColumnHeaderClass,
@@ -735,12 +736,22 @@ export function ChannelView({
               onDismiss={dismissVoiceCallBanner}
             />
           ) : null}
-          <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className="relative flex min-h-0 flex-1 flex-col pb-(--chat-feed-inset)"
+            style={
+              {
+                '--chat-feed-inset': `${composerHeight / 2}px`,
+              } as CSSVars
+            }
+          >
             <MessageList
               ref={messageListRef}
               channelId={channelId}
               serverId={serverIdForSelection ?? undefined}
               scrollPaddingBottom={composerHeight + 48}
+              scrollbarInsetBottom={
+                composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
+              }
               highlightMessageId={listHighlightMessageId}
               messages={messages}
               users={users}
@@ -987,12 +998,22 @@ export function ChannelView({
               onDismiss={dismissVoiceCallBanner}
             />
           ) : null}
-          <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className="relative flex min-h-0 flex-1 flex-col pb-(--chat-feed-inset)"
+            style={
+              {
+                '--chat-feed-inset': `${composerHeight / 2}px`,
+              } as CSSVars
+            }
+          >
             <MessageList
               ref={messageListRef}
               channelId={channelId}
               serverId={serverIdForSelection ?? undefined}
               scrollPaddingBottom={composerHeight + 48}
+              scrollbarInsetBottom={
+                composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
+              }
               highlightMessageId={listHighlightMessageId}
               messages={messages}
               users={users}
