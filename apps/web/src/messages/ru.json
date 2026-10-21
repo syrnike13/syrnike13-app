@@ -437,6 +437,13 @@
   },
   "layout": {
     "loading": {
+      "preview": {
+        "label": "Анимация загрузки",
+        "replay": "Повторить",
+        "variants": "Хэллоуин-варианты",
+        "variantClassic": "Обычная",
+        "variantWitch": "Ведьмин скин"
+      },
       "factTitle": "А вы знали?",
       "status": {
         "idle": "Запуск",
@@ -568,6 +575,26 @@
     "glina": {
       "name": "Глина",
       "description": "Тёплая терракотовая палитра"
+    },
+    "matrix": {
+      "name": "Матрица",
+      "description": "Фосфорный терминал. Красная таблетка не входит."
+    },
+    "amber": {
+      "name": "Янтарь",
+      "description": "Тёплый CRT-терминал"
+    },
+    "synthwave": {
+      "name": "Синтвейв",
+      "description": "Неоновый закат"
+    },
+    "ocean": {
+      "name": "Океан",
+      "description": "Холодная морская палитра"
+    },
+    "sakura": {
+      "name": "Сакура",
+      "description": "Мягкая розовая палитра"
     }
   },
   "feedback": {
@@ -2267,5 +2294,16 @@
       "cameraStarted": "Камера включена",
       "cameraStopped": "Камера выключена"
     }
+  },
+  "holidays": {
+    "newYear": "Новый год",
+    "christmas": "Рождество",
+    "valentinesDay": "День святого Валентина",
+    "defenderDay": "День защитника Отечества",
+    "womensDay": "Международный женский день",
+    "cosmonauticsDay": "День космонавтики",
+    "springAndLabourDay": "Праздник Весны и Труда",
+    "victoryDay": "День Победы",
+    "halloween": "Хэллоуин"
   }
 }

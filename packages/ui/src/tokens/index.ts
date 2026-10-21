@@ -2,6 +2,7 @@ export * from './apply'
 export * from './catalog'
 export { DEFAULT_PRISM_TUNING } from './prism'
 export type {
+  PrismAnchors,
   PrismInteractionDeltaKey,
   PrismSurfaceMixKey,
   PrismTuning,

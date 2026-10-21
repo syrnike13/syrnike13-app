@@ -5,6 +5,7 @@ import {
   getThemeSurfaceVariables,
   getThemeTokens,
   resolveThemeVariant,
+  type ThemeAnchorOverrides,
 } from './registry'
 import { allThemeSurfaceCssVariables } from './surfaces'
 import type { ThemeSettings } from './types'
@@ -19,12 +20,13 @@ export function applyThemeToDocument(
   settings: ThemeSettings,
   prefersDark = readSystemPrefersDark(),
   tuning?: PrismTuningPatch,
+  anchors?: ThemeAnchorOverrides,
 ) {
   if (typeof document === 'undefined') return resolveThemeVariant(settings, prefersDark)
 
   const variant = resolveThemeVariant(settings, prefersDark)
   const theme = getThemeById(settings.themeId)
-  const tokens = getThemeTokens(settings, prefersDark, tuning)
+  const tokens = getThemeTokens(settings, prefersDark, tuning, anchors)
   const root = document.documentElement
 
   root.classList.toggle('dark', variant === 'dark')
@@ -38,7 +40,7 @@ export function applyThemeToDocument(
   const variables = {
     ...allThemeCssVariables(tokens),
     ...allThemeSurfaceCssVariables(
-      getThemeSurfaceVariables(settings, prefersDark, tuning),
+      getThemeSurfaceVariables(settings, prefersDark, tuning, anchors),
     ),
   }
   for (const [name, value] of Object.entries(variables)) {

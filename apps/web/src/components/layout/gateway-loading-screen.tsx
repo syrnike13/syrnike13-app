@@ -1,8 +1,13 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
+import { useActiveHoliday } from '@syrnike13/ui/holidays'
 import { useEffect, useState } from 'react'
 
+import {
+  CakeLogo,
+  HALLOWEEN_CAKE_VARIANT,
+  type CakeLogoVariant,
+} from '#/components/layout/cake-logo'
 import type { GatewayState } from '#/features/events/gateway'
-import { APP_LOGO_SRC, APP_NAME } from '#/lib/brand'
 import {
   GATEWAY_LOADING_FACT_KEYS,
   pickGatewayLoadingFactKey,
@@ -25,15 +30,71 @@ type GatewayLoadingScreenProps = {
   statusText?: string
 }
 
+export type GatewayLoadingScreenViewProps = {
+  factTitle: string
+  fact: string
+  status: string
+  /** Показывает строку статуса под фактом; на экране загрузки она необязательна. */
+  showStatus?: boolean
+  /** Enable motion only after the developer explicitly requests playback. */
+  previewMotion?: boolean
+  /** Seasonal scene for the logo; the gallery overrides it for previews. */
+  logoVariant?: CakeLogoVariant
+  className?: string
+}
+
+/**
+ * Содержимое экрана загрузки без полноэкранной подложки: логотип, факт и
+ * статус. Отдельный слой нужен dev-галерее, чтобы показывать экран внутри
+ * карточки, а не поверх всего приложения.
+ */
+export function GatewayLoadingScreenView({
+  factTitle,
+  fact,
+  status,
+  showStatus = false,
+  previewMotion,
+  logoVariant = 'classic',
+  className,
+}: GatewayLoadingScreenViewProps) {
+  return (
+    <div
+      className={cn(
+        'flex size-full flex-col items-center justify-center px-6 text-center',
+        className,
+      )}
+    >
+      <div className="flex h-44 w-64 max-w-full items-center justify-center">
+        <CakeLogo previewMotion={previewMotion} variant={logoVariant} />
+      </div>
+
+      <p className="mt-8 text-xs font-bold tracking-widest text-foreground uppercase">
+        {factTitle}
+      </p>
+
+      <p className="mt-3 max-w-md text-base leading-relaxed font-normal text-muted-foreground">
+        {fact}
+      </p>
+
+      {showStatus ? (
+        <p className="mt-8 text-sm font-medium text-foreground">{status}</p>
+      ) : null}
+    </div>
+  )
+}
+
 export function GatewayLoadingScreen({
   gatewayState,
   statusText,
 }: GatewayLoadingScreenProps) {
   const t = useTranslations('layout.loading')
+  const holiday = useActiveHoliday()
   const [visible, setVisible] = useState(false)
   const [factKey, setFactKey] = useState<string>(INITIAL_FACT_KEY)
   const status = statusText ?? t(STATUS_BY_STATE[gatewayState])
   const fact = t(factKey)
+  const logoVariant =
+    holiday?.id === 'halloween' ? HALLOWEEN_CAKE_VARIANT : 'classic'
 
   useEffect(() => {
     setFactKey(pickGatewayLoadingFactKey())
@@ -45,7 +106,7 @@ export function GatewayLoadingScreen({
     <div
       className={cn(
         'fixed inset-0 z-200 flex flex-col items-center justify-center overflow-hidden',
-        'gradient-surface-content bg-background px-6 text-foreground transition-opacity duration-300',
+        'gradient-surface-content bg-background text-foreground transition-opacity duration-300',
         visible ? 'opacity-100' : 'opacity-0',
       )}
       role="status"
@@ -53,28 +114,13 @@ export function GatewayLoadingScreen({
       aria-busy="true"
       aria-label={`${status}. ${fact}`}
     >
-      <div className="flex w-full max-w-md flex-col items-center text-center">
-        <img
-          src={APP_LOGO_SRC}
-          alt={APP_NAME}
-          width={112}
-          height={112}
-          className="gateway-logo-wobble size-28 object-contain"
-          draggable={false}
-        />
-
-        <p className="mt-10 text-xs font-bold tracking-widest text-foreground uppercase">
-          {t('factTitle')}
-        </p>
-
-        <p className="mt-3 text-base leading-relaxed font-normal text-muted-foreground">
-          {fact}
-        </p>
-
-        {statusText ? (
-          <p className="mt-8 text-sm font-medium text-foreground">{status}</p>
-        ) : null}
-      </div>
+      <GatewayLoadingScreenView
+        factTitle={t('factTitle')}
+        fact={fact}
+        status={status}
+        showStatus={Boolean(statusText)}
+        logoVariant={logoVariant}
+      />
 
       <p className="sr-only">{status}…</p>
     </div>

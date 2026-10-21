@@ -683,21 +683,126 @@ html {
     color-mix(in oklab, var(--foreground) 24%, transparent);
 }
 
-@keyframes gateway-logo-wobble {
-  0%,
+@keyframes cake-piece-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-34px);
+  }
+  8% { opacity: 1; }
   100% {
-    transform: rotate(0deg);
-  }
-  25% {
-    transform: rotate(-14deg);
-  }
-  75% {
-    transform: rotate(14deg);
+    opacity: 1;
+    transform: none;
   }
 }
 
-.gateway-logo-wobble {
-  animation: gateway-logo-wobble 1.6s ease-in-out infinite;
+.cake-logo {
+  overflow: visible;
+}
+
+.cake-logo-piece {
+  animation: cake-piece-fall var(--cake-fall-duration) steps(17, end)
+    var(--cake-piece-delay) both;
+}
+
+.cake-tetromino-blocks {
+  fill: var(--primary);
+}
+
+.cake-tetromino-blocks rect {
+  stroke: var(--background);
+  stroke-width: 0.12;
+}
+
+.cake-logo-piece[data-shape='I'] .cake-tetromino-blocks { fill: var(--chart-1); }
+.cake-logo-piece[data-shape='O'] .cake-tetromino-blocks { fill: var(--chart-2); }
+.cake-logo-piece[data-shape='T'] .cake-tetromino-blocks { fill: var(--chart-3); }
+.cake-logo-piece[data-shape='S'] .cake-tetromino-blocks { fill: var(--chart-4); }
+.cake-logo-piece[data-shape='Z'] .cake-tetromino-blocks { fill: var(--chart-5); }
+.cake-logo-piece[data-shape='L'] .cake-tetromino-blocks { fill: var(--warning); }
+
+.cake-logo-mask {
+  mask-type: alpha;
+}
+
+.cake-logo-artwork {
+  image-rendering: pixelated;
+}
+
+/* Halloween set dressing: the logo itself never changes in this scene. */
+.cake-halloween-decor,
+.cake-bat {
+  pointer-events: none;
+}
+
+.cake-cobweb {
+  opacity: 0.55;
+}
+
+.cake-spider-thread {
+  fill: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+.cake-spider {
+  animation: cake-spider-drop 1200ms steps(9, end) 120ms both;
+}
+
+@keyframes cake-spider-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+  8% {
+    opacity: 1;
+  }
+  48% {
+    transform: translateY(6px);
+  }
+  76% {
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+}
+
+.cake-bat {
+  animation: cake-bat-cross 900ms steps(10, end) 1500ms both;
+}
+
+@keyframes cake-bat-cross {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  10% {
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-20px, -1px);
+  }
+  78% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    opacity: 0;
+    transform: translate(-44px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cake-logo:not([data-motion-preview]),
+  .cake-logo:not([data-motion-preview]) .cake-logo-piece,
+  .cake-logo:not([data-motion-preview]) .cake-spider,
+  .cake-logo:not([data-motion-preview]) .cake-bat {
+    animation: none;
+  }
+
+  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks {
+    display: none;
+  }
 }
 
 .profile-unsaved-bar {
@@ -1082,6 +1187,10 @@ html {
 
 @utility max-h-lightbox-image {
   max-height: calc(100vh - 9rem);
+}
+
+@utility max-h-dev-overlay {
+  max-height: min(82vh, 46rem);
 }
 
 @utility max-h-prism-tuning {

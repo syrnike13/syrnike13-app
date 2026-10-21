@@ -1,6 +1,7 @@
 // design-allow-file hardcoded-string: internal developer component gallery; demo copy is illustrative.
 // design-allow-file restyle-shared: internal developer component gallery; bordered/raised demo containers are illustrative.
 import { useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { toast as sonnerToast } from 'sonner'
 import {
   BellIcon,
@@ -305,6 +306,11 @@ import {
 } from '@syrnike13/ui/primitives/trace'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
+import { GatewayLoadingScreenView } from '#/components/layout/gateway-loading-screen'
+import {
+  CAKE_LOGO_VARIANTS,
+  type CakeLogoVariant,
+} from '#/components/layout/cake-logo'
 
 const SECTIONS = [
   {
@@ -403,6 +409,7 @@ const SECTIONS = [
       'Members list',
       'Invite block',
       'Chat message',
+      'Loading screen',
     ],
   },
 ] as const
@@ -1587,7 +1594,16 @@ function OverlayGallery() {
   )
 }
 
+const CAKE_VARIANT_LABEL_KEYS: Record<CakeLogoVariant, string> = {
+  classic: 'variantClassic',
+  witch: 'variantWitch',
+}
+
 function ExamplesGallery() {
+  const t = useTranslations('layout.loading.preview')
+  const [animationRun, setAnimationRun] = useState(0)
+  const [logoVariant, setLogoVariant] = useState<CakeLogoVariant>('classic')
+
   return (
     <>
       <Demo title="Settings card" hint="Section header, field and save bar." wide>
@@ -1706,6 +1722,54 @@ function ExamplesGallery() {
             <span className="text-sm">Screen share</span>
           </div>
         </AspectRatio>
+      </Demo>
+      <Demo
+        title="Loading screen"
+        hint="Boot screen: tetromino assembly; the Halloween witch skin keeps the logo whole."
+        wide
+      >
+        <div
+          role="group"
+          aria-label={t('variants')}
+          className="mb-3 flex flex-wrap gap-2"
+        >
+          {CAKE_LOGO_VARIANTS.map((variant) => (
+            <Button
+              key={variant}
+              type="button"
+              size="sm"
+              variant={logoVariant === variant ? 'default' : 'outline'}
+              onClick={() => {
+                setLogoVariant(variant)
+                setAnimationRun((current) => current + 1)
+              }}
+            >
+              {t(CAKE_VARIANT_LABEL_KEYS[variant])}
+            </Button>
+          ))}
+        </div>
+        <div role="group" aria-label={t('label')} className="mb-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAnimationRun((current) => current + 1)}
+          >
+            {t('replay')}
+          </Button>
+        </div>
+        <div className="relative h-96 overflow-hidden rounded-xl border gradient-surface-content bg-background text-foreground">
+          <GatewayLoadingScreenView
+            key={`${animationRun}:${logoVariant}`}
+            previewMotion={animationRun > 0}
+            logoVariant={logoVariant}
+            className="absolute inset-0"
+            factTitle="Did you know?"
+            fact="A pinned message is an important announcement everyone promises to read later."
+            status="Connecting"
+            showStatus
+          />
+        </div>
       </Demo>
     </>
   )

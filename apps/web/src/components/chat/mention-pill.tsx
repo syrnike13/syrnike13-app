@@ -31,7 +31,7 @@ export function MentionPill({
         'inline rounded-sm px-0.5 font-medium transition-colors',
         !nameColour && defaultMentionClassName,
         nameColour &&
-          'bg-(--mention-bg) text-primary-foreground hover:bg-(--mention-bg-hover)',
+          'bg-(--mention-bg) text-foreground hover:bg-(--mention-bg-hover)',
         className,
       )}
     >

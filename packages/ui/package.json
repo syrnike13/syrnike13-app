@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./holidays": "./src/holidays/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./icons": "./src/icons/index.tsx",
     "./lib/cn": "./src/lib/cn.ts",

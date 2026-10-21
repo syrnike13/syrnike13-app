@@ -52,14 +52,15 @@ export const THEME_TOKEN_KEYS = [
 export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number]
 export type ThemeTokens = Record<ThemeTokenKey, string>
 
-/** Brand colors never come from the theme anchors; they are fixed exceptions. */
+/**
+ * Brand colors never come from the theme anchors; they are fixed exceptions.
+ * `primary` and `ring` follow the theme accent, so every palette can actually
+ * repaint buttons, checks and focus rings.
+ */
 export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
-  'primary',
-  'primary-foreground',
   'destructive',
   'destructive-foreground',
   'destructive-contrast',
-  'ring',
   'chart-1',
   'chart-2',
   'chart-3',
@@ -72,17 +73,13 @@ type BrandTokens = Pick<
   (typeof BRAND_LOCKED_THEME_TOKEN_KEYS)[number]
 >
 
-const BRAND_PRIMARY = 'oklch(0.5774 0.2091 273.8504)'
 const BRAND_DESTRUCTIVE = 'oklch(0.7040 0.1910 22.2160)'
 
 export const BRAND_THEME_TOKENS: Record<ThemeVariant, BrandTokens> = {
   light: {
-    primary: BRAND_PRIMARY,
-    'primary-foreground': 'oklch(1 0 0)',
     destructive: BRAND_DESTRUCTIVE,
     'destructive-foreground': 'oklch(1 0 0)',
     'destructive-contrast': 'oklch(0.5156 0.1810 22.5393)',
-    ring: BRAND_PRIMARY,
     'chart-1': 'oklch(0.8092 0.1122 345.1956)',
     'chart-2': 'oklch(0.8757 0.0979 83.6546)',
     'chart-3': 'oklch(0.9075 0.0946 165.0540)',
@@ -90,12 +87,9 @@ export const BRAND_THEME_TOKENS: Record<ThemeVariant, BrandTokens> = {
     'chart-5': 'oklch(0.7865 0.1232 309.4396)',
   },
   dark: {
-    primary: BRAND_PRIMARY,
-    'primary-foreground': 'oklch(1 0 0)',
     destructive: BRAND_DESTRUCTIVE,
     'destructive-foreground': 'oklch(1 0 0)',
     'destructive-contrast': 'oklch(63.7% 0.237 25.331)',
-    ring: BRAND_PRIMARY,
     'chart-1': 'oklch(0.8092 0.1122 345.1956)',
     'chart-2': 'oklch(0.8757 0.0979 83.6546)',
     'chart-3': 'oklch(0.9075 0.0946 165.0540)',
@@ -134,6 +128,9 @@ export function prismTokensToThemeTokens(
     'card-foreground': prismValue(tokens, 'card-foreground'),
     popover: prismValue(tokens, 'popover'),
     'popover-foreground': prismValue(tokens, 'popover-foreground'),
+    primary: prismValue(tokens, 'primary'),
+    'primary-foreground': prismValue(tokens, 'primary-foreground'),
+    ring: prismValue(tokens, 'ring'),
     ...BRAND_THEME_TOKENS[variant],
     secondary: prismValue(tokens, 'secondary'),
     'secondary-foreground': prismValue(tokens, 'secondary-foreground'),

@@ -1,5 +1,5 @@
 export const defaultMentionClassName =
-  'inline rounded-sm bg-primary/35 px-0.5 font-medium text-primary-foreground transition-colors hover:bg-primary/55'
+  'inline rounded-sm bg-primary/35 px-0.5 font-medium text-foreground transition-colors hover:bg-primary/55'
 
 export function mentionColourValues(colour: string | undefined) {
   if (!colour) return undefined

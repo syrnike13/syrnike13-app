@@ -14,7 +14,7 @@ import { useMessageTimestamp } from '#/lib/use-message-time'
 import { cn } from '#/lib/utils'
 
 const SYSTEM_ROW_CLASS =
-  'group/message relative flex w-full items-start gap-4 py-0.5 pr-6 pl-18 hover:bg-muted/40'
+  'group/message relative flex w-full items-start gap-4 py-0.5 pr-6 pl-18 hover:bg-hover'
 
 function callParticipantName(
   userId: string,

@@ -10,7 +10,8 @@ import {
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
-import { PrismTuningOverlay } from '#/features/dev-tools/prism-tuning-overlay'
+import { DevToolsOverlay } from '#/features/dev-tools/dev-tools-overlay'
+import { HolidayProvider } from '@syrnike13/ui/holidays'
 import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
@@ -143,13 +144,13 @@ function RootComponent() {
     <AppearanceProvider>
       <ThemeColorMeta />
       <Outlet />
-      {import.meta.env.DEV ? <PrismTuningOverlay /> : null}
+      {import.meta.env.DEV ? <DevToolsOverlay /> : null}
     </AppearanceProvider>
   ) : (
     <TanstackQueryProvider client={queryClient}>
       <AppearanceProvider>
         <ThemeColorMeta />
-        {import.meta.env.DEV ? <PrismTuningOverlay /> : null}
+        {import.meta.env.DEV ? <DevToolsOverlay /> : null}
         <DesktopStartupUpdateGate>
           <AuthProvider>
             <DiagnosticErrorReporter />
@@ -164,7 +165,17 @@ function RootComponent() {
     </TanstackQueryProvider>
   )
 
-  return <AppLocaleProvider>{content}</AppLocaleProvider>
+  return (
+    <AppLocaleProvider>
+      <HolidayProvider
+        overrideStorageKey={
+          import.meta.env.DEV ? 'syrnike13-holiday-override:v1' : undefined
+        }
+      >
+        {content}
+      </HolidayProvider>
+    </AppLocaleProvider>
+  )
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {

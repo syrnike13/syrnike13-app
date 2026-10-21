@@ -57,21 +57,21 @@ describe('applyThemeToDocument', () => {
       colorMode: 'dark',
     })
     const primary = document.documentElement.style.getPropertyValue('--primary')
-    expect(primary).toContain('oklch')
+    expect(primary.trim()).toBe('#fafafa')
     expect(
       document.documentElement.style.getPropertyValue('--theme-surface-content'),
     ).toBe(document.documentElement.style.getPropertyValue('--card'))
   })
 
-  it('uses brand tokens when another theme is selected', () => {
+  it('derives primary and ring from the selected theme accent', () => {
     applyThemeToDocument({
       ...DEFAULT_APPEARANCE_SETTINGS,
       themeId: 'glina',
       colorMode: 'light',
     })
     const style = document.documentElement.style
-    expect(style.getPropertyValue('--primary').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
-    expect(style.getPropertyValue('--ring').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
+    expect(style.getPropertyValue('--primary').trim()).toBe('#a85b3b')
+    expect(style.getPropertyValue('--ring').trim()).toBe('#a85b3b')
     expect(style.getPropertyValue('--destructive').trim()).toBe(
       'oklch(0.7040 0.1910 22.2160)',
     )

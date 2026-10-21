@@ -24,7 +24,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
         accent: '#fafafa',
         background: '#09090b',
         foreground: '#fafafa',
-        contrast: 60,
+        contrast: 68,
       },
     },
   },
@@ -42,6 +42,91 @@ export const THEME_CATALOG: ThemeDefinition[] = [
         background: '#1a1512',
         foreground: '#f4ede7',
         contrast: 60,
+      },
+    },
+  },
+  {
+    id: 'matrix',
+    anchors: {
+      light: {
+        accent: '#0b7a35',
+        background: '#f2fff4',
+        foreground: '#08240f',
+        contrast: 50,
+      },
+      dark: {
+        accent: '#21f06a',
+        background: '#020603',
+        foreground: '#c9ffd6',
+        contrast: 72,
+      },
+    },
+  },
+  {
+    id: 'amber',
+    anchors: {
+      light: {
+        accent: '#a85f00',
+        background: '#fff7e6',
+        foreground: '#251802',
+        contrast: 48,
+      },
+      dark: {
+        accent: '#ffb000',
+        background: '#120b02',
+        foreground: '#ffe1a8',
+        contrast: 70,
+      },
+    },
+  },
+  {
+    id: 'synthwave',
+    anchors: {
+      light: {
+        accent: '#b0188a',
+        background: '#fff1fb',
+        foreground: '#2b0a24',
+        contrast: 46,
+      },
+      dark: {
+        accent: '#ff3fd0',
+        background: '#150b24',
+        foreground: '#f6e9ff',
+        contrast: 66,
+      },
+    },
+  },
+  {
+    id: 'ocean',
+    anchors: {
+      light: {
+        accent: '#0a7f9a',
+        background: '#f0fbff',
+        foreground: '#032430',
+        contrast: 46,
+      },
+      dark: {
+        accent: '#2cc9e6',
+        background: '#04141c',
+        foreground: '#d7f7ff',
+        contrast: 62,
+      },
+    },
+  },
+  {
+    id: 'sakura',
+    anchors: {
+      light: {
+        accent: '#bb2f67',
+        background: '#fff5f8',
+        foreground: '#2b0d1a',
+        contrast: 46,
+      },
+      dark: {
+        accent: '#ff86b8',
+        background: '#1a0f15',
+        foreground: '#ffe6f0',
+        contrast: 62,
       },
     },
   },

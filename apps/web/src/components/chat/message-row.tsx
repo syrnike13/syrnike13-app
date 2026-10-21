@@ -277,12 +277,10 @@ export function MessageRow({
     <MessagePrimitive
       data-message-id={message._id}
       className={cn(
-        'relative flex w-full min-w-0 items-start gap-4 py-0.5 pr-6 pl-18',
+        'relative flex w-full min-w-0 items-start gap-4 py-0.5 pr-6 pl-18 hover:bg-hover',
         isCompact ? 'min-h-5.5' : 'mt-4.25',
-        highlighted && 'bg-primary/10 hover:bg-primary/15',
-        mentionsCurrentUser &&
-          !highlighted &&
-          'bg-chart-2/10 hover:bg-chart-2/15',
+        highlighted && 'bg-primary/10',
+        mentionsCurrentUser && !highlighted && 'bg-chart-2/10',
       )}
     >
       {isCompact ? (

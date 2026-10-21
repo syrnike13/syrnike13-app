@@ -437,6 +437,13 @@
   },
   "layout": {
     "loading": {
+      "preview": {
+        "label": "Loading animation",
+        "replay": "Replay",
+        "variants": "Halloween variants",
+        "variantClassic": "Classic",
+        "variantWitch": "Witch skin"
+      },
       "factTitle": "Did you know?",
       "status": {
         "idle": "Starting",
@@ -568,6 +575,26 @@
     "glina": {
       "name": "Clay",
       "description": "Warm terracotta palette"
+    },
+    "matrix": {
+      "name": "Matrix",
+      "description": "Phosphor terminal. The red pill is not included."
+    },
+    "amber": {
+      "name": "Amber",
+      "description": "Warm CRT terminal"
+    },
+    "synthwave": {
+      "name": "Synthwave",
+      "description": "Neon sunset"
+    },
+    "ocean": {
+      "name": "Ocean",
+      "description": "Cool marine palette"
+    },
+    "sakura": {
+      "name": "Sakura",
+      "description": "Soft pink palette"
     }
   },
   "feedback": {
@@ -2267,5 +2294,16 @@
       "cameraStarted": "Camera turned on",
       "cameraStopped": "Camera turned off"
     }
+  },
+  "holidays": {
+    "newYear": "New Year",
+    "christmas": "Christmas",
+    "valentinesDay": "Valentine's Day",
+    "defenderDay": "Defender of the Fatherland Day",
+    "womensDay": "International Women's Day",
+    "cosmonauticsDay": "Cosmonautics Day",
+    "springAndLabourDay": "Spring and Labour Day",
+    "victoryDay": "Victory Day",
+    "halloween": "Halloween"
   }
 }

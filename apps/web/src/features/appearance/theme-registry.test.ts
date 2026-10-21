@@ -22,7 +22,15 @@ describe('theme registry', () => {
   })
 
   it('defines Prism anchors for both modes in every theme', () => {
-    expect(THEME_CATALOG.map((theme) => theme.id)).toEqual(['monolit', 'glina'])
+    expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
+      'monolit',
+      'glina',
+      'matrix',
+      'amber',
+      'synthwave',
+      'ocean',
+      'sakura',
+    ])
     expect(THEME_CATALOG.some((theme) => theme.id.startsWith('gradient'))).toBe(
       false,
     )
@@ -100,12 +108,17 @@ describe('theme registry', () => {
     expect(surfaces['theme-surface-solid']).toBe(tokens.popover)
   })
 
-  it('keeps picker previews on the generated accent before brand lock', () => {
+  it('drives primary and ring from the theme accent', () => {
     const monolit = themePreviewColors(getThemeById('monolit'), 'dark')
     const glina = themePreviewColors(getThemeById('glina'), 'dark')
+    const tokens = getThemeTokens(
+      { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'glina', colorMode: 'dark' },
+      true,
+    )
 
     expect(monolit.primary).not.toBe(glina.primary)
-    expect(glina.primary).not.toBe(BRAND_THEME_TOKENS.dark.primary)
+    expect(tokens.primary).toBe(glina.primary)
+    expect(tokens.ring).toBe(glina.primary)
   })
 
   it('previews inactive themes in the preferred mode', () => {

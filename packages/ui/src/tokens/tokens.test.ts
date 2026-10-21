@@ -11,7 +11,15 @@ import {
 import { DEFAULT_THEME_ID, type ThemeVariant } from './types'
 
 test('catalog contains the Prism anchor presets', () => {
-  expect(THEME_CATALOG.map((theme) => theme.id)).toEqual(['monolit', 'glina'])
+  expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
+    'monolit',
+    'glina',
+    'matrix',
+    'amber',
+    'synthwave',
+    'ocean',
+    'sakura',
+  ])
 
   for (const theme of THEME_CATALOG) {
     for (const variant of ['light', 'dark'] as const) {
@@ -92,6 +100,19 @@ test('tuning changes generated surfaces', () => {
 
   expect(tuned.muted).not.toBe(base.muted)
   expect(tuned.border).not.toBe(base.border)
+})
+
+test('anchor overrides replace catalog colors', () => {
+  const settings = { themeId: 'glina', colorMode: 'dark' as const }
+  const base = getThemeTokens(settings, true)
+  const overridden = getThemeTokens(settings, true, undefined, {
+    dark: { background: '#112233', accent: '#ff8800' },
+  })
+
+  expect(overridden.background).toBe('#112233')
+  expect(overridden.background).not.toBe(base.background)
+  // `primary` stays brand-locked; the anchor reaches Prism-derived roles.
+  expect(overridden['sidebar-primary']).toBe('#ff8800')
 })
 
 test('the sidebar mix drives the shell navigation layer', () => {

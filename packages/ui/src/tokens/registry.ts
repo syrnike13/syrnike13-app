@@ -1,5 +1,9 @@
 import { THEME_CATALOG, type ThemeDefinition } from './catalog'
-import { generatePrismTokens, type PrismTuningPatch } from './prism'
+import {
+  generatePrismTokens,
+  type PrismAnchors,
+  type PrismTuningPatch,
+} from './prism'
 import {
   BRAND_THEME_TOKENS,
   prismTokensToThemeTokens,
@@ -14,6 +18,11 @@ export type ThemePreviewColors = {
   primary: string
   sidebar: string
 }
+
+/** Anchors merged on top of the catalog theme; dev preview only. */
+export type ThemeAnchorOverrides = Partial<
+  Record<ThemeVariant, Partial<PrismAnchors>>
+>
 
 export function getThemeById(themeId: string): ThemeDefinition {
   return (
@@ -47,11 +56,12 @@ export function getThemeTokens(
   settings: ThemeSettings,
   prefersDark = false,
   tuning?: PrismTuningPatch,
+  anchors?: ThemeAnchorOverrides,
 ): ThemeTokens {
   const theme = getThemeById(settings.themeId)
   const variant = resolveThemeVariant(settings, prefersDark)
   const prismTokens = generatePrismTokens(
-    theme.anchors[variant],
+    { ...theme.anchors[variant], ...anchors?.[variant] },
     variant,
     tuning,
   )
@@ -65,9 +75,10 @@ export function getThemeSurfaceVariables(
   settings: ThemeSettings,
   prefersDark = false,
   tuning?: PrismTuningPatch,
+  anchors?: ThemeAnchorOverrides,
 ): ThemeSurfaceVariables {
   return buildSolidThemeSurfaceVariables(
-    getThemeTokens(settings, prefersDark, tuning),
+    getThemeTokens(settings, prefersDark, tuning, anchors),
   )
 }
 

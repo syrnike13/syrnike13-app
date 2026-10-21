@@ -21,6 +21,7 @@
 - `src/tokens/` — Prism-движок (`src/tokens/prism/`, вендоренный из `@empatraai/prism`), якоря тем (`monolit`, `glina`), применение темы и pre-hydration CSS.
 - `src/i18n/` — `LocaleProvider`, `useTranslations`, встроенные подписи `ui`.
 - `src/icons/` — общий реестр иконок и адаптер `icon-placeholder` для shadcn-исходников.
+- `src/holidays/` — каталог окон праздников (`catalog.ts`), резолвер локальной даты (`resolve.ts`) и `HolidayProvider` для сезонных иконок.
 - `src/lib/cn.ts` — `clsx` + `tailwind-merge`.
 - `src/shadcn.css` — custom variants и utilities из `shadcn/tailwind.css`.
 - `src/hooks/use-mobile.ts` — hook из shadcn registry.
@@ -57,7 +58,7 @@
 ## Правила
 
 - **Цвет — только семантические токены.** `text-foreground`, `text-muted-foreground`, `bg-background`, `bg-card`, `bg-muted`, `bg-accent`, `border-border`, `bg-primary`/`text-primary`, `text-destructive`, `text-success`, `text-warning` и их подложки. Палитра Tailwind (`text-emerald-600`, `bg-zinc-900`, `bg-white`) и произвольные цвета (`bg-[#…]`, `rgb(…)` в CSS) запрещены.
-- **Темы — только якоря Prism.** Не задавайте поверхности, бордеры и состояния вручную: `generatePrismTokens` выводит их из `accent`/`background`/`foreground`/`contrast`. Бренд-цвета (`primary*`, `destructive*`, `ring`, `chart-*`) — единственное исключение и накладываются после Prism. `--input` — поверхность поля, `--color-input` в Tailwind — `--input-border`.
+- **Темы — только якоря Prism.** Не задавайте поверхности, бордеры и состояния вручную: `generatePrismTokens` выводит их из `accent`/`background`/`foreground`/`contrast`. `primary*` и `ring` берутся из `accent` выбранной темы, поэтому палитра реально перекрашивает кнопки, чекбоксы и фокус. `destructive*` и `chart-*` — бренд-исключения и накладываются после Prism. `--input` — поверхность поля, `--color-input` в Tailwind — `--input-border`.
 - **Shared-компоненты владеют поверхностью и состояниями** (фон, рамка, форма, hover/focus/disabled). В `className` на месте вызова — только layout (`w-full`, `mt-3`, `justify-start`, `md:mr-auto`) и текстовый токен.
 - **Слайдеры в настройках — `PresetSlider`.** Любой слайдер в настройках (и любой новый слайдер с остановками, подписями или дискретными значениями) собирается из `apps/web/src/components/ui/preset-slider.tsx`: остановки, подписи, режимы `stops`/`continuous`, обычный вид без меток — `showLabels={false} showMarks={false}`. Примитив `@syrnike13/ui/primitives/slider` — его внутренняя база; напрямую в настройках не подключается, это проверяет `pnpm check:ui`. Исключения — live-визуализации вроде метра голосового гейта и dev-инструменты.
 - **Размеры в rem**, по возможности классами Tailwind. `px` — только для границ, focus-offset и canvas.
@@ -75,6 +76,16 @@
 5. Добавьте `usePortalContainer()` в портал, если компонент рендерит overlay.
 6. Экспортируйте компонент из `src/index.ts`.
 7. Запустите `pnpm check:ui` и `pnpm ui:typecheck`.
+
+## Сезонные иконки
+
+Сезонность в интерфейсе ограничена подменой иконок: общих эффектов, оверлеев и слотов в пакете нет. Новые сезонные глифы и любые визуальные эффекты добавляются только по явному запросу, а не «на будущее».
+
+- **Каталог** — `packages/ui/src/holidays/catalog.ts`. Окно задаётся локальными `MM-DD` без года, `from > to` означает переход через Новый год; время суток и таймзоны намеренно не учитываются.
+- **Провайдер** — `HolidayProvider` монтируется в корне приложения, раз в минуту перепроверяет дату и публикует активный праздник через `useActiveHoliday()` (без провайдера возвращает `null`).
+- **Dev-предпросмотр** — общая панель `DevToolsOverlay` с вкладками Holidays и Themes. `useHolidayPreview()` переключает `auto` / `off` / праздник; сохранение выбора включается только в DEV через `overrideStorageKey`. Панель и каталог не являются пользовательскими эффектами и сохраняются независимо от artwork.
+- **Иконка** — `defineHolidayIcon(base, source, { <holidayId>: Glyph })` в `apps/web/src/components/icons/registry/*`. Имя иконки (`HomeIcon`) не меняется; вне окна рендерится базовая.
+- **Сейчас сезонная иконка одна:** `HomeIcon` → тыква на Хэллоуин (`apps/web/src/components/icons/holiday/halloween.tsx`).
 
 ## Эталонные экраны
 
@@ -100,4 +111,4 @@ pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build
 ```
 
-Вид проверяйте в `pnpm web:dev` (:3001), `pnpm landing:dev` (:3000) и `pnpm admin:dev` (:3002): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3001/dev/ui`. В dev-сборке web справа снизу есть **Prism tuning**: живые проценты `surfaceMix`/`raisedMix`, экспорт JSON для переноса значений в `DEFAULT_PRISM_TUNING`.
+Вид проверяйте в `pnpm web:dev` (:3001), `pnpm landing:dev` (:3000) и `pnpm admin:dev` (:3002): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3001/dev/ui`. В dev-сборке web справа снизу есть **DEV**: вкладка Holidays для предпросмотра праздников и вкладка Themes — workbench всех тем Prism. В нём можно выбрать или добавить тему, отполировать якоря `accent`/`background`/`foreground`/`contrast` для light и dark, покрутить глобальные `surfaceMix`/`raisedMix`, а затем выгрузить единый JSON со всеми темами и `tuning` для переноса в `catalog.ts` и `DEFAULT_PRISM_TUNING`.

@@ -24,7 +24,7 @@ const SURFACE_MIX = {
   sidebar: 6,
   border: 18,
   accent: 17,
-  hover: 10,
+  hover: 0,
   selection: 18,
 } as const
 
@@ -34,7 +34,7 @@ const RAISED_MIX = { light: 14, dark: 5 } as const
  * Minimum OKLab lightness gap between an interaction fill and every neutral surface it can sit
  * on (background, card, popover, sidebar, raised), so hover never vanishes on one of them.
  */
-const MIN_INTERACTION_DELTA = { accent: 0.045, hover: 0.07 } as const
+const MIN_INTERACTION_DELTA = { accent: 0.045, hover: 0.04 } as const
 
 export type PrismSurfaceMixKey = keyof typeof SURFACE_MIX
 export type PrismInteractionDeltaKey = keyof typeof MIN_INTERACTION_DELTA
