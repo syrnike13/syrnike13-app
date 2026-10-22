@@ -31,7 +31,7 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
         navigateToVoice: () => {
           if (!voiceSession.channelId) return
           void navigate({
-            to: '/app/c/$channelId',
+            to: '/c/$channelId',
             params: { channelId: voiceSession.channelId },
             search: { m: undefined },
           })

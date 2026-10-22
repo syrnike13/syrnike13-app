@@ -19,7 +19,7 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/app",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "theme_color": "#4a3f8f",

@@ -20,7 +20,7 @@ import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 /**
- * Мобильная раскладка в стиле Discord mobile.
+ * Мобильная раскладка мессенджера.
  *
  * Список: узкая рельса серверов слева + список каналов/DM рядом; снизу —
  * плавающая панель аккаунта (`MobileUserPanel`).
@@ -89,8 +89,8 @@ export function MobileShell() {
       {showChatFullscreen ? (
         <div
           className={cn(
-            'flex min-h-0 flex-1 flex-col',
-            !isProfileRoute && 'pt-[env(safe-area-inset-top)]',
+            'theme-surface-content gradient-surface-content flex min-h-0 flex-1 flex-col text-card-foreground',
+            !isProfileRoute && 'safe-pt',
           )}
         >
           <Outlet />
@@ -98,7 +98,7 @@ export function MobileShell() {
       ) : (
         <div
           className={cn(
-            'relative flex min-h-0 flex-1 pt-[env(safe-area-inset-top)]',
+            'relative flex min-h-0 flex-1 safe-pt',
           )}
         >
           <ServerRail variant="mobile" />

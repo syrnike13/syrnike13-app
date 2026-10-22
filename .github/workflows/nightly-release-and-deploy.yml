@@ -73,6 +73,8 @@ jobs:
             VITE_APP_TITLE=syrnike13 Nightly
             VITE_RELEASE_CHANNEL=nightly
             VITE_API_URL=https://beta.syrnike13.ru/api
+            VITE_PUBLIC_APP_URL=https://app.beta.syrnike13.ru
+            VITE_PUBLIC_SITE_URL=https://beta.syrnike13.ru
             VITE_WS_URL=wss://beta.syrnike13.ru/ws
             VITE_MEDIA_URL=https://beta.syrnike13.ru/autumn
             VITE_PROXY_URL=https://beta.syrnike13.ru/january
@@ -81,6 +83,32 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-web:nightly
             ghcr.io/${{ github.repository_owner }}/app-web:nightly-${{ needs.version.outputs.sha_tag }}
+
+  landing:
+    name: Publish nightly landing image
+    runs-on: ubuntu-24.04
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/landing/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13 Nightly
+            VITE_APP_URL=https://app.beta.syrnike13.ru
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-landing:nightly
+            ghcr.io/${{ github.repository_owner }}/app-landing:nightly-${{ needs.version.outputs.sha_tag }}
 
   admin:
     name: Publish nightly admin image
@@ -252,6 +280,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs:
       - web
+      - landing
       - admin
       - backend-services
       - livekit
@@ -259,13 +288,14 @@ jobs:
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.web.result == 'success' && needs.admin.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.web.result == 'success' && needs.landing.result == 'success' && needs.admin.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.NIGHTLY_DEPLOY_PATH || '/opt/syrnike13-nightly' }}
       EDGE_DEPLOY_PATH: ${{ vars.EDGE_DEPLOY_PATH || secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.NIGHTLY_SYRNIKE_DOMAIN || 'beta.syrnike13.ru' }}
+      SYRNIKE_APP_DOMAIN: ${{ vars.NIGHTLY_APP_DOMAIN || 'app.beta.syrnike13.ru' }}
       SYRNIKE_ADMIN_DOMAIN: ${{ vars.NIGHTLY_ADMIN_DOMAIN || 'admin.beta.syrnike13.ru' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
       CADDYFILE_CANDIDATE: /tmp/syrnike13-edge-Caddyfile-${{ github.run_id }}-${{ github.run_attempt }}
@@ -280,6 +310,7 @@ jobs:
           test -n "$DEPLOY_PATH"
           test -n "$EDGE_DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_APP_DOMAIN"
           test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
@@ -324,12 +355,12 @@ jobs:
           scp -i ~/.ssh/deploy_key deploy/production/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$CADDYFILE_CANDIDATE"
           scp -i ~/.ssh/deploy_key deploy/production/scripts/reload-caddy.sh "$DEPLOY_USER@$DEPLOY_HOST:$CADDY_RELOAD_SCRIPT"
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$EDGE_DEPLOY_PATH' && CADDY_NIGHTLY_HOSTNAME='$SYRNIKE_DOMAIN' CADDY_NIGHTLY_ADMIN_HOSTNAME='$SYRNIKE_ADMIN_DOMAIN' bash '$CADDY_RELOAD_SCRIPT' '$CADDYFILE_CANDIDATE' && rm -f '$CADDYFILE_CANDIDATE' '$CADDY_RELOAD_SCRIPT'"
+            "cd '$EDGE_DEPLOY_PATH' && CADDY_NIGHTLY_HOSTNAME='$SYRNIKE_DOMAIN' CADDY_NIGHTLY_APP_HOSTNAME='$SYRNIKE_APP_DOMAIN' CADDY_NIGHTLY_ADMIN_HOSTNAME='$SYRNIKE_ADMIN_DOMAIN' bash '$CADDY_RELOAD_SCRIPT' '$CADDYFILE_CANDIDATE' && rm -f '$CADDYFILE_CANDIDATE' '$CADDY_RELOAD_SCRIPT'"
       - name: Run nightly deploy
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' && ./scripts/deploy-on-server.sh"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_APP_DOMAIN='$SYRNIKE_APP_DOMAIN' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' && ./scripts/deploy-on-server.sh"
       - name: Verify nightly API
         run: |
           set -euo pipefail
@@ -344,6 +375,8 @@ jobs:
             sleep 10
           done
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_DOMAIN}/" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_APP_DOMAIN}/" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null
   desktop:
     name: Build nightly desktop packages
@@ -367,6 +400,7 @@ jobs:
       VITE_APP_TITLE: syrnike13 Nightly
       VITE_RELEASE_CHANNEL: nightly
       VITE_API_URL: https://beta.syrnike13.ru/api
+      VITE_PUBLIC_APP_URL: https://app.beta.syrnike13.ru
       VITE_WS_URL: wss://beta.syrnike13.ru/ws
       VITE_MEDIA_URL: https://beta.syrnike13.ru/autumn
       VITE_PROXY_URL: https://beta.syrnike13.ru/january

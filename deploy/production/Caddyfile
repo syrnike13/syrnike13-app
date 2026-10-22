@@ -16,26 +16,6 @@ import /etc/caddy/sites/*.caddyfile
 }
 
 {$HOSTNAME} {
-	route /app/serviceWorker.js {
-		header Content-Type "text/javascript; charset=utf-8"
-		header Cache-Control "no-store, no-cache, must-revalidate"
-		respond "self.addEventListener('install', event => self.skipWaiting()); self.addEventListener('activate', event => event.waitUntil((async () => { const keys = await caches.keys(); await Promise.all(keys.map(key => caches.delete(key))); await self.registration.unregister(); const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }); for (const client of clients) client.navigate('/'); })()));" 200
-	}
-
-	route /app/assets* {
-		uri strip_prefix /app
-		reverse_proxy http://syrnike13-web:5000 http://syrnike13-web-1:5000 {
-			import rolling_upstream
-		}
-	}
-
-	route /app/manifest.webmanifest {
-		uri strip_prefix /app
-		reverse_proxy http://syrnike13-web:5000 http://syrnike13-web-1:5000 {
-			import rolling_upstream
-		}
-	}
-
 	route /api* {
 		uri strip_prefix /api
 		reverse_proxy http://syrnike13-api:14702 http://syrnike13-api-1:14702 {
@@ -114,6 +94,32 @@ import /etc/caddy/sites/*.caddyfile
 		file_server
 	}
 
+	# Обновление service worker не допускает редиректов: kill-switch должен
+	# оставаться доступен на исходном origin, включая старый /app scope.
+	@legacy_worker path /serviceWorker.js /app/serviceWorker.js
+	route @legacy_worker {
+		rewrite * /sw.js
+		reverse_proxy http://syrnike13-landing:5000 http://syrnike13-landing-1:5000 {
+			import rolling_upstream
+		}
+	}
+
+	# Сначала меняем путь, затем редиректим весь URI вместе с query.
+	@legacy_app path /app /app/*
+	route @legacy_app {
+		uri strip_prefix /app
+		redir https://{$APP_HOSTNAME:app.syrnike13.ru}{uri} 308
+	}
+
+	@legacy_app_paths path /m /m/* /login /login/* /invite /invite/* /verify/* /desktop/* /dev/* /admin /admin/*
+	redir @legacy_app_paths https://{$APP_HOSTNAME:app.syrnike13.ru}{uri} 308
+
+	reverse_proxy http://syrnike13-landing:5000 http://syrnike13-landing-1:5000 {
+		import rolling_upstream
+	}
+}
+
+{$APP_HOSTNAME:app.syrnike13.ru} {
 	reverse_proxy http://syrnike13-web:5000 http://syrnike13-web-1:5000 {
 		import rolling_upstream
 	}
@@ -126,26 +132,6 @@ import /etc/caddy/sites/*.caddyfile
 }
 
 {$NIGHTLY_HOSTNAME:beta.syrnike13.ru} {
-	route /app/serviceWorker.js {
-		header Content-Type "text/javascript; charset=utf-8"
-		header Cache-Control "no-store, no-cache, must-revalidate"
-		respond "self.addEventListener('install', event => self.skipWaiting()); self.addEventListener('activate', event => event.waitUntil((async () => { const keys = await caches.keys(); await Promise.all(keys.map(key => caches.delete(key))); await self.registration.unregister(); const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }); for (const client of clients) client.navigate('/'); })()));" 200
-	}
-
-	route /app/assets* {
-		uri strip_prefix /app
-		reverse_proxy http://syrnike13-nightly-web:5000 {
-			import rolling_upstream
-		}
-	}
-
-	route /app/manifest.webmanifest {
-		uri strip_prefix /app
-		reverse_proxy http://syrnike13-nightly-web:5000 {
-			import rolling_upstream
-		}
-	}
-
 	route /api* {
 		uri strip_prefix /api
 		reverse_proxy http://syrnike13-nightly-api:14702 {
@@ -202,6 +188,29 @@ import /etc/caddy/sites/*.caddyfile
 		}
 	}
 
+	@legacy_worker path /serviceWorker.js /app/serviceWorker.js
+	route @legacy_worker {
+		rewrite * /sw.js
+		reverse_proxy http://syrnike13-nightly-landing:5000 {
+			import rolling_upstream
+		}
+	}
+
+	@legacy_app path /app /app/*
+	route @legacy_app {
+		uri strip_prefix /app
+		redir https://{$NIGHTLY_APP_HOSTNAME:app.beta.syrnike13.ru}{uri} 308
+	}
+
+	@legacy_app_paths path /m /m/* /login /login/* /invite /invite/* /verify/* /desktop/* /dev/* /admin /admin/*
+	redir @legacy_app_paths https://{$NIGHTLY_APP_HOSTNAME:app.beta.syrnike13.ru}{uri} 308
+
+	reverse_proxy http://syrnike13-nightly-landing:5000 {
+		import rolling_upstream
+	}
+}
+
+{$NIGHTLY_APP_HOSTNAME:app.beta.syrnike13.ru} {
 	reverse_proxy http://syrnike13-nightly-web:5000 {
 		import rolling_upstream
 	}

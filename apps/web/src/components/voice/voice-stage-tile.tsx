@@ -2,8 +2,9 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -13,19 +14,14 @@ import {
 } from '#/components/voice/voice-participant-icons'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
-import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
-import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { inviteUrl } from '#/lib/invite-link'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
+import { inviteUrl } from '#/lib/invite-link'
 
 const TILE_SURFACE =
-  'relative aspect-video w-full overflow-hidden rounded-xl shadow-inner transition-[background] duration-500 ease-out'
-
-function stageAvatarSize(compact: boolean) {
-  return compact
-    ? 'size-14 sm:size-16'
-    : 'size-20 sm:size-24 md:size-28 lg:size-32'
-}
+  'relative aspect-video w-full overflow-hidden rounded-xl shadow-inner transition-colors duration-500 ease-out'
 
 type VoiceStageTileProps = {
   participant: UserVoiceState
@@ -50,7 +46,9 @@ export function VoiceStageTile({
 }: VoiceStageTileProps) {
   const muted = participant.server_muted || participant.self_mute
   const deafened = participant.server_deafened || participant.self_deaf
-  const avatarSize = stageAvatarSize(compact)
+  const avatarSize = compact
+    ? 'size-14 sm:size-16'
+    : 'size-20 sm:size-24 md:size-28 lg:size-32'
   const palette = useVoiceTilePalette(user, participant.id)
 
   const canFocus = Boolean(onSelect)
@@ -61,12 +59,18 @@ export function VoiceStageTile({
       tabIndex={canFocus ? 0 : undefined}
       className={cn(
         TILE_SURFACE,
+        'tile-palette',
         dimmed && 'opacity-50',
         speaking && 'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
         canFocus && 'cursor-pointer hover:brightness-110',
-        focused && 'min-h-[min(50vh,24rem)]',
+        focused && 'min-h-voice-tile',
       )}
-      style={tilePaletteStyle(palette)}
+      style={
+        {
+          '--tile-from': palette.from,
+          '--tile-to': palette.to,
+        } as CSSVars
+      }
       onClick={canFocus ? onSelect : undefined}
       onKeyDown={
         canFocus
@@ -99,7 +103,7 @@ export function VoiceStageTile({
         </div>
       ) : null}
 
-      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
+      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-media-inset min-w-0 items-center gap-1.5 rounded bg-media-backdrop/55 px-1.5 py-0.5 text-xs font-medium text-on-media sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
@@ -120,13 +124,14 @@ export function VoiceStageInviteTile({
   channelId: string
   compact?: boolean
 }) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
 
   async function copyInvite() {
     if (!token) {
-      toast.error('Нет сессии')
+      toast.error(t('errors.noSession'))
       return
     }
     setBusy(true)
@@ -135,19 +140,19 @@ export function VoiceStageInviteTile({
         const invite = yield* createChannelInviteEffect(token, channelId, {})
         const code = '_id' in invite ? invite._id : ''
         if (!code) {
-          return yield* Effect.fail(new Error('Пустой код приглашения'))
+          return yield* Effect.fail(
+            new Error(t('errors.inviteEmpty')),
+          )
         }
         yield* writeClipboardTextEffect(inviteUrl(code))
         yield* Effect.sync(() =>
-          toast.success('Ссылка приглашения скопирована'),
+          toast.success(t('invite.copied')),
         )
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось создать приглашение',
+              apiErrorMessage(error, t('errors.inviteCreate')),
             )
           }),
         ),
@@ -160,17 +165,15 @@ export function VoiceStageInviteTile({
     <article
       className={cn(
         TILE_SURFACE,
-        'flex flex-col items-center justify-center gap-2 border border-dashed border-white/15 bg-muted/80 p-4 text-center',
+        'flex flex-col items-center justify-center gap-2 border border-dashed border-on-media/15 bg-muted/80 p-4 text-center',
         compact && 'gap-1.5 p-3',
       )}
-      style={{
-        backgroundImage:
-          'linear-gradient(to bottom right, rgb(43 45 49 / 0.95), rgb(35 36 40 / 0.95))',
-      }}
     >
-      <p className="text-sm font-medium text-foreground">Позовите друзей</p>
-      <p className="max-w-[90%] text-[11px] leading-snug text-muted-foreground sm:text-xs">
-        Скопируйте ссылку-приглашение на сервер.
+      <p className="text-sm font-medium text-foreground">
+        {t('actions.inviteFriends')}
+      </p>
+      <p className="max-w-90/100 text-xs leading-snug text-muted-foreground sm:text-xs">
+        {t('actions.inviteDescription')}
       </p>
       <Button
         type="button"
@@ -180,7 +183,7 @@ export function VoiceStageInviteTile({
         disabled={busy}
         onClick={() => void copyInvite()}
       >
-        {busy ? 'Создание…' : 'Скопировать приглашение'}
+        {busy ? t('actions.creatingInvite') : t('actions.copyInvite')}
       </Button>
     </article>
   )

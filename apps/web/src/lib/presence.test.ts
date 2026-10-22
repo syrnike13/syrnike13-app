@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Presence, User } from '@syrnike13/api-types'
+import { createTranslator } from '@syrnike13/ui/i18n'
+
+import ru from '#/messages/ru.json'
 
 import {
   PRESENCE_OPTIONS,
@@ -7,6 +10,8 @@ import {
   presenceLabel,
   presenceModeLabel,
 } from './presence'
+
+const t = createTranslator(ru, 'ru', 'chat')
 
 function userWithPresence(presence: Presence, online = true) {
   return {
@@ -23,9 +28,9 @@ describe('presence labels', () => {
   it('renders system idle as user-facing idle', () => {
     const presence = 'SystemIdle'
 
-    expect(presenceModeLabel(presence)).toBe('Не активен')
-    expect(presenceLabel(userWithPresence(presence))).toBe('не активен')
-    expect(presenceDotTitle(userWithPresence(presence))).toBe('Не активен')
+    expect(presenceModeLabel(presence, t)).toBe('Не активен')
+    expect(presenceLabel(userWithPresence(presence), t)).toBe('не активен')
+    expect(presenceDotTitle(userWithPresence(presence), t)).toBe('Не активен')
   })
 
   it('renders system online variants as user-facing online', () => {
@@ -35,9 +40,9 @@ describe('presence labels', () => {
     ] as const satisfies readonly Presence[]
 
     for (const presence of systemOnlinePresences) {
-      expect(presenceModeLabel(presence)).toBe('В сети')
-      expect(presenceLabel(userWithPresence(presence))).toBe('в сети')
-      expect(presenceDotTitle(userWithPresence(presence))).toBe('В сети')
+      expect(presenceModeLabel(presence, t)).toBe('В сети')
+      expect(presenceLabel(userWithPresence(presence), t)).toBe('в сети')
+      expect(presenceDotTitle(userWithPresence(presence), t)).toBe('В сети')
     }
   })
 

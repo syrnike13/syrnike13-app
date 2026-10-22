@@ -20,7 +20,7 @@ vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
   recordDiagnosticEvent: vi.fn(),
 }))
 import { VoiceStreamPreviewHoverCard } from './voice-stream-preview-hover-card'
-import { PortalContainerProvider } from '#/components/ui/portal-container'
+import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
 
 const createUrl = vi.fn(() => 'blob:test-preview')
 const revokeUrl = vi.fn()
@@ -53,9 +53,9 @@ it('fetches only on hover, refreshes while open, uses its portal, and releases U
       </VoiceStreamPreviewHoverCard>
     </PortalContainerProvider>,
   )
-  const trigger = screen.getByRole('button', { name: 'Streamer' })
+  const trigger = screen.getByRole('button', { name: 'Streamer' }).parentElement!
   expect(state.fetch).not.toHaveBeenCalled()
-  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
+  fireEvent.mouseEnter(trigger, { pointerType: 'mouse' })
   await act(() => vi.advanceTimersByTimeAsync(500))
   expect(state.fetch).toHaveBeenCalledTimes(1)
   expect(portal.textContent).toContain('Сейчас стримит')
@@ -63,7 +63,7 @@ it('fetches only on hover, refreshes while open, uses its portal, and releases U
   await act(() => vi.advanceTimersByTimeAsync(30_000))
   expect(state.fetch).toHaveBeenCalledTimes(2)
   expect(revokeUrl).toHaveBeenCalledTimes(1)
-  fireEvent.pointerLeave(trigger, { pointerType: 'mouse' })
+  fireEvent.mouseLeave(trigger, { pointerType: 'mouse' })
   await act(() => vi.advanceTimersByTimeAsync(201))
   expect(revokeUrl).toHaveBeenCalledTimes(2)
   await act(() => vi.advanceTimersByTimeAsync(60_000))
@@ -79,9 +79,10 @@ it('shows the unavailable state for a missing preview and invokes watch only fro
       <button>Streamer</button>
     </VoiceStreamPreviewHoverCard>,
   )
-  fireEvent.pointerEnter(screen.getByRole('button', { name: 'Streamer' }), {
-    pointerType: 'mouse',
-  })
+  fireEvent.mouseEnter(
+    screen.getByRole('button', { name: 'Streamer' }).parentElement!,
+    { pointerType: 'mouse' },
+  )
   await act(() => vi.advanceTimersByTimeAsync(500))
   expect(screen.getByText('Превью пока недоступно')).toBeTruthy()
   expect(state.watch).not.toHaveBeenCalled()
@@ -95,17 +96,18 @@ it('dismisses on pointer down and stays closed while the click profile is open',
       <button>Streamer</button>
     </VoiceStreamPreviewHoverCard>,
   )
-  const trigger = screen.getByRole('button', { name: 'Streamer' })
-  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
+  const button = screen.getByRole('button', { name: 'Streamer' })
+  const trigger = button.parentElement!
+  fireEvent.mouseEnter(trigger, { pointerType: 'mouse' })
   await act(() => vi.advanceTimersByTimeAsync(500))
-  fireEvent.pointerDown(trigger)
+  fireEvent.pointerDown(button)
   view.rerender(
     <VoiceStreamPreviewHoverCard channelId="voice" userId="streamer" suspended>
       <button>Streamer</button>
     </VoiceStreamPreviewHoverCard>,
   )
-  fireEvent.pointerLeave(trigger)
-  fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
+  fireEvent.mouseLeave(trigger)
+  fireEvent.mouseEnter(trigger, { pointerType: 'mouse' })
   await act(() => vi.advanceTimersByTimeAsync(31_000))
   expect(state.fetch).toHaveBeenCalledTimes(1)
   expect(screen.queryByText('Сейчас стримит')).toBeNull()

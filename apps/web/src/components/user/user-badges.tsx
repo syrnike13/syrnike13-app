@@ -6,8 +6,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
-import { badgeIconSizeClass, type BadgeIconSize } from '#/lib/badge-icon'
+} from '@syrnike13/ui/primitives/tooltip'
+import type { BadgeIconSize } from '#/lib/badge-icon'
 import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
@@ -24,10 +24,13 @@ function BadgeIconImage({
   src: string
   size: BadgeIconSize | 'tooltip'
 }) {
+  const iconSizeClass =
+    size === 'sm' ? 'size-5' : size === 'md' ? 'size-6' : 'size-7'
+
   return (
     <FxImage
       src={src}
-      wrapperClassName={cn(badgeIconSizeClass[size], 'shrink-0')}
+      wrapperClassName={cn(iconSizeClass, 'shrink-0')}
       className="size-full object-contain"
     />
   )
@@ -50,14 +53,16 @@ export function UserBadges({
 
           return (
             <Tooltip key={badge._id}>
-              <TooltipTrigger asChild>
-                <span
-                  className="inline-flex shrink-0 items-center justify-center"
-                  aria-label={badge.name}
-                  tabIndex={0}
-                >
-                  <BadgeIconImage src={iconUrl} size={size} />
-                </span>
+              <TooltipTrigger
+                render={
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center"
+                    aria-label={badge.name}
+                    tabIndex={0}
+                  />
+                }
+              >
+                <BadgeIconImage src={iconUrl} size={size} />
               </TooltipTrigger>
               <TooltipContent
                 side="top"

@@ -5,7 +5,7 @@ import { cn } from '#/lib/utils'
 const CHROME_IDLE_MS = 2_500
 
 const chromeMotionTransition =
-  'transition-[transform,opacity] duration-300 ease-out' as const
+  'transition duration-300 ease-out' as const
 
 export function voiceStageChromeMotion(
   visible: boolean,

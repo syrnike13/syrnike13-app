@@ -1,24 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
 import { PinIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 import { fetchPinnedMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
@@ -36,6 +40,7 @@ export function ChannelPinnedDialog({
   users,
   triggerClassName,
 }: ChannelPinnedDialogProps) {
+  const t = useTranslations('chat')
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
@@ -72,43 +77,42 @@ export function ChannelPinnedDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
+      <DialogTrigger render={<Button
           type="button"
           variant="ghost"
           size="icon"
-          className={cn('size-8', triggerClassName)}
-          title="Закреплённые сообщения"
-        >
+          className={cn(
+            'size-8',
+            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
+            triggerClassName,
+          )}
+          title={t('pinnedTitle')} />}>
           <PinIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="flex max-h-[80vh] max-w-lg flex-col gap-4">
+        </DialogTrigger>
+      <DialogContent className="flex max-h-dialog-xs max-w-lg flex-col gap-4">
         <DialogHeader>
-          <DialogTitle>Закреплённые сообщения</DialogTitle>
+          <DialogTitle>{t('pinnedTitle')}</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {pinnedQuery.isFetching ? (
-            <p className="text-sm text-muted-foreground">Загрузка…</p>
+            <Spinner className="mx-auto" />
           ) : null}
           {pinnedQuery.isError ? (
             <p className="text-sm text-destructive">
-              {pinnedQuery.error instanceof Error
-                ? pinnedQuery.error.message
-                : 'Не удалось загрузить'}
+              {apiErrorMessage(pinnedQuery.error, t('loadError'))}
             </p>
           ) : null}
           {!pinnedQuery.isFetching &&
           !pinnedQuery.isError &&
           messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Нет закреплённых сообщений
-            </p>
+            <Empty className="py-8">
+              <EmptyDescription>{t('noPinned')}</EmptyDescription>
+            </Empty>
           ) : null}
           {messages.map((message) => {
             const author = message.user ?? users[message.author]
             const name =
-              author?.display_name ?? author?.username ?? 'Неизвестный'
+              author?.display_name ?? author?.username ?? t('unknownAuthor')
 
             return (
               <article
@@ -147,7 +151,7 @@ export function ChannelPinnedDialog({
                     })}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground italic">[без текста]</p>
+                  <p className="text-muted-foreground italic">{t('noText')}</p>
                 )}
                 <Button
                   type="button"
@@ -160,18 +164,18 @@ export function ChannelPinnedDialog({
                         Effect.matchEffect({
                           onFailure: () =>
                             Effect.sync(() => {
-                              toast.error('Не удалось скопировать')
+                              toast.error(t('copyError'))
                             }),
                           onSuccess: () =>
                             Effect.sync(() => {
-                              toast.success('ID скопирован')
+                              toast.success(t('idCopied'))
                             }),
                         }),
                       ),
                     )
                   }}
                 >
-                  Копировать ID
+                  {t('copyId')}
                 </Button>
               </article>
             )

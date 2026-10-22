@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
@@ -8,6 +9,7 @@ import {
   MESSAGE_PAGE_SIZE,
 } from '#/features/api/messages-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 const HIGHLIGHT_CLASS = 'ring-2 ring-primary ring-offset-2 ring-offset-background'
 
@@ -16,6 +18,7 @@ export function useJumpToMessage(
   messageId: string | undefined,
   token: string | undefined,
 ) {
+  const t = useTranslations('chat')
   const lastJumped = useRef<string | null>(null)
 
   useEffect(() => {
@@ -77,7 +80,7 @@ export function useJumpToMessage(
         yield* nextAnimationFrame
         yield* Effect.sync(() => {
           if (!scrollTo()) {
-            toast.error('Сообщение не найдено в ленте')
+            toast.error(t('messageNotFound'))
           } else {
             lastJumped.current = messageId
           }
@@ -86,9 +89,7 @@ export function useJumpToMessage(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось открыть сообщение',
+              apiErrorMessage(error, t('openMessageError')),
             )
           }),
         ),
@@ -98,5 +99,5 @@ export function useJumpToMessage(
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [channelId, messageId, token])
+  }, [channelId, messageId, t, token])
 }

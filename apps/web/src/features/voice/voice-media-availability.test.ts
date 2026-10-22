@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
@@ -11,6 +13,8 @@ import {
   resolveScreenShareAvailability,
   voiceMediaControlState,
 } from './voice-media-availability'
+
+const t = createTranslator(ru, 'ru', 'voice.media')
 
 vi.mock('#/platform/runtime', () => ({
   getSyrnikeDesktop: vi.fn(() => null),
@@ -34,30 +38,41 @@ describe('voice media availability', () => {
   it('treats empty device lists as unavailable', () => {
     expect(hasDetectedMediaDevices([])).toBe(false)
     expect(
-      resolveMicrophoneAvailability({ inputDevices: [], micIssue: null }).available,
+      resolveMicrophoneAvailability(
+        { inputDevices: [], micIssue: null },
+        t,
+      ).available,
     ).toBe(false)
-    expect(
-      resolveCameraAvailability({ videoDevices: [] }).title,
-    ).toBe('Камера недоступна')
+    expect(resolveCameraAvailability({ videoDevices: [] }, t).title).toBe(
+      'Камера недоступна',
+    )
   })
 
   it('marks microphone unavailable when runtime mic issue exists', () => {
-    const availability = resolveMicrophoneAvailability({
-      inputDevices: [{ deviceId: 'mic', kind: 'audioinput' } as MediaDeviceInfo],
-      micIssue: {
-        label: 'Микрофон занят',
-        hint: 'Закройте другие программы.',
+    const availability = resolveMicrophoneAvailability(
+      {
+        inputDevices: [
+          { deviceId: 'mic', kind: 'audioinput' } as MediaDeviceInfo,
+        ],
+        micIssue: {
+          label: 'Микрофон занят',
+          hint: 'Закройте другие программы.',
+        },
       },
-    })
+      t,
+    )
 
     expect(availability.available).toBe(false)
     expect(availability.title).toBe('Микрофон недоступен')
   })
 
   it('blocks enabling controls only while media is off', () => {
-    const availability = resolveCameraAvailability({
-      videoDevices: [],
-    })
+    const availability = resolveCameraAvailability(
+      {
+        videoDevices: [],
+      },
+      t,
+    )
 
     expect(
       voiceMediaControlState({
@@ -82,14 +97,20 @@ describe('voice media availability', () => {
   })
 
   it('blocks unmuting when microphone is unavailable', () => {
-    const state = microphoneMediaControlState({
-      availability: resolveMicrophoneAvailability({
-        inputDevices: [],
-        micIssue: null,
-      }),
-      inVoice: true,
-      micMuted: true,
-    })
+    const state = microphoneMediaControlState(
+      {
+        availability: resolveMicrophoneAvailability(
+          {
+            inputDevices: [],
+            micIssue: null,
+          },
+          t,
+        ),
+        inVoice: true,
+        micMuted: true,
+      },
+      t,
+    )
 
     expect(state.disabled).toBe(true)
     expect(state.title).toBe('Микрофон недоступен')
@@ -101,17 +122,24 @@ describe('voice media availability', () => {
       media: { openDisplayPicker: vi.fn() },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    expect(resolveScreenShareAvailability().available).toBe(true)
+    expect(resolveScreenShareAvailability(t).available).toBe(true)
   })
 
   it('builds a full availability snapshot', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
 
-    const state = buildVoiceMediaAvailabilityState({
-      inputDevices: [{ deviceId: 'mic', kind: 'audioinput' } as MediaDeviceInfo],
-      videoDevices: [{ deviceId: 'cam', kind: 'videoinput' } as MediaDeviceInfo],
-      micIssue: null,
-    })
+    const state = buildVoiceMediaAvailabilityState(
+      {
+        inputDevices: [
+          { deviceId: 'mic', kind: 'audioinput' } as MediaDeviceInfo,
+        ],
+        videoDevices: [
+          { deviceId: 'cam', kind: 'videoinput' } as MediaDeviceInfo,
+        ],
+        micIssue: null,
+      },
+      t,
+    )
 
     expect(state.microphone.available).toBe(true)
     expect(state.camera.available).toBe(true)

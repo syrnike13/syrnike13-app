@@ -44,7 +44,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
 }))
 
 vi.mock('#/features/voice/voice-session-context', () => ({
@@ -82,7 +82,7 @@ describe('VoicePanelMediaBar Activities button', () => {
     expect(button.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(button)
     expect(testState.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-a' },
       search: { m: undefined },
     })

@@ -6,7 +6,7 @@ type UserProfileStatusBubbleProps = {
 }
 
 /**
- * Облачко кастомного статуса рядом с аватаром (как в Discord):
+ * Облачко кастомного статуса рядом с аватаром:
  * два «хвостовых» пузырька, ведущие от аватара к облаку с текстом.
  */
 export function UserProfileStatusBubble({
@@ -32,7 +32,7 @@ export function UserProfileStatusBubble({
         aria-hidden
         className="gradient-surface-solid absolute -top-1.5 left-1.5 size-5 rounded-full bg-popover shadow-sm"
       />
-      <div className="gradient-surface-solid relative w-max max-w-[200px] rounded-2xl bg-popover px-3 py-1.5 text-sm leading-snug text-popover-foreground shadow-md">
+      <div className="gradient-surface-solid relative w-max max-w-45.25 rounded-2xl bg-popover px-3 py-2 text-sm leading-4.5 text-popover-foreground shadow-md">
         <p className="line-clamp-2">{text}</p>
       </div>
     </div>

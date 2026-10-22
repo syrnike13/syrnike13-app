@@ -1,10 +1,11 @@
 import {
   defaultMentionClassName,
-  mentionColourStyle,
+  mentionColourValues,
 } from '#/lib/mention-styles'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
-export { defaultMentionClassName, mentionColourStyle }
+export { defaultMentionClassName, mentionColourValues }
 
 export function MentionPill({
   label,
@@ -15,7 +16,13 @@ export function MentionPill({
   nameColour?: string
   className?: string
 }) {
-  const colourStyle = mentionColourStyle(nameColour)
+  const colours = mentionColourValues(nameColour)
+  const colourStyle = colours
+    ? ({
+        '--mention-bg': colours.background,
+        '--mention-bg-hover': colours.backgroundHover,
+      } as CSSVars)
+    : undefined
 
   return (
     <span
@@ -23,7 +30,8 @@ export function MentionPill({
       className={cn(
         'inline rounded-sm px-0.5 font-medium transition-colors',
         !nameColour && defaultMentionClassName,
-        nameColour && 'hover:[background-color:var(--mention-bg-hover)]',
+        nameColour &&
+          'bg-(--mention-bg) text-foreground hover:bg-(--mention-bg-hover)',
         className,
       )}
     >

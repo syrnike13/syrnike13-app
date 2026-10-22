@@ -20,6 +20,8 @@ import {
   isOutgoingVoiceCall,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
 import { railAvatarClass } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -30,21 +32,22 @@ function voiceCallMarkerTitleForCall(
   voiceCall: VoiceCallState | undefined,
   dismissedVoiceCallKeys: Record<string, true>,
   currentUserId: string | undefined,
+  t: (key: string) => string,
 ): string | null {
   if (voiceCall?.phase === 'active') {
-    return 'Идёт звонок'
+    return t('activeCall')
   }
   if (
     !isVoiceCallRingingDismissed(voiceCall, dismissedVoiceCallKeys) &&
     isIncomingVoiceCall(voiceCall, currentUserId)
   ) {
-    return 'Входящий звонок'
+    return t('incomingCall')
   }
   if (
     !isVoiceCallRingingDismissed(voiceCall, dismissedVoiceCallKeys) &&
     isOutgoingVoiceCall(voiceCall, currentUserId)
   ) {
-    return 'Исходящий звонок'
+    return t('outgoingCall')
   }
   return null
 }
@@ -93,6 +96,8 @@ function PeopleRailButton({
   activeChannelId?: string
   currentUserId?: string
 }) {
+  const t = useTranslations('layout.voice')
+  const tChat = useTranslations('chat')
   const users = useSyncStore((s) => s.users)
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
@@ -102,14 +107,15 @@ function PeopleRailButton({
       s.voiceCalls[channel._id],
       s.dismissedVoiceCallKeys,
       currentUserId,
+      t,
     ),
   )
 
   const active = channel._id === activeChannelId
-  const label = getChannelLabel(channel, users, currentUserId)
+  const label = getChannelLabel(channel, users, currentUserId, tChat)
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
+  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
 
@@ -123,15 +129,15 @@ function PeopleRailButton({
       className={cn(
         'group relative flex shrink-0 items-center justify-center overflow-visible p-0.5',
         'rounded-full outline-none transition-opacity hover:opacity-90',
-        'focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        'focus-visible:ring-3 focus-visible:ring-ring/50',
       )}
     >
       <RailActiveIndicator active={active} />
       {dmUser ? (
         <UserAvatar
           user={dmUser}
-          className={railAvatarClass}
-          fallbackClassName={cn(railAvatarClass, 'text-xs')}
+          className="size-10"
+          fallbackClassName="size-10 text-xs"
           showPresence={false}
           notificationBadge={railNotificationBadge}
           notificationRingClassName="border-background"

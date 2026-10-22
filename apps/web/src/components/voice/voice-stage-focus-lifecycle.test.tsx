@@ -37,6 +37,23 @@ describe('VoiceStageFocusStage media lifecycle', () => {
     vi.unstubAllGlobals()
   })
 
+  it('caps the filmstrip to six visible tiles', () => {
+    const items = Array.from({ length: 9 }, (_, index) => ({
+      id: `item-${index}`,
+    }))
+
+    render(
+      <VoiceStageFocusStage
+        focusedItem={items[0]}
+        mediaItems={items}
+        chromeVisible
+        renderTile={(item) => <div>{item.id}</div>}
+      />,
+    )
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(6)
+  })
+
   it('releases hidden filmstrip media after the collapse transition', () => {
     const mounted = new Set<string>()
     const items = [

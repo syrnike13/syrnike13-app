@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { PhoneOffIcon, SignalIcon } from '#/components/icons'
 
-import { Button } from '#/components/ui/button'
-import { Popover, PopoverTrigger } from '#/components/ui/popover'
-import { TooltipProvider } from '#/components/ui/tooltip'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Popover, PopoverTrigger } from '@syrnike13/ui/primitives/popover'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoicePingPopoverContent } from '#/components/voice/voice-ping-popover'
 import { formatVoicePingLabel } from '#/features/voice/voice-ping'
@@ -20,8 +21,9 @@ import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
-/** Компактная подсказка пинга, как в Discord. */
-const pingTooltipClass = 'px-2 py-1 text-[11px] leading-none font-medium'
+/** Компактная подсказка пинга. */
+const pingTooltipClass =
+  'px-2 py-1 text-xs leading-none font-medium'
 
 const VOICE_STATUS_CONNECTED = {
   accent: 'text-chart-3',
@@ -42,6 +44,9 @@ const VOICE_STATUS_FAILED = {
 } as const
 
 export function VoiceConnectionStrip() {
+  const t = useTranslations('voice')
+  const ts = useTranslations('voice.status')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const voiceTelemetry = useVoiceTelemetry()
@@ -59,8 +64,8 @@ export function VoiceConnectionStrip() {
 
   const channelLabel =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
-      : 'Голосовой канал'
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
+      : t('channel')
 
   const locationLabel = server
     ? `${channelLabel} / ${server.name}`
@@ -76,14 +81,21 @@ export function VoiceConnectionStrip() {
       : connected
         ? VOICE_STATUS_CONNECTED
         : VOICE_STATUS_CONNECTING
-  const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase)
+  const statusIconBg =
+    voice.connectionPhase === 'failed'
+      ? 'bg-destructive/15'
+      : connected
+        ? 'bg-chart-3/15'
+        : 'bg-chart-2/15'
+  const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase, ts)
   const pingLabel = formatVoicePingLabel(
     voiceTelemetry.voicePingMs,
     connected,
+    t,
   )
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
     <div
       className={cn('px-2 pt-2 pb-1', !connected && 'animate-pulse')}
     >
@@ -94,21 +106,18 @@ export function VoiceConnectionStrip() {
             title={pingLabel}
             contentClassName={pingTooltipClass}
           >
-              <PopoverTrigger asChild>
-                <button
+              <PopoverTrigger render={<button
                   type="button"
                   className={cn(
                     'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
-                    status.iconBg,
+                    statusIconBg,
                   )}
-                  aria-label={`${pingLabel}. Открыть статистику подключения`}
-                >
+                  aria-label={`${pingLabel}. ${t('openStats')}`} />}>
                   <SignalIcon
                     className={cn('size-4', status.icon)}
                     aria-hidden
                   />
-                </button>
-              </PopoverTrigger>
+                </PopoverTrigger>
             </VoiceControlTooltip>
             <VoicePingPopoverContent />
           </Popover>
@@ -134,7 +143,7 @@ export function VoiceConnectionStrip() {
             {statusLabel}
           </p>
           <Link
-            to={prefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId'}
+            to={prefix === '/m' ? '/m/c/$channelId' : '/c/$channelId'}
             params={{ channelId: voice.channelId }}
             search={{ m: undefined }}
             className="block truncate text-xs leading-4 text-muted-foreground hover:text-foreground hover:underline"
@@ -144,13 +153,13 @@ export function VoiceConnectionStrip() {
           </Link>
         </div>
 
-        <VoiceControlTooltip title="Отключиться от голоса">
+        <VoiceControlTooltip title={t('disconnect')}>
         <Button
           type="button"
           size="icon"
           variant="ghost"
-          className="size-8 shrink-0 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          aria-label="Отключиться от голоса"
+          className="size-8 shrink-0 text-destructive hover:text-destructive"
+          aria-label={t('disconnect')}
           onClick={voice.leave}
         >
           <PhoneOffIcon className="size-4" />

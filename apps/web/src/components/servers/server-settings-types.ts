@@ -33,13 +33,16 @@ export function parseServerSettingsTab(
   )
 }
 
-export const SERVER_SETTINGS_TAB_LABELS: Record<ServerSettingsTab, string> = {
-  overview: 'Профиль сервера',
-  engagement: 'Вовлеченность',
-  emoji: 'Emoji',
-  roles: 'Роли',
-  members: 'Участники',
-  bans: 'Баны',
-  invites: 'Приглашения',
-  audit: 'Журнал аудита',
+export const SERVER_SETTINGS_TAB_LABEL_KEYS: Record<
+  ServerSettingsTab,
+  string
+> = {
+  overview: 'tabs.overview',
+  engagement: 'tabs.engagement',
+  emoji: 'tabs.emoji',
+  roles: 'tabs.roles',
+  members: 'tabs.members',
+  bans: 'tabs.bans',
+  invites: 'tabs.invites',
+  audit: 'tabs.audit',
 }

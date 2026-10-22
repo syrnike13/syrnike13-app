@@ -1,8 +1,9 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
@@ -23,6 +24,8 @@ type IncomingVoiceCallOverlayProps = {
 export function IncomingVoiceCallOverlay({
   activeChannelId,
 }: IncomingVoiceCallOverlayProps) {
+  const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
@@ -52,7 +55,7 @@ export function IncomingVoiceCallOverlay({
         call,
         channel,
         initiator: state.users[call.initiatorId],
-        channelTitle: getChannelLabel(channel, state.users, currentUserId),
+        channelTitle: getChannelLabel(channel, state.users, currentUserId, tChat),
       }
     }
 
@@ -63,16 +66,16 @@ export function IncomingVoiceCallOverlay({
 
   const { call, channel, channelTitle, initiator } = incoming
   const initiatorName =
-    initiator?.display_name ??
-    initiator?.username ??
-    'Пользователь'
+    initiator?.display_name ?? initiator?.username ?? t('call.user')
   const token = auth.session?.token
   const title =
     channel.channel_type === 'DirectMessage'
-      ? 'Личный звонок'
-      : 'Групповой звонок'
+      ? t('call.direct')
+      : t('call.group')
   const declineLabel =
-    channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+    channel.channel_type === 'DirectMessage'
+      ? t('actions.decline')
+      : t('actions.hide')
 
   function declineIncomingCall() {
     if (channel.channel_type === 'DirectMessage') {
@@ -97,7 +100,7 @@ export function IncomingVoiceCallOverlay({
 
   return (
     <div
-      className="gradient-surface-raised fixed right-4 bottom-4 z-[120] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-2xl"
+      className="gradient-surface-raised fixed right-4 bottom-4 z-120 flex w-incoming-call flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-2xl"
       role="status"
       aria-live="polite"
     >
@@ -117,7 +120,7 @@ export function IncomingVoiceCallOverlay({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{title}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {initiatorName} звонит
+            {t('call.incoming', { name: initiatorName })}
           </p>
           {channel.channel_type !== 'DirectMessage' ? (
             <p className="truncate text-xs text-muted-foreground">
@@ -131,7 +134,8 @@ export function IncomingVoiceCallOverlay({
         <Button
           type="button"
           size="sm"
-          className="flex-1 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
+          variant="default"
+          className="flex-1"
           onClick={() => {
             Effect.runFork(
               Effect.tryPromise({
@@ -154,7 +158,7 @@ export function IncomingVoiceCallOverlay({
                   return Effect.tryPromise({
                     try: () =>
                       navigate({
-                        to: '/app/c/$channelId',
+                        to: '/c/$channelId',
                         params: { channelId: call.channelId },
                         search: { m: undefined },
                       }),
@@ -167,7 +171,7 @@ export function IncomingVoiceCallOverlay({
           }}
         >
           <HeadphonesIcon className="size-4" />
-          Ответить
+          {t('call.answer')}
         </Button>
         <Button
           type="button"

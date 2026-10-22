@@ -4,23 +4,24 @@ import { useState } from 'react'
 import { HashIcon, Volume2BoldIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
+} from '@syrnike13/ui/primitives/select'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerChannelEffect,
@@ -28,6 +29,7 @@ import {
 } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
 
@@ -44,6 +46,7 @@ export function CreateChannelDialog({
   onOpenChange,
   categoryId,
 }: CreateChannelDialogProps) {
+  const t = useTranslations('servers.channels')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -90,9 +93,7 @@ export function CreateChannelDialog({
               Effect.catch((error) =>
                 Effect.sync(() => {
                   toast.error(
-                    error instanceof Error
-                      ? `Канал создан, но не удалось добавить в категорию: ${error.message}`
-                      : 'Канал создан, но не удалось добавить в категорию',
+                    apiErrorMessage(error, t('categoryError')),
                   )
                 }),
               ),
@@ -104,7 +105,7 @@ export function CreateChannelDialog({
           onOpenChange(false)
           setName('')
           setType('Text')
-          toast.success(`Канал «${trimmed}» создан`)
+          toast.success(t('created', { name: trimmed }))
         })
         yield* Effect.tryPromise({
           try: () =>
@@ -119,9 +120,7 @@ export function CreateChannelDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось создать канал',
+              apiErrorMessage(error, t('createError')),
             )
           }),
         ),
@@ -134,7 +133,7 @@ export function CreateChannelDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Создать канал</DialogTitle>
+          <DialogTitle>{t('title')}</DialogTitle>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -144,17 +143,17 @@ export function CreateChannelDialog({
           }}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="channel-name">Название</Label>
+            <Label htmlFor="channel-name">{t('name')}</Label>
             <Input
               id="channel-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="общий"
+              placeholder={t('namePlaceholder')}
               autoFocus
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Тип</Label>
+            <Label>{t('type')}</Label>
             <Select
               value={type}
               onValueChange={(value) => {
@@ -171,20 +170,20 @@ export function CreateChannelDialog({
                 <SelectItem value="Text">
                   <span className="flex items-center gap-2">
                     <HashIcon className="size-4" />
-                    Текстовый
+                    {t('text')}
                   </span>
                 </SelectItem>
                 <SelectItem value="Voice">
                   <span className="flex items-center gap-2">
                     <Volume2BoldIcon className="size-4" />
-                    Голосовой
+                    {t('voice')}
                   </span>
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <Button type="submit" disabled={saving || !name.trim()}>
-            Создать
+            {t('create')}
           </Button>
         </form>
       </DialogContent>

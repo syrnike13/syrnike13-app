@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   ChevronRightIcon,
   MonitorUpIcon,
@@ -7,14 +8,18 @@ import {
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
-} from '#/components/ui/popover'
+  PopoverTrigger,
+} from '@syrnike13/ui/primitives/popover'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   voiceStagePopoverContentClass,
   voiceStagePopoverMenuItemClass,
   voiceStagePopoverNavRowClass,
-  voiceStagePopoverSeparatorClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
@@ -51,11 +56,17 @@ const RESOLUTION_ORDER: readonly StreamResolution[] = [
   'source',
 ]
 
-const RESOLUTION_LABELS: Record<StreamResolution, string> = {
-  '540p': '540p',
-  '720p': '720p',
-  '1080p': '1080p',
-  source: 'Источник',
+const RESOLUTION_LABELS: Record<Exclude<StreamResolution, 'source'>, string> =
+  {
+    '540p': '540p',
+    '720p': '720p',
+    '1080p': '1080p',
+  }
+
+function resolutionLabel(resolution: StreamResolution, t: Translator) {
+  return resolution === 'source'
+    ? t('sharePicker.source')
+    : RESOLUTION_LABELS[resolution]
 }
 
 const NATIVE_COMBOS: readonly QualityCombo[] = NATIVE_SCREEN_SHARE_PROFILES.map(
@@ -93,6 +104,7 @@ function closest<T>(items: readonly T[], distance: (item: T) => number) {
  * выбирается ближайшее доступное.
  */
 export function useScreenShareQuality() {
+  const t = useTranslations('voice')
   const { capabilities } = usePlatform()
   const prefs = useVoicePreferences()
   const native = capabilities.nativeScreenShare
@@ -123,8 +135,8 @@ export function useScreenShareQuality() {
     resolutions,
     fpsValues,
     resolutionLabel: (resolution: StreamResolution) =>
-      RESOLUTION_LABELS[resolution],
-    summary: `${RESOLUTION_LABELS[current.resolution]} · ${current.fps} FPS`,
+      resolutionLabel(resolution, t),
+    summary: `${resolutionLabel(current.resolution, t)} · ${current.fps} FPS`,
     setResolution: (resolution: StreamResolution) => {
       const candidates = combos.filter(
         (combo) => combo.resolution === resolution,
@@ -147,43 +159,26 @@ export function useScreenShareQuality() {
   }
 }
 
-function RadioMark({ checked }: { checked: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'flex size-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-        checked ? 'border-primary' : 'border-muted-foreground/60',
-      )}
-    >
-      {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-    </span>
-  )
-}
-
 function RadioRow({
   label,
+  value,
   checked,
-  onSelect,
 }: {
   label: string
+  value: string
   checked: boolean
-  onSelect: () => void
 }) {
   return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={checked}
+    <label
       className={cn(
         voiceStagePopoverMenuItemClass,
         'w-full cursor-pointer justify-between gap-3',
+        checked && 'bg-accent/60 text-foreground',
       )}
-      onClick={onSelect}
     >
       <span className="min-w-0 truncate">{label}</span>
-      <RadioMark checked={checked} />
-    </button>
+      <RadioGroupItem value={value} aria-label={label} />
+    </label>
   )
 }
 
@@ -196,52 +191,70 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export function ScreenShareFpsOptions() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label="Частота кадров">
+    <RadioGroup
+      value={String(quality.fps)}
+      aria-label={t('sharePicker.frameRate')}
+      className="gap-0.5"
+      onValueChange={(next) => {
+        const fps = Number(next)
+        if (Number.isFinite(fps)) quality.setFps(fps)
+      }}
+    >
       {quality.fpsValues.map((fps) => (
         <RadioRow
           key={fps}
-          label={`${fps} кадров в секунду`}
+          label={t('sharePicker.fpsValue', { fps })}
+          value={String(fps)}
           checked={quality.fps === fps}
-          onSelect={() => quality.setFps(fps)}
         />
       ))}
-    </div>
+    </RadioGroup>
   )
 }
 
 export function ScreenShareResolutionOptions() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
-    <div role="group" aria-label="Разрешение">
+    <RadioGroup
+      value={quality.resolution}
+      aria-label={t('sharePicker.resolution')}
+      className="gap-0.5"
+      onValueChange={(next) =>
+        quality.setResolution(next as StreamResolution)
+      }
+    >
       {quality.resolutions.map((resolution) => (
         <RadioRow
           key={resolution}
           label={quality.resolutionLabel(resolution)}
+          value={resolution}
           checked={quality.resolution === resolution}
-          onSelect={() => quality.setResolution(resolution)}
         />
       ))}
-    </div>
+    </RadioGroup>
   )
 }
 
 /** Обе группы подряд: «Частота кадров» и «Разрешение». */
 export function ScreenShareQualitySections() {
+  const t = useTranslations('voice')
   return (
     <div className="flex flex-col">
-      <SectionTitle>Частота кадров</SectionTitle>
+      <SectionTitle>{t('sharePicker.frameRate')}</SectionTitle>
       <ScreenShareFpsOptions />
-      <div className={cn(voiceStagePopoverSeparatorClass, 'my-1.5')} />
-      <SectionTitle>Разрешение</SectionTitle>
+      <Separator className="my-1.5" />
+      <SectionTitle>{t('sharePicker.resolution')}</SectionTitle>
       <ScreenShareResolutionOptions />
     </div>
   )
 }
 
 /**
- * Строка меню со вложенным подменю (как в Discord). Подменю — отдельный
+ * Строка меню со вложенным подменю. Подменю — отдельный
  * поповер в портале: сам упирается в края окна, не обрезается контейнером.
  */
 export function StreamSettingsSubmenu({
@@ -272,38 +285,38 @@ export function StreamSettingsSubmenu({
   }
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
-          onPointerEnter={show}
-          onPointerLeave={scheduleClose}
-          onFocus={show}
-          onClick={show}
-        >
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {hint ? (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {hint}
-            </span>
-          ) : null}
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </PopoverAnchor>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover row class
+              voiceStagePopoverNavRowClass,
+              open && 'bg-accent/70',
+            )}
+            onPointerEnter={show}
+            onPointerLeave={scheduleClose}
+          />
+        }
+      >
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {hint ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+        ) : null}
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
       <PopoverContent
-        role="menu"
         side={side}
         align="start"
         sideOffset={6}
-        collisionPadding={8}
         data-mini-control
-        className={cn(voiceStagePopoverContentClass, 'z-[520] w-60 p-1')}
+        className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverContentClass,
+          'z-520 w-60 p-1',
+        )}
         onPointerEnter={cancelClose}
         onPointerLeave={scheduleClose}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {children}
       </PopoverContent>
@@ -311,12 +324,13 @@ export function StreamSettingsSubmenu({
   )
 }
 
-/** Меню под стрелкой у кнопки демонстрации (как в Discord). */
+/** Меню под стрелкой у кнопки демонстрации. */
 export function VoiceStreamSettingsMenuContent({
   submenuSide = 'right',
 }: {
   submenuSide?: 'left' | 'right'
 }) {
+  const t = useTranslations('voice')
   const voiceMedia = useVoiceMedia()
   const quality = useScreenShareQuality()
   const sharing = voiceMedia.screenShareEnabled || voiceMedia.screenShareStarting
@@ -333,7 +347,7 @@ export function VoiceStreamSettingsMenuContent({
             onClick={voiceMedia.toggleScreenShare}
           >
             <MonitorXIcon className="size-4 shrink-0" />
-            <span>Прекратить стрим</span>
+            <span>{t('actions.stopStream')}</span>
           </button>
           {voiceMedia.changeScreenShareSource ? (
             <button
@@ -342,14 +356,14 @@ export function VoiceStreamSettingsMenuContent({
               onClick={voiceMedia.changeScreenShareSource}
             >
               <MonitorUpIcon className="size-4 shrink-0" />
-              <span>Изменить источник</span>
+              <span>{t('actions.changeSource')}</span>
             </button>
           ) : null}
-          <div className={voiceStagePopoverSeparatorClass} role="separator" />
+          <Separator className="my-0.5" />
         </>
       ) : null}
       <StreamSettingsSubmenu
-        label="Качество передачи"
+        label={t('sharePicker.qualityLabel')}
         hint={quality.summary}
         side={submenuSide}
       >

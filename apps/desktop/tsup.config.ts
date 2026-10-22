@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
-const WEB_DEV_URL = process.env.SYRNIKE_WEB_DEV_URL ?? 'http://127.0.0.1:3000'
+const WEB_DEV_URL = process.env.SYRNIKE_WEB_DEV_URL ?? 'http://127.0.0.1:3001'
 const DESKTOP_RELEASE_CHANNEL =
   process.env.SYRNIKE_DESKTOP_CHANNEL === 'nightly' ? 'nightly' : 'stable'
 const DESKTOP_BACKEND_MODE =

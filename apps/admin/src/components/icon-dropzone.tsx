@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FolderPlusIcon } from '#/components/icons'
 import { cn } from '#/lib/utils'
@@ -14,6 +15,7 @@ export function IconDropzone({
   onFileChange: (file: File | null) => void
   disabled?: boolean
 }) {
+  const t = useTranslations('common')
   const [dragging, setDragging] = useState(false)
 
   const handleFiles = useCallback(
@@ -29,7 +31,7 @@ export function IconDropzone({
   return (
     <label
       className={cn(
-        'group relative flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-6 text-center transition-colors',
+        'group relative flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-center transition-colors',
         'hover:border-primary/35 hover:bg-muted/35',
         dragging && 'admin-dropzone-active border-primary/45 bg-primary/5',
         disabled && 'pointer-events-none opacity-50',
@@ -48,12 +50,12 @@ export function IconDropzone({
       {previewUrl ? (
         <img src={previewUrl} alt="" className="size-16 object-contain" />
       ) : (
-        <span className="flex size-12 items-center justify-center rounded-lg border border-border/70 bg-card text-muted-foreground">
+        <span className="flex size-12 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground">
           <FolderPlusIcon className="size-5" aria-hidden />
         </span>
       )}
-      <span className="max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
-        {file ? file.name : 'PNG или WebP · перетащите или нажмите'}
+      <span className="max-w-64 text-xs leading-relaxed text-muted-foreground">
+        {file ? file.name : t('uploadHint')}
       </span>
       <input
         type="file"

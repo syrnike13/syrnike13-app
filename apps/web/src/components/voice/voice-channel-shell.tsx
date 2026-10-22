@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
@@ -21,6 +22,8 @@ export function VoiceChannelShell({
   channelId,
   highlightMessageId,
 }: VoiceChannelShellProps) {
+  const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
@@ -42,7 +45,7 @@ export function VoiceChannelShell({
   if (!channel) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        Канал не найден
+        {t('errors.channelNotFound')}
       </div>
     )
   }
@@ -55,7 +58,7 @@ export function VoiceChannelShell({
     return null
   }
 
-  const title = getChannelLabel(channel, users, auth.user?._id)
+  const title = getChannelLabel(channel, users, auth.user?._id, tChat)
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -67,8 +70,8 @@ export function VoiceChannelShell({
       />
       <div
         className={cn(
-          'flex min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out',
-          chatOpen ? 'w-[min(420px,40vw)]' : 'w-0',
+          'flex min-h-0 shrink-0 overflow-hidden motion-width duration-200 ease-out',
+          chatOpen ? 'w-voice-chat-panel' : 'w-0',
         )}
       >
         {chatOpen ? (

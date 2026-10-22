@@ -89,15 +89,17 @@ impl AbstractBadges for ReferenceDb {
         }
     }
 
-    async fn assign_user_badge(&self, assignment: &UserBadgeAssignment) -> Result<()> {
+    async fn assign_user_badge(&self, assignment: &UserBadgeAssignment) -> Result<bool> {
         self.fetch_badge(&assignment.badge_id).await?;
 
         let mut assignments = self.user_badges.lock().await;
-        assignments.insert(
-            assignment_key(&assignment.user_id, &assignment.badge_id),
-            assignment.clone(),
-        );
-        Ok(())
+        let key = assignment_key(&assignment.user_id, &assignment.badge_id);
+        if assignments.contains_key(&key) {
+            return Ok(false);
+        }
+
+        assignments.insert(key, assignment.clone());
+        Ok(true)
     }
 
     async fn remove_user_badge(&self, user_id: &str, badge_id: &str) -> Result<()> {
@@ -133,5 +135,78 @@ impl AbstractBadges for ReferenceDb {
         let mut assignments = self.user_badges.lock().await;
         assignments.retain(|_, assignment| assignment.badge_id != badge_id);
         Ok(())
+    }
+
+    async fn fetch_unseen_user_badges(&self, user_id: &str) -> Result<Vec<Badge>> {
+        let assignments = self.fetch_user_badge_assignments(user_id).await?;
+        let badges = self.badges.lock().await;
+        let mut unseen = assignments
+            .into_iter()
+            .filter(|assignment| assignment.unseen)
+            .filter_map(|assignment| badges.get(&assignment.badge_id).cloned())
+            .collect::<Vec<_>>();
+        sort_badges_for_display(&mut unseen);
+        Ok(unseen)
+    }
+
+    async fn mark_user_badges_seen(&self, user_id: &str, badge_ids: &[String]) -> Result<()> {
+        let mut assignments = self.user_badges.lock().await;
+        for badge_id in badge_ids {
+            if let Some(assignment) = assignments.get_mut(&assignment_key(user_id, badge_id)) {
+                assignment.unseen = false;
+            }
+        }
+        Ok(())
+    }
+
+    async fn fetch_user_ids_missing_badge(
+        &self,
+        badge_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let assignments = self.user_badges.lock().await;
+        let users = self.users.lock().await;
+        let mut ids = users
+            .values()
+            .filter(|user| user.bot.is_none())
+            .filter(|user| !assignments.contains_key(&assignment_key(&user.id, badge_id)))
+            .map(|user| user.id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.truncate(limit.max(0) as usize);
+        Ok(ids)
+    }
+
+    async fn increment_user_stat(&self, user_id: &str, stat: &str, by: i64) -> Result<i64> {
+        let mut stats = self.user_stats.lock().await;
+        let value = stats
+            .entry(user_id.to_string())
+            .or_default()
+            .entry(stat.to_string())
+            .or_default();
+        *value += by;
+        Ok(*value)
+    }
+
+    async fn fetch_user_ids_reaching_stat(
+        &self,
+        stat: &str,
+        at_least: i64,
+        missing_badge_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let assignments = self.user_badges.lock().await;
+        let stats = self.user_stats.lock().await;
+        let mut ids = stats
+            .iter()
+            .filter(|(_, counters)| counters.get(stat).is_some_and(|value| *value >= at_least))
+            .filter(|(user_id, _)| {
+                !assignments.contains_key(&assignment_key(user_id, missing_badge_id))
+            })
+            .map(|(user_id, _)| user_id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.truncate(limit.max(0) as usize);
+        Ok(ids)
     }
 }

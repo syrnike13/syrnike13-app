@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { BellOffIcon, CheckIcon, ChevronRightIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { BellOffIcon, ChevronRightIcon } from '#/components/icons'
 import type { ManualPresence } from '@syrnike13/api-types'
 
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '#/components/ui/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { PRESENCE_DISPLAY, PRESENCE_OPTIONS } from '#/lib/presence'
 import { useSetPresence } from '#/features/users/use-set-presence'
@@ -21,6 +24,7 @@ export function PresenceStatusSelect({
   className,
   onSelected,
 }: PresenceStatusSelectProps) {
+  const t = useTranslations('chat')
   const [open, setOpen] = useState(false)
   const { presence, setPresence, isPending } = useSetPresence()
   const current = PRESENCE_DISPLAY[presence ?? 'Online'] ?? PRESENCE_OPTIONS[0]
@@ -35,57 +39,48 @@ export function PresenceStatusSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={isPending}
-          data-state={open ? 'open' : 'closed'}
-          className={cn(profileMenuRowClass, className)}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          <span
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        disabled={isPending}
+        render={
+          <button
+            type="button"
             className={cn(
-              'size-3 shrink-0 rounded-full',
-              current.dotClass,
+              // eslint-disable-next-line shadcn/require-static-classes -- shared profile menu row class
+              profileMenuRowClass,
+              'data-[popup-open]:bg-accent/60 data-[popup-open]:text-foreground',
+              className,
             )}
-            aria-hidden
           />
-          <span className="min-w-0 flex-1 truncate">{current.label}</span>
-          {showMutedBell ? (
-            <BellOffIcon
-              className="size-4 shrink-0 opacity-60 transition-opacity group-hover:opacity-100 group-data-[state=open]:opacity-100"
-              aria-hidden
-            />
-          ) : null}
-          <ChevronRightIcon
-            className="size-4 shrink-0 opacity-50 transition-opacity group-hover:opacity-90 group-data-[state=open]:opacity-90"
-            aria-hidden
-          />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        collisionPadding={12}
-        className="z-[250] w-52 p-1"
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        }
       >
-        {PRESENCE_OPTIONS.map((option) => {
-          const selected = option.value === current.value
-          return (
-            <button
+        <span
+          className={cn('size-3 shrink-0 rounded-full', current.dotClass)}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">{t(current.labelKey)}</span>
+        {showMutedBell ? (
+          <BellOffIcon
+            className="size-4 shrink-0 opacity-60 transition-opacity group-hover:opacity-100 group-data-[popup-open]:opacity-100"
+            aria-hidden
+          />
+        ) : null}
+        <ChevronRightIcon
+          className="size-4 shrink-0 opacity-50 transition-opacity group-hover:opacity-90 group-data-[popup-open]:opacity-90"
+          aria-hidden
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-52">
+        <DropdownMenuRadioGroup
+          value={current.value}
+          onValueChange={(next) => void pick(next as ManualPresence)}
+        >
+          {PRESENCE_OPTIONS.map((option) => (
+            <DropdownMenuRadioItem
               key={option.value}
-              type="button"
+              value={option.value}
               disabled={isPending}
-              className={cn(
-                profileMenuRowClass,
-                'justify-between',
-                selected && 'bg-accent/70 text-foreground',
-              )}
-              onClick={() => void pick(option.value)}
+              className="gap-2"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span
@@ -95,17 +90,12 @@ export function PresenceStatusSelect({
                   )}
                   aria-hidden
                 />
-                <span className="truncate">{option.label}</span>
+                <span className="truncate">{t(option.labelKey)}</span>
               </span>
-              {selected ? (
-                <CheckIcon className="size-4 shrink-0 text-primary" />
-              ) : (
-                <span className="size-4 shrink-0" aria-hidden />
-              )}
-            </button>
-          )
-        })}
-      </PopoverContent>
-    </Popover>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

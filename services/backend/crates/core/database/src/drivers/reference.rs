@@ -4,10 +4,10 @@ use futures::lock::Mutex;
 use iso8601_timestamp::Timestamp;
 
 use crate::{
-    Badge, Bot, Channel, ChannelCompositeKey, ChannelUnread, DiagnosticReport, Emoji, FeedbackStore,
-    File, FileHash, Invite, Member, MemberCompositeKey, Message, PolicyChange, RatelimitEvent,
-    Report, Server, ServerAuditLogEntry, ServerBan, Snapshot, User, UserBadgeAssignment,
-    UserSettings, Webhook,
+    Badge, Bot, Channel, ChannelCompositeKey, ChannelUnread, DiagnosticReport, Emoji,
+    FeedbackStore, File, FileHash, Invite, Member, MemberCompositeKey, Message, PolicyChange,
+    RatelimitEvent, Report, Server, ServerAuditLogEntry, ServerBan, Snapshot, User,
+    UserBadgeAssignment, UserSettings, Webhook,
 };
 
 #[derive(Clone, Debug)]
@@ -37,6 +37,7 @@ database_derived!(
         pub user_settings: Arc<Mutex<HashMap<String, UserSettings>>>,
         pub users: Arc<Mutex<HashMap<String, User>>>,
         pub user_badges: Arc<Mutex<HashMap<String, UserBadgeAssignment>>>,
+        pub user_stats: Arc<Mutex<HashMap<String, HashMap<String, i64>>>>,
         pub server_bans: Arc<Mutex<HashMap<MemberCompositeKey, ServerBan>>>,
         pub server_audit_logs: Arc<Mutex<HashMap<String, ServerAuditLogEntry>>>,
         pub server_members: Arc<Mutex<HashMap<MemberCompositeKey, Member>>>,

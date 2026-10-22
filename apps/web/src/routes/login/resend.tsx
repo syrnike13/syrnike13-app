@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -11,16 +11,21 @@ import {
   useHcaptchaRef,
 } from '#/components/auth/hcaptcha-widget'
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/card'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { resendVerificationEffect } from '#/features/api/account-api'
 import { resetEmailSchema, validateForm } from '#/features/auth/schemas'
 import {
@@ -31,6 +36,7 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/resend')({
   beforeLoad: () => {
@@ -42,6 +48,8 @@ export const Route = createFileRoute('/login/resend')({
 })
 
 function ResendVerificationPage() {
+  const t = useTranslations('auth')
+  const tValidation = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const features = configQuery.data?.features
   const siteKey = resolveHcaptchaSiteKey(features)
@@ -57,12 +65,12 @@ function ResendVerificationPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте email')
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 
       if (captchaRequired && !siteKey) {
-        toast.error('Captcha не настроена на сервере')
+        toast.error(t('register.captchaNotConfigured'))
         return
       }
 
@@ -77,7 +85,7 @@ function ResendVerificationPage() {
             : undefined
           if (captchaRequired && !captcha) {
             return yield* Effect.fail(
-              new Error('Не удалось пройти captcha'),
+              new Error(t('register.captchaFailed')),
             )
           }
 
@@ -87,7 +95,7 @@ function ResendVerificationPage() {
           })
           yield* Effect.sync(() => {
             setPendingVerifyEmail(parsed.data.email)
-            toast.success('Письмо отправлено повторно')
+            toast.success(t('resend.sent'))
           })
           yield* Effect.tryPromise({
             try: () => navigate({ to: '/login/check', replace: true }),
@@ -97,9 +105,7 @@ function ResendVerificationPage() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось отправить письмо',
+                apiErrorMessage(error, t('resend.error')),
               )
             }),
           ),
@@ -114,15 +120,15 @@ function ResendVerificationPage() {
       <AuthLayout>
         <AuthCard>
           <CardHeader>
-            <CardTitle>Подтверждение отключено</CardTitle>
+            <CardTitle>{t('resend.disabledTitle')}</CardTitle>
             <CardDescription>
-              Письмо не требуется — можно сразу войти или создать аккаунт.
+              {t('resend.disabledDescription')}
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-2">
-            <Button className="w-full" asChild>
-              <Link to="/login">Ко входу</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         </AuthCard>
       </AuthLayout>
@@ -133,10 +139,8 @@ function ResendVerificationPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>Отправить письмо снова</CardTitle>
-          <CardDescription>
-            Укажите email, который использовали при регистрации.
-          </CardDescription>
+          <CardTitle>{t('resend.title')}</CardTitle>
+          <CardDescription>{t('resend.description')}</CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -148,7 +152,7 @@ function ResendVerificationPage() {
             <form.Field name="email">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="resend-email">Email</Label>
+                  <Label htmlFor="resend-email">{t('email')}</Label>
                   <Input
                     className="auth-input"
                     id="resend-email"
@@ -169,12 +173,12 @@ function ResendVerificationPage() {
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                <Spinner data-icon="inline-start" />
               ) : null}
-              Отправить письмо
+              {t('resend.submit')}
             </Button>
             <p className="auth-secondary-action">
-              <Link to="/login">Вернуться ко входу</Link>
+              <Link to="/login">{t('resend.backToLogin')}</Link>
             </p>
           </CardFooter>
         </form>

@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
 
@@ -6,10 +7,24 @@ import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { MessageComposer } from '#/components/chat/message-composer'
-import { MessageList } from '#/components/chat/message-list'
+import {
+  MessageList,
+  type MessageListHandle,
+} from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
-import { Button } from '#/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import {
   editChannelMessageEffect,
@@ -22,8 +37,10 @@ import { syncStore } from '#/features/sync/sync-store'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
+  FLOATING_BAR_BOTTOM_OFFSET_PX,
   FLOATING_BAR_INSET_X_CLASS,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { canMessageUser } from '#/features/authorization/authorization'
 
@@ -38,7 +55,12 @@ export function ChannelChatPanel({
   highlightMessageId,
   onClose,
 }: ChannelChatPanelProps) {
+  const t = useTranslations('chat')
+  const tf = useTranslations('friends')
+  const tu = useTranslations('users')
   const [composerHeight, setComposerHeight] = useState(56)
+  const [blockUserId, setBlockUserId] = useState<string | null>(null)
+  const messageListRef = useRef<MessageListHandle>(null)
   const chat = useChannelChat({
     channelId,
     highlightMessageId,
@@ -70,16 +92,18 @@ export function ChannelChatPanel({
 
   if (!channel) {
     return (
-      <aside className="gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider bg-background">
-        <PanelHeader title="Чат" onClose={onClose} />
-        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          Канал не найден
+      <aside className="theme-surface-content gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider text-card-foreground">
+        <PanelHeader title={t('panelChat')} onClose={onClose} />
+        <div className="flex flex-1 items-center justify-center px-6">
+          <Empty>
+            <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
+          </Empty>
         </div>
       </aside>
     )
   }
 
-  const title = getChannelLabel(channel, users, auth.user?._id)
+  const title = getChannelLabel(channel, users, auth.user?._id, t)
   const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
   const dmRecipientRelationship = dmRecipientId
     ? users[dmRecipientId]?.relationship
@@ -88,18 +112,19 @@ export function ChannelChatPanel({
     Boolean(dmRecipientId && !canMessageUser(dmRecipientId))
   const dmDisabledPlaceholder =
     dmRecipientRelationship === 'Blocked'
-      ? 'Вы заблокировали этого пользователя'
+      ? t('blockedByYou')
       : dmRecipientRelationship === 'BlockedOther'
-        ? 'Пользователь заблокировал вас'
+        ? t('blockedYou')
         : dmMessagesBlocked
-          ? 'Вы не можете отправлять сообщения этому пользователю'
+          ? t('cannotSend')
           : undefined
 
   return (
-    <aside className="gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
+    <>
+    <aside className="theme-surface-content gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider text-card-foreground">
       <PanelHeader title={title} onClose={onClose}>
         {historyQuery.isFetching ? (
-          <span className="text-xs text-muted-foreground">загрузка…</span>
+          <span className="text-xs text-muted-foreground">{t('loadingShort')}</span>
         ) : null}
         {channel.channel_type === 'TextChannel' ? (
           <ChannelSettingsDialog channel={channel} />
@@ -123,11 +148,22 @@ export function ChannelChatPanel({
         ) : null}
       </PanelHeader>
 
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-(--chat-feed-inset)"
+        style={
+          {
+            '--chat-feed-inset': `${composerHeight / 2}px`,
+          } as CSSVars
+        }
+      >
         <MessageList
+          ref={messageListRef}
           channelId={channelId}
           serverId={serverIdForSelection ?? undefined}
           scrollPaddingBottom={composerHeight + 48}
+          scrollbarInsetBottom={
+            composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
+          }
           highlightMessageId={listHighlightMessageId}
           messages={messages}
           users={users}
@@ -141,10 +177,7 @@ export function ChannelChatPanel({
           onDelete={(message) => void handleDelete(message)}
           onBlock={(message) => {
             if (!token || message.author === auth.user?._id) return
-            if (!window.confirm('Заблокировать этого пользователя?')) return
-            Effect.runFork(
-              blockUserRelationship(token, message.author).pipe(Effect.ignore),
-            )
+            setBlockUserId(message.author)
           }}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}
@@ -220,6 +253,7 @@ export function ChannelChatPanel({
               await Effect.runPromise(
                 sendChannelMessageEffect(token, channelId, input),
               )
+              messageListRef.current?.scrollToEnd('smooth')
             }}
             onEdit={async (messageId, content) => {
               if (!token) return
@@ -242,6 +276,39 @@ export function ChannelChatPanel({
         </div>
       </div>
     </aside>
+
+    <AlertDialog
+      open={Boolean(blockUserId)}
+      onOpenChange={(open) => {
+        if (!open) setBlockUserId(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('blockConfirm')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {tu('blockDescription')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => {
+              if (!token || !blockUserId) return
+              const userId = blockUserId
+              setBlockUserId(null)
+              Effect.runFork(
+                blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+              )
+            }}
+          >
+            {t('block')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
 
@@ -254,17 +321,20 @@ function PanelHeader({
   onClose: () => void
   children?: ReactNode
 }) {
+  const t = useTranslations('chat')
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider px-3">
       <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
-      <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
+      <h2 className="min-w-0 flex-1 truncate text-base leading-5 font-medium tracking-tight">
+        {title}
+      </h2>
       {children}
       <Button
         type="button"
         variant="ghost"
         size="icon"
         className="size-8 shrink-0"
-        title="Закрыть чат"
+        title={t('closeChat')}
         onClick={onClose}
       >
         <XIcon className="size-4" />

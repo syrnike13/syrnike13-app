@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { PortalContainerProvider } from '#/components/ui/portal-container'
+import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
 
 type VoiceStagePopoutProps = {
   childWindow: Window
@@ -82,7 +82,7 @@ function ensurePopoutDocument(childWindow: Window) {
         height: 100%;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: var(--media-backdrop);
       }
       html, body {
         display: flex;

@@ -1,3 +1,5 @@
+import type { Translator } from '@syrnike13/ui/i18n'
+
 import type { VoiceStageMediaTrack } from './voice-context'
 
 export const STREAM_PREVIEW_FIRST_DELAY_MS = 3_000
@@ -143,6 +145,14 @@ export function scheduleStreamPreview(
   }
 }
 
-export function streamPreviewWatchLabel(self: boolean, watching: boolean) {
-  return self ? 'Вы стримите!' : watching ? 'Вы смотрите' : 'Смотреть стрим'
+export function streamPreviewWatchLabel(
+  self: boolean,
+  watching: boolean,
+  t: Translator,
+) {
+  return self
+    ? t('stream.self')
+    : watching
+      ? t('stream.watching')
+      : t('stream.watch')
 }

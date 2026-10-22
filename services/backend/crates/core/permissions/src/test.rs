@@ -332,7 +332,7 @@ async fn validate_server_permissions() {
 #[async_std::test]
 async fn channel_role_override_allow_wins_over_other_role_deny() {
     /// Scenario in which two server roles conflict in one channel:
-    /// Discord applies channel role denies first, then channel role allows,
+    /// The permission model applies channel role denies first, then channel role allows,
     /// so the final permission must not depend on role rank/order.
     struct Scenario {}
     let mut query = Scenario {};

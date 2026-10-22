@@ -22,88 +22,90 @@ export const PERMISSION_TRI_STATE_ORDER: PermissionTriState[] = [
 
 export type PermissionDefinition = {
   flag: number
-  label: string
+  labelKey: string
 }
 
 export type PermissionGroup = {
-  title: string
+  titleKey: string
   permissions: PermissionDefinition[]
 }
 
 export const ADMINISTRATOR_PERMISSION = {
   flag: ServerPermission.Administrator,
-  label: 'Администратор',
-  hint:
-    'Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются.',
+  labelKey: 'labels.administrator',
+  hintKey: 'hints.administrator',
 } as const
 
 export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
   {
-    title: 'Общие права сервера',
+    titleKey: 'groups.general',
     permissions: [
-      { flag: ServerPermission.ManageChannel, label: 'Управление каналами' },
-      { flag: ServerPermission.ManageServer, label: 'Управление сервером' },
-      { flag: ServerPermission.ManagePermissions, label: 'Управление правами' },
-      { flag: ServerPermission.ManageRole, label: 'Управление ролями' },
+      { flag: ServerPermission.ManageChannel, labelKey: 'labels.manageChannel' },
+      { flag: ServerPermission.ManageServer, labelKey: 'labels.manageServer' },
+      {
+        flag: ServerPermission.ManagePermissions,
+        labelKey: 'labels.managePermissions',
+      },
+      { flag: ServerPermission.ManageRole, labelKey: 'labels.manageRole' },
       {
         flag: ServerPermission.ManageCustomisation,
-        label: 'Управление оформлением',
+        labelKey: 'labels.manageCustomisation',
       },
     ],
   },
   {
-    title: 'Участники',
+    titleKey: 'groups.members',
     permissions: [
-      { flag: ServerPermission.KickMembers, label: 'Исключать участников' },
-      { flag: ServerPermission.BanMembers, label: 'Банить участников' },
-      { flag: ServerPermission.TimeoutMembers, label: 'Тайм-аут участников' },
-      { flag: ServerPermission.AssignRoles, label: 'Назначать роли' },
-      { flag: ServerPermission.ChangeNickname, label: 'Менять свой ник' },
-      { flag: ServerPermission.ManageNicknames, label: 'Управлять никами' },
-      { flag: ServerPermission.ChangeAvatar, label: 'Менять свой аватар' },
-      { flag: ServerPermission.RemoveAvatars, label: 'Удалять аватары' },
+      { flag: ServerPermission.KickMembers, labelKey: 'labels.kickMembers' },
+      { flag: ServerPermission.BanMembers, labelKey: 'labels.banMembers' },
+      { flag: ServerPermission.TimeoutMembers, labelKey: 'labels.timeoutMembers' },
+      { flag: ServerPermission.AssignRoles, labelKey: 'labels.assignRoles' },
+      { flag: ServerPermission.ChangeNickname, labelKey: 'labels.changeNickname' },
+      { flag: ServerPermission.ManageNicknames, labelKey: 'labels.manageNicknames' },
+      { flag: ServerPermission.ChangeAvatar, labelKey: 'labels.changeAvatar' },
+      { flag: ServerPermission.RemoveAvatars, labelKey: 'labels.removeAvatars' },
     ],
   },
   {
-    title: 'Текстовые каналы',
+    titleKey: 'groups.textChannels',
     permissions: [
-      { flag: ServerPermission.ViewChannel, label: 'Просмотр каналов' },
+      { flag: ServerPermission.ViewChannel, labelKey: 'labels.viewChannels' },
       {
         flag: ServerPermission.ReadMessageHistory,
-        label: 'Читать историю сообщений',
+        labelKey: 'labels.readMessageHistory',
       },
-      { flag: ServerPermission.SendMessage, label: 'Отправлять сообщения' },
-      { flag: ServerPermission.ManageMessages, label: 'Управлять сообщениями' },
-      { flag: ServerPermission.ManageWebhooks, label: 'Управлять вебхуками' },
-      { flag: ServerPermission.InviteOthers, label: 'Приглашать людей' },
-      { flag: ServerPermission.SendEmbeds, label: 'Встраивать контент' },
-      { flag: ServerPermission.UploadFiles, label: 'Прикреплять файлы' },
-      { flag: ServerPermission.Masquerade, label: 'Маскировка' },
-      { flag: ServerPermission.React, label: 'Добавлять реакции' },
-      { flag: ServerPermission.MentionEveryone, label: 'Упоминать @everyone' },
-      { flag: ServerPermission.MentionRoles, label: 'Упоминать роли' },
-      { flag: ServerPermission.BypassSlowmode, label: 'Обходить slowmode' },
+      { flag: ServerPermission.SendMessage, labelKey: 'labels.sendMessage' },
+      { flag: ServerPermission.ManageMessages, labelKey: 'labels.manageMessages' },
+      { flag: ServerPermission.ManageWebhooks, labelKey: 'labels.manageWebhooks' },
+      { flag: ServerPermission.InviteOthers, labelKey: 'labels.inviteOthers' },
+      { flag: ServerPermission.SendEmbeds, labelKey: 'labels.sendEmbeds' },
+      { flag: ServerPermission.UploadFiles, labelKey: 'labels.uploadFiles' },
+      { flag: ServerPermission.Masquerade, labelKey: 'labels.masquerade' },
+      { flag: ServerPermission.React, labelKey: 'labels.react' },
+      { flag: ServerPermission.MentionEveryone, labelKey: 'labels.mentionEveryone' },
+      { flag: ServerPermission.MentionRoles, labelKey: 'labels.mentionRoles' },
+      { flag: ServerPermission.BypassSlowmode, labelKey: 'labels.bypassSlowmode' },
     ],
   },
   {
-    title: 'Голосовые каналы',
+    titleKey: 'groups.voiceChannels',
     permissions: [
-      { flag: ServerPermission.Connect, label: 'Подключаться' },
-      { flag: ServerPermission.Speak, label: 'Говорить' },
-      { flag: ServerPermission.Video, label: 'Видео' },
-      { flag: ServerPermission.Listen, label: 'Слушать' },
-      { flag: ServerPermission.MuteMembers, label: 'Мьютить участников' },
-      { flag: ServerPermission.DeafenMembers, label: 'Отключать звук' },
-      { flag: ServerPermission.MoveMembers, label: 'Перемещать участников' },
+      { flag: ServerPermission.Connect, labelKey: 'labels.connect' },
+      { flag: ServerPermission.Speak, labelKey: 'labels.speak' },
+      { flag: ServerPermission.Video, labelKey: 'labels.video' },
+      { flag: ServerPermission.Listen, labelKey: 'labels.listen' },
+      { flag: ServerPermission.MuteMembers, labelKey: 'labels.muteMembers' },
+      { flag: ServerPermission.DeafenMembers, labelKey: 'labels.deafenMembers' },
+      { flag: ServerPermission.MoveMembers, labelKey: 'labels.moveMembers' },
     ],
   },
 ]
 
 export const CHANNEL_PERMISSION_GROUPS: PermissionGroup[] = [
   {
-    title: 'Доступ к каналу',
+    titleKey: 'groups.channelAccess',
     permissions: [
-      { flag: ServerPermission.ViewChannel, label: 'Видеть этот канал' },
+      { flag: ServerPermission.ViewChannel, labelKey: 'labels.viewThisChannel' },
     ],
   },
   ...SERVER_PERMISSION_GROUPS.map((group) => ({

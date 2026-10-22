@@ -1,7 +1,13 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { Link } from '@tanstack/react-router'
+import {
+  useLocale,
+  useTranslations,
+  type AppLocale,
+} from '@syrnike13/ui/i18n'
 
 import { MonitorIcon, TagIcon } from '#/components/icons'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import {
   feedbackAreaLabel,
   feedbackPlatformLabel,
@@ -15,13 +21,10 @@ import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
 
-const metaChipClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/20 px-2 text-[11px] font-medium text-muted-foreground'
-
-function formatFeedbackDate(value: string) {
+function formatFeedbackDate(value: string, locale: AppLocale) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('ru-RU', {
+  return new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'short',
   }).format(date)
@@ -34,16 +37,19 @@ export function FeedbackSuggestionRow({
   suggestion: FeedbackSuggestion
   token: string
 }) {
+  const t = useTranslations('feedback')
+  const tm = useTranslations('feedback.meta')
+  const { locale } = useLocale()
   const prefix = useAppRoutePrefix()
   const author = useSyncStore((state) =>
     suggestion.author ? state.users[suggestion.author] : undefined,
   )
   const authorUsername = suggestion.author_username ?? author?.username
   const authorLabel = suggestion.anonymous
-    ? 'Анонимно'
+    ? t('row.anonymous')
     : authorUsername
       ? `@${authorUsername}`
-      : 'Участник'
+      : t('row.member')
   const publiclyApproved = suggestion.moderation_status === 'approved'
 
   return (
@@ -51,7 +57,7 @@ export function FeedbackSuggestionRow({
       <Link
         to={`${prefix}/feedback/$feedbackId`}
         params={{ feedbackId: suggestion._id }}
-        aria-label={`Открыть «${suggestion.title}»`}
+        aria-label={t('row.openAria', { title: suggestion.title })}
         className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
 
@@ -63,19 +69,19 @@ export function FeedbackSuggestionRow({
           <FeedbackModerationStatus status={suggestion.moderation_status} />
         )}
         {suggestion.area ? (
-          <span className={metaChipClass}>
+          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
             <TagIcon className="size-3" aria-hidden />
-            {feedbackAreaLabel(suggestion.area)}
-          </span>
+            {feedbackAreaLabel(suggestion.area, tm)}
+          </Badge>
         ) : null}
         {suggestion.platform ? (
-          <span className={metaChipClass}>
+          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
             <MonitorIcon className="size-3" aria-hidden />
-            {feedbackPlatformLabel(suggestion.platform)}
-          </span>
+            {feedbackPlatformLabel(suggestion.platform, tm)}
+          </Badge>
         ) : null}
-        <span className="ml-auto hidden shrink-0 text-[11px] text-muted-foreground sm:block">
-          {authorLabel} · {formatFeedbackDate(suggestion.created_at)}
+        <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:block">
+          {authorLabel} · {formatFeedbackDate(suggestion.created_at, locale)}
         </span>
       </div>
 
@@ -95,9 +101,9 @@ export function FeedbackSuggestionRow({
           ) : (
             <span
               className="flex h-9 items-center rounded-lg border border-border bg-muted/20 px-3 text-xs font-semibold text-muted-foreground"
-              aria-label={`${suggestion.vote_count.toLocaleString('ru-RU')} голосов`}
+              aria-label={t('votes', { count: suggestion.vote_count })}
             >
-              {suggestion.vote_count.toLocaleString('ru-RU')} голосов
+              {t('votes', { count: suggestion.vote_count })}
             </span>
           )}
         </div>

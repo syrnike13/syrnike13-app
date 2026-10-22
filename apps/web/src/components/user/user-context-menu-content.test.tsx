@@ -14,7 +14,6 @@ import { grantAllAuthorizationForTest } from '#/features/authorization/authoriza
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
-const contextMenuPreventDefaultMock = vi.hoisted(() => vi.fn())
 const serverApiMocks = vi.hoisted(() => ({
   banServerMember: vi.fn(),
   editServerMember: vi.fn(),
@@ -31,7 +30,7 @@ const directMessageChannel = {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -78,7 +77,7 @@ vi.mock('#/components/user/user-context-menu-voice-controls', () => ({
   },
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div role="dialog">{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -90,7 +89,7 @@ vi.mock('#/components/ui/dialog', () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -98,22 +97,46 @@ vi.mock('#/components/ui/context-menu', () => ({
     children,
     className,
     disabled,
-    onSelect,
+    onClick,
     ...props
   }: {
     children: ReactNode
     className?: string
     disabled?: boolean
-    onSelect?: (event: { preventDefault: () => void }) => void
+    onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   }) => (
     <button
       type="button"
       className={className}
       disabled={disabled}
-      onClick={() =>
-        onSelect?.({ preventDefault: contextMenuPreventDefaultMock })
-      }
+      onClick={onClick}
       {...props}
+    >
+      {children}
+    </button>
+  ),
+  ContextMenuCheckboxItem: ({
+    children,
+    className,
+    disabled,
+    checked,
+    onCheckedChange,
+  }: {
+    children: ReactNode
+    className?: string
+    disabled?: boolean
+    checked?: boolean
+    onCheckedChange?: (checked: boolean) => void
+  }) => (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      className={className}
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) onCheckedChange?.(checked !== true)
+      }}
     >
       {children}
     </button>
@@ -200,7 +223,6 @@ describe('UserContextMenuContent', () => {
           catch: (cause) => cause,
         }).pipe(Effect.as(directMessageChannel)),
     )
-    contextMenuPreventDefaultMock.mockClear()
     voiceJoinMock.mockResolvedValue(true)
     serverApiMocks.banServerMember.mockReturnValue(Effect.void)
     serverApiMocks.editServerMember.mockReturnValue(
@@ -234,10 +256,11 @@ describe('UserContextMenuContent', () => {
         'session-token',
         '01JVOICETARGET0000001',
         expect.any(Function),
+        expect.anything(),
       )
     })
     expect(navigateMock).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })
@@ -376,8 +399,7 @@ describe('UserContextMenuContent', () => {
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
-    expect(contextMenuPreventDefaultMock).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
     await waitFor(() => {
       expect(serverApiMocks.editServerMember).toHaveBeenCalledWith(
@@ -401,11 +423,11 @@ describe('UserContextMenuContent', () => {
     const firstRender = render(
       <UserContextMenuContent user={targetUser} serverId="server-1" />,
     )
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
     firstRender.unmount()
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
     expect(serverApiMocks.editServerMember).toHaveBeenCalledTimes(1)
     resolveEdit?.({
@@ -426,12 +448,12 @@ describe('UserContextMenuContent', () => {
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Member/ }))
 
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Member/ }).disabled).toBe(true)
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Member/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ }).disabled).toBe(true)
     expect(
-      screen.getByRole('button', { name: /Assignable/ }).className,
+      screen.getByRole('menuitemcheckbox', { name: /Assignable/ }).className,
     ).not.toContain('data-[disabled]:bg-accent/45')
 
     resolveEdit?.({
@@ -440,7 +462,7 @@ describe('UserContextMenuContent', () => {
       roles: [],
     })
     await waitFor(() => {
-      expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(
+      expect(screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ }).disabled).toBe(
         false,
       )
     })
@@ -502,33 +524,28 @@ describe('UserContextMenuContent', () => {
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
     const rolesTrigger = screen.getByRole('button', { name: /Роли/ })
-    expect(rolesTrigger.className).toContain('svg:last-child')
     expect(rolesTrigger.className).toContain('gap-2')
 
-    const assignable = screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ })
+    const assignable = screen.getByRole<HTMLButtonElement>('menuitemcheckbox', { name: /Assignable/ })
     expect(assignable.disabled).toBe(false)
-    expect(assignable.className).toContain('grid-cols-[1rem_minmax(0,1fr)_1rem]')
+    expect(assignable.getAttribute('aria-checked')).toBe('false')
 
-    const assignedRemovable = screen.getByRole<HTMLButtonElement>('button', {
+    const assignedRemovable = screen.getByRole<HTMLButtonElement>('menuitemcheckbox', {
       name: /Assigned Removable/,
     })
     expect(assignedRemovable.disabled).toBe(false)
     expect(assignedRemovable.className).not.toContain('bg-accent/60')
-    expect(
-      assignedRemovable.querySelector('[data-role-indicator="assigned"]'),
-    ).toBeTruthy()
+    expect(assignedRemovable.getAttribute('aria-checked')).toBe('true')
 
-    const assignedLocked = screen.getByRole('button', {
+    const assignedLocked = screen.getByRole('menuitemcheckbox', {
       name: /Assigned Locked/,
     })
     expect(assignedLocked).toHaveProperty('disabled', true)
-    expect(
-      assignedLocked.querySelector('[data-role-indicator="locked"]'),
-    ).toBeTruthy()
-    expect(assignedLocked.className).toContain(
+    expect(assignedLocked.getAttribute('aria-checked')).toBe('true')
+    expect(assignedLocked.className).not.toContain(
       'data-[disabled]:bg-accent/45',
     )
-    expect(screen.queryByRole('button', { name: /Hidden/ })).toBeNull()
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Hidden/ })).toBeNull()
     expect(
       screen.queryByRole('button', { pressed: true }),
     ).toBeNull()

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   ActivityIcon,
-  Loader2Icon,
   MonitorUpIcon,
   MonitorXIcon,
   SoundboardIcon,
@@ -11,7 +11,8 @@ import {
   VideoOffIcon,
 } from '#/components/icons'
 
-import { TooltipProvider } from '#/components/ui/tooltip'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -77,6 +78,8 @@ function PanelMediaButtonSoon({
   title: string
   children: ReactNode
 }) {
+  const t = useTranslations('voice')
+
   return (
     <VoiceControlTooltip
       title={title}
@@ -84,7 +87,7 @@ function PanelMediaButtonSoon({
       content={
         <>
           <p className="font-medium">{title}</p>
-          <p className="text-xs text-muted-foreground">Скоро</p>
+          <p className="text-xs text-muted-foreground">{t('actions.soon')}</p>
         </>
       }
       contentClassName="text-center"
@@ -102,6 +105,7 @@ function PanelMediaButtonSoon({
 }
 
 export function VoicePanelMediaBar() {
+  const t = useTranslations('voice')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
   const voiceSession = useVoiceSession()
@@ -115,21 +119,21 @@ export function VoicePanelMediaBar() {
     availability: voiceMedia.mediaAvailability.camera,
     active: cameraOn,
     connecting,
-    activeTitle: 'Выключить камеру',
-    inactiveTitle: 'Включить камеру',
+    activeTitle: t('actions.stopCamera'),
+    inactiveTitle: t('actions.startCamera'),
   })
   const screenShareControl = voiceMediaControlState({
     availability: voiceMedia.mediaAvailability.screenShare,
     active: sharingScreen,
     connecting,
     busy: screenShareStarting,
-    activeTitle: 'Остановить демонстрацию',
-    inactiveTitle: 'Демонстрация экрана',
-    busyTitle: 'Демонстрация запускается',
+    activeTitle: t('actions.stopScreenShare'),
+    inactiveTitle: t('actions.startScreenShare'),
+    busyTitle: t('actions.screenShareStarting'),
   })
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
         <PanelMediaButton
           title={cameraControl.title}
@@ -138,9 +142,9 @@ export function VoicePanelMediaBar() {
           onClick={voiceMedia.toggleCamera}
         >
           {cameraOn ? (
-            <VideoIcon className="size-[1.125rem]" />
+            <VideoIcon className="size-4.5" />
           ) : (
-            <VideoOffIcon className="size-[1.125rem]" />
+            <VideoOffIcon className="size-4.5" />
           )}
         </PanelMediaButton>
 
@@ -151,17 +155,17 @@ export function VoicePanelMediaBar() {
           onClick={voiceMedia.toggleScreenShare}
         >
           {screenShareStarting ? (
-            <Loader2Icon className="size-[1.125rem] animate-spin" />
+            <Spinner className="size-4.5" />
           ) : sharingScreen ? (
-            <MonitorXIcon className="size-[1.125rem]" />
+            <MonitorXIcon className="size-4.5" />
           ) : (
-            <MonitorUpIcon className="size-[1.125rem]" />
+            <MonitorUpIcon className="size-4.5" />
           )}
         </PanelMediaButton>
 
         {uiFeatureFlags.channelActivities ? (
           <PanelMediaButton
-            title="Активности"
+            title={t('actions.activities')}
             active={
               voiceStage.activityLauncherOpen ||
               isChannelActivityStageItemId(voiceStage.focusedMediaId)
@@ -181,7 +185,7 @@ export function VoicePanelMediaBar() {
                       to:
                         routePrefix === '/m'
                           ? '/m/c/$channelId'
-                          : '/app/c/$channelId',
+                          : '/c/$channelId',
                       params: { channelId },
                       search: { m: undefined },
                     }),
@@ -197,12 +201,12 @@ export function VoicePanelMediaBar() {
               )
             }}
           >
-            <ActivityIcon className="size-[1.125rem]" />
+            <ActivityIcon className="size-4.5" />
           </PanelMediaButton>
         ) : null}
 
-        <PanelMediaButtonSoon title="Саундбар">
-          <SoundboardIcon className="size-[1.125rem]" />
+        <PanelMediaButtonSoon title={t('actions.soundboard')}>
+          <SoundboardIcon className="size-4.5" />
         </PanelMediaButtonSoon>
       </div>
     </TooltipProvider>

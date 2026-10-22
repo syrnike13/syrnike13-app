@@ -32,7 +32,7 @@ const TELEGRAM_PROMO_DISMISS_DURATION_MS = 14 * 24 * 60 * 60 * 1000
 /**
  * Десктопная раскладка: рельс серверов + сайдбар + контент + плавающий UserPanel.
  *
- * Используется на роутах `/app/*`. Монтируется напрямую из `app/route.tsx`,
+ * Используется на роутах `/*`. Монтируется напрямую из `app/route.tsx`,
  * поэтому сам читает channel/settings match из активного роута.
  */
 export function DesktopShell() {
@@ -47,11 +47,11 @@ export function DesktopShell() {
     FLOATING_BAR_HEIGHT_PX,
   )
   const channelMatch = useMatch({
-    from: '/app/c/$channelId',
+    from: '/_app/c/$channelId',
     shouldThrow: false,
   })
   const serverSettingsMatch = useMatch({
-    from: '/app/servers/$serverId/settings',
+    from: '/_app/servers/$serverId/settings',
     shouldThrow: false,
   })
 
@@ -77,8 +77,8 @@ export function DesktopShell() {
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const isHomePath = pathname === '/app' || pathname === '/app/'
-  const isFeedbackPath = pathname.startsWith('/app/feedback')
+  const isHomePath = pathname === '/'
+  const isFeedbackPath = pathname.startsWith('/feedback')
 
   useEffect(() => {
     if (isHomePath && !activeChannelId) {
@@ -91,7 +91,7 @@ export function DesktopShell() {
   }, [activeChannel, activeChannelId, isHomePath])
 
   const homeMatch = useMatch({
-    from: '/app/',
+    from: '/_app/',
     shouldThrow: false,
   })
   const onHomeRoute =

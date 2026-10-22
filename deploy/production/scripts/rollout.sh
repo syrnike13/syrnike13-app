@@ -15,6 +15,7 @@ declare -A ROLLOUT_PORTS=(
   [january]=14705
   [gifbox]=14706
   [voice-ingress]=8500
+  [landing]=5000
   [web]=5000
   [admin]=5000
 )

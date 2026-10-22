@@ -6,7 +6,7 @@ export type PendingComposerFile = {
   progress?: number
   status: 'pending' | 'uploading' | 'uploaded' | 'error'
   error?: string
-  /** Discord-style spoiler: upload as `SPOILER_${filename}`. */
+  /** Spoiler upload: the file is sent as `SPOILER_${filename}`. */
   spoiler?: boolean
 }
 

@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, screen } from '@testing-library/react'
+import { renderWithI18n } from '@syrnike13/ui/test-utils'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import en from '#/messages/en.json'
+import ru from '#/messages/ru.json'
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
@@ -48,7 +52,7 @@ describe('LoginForm', () => {
   afterEach(cleanup)
 
   it('moves from email to password instead of submitting on Enter', () => {
-    render(<LoginForm />)
+    renderWithI18n(<LoginForm />, { messages: { en, ru } })
 
     const email = screen.getByLabelText('Email')
     const password = screen.getByLabelText('Пароль')

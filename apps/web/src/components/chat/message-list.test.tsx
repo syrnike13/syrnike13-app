@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageList } from '#/components/chat/message-list'
@@ -8,69 +8,37 @@ import { syncStore } from '#/features/sync/sync-store'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ700'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'
-const MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ702'
+const FIRST_MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ702'
+const SECOND_MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ703'
 
-type IntersectionCallback = ConstructorParameters<
-  typeof IntersectionObserver
->[0]
+const user = {
+  _id: USER_ID,
+  username: 'alice',
+  discriminator: '0001',
+  relationship: 'None' as const,
+  online: true,
+}
 
-class FakeIntersectionObserver {
-  readonly callback: IntersectionCallback
-
-  constructor(callback: IntersectionCallback) {
-    this.callback = callback
-    intersectionObservers.push(this)
-  }
-
-  observe = vi.fn()
-  disconnect = vi.fn()
-  unobserve = vi.fn()
-  takeRecords = vi.fn(() => [])
-
-  trigger(isIntersecting: boolean) {
-    this.callback(
-      [{ isIntersecting } as IntersectionObserverEntry],
-      this as unknown as IntersectionObserver,
-    )
+function message(id: string, content = 'hello') {
+  return {
+    _id: id,
+    channel: CHANNEL_ID,
+    author: USER_ID,
+    content,
+    user,
   }
 }
 
-class FakeResizeObserver {
-  observe = vi.fn()
-  disconnect = vi.fn()
-  unobserve = vi.fn()
-}
-
-let intersectionObservers: FakeIntersectionObserver[] = []
-
-function renderMessageList(onLoadOlder: () => void, scrollPaddingBottom?: number) {
+function renderMessageList(
+  onLoadOlder: () => void,
+  scrollPaddingBottom?: number,
+  messages = [message(FIRST_MESSAGE_ID)],
+) {
   return render(
     <MessageList
       channelId={CHANNEL_ID}
-      messages={[
-        {
-          _id: MESSAGE_ID,
-          channel: CHANNEL_ID,
-          author: USER_ID,
-          content: 'hello',
-          user: {
-            _id: USER_ID,
-            username: 'alice',
-            discriminator: '0001',
-            relationship: 'None',
-            online: true,
-          },
-        },
-      ] as never}
-      users={{
-        [USER_ID]: {
-          _id: USER_ID,
-          username: 'alice',
-          discriminator: '0001',
-          relationship: 'None',
-          online: true,
-        },
-      }}
+      messages={messages as never}
+      users={{ [USER_ID]: user }}
       hasOlder
       loadingOlder={false}
       onLoadOlder={onLoadOlder}
@@ -79,33 +47,52 @@ function renderMessageList(onLoadOlder: () => void, scrollPaddingBottom?: number
   )
 }
 
+function viewportOf(container: HTMLElement) {
+  return container.querySelector(
+    '[data-slot="message-scroller-viewport"]',
+  ) as HTMLDivElement
+}
+
 describe('MessageList older history loading', () => {
   beforeEach(() => {
     syncStore.reset()
-    intersectionObservers = []
-    vi.useFakeTimers()
-    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
-    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn()
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+      },
+    )
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe = vi.fn()
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+        takeRecords = vi.fn(() => [])
+      },
+    )
   })
 
   afterEach(() => {
     cleanup()
-    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it('does not load older messages before the user scrolls away from the tail', () => {
+  it('does not load older messages while the feed stays at the tail', () => {
     const onLoadOlder = vi.fn()
     const view = renderMessageList(onLoadOlder)
-    const root = view.container.firstElementChild as HTMLDivElement
-    Object.defineProperties(root, {
+    const viewport = viewportOf(view.container)
+
+    Object.defineProperties(viewport, {
       clientHeight: { configurable: true, value: 400 },
       scrollHeight: { configurable: true, value: 1_000 },
     })
 
     act(() => {
-      vi.runOnlyPendingTimers()
-      intersectionObservers.at(-1)?.trigger(true)
+      viewport.scrollTop = 600
+      fireEvent.scroll(viewport)
     })
 
     expect(onLoadOlder).not.toHaveBeenCalled()
@@ -114,32 +101,45 @@ describe('MessageList older history loading', () => {
   it('loads older messages when the initial history does not fill the viewport', () => {
     const onLoadOlder = vi.fn()
     const view = renderMessageList(onLoadOlder)
-    const root = view.container.firstElementChild as HTMLDivElement
-    Object.defineProperties(root, {
+    const viewport = viewportOf(view.container)
+
+    Object.defineProperties(viewport, {
       clientHeight: { configurable: true, value: 400 },
       scrollHeight: { configurable: true, value: 300 },
     })
 
-    act(() => {
-      intersectionObservers.at(-1)?.trigger(true)
-    })
+    view.rerender(
+      <MessageList
+        channelId={CHANNEL_ID}
+        messages={
+          [
+            message(FIRST_MESSAGE_ID),
+            message(SECOND_MESSAGE_ID, 'second'),
+          ] as never
+        }
+        users={{ [USER_ID]: user }}
+        hasOlder
+        loadingOlder={false}
+        onLoadOlder={onLoadOlder}
+      />,
+    )
 
     expect(onLoadOlder).toHaveBeenCalledOnce()
   })
 
-  it('loads older messages after the user scrolls away from the tail', () => {
+  it('loads older messages after the user scrolls to the top', () => {
     const onLoadOlder = vi.fn()
     const view = renderMessageList(onLoadOlder)
-    const root = view.container.firstElementChild as HTMLDivElement
-    Object.defineProperties(root, {
+    const viewport = viewportOf(view.container)
+
+    Object.defineProperties(viewport, {
       clientHeight: { configurable: true, value: 400 },
       scrollHeight: { configurable: true, value: 1_000 },
     })
 
     act(() => {
-      root.scrollTop = 100
-      root.dispatchEvent(new Event('scroll'))
-      intersectionObservers.at(-1)?.trigger(true)
+      viewport.scrollTop = 0
+      fireEvent.scroll(viewport)
     })
 
     expect(onLoadOlder).toHaveBeenCalledOnce()
@@ -147,10 +147,54 @@ describe('MessageList older history loading', () => {
 
   it('reserves the measured composer height instead of a fixed utility', () => {
     const view = renderMessageList(vi.fn(), 236)
-    const scrollContent = view.container.querySelector(
-      '.flex.flex-col.px-4.pt-4',
+    const scroller = view.container.querySelector(
+      '[data-slot="message-scroller"]',
     ) as HTMLDivElement
 
-    expect(scrollContent.style.paddingBottom).toBe('236px')
+    expect(scroller.style.getPropertyValue('--scroll-padding')).toBe('236px')
+  })
+})
+
+describe('MessageList unread marker', () => {
+  beforeEach(() => {
+    syncStore.reset()
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn()
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+      },
+    )
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe = vi.fn()
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+        takeRecords = vi.fn(() => [])
+      },
+    )
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('marks the first unread message as the scroll anchor', () => {
+    syncStore.setChannelLastRead(CHANNEL_ID, FIRST_MESSAGE_ID)
+
+    const view = renderMessageList(vi.fn(), undefined, [
+      message(FIRST_MESSAGE_ID),
+      message(SECOND_MESSAGE_ID, 'unread'),
+    ])
+
+    expect(view.getByRole('separator', { name: 'Новые сообщения' })).toBeTruthy()
+
+    const anchor = view.container.querySelector(
+      `[data-message-id="${SECOND_MESSAGE_ID}"][data-scroll-anchor="true"]`,
+    )
+    expect(anchor).toBeTruthy()
   })
 })

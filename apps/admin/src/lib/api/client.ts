@@ -88,11 +88,8 @@ export const apiRequestEffect = Effect.fn('admin.api.request')(
       },
       catch: (cause) =>
         cause instanceof ApiResponseReadError
-          ? new ApiNetworkError(
-              'Не удалось прочитать ответ API',
-              cause.cause,
-            )
-          : new ApiNetworkError('Не удалось подключиться к API', cause),
+          ? new ApiNetworkError('Could not read the API response', cause.cause)
+          : new ApiNetworkError('Could not reach the API', cause),
     })
     const contentType = response.headers.get('Content-Type') ?? ''
     const parsed =
@@ -138,7 +135,7 @@ export const apiRequestEffect = Effect.fn('admin.api.request')(
       Effect.mapError(
         () =>
           new ApiError(
-            'API вернул ответ, не соответствующий контракту',
+            'The API response does not match the contract',
             response.status,
             text || undefined,
           ),

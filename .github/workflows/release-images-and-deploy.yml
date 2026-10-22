@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       web: ${{ steps.changes.outputs.web }}
+      landing: ${{ steps.changes.outputs.landing }}
       admin: ${{ steps.changes.outputs.admin }}
       backend: ${{ steps.changes.outputs.backend }}
       livekit: ${{ steps.changes.outputs.livekit }}
@@ -73,7 +74,7 @@ jobs:
           set -euo pipefail
 
           backend_services="api events autumn january gifbox crond pushd voice-ingress"
-          frontend_services="web admin"
+          frontend_services="web landing admin"
           all_services="$frontend_services $backend_services livekit"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -81,12 +82,17 @@ jobs:
             if [ -n "$REQUESTED_SERVICES" ]; then
               services="$REQUESTED_SERVICES"
               web=false
+              landing=false
               admin=false
               backend=false
               livekit=false
 
               if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' web '; then
                 web=true
+              fi
+
+              if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' landing '; then
+                landing=true
               fi
 
               if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' admin '; then
@@ -105,12 +111,14 @@ jobs:
             else
               services="$all_services"
               web=true
+              landing=true
               admin=true
               backend=true
               livekit=true
             fi
             {
               echo "web=$web"
+              echo "landing=$landing"
               echo "admin=$admin"
               echo "backend=$backend"
               echo "livekit=$livekit"
@@ -144,6 +152,7 @@ jobs:
           if [ "$publish_all" = true ]; then
             {
               echo "web=true"
+              echo "landing=true"
               echo "admin=true"
               echo "backend=true"
               echo "livekit=true"
@@ -186,6 +195,7 @@ jobs:
 
           {
             echo "web=true"
+            echo "landing=true"
             echo "admin=true"
             echo "backend=$backend"
             echo "livekit=$livekit"
@@ -219,6 +229,8 @@ jobs:
             VITE_APP_TITLE=syrnike13
             VITE_RELEASE_CHANNEL=stable
             VITE_API_URL=https://syrnike13.ru/api
+            VITE_PUBLIC_APP_URL=https://app.syrnike13.ru
+            VITE_PUBLIC_SITE_URL=https://syrnike13.ru
             VITE_WS_URL=wss://syrnike13.ru/ws
             VITE_MEDIA_URL=https://syrnike13.ru/autumn
             VITE_PROXY_URL=https://syrnike13.ru/january
@@ -228,6 +240,36 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-web:latest
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.sha_tag }}
+
+  landing:
+    name: Publish landing image
+    runs-on: ubuntu-24.04
+    needs:
+      - version
+      - changes
+    if: ${{ needs.changes.outputs.landing == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/landing/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13
+            VITE_APP_URL=https://app.syrnike13.ru
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-landing:latest
+            ghcr.io/${{ github.repository_owner }}/app-landing:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/app-landing:${{ needs.version.outputs.sha_tag }}
 
   admin:
     name: Publish admin image
@@ -694,6 +736,7 @@ jobs:
       - changes
       - version
       - web
+      - landing
       - admin
       - backend-services
       - livekit
@@ -703,12 +746,13 @@ jobs:
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.admin.result != 'failure' && needs.admin.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (needs.changes.outputs.desktop != 'true' || (needs.desktop-github-release.result == 'success' && needs.desktop-upload-production.result == 'success')) && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.landing.result != 'failure' && needs.landing.result != 'cancelled' && needs.admin.result != 'failure' && needs.admin.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (needs.changes.outputs.desktop != 'true' || (needs.desktop-github-release.result == 'success' && needs.desktop-upload-production.result == 'success')) && (github.event_name == 'push' || inputs.deploy == true) }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      SYRNIKE_APP_DOMAIN: ${{ vars.SYRNIKE_APP_DOMAIN || 'app.syrnike13.ru' }}
       SYRNIKE_ADMIN_DOMAIN: ${{ vars.SYRNIKE_ADMIN_DOMAIN || 'admin.syrnike13.ru' }}
       SYRNIKE_REVERSE_PROXY: ${{ vars.SYRNIKE_REVERSE_PROXY || 'false' }}
       SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
@@ -724,6 +768,7 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_APP_DOMAIN"
           test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
@@ -772,9 +817,11 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' CADDYFILE_CANDIDATE='$CADDYFILE_CANDIDATE' && ./scripts/deploy-on-server.sh && rm -f '$CADDYFILE_CANDIDATE'"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_APP_DOMAIN='$SYRNIKE_APP_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' CADDYFILE_CANDIDATE='$CADDYFILE_CANDIDATE' && ./scripts/deploy-on-server.sh && rm -f '$CADDYFILE_CANDIDATE'"
       - name: Verify API
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_DOMAIN}/" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_APP_DOMAIN}/" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null

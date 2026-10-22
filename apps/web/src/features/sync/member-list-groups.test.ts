@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Member, Server, User } from '@syrnike13/api-types'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import {
   flattenMemberListSections,
   groupServerMembersForSidebar,
@@ -8,6 +10,8 @@ import {
   memberHoistRole,
 } from '#/features/sync/member-list-groups'
 import type { ServerMemberEntry } from '#/features/sync/selectors'
+
+const t = createTranslator(ru, 'ru', 'chat')
 
 type TestRole = Omit<
   NonNullable<Server['roles']>[string],
@@ -216,6 +220,7 @@ describe('groupServerMembersForSidebar', () => {
 
     const flat = flattenMemberListSections(
       groupServerMembersForSidebar(server, members),
+      t,
     )
 
     expect(flat.filter((item) => item.kind === 'member').map((item) => item.key)).toEqual(

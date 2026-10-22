@@ -6,7 +6,7 @@ import {
 
 import {
   UI_SOUND_EVENTS,
-  UI_SOUND_EVENT_LABELS,
+  UI_SOUND_EVENT_LABEL_KEYS,
   type SoundEventId,
 } from './sound-events'
 
@@ -26,7 +26,7 @@ export type SoundEventPackId = (typeof SOUND_EVENT_PACK_IDS)[number]
 
 export type SoundPack = {
   id: SoundAuthorPackId | SoundEventPackId
-  label: string
+  labelKey: string
   kind: SoundPackKind
   sounds: Partial<Record<SoundEventId, SoundClip>>
   easter: Partial<Record<SoundEventId, SoundClip>>
@@ -86,7 +86,7 @@ const DEFAULT_SOUNDS = clipsForFiles('default', DEFAULT_SOUND_FILES)
 const AUTHOR_SOUND_PACKS: SoundPack[] = [
   {
     id: 'default',
-    label: 'Default',
+    labelKey: 'packs.default',
     kind: 'author',
     sounds: DEFAULT_SOUNDS,
     easter: {},
@@ -98,7 +98,7 @@ const EVENT_SOUND_PACKS: SoundPack[] = []
 export function authorSoundPackOptions() {
   return AUTHOR_SOUND_PACKS.map((pack) => ({
     id: pack.id as SoundAuthorPackId,
-    label: pack.label,
+    labelKey: pack.labelKey,
     kind: pack.kind,
   }))
 }
@@ -106,7 +106,7 @@ export function authorSoundPackOptions() {
 export function eventSoundPackOptions() {
   return EVENT_SOUND_PACKS.map((pack) => ({
     id: pack.id as SoundEventPackId,
-    label: pack.label,
+    labelKey: pack.labelKey,
     kind: pack.kind,
   }))
 }
@@ -120,7 +120,7 @@ export function soundEventVolumeOptions(authorPackId: string | null | undefined)
       ? [
           {
             id: eventId,
-            label: UI_SOUND_EVENT_LABELS[eventId],
+            labelKey: UI_SOUND_EVENT_LABEL_KEYS[eventId],
           },
         ]
       : [],

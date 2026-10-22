@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 export function useVoiceStagePresentation(channelId: string | null) {
+  const t = useTranslations('voice')
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
   const [popoutChannelId, setPopoutChannelId] = useState<string | null>(null)
   const windowRef = useRef<Window | null>(null)
@@ -39,7 +41,7 @@ export function useVoiceStagePresentation(channelId: string | null) {
         'popup=yes,width=1280,height=720',
       )
       if (!child) {
-        toast.error('Браузер заблокировал отдельное окно стейджа')
+        toast.error(t('errors.popoutBlocked'))
         return
       }
       windowRef.current = child
@@ -47,7 +49,7 @@ export function useVoiceStagePresentation(channelId: string | null) {
       setPopoutChannelId(targetChannelId)
       child.focus()
     },
-    [channelId],
+    [channelId, t],
   )
   useEffect(() => {
     if (!popoutWindow) return

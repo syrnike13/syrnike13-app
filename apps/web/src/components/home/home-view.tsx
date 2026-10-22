@@ -17,15 +17,19 @@ import { toast } from 'sonner'
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
-import { FloatingMenuItem } from '#/components/ui/floating-menu'
-import { Input } from '#/components/ui/input'
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {
@@ -42,22 +46,23 @@ import { listUsersByRelationship } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { cn } from '#/lib/utils'
 
 export type HomeTab = 'online' | 'all' | 'pending'
 
-const TABS: { id: HomeTab; label: string }[] = [
-  { id: 'online', label: 'В сети' },
-  { id: 'all', label: 'Все' },
-  { id: 'pending', label: 'Заявки' },
+const TABS: { id: HomeTab; key: string }[] = [
+  { id: 'online', key: 'online' },
+  { id: 'all', key: 'all' },
+  { id: 'pending', key: 'pending' },
 ]
 
 function userLabel(user: { username: string; display_name?: string | null }) {
   return user.display_name ?? user.username
 }
 
-const rowIconActionClass =
-  'size-9 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+const rowIconActionClass = 'size-9 shrink-0 text-muted-foreground'
 
 function HomeFriendRow({
   user,
@@ -72,7 +77,12 @@ function HomeFriendRow({
   onOpen?: () => void
   actions?: ReactNode
 }) {
+  const t = useTranslations('home.friends')
+  const tf = useTranslations('friends')
+  const tc = useTranslations('chat')
   const interactive = Boolean(onOpen)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!onOpen || event.target !== event.currentTarget) return
@@ -84,130 +94,152 @@ function HomeFriendRow({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success('ID скопирован')
+      toast.success(t('idCopied'))
     } catch {
-      toast.error('Не удалось скопировать')
+      toast.error(t('copyError'))
     }
   }
 
-  function handleBlock() {
+  async function handleBlock() {
     if (!token) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
-    Effect.runFork(
-      blockUserRelationship(token, user._id).pipe(Effect.ignore),
-    )
+    setBlocking(true)
+    try {
+      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      setBlockDialogOpen(false)
+    } catch {
+      // friend-actions already shows the error toast.
+    } finally {
+      setBlocking(false)
+    }
   }
 
   return (
-    <div
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      className={cn(
-        'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
-        interactive &&
-          'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
-      )}
-      onClick={onOpen}
-      onKeyDown={handleKeyDown}
-    >
-      <UserAvatar user={user} className="size-10" fallbackClassName="size-10" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{userLabel(user)}</p>
-        <p className="truncate text-sm text-muted-foreground">
-          {presenceLabel(user)}
-        </p>
-      </div>
+    <>
       <div
-        className="flex shrink-0 items-center gap-1"
-        onClick={(event) => event.stopPropagation()}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        className={cn(
+          'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
+          interactive &&
+            'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
+        )}
+        onClick={onOpen}
+        onKeyDown={handleKeyDown}
       >
-        {actions}
-        {onMessage ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={rowIconActionClass}
-            title="Написать"
-            aria-label="Написать"
-            onClick={onMessage}
-          >
-            <MessageCircleIcon className="size-4" />
-          </Button>
-        ) : null}
-        {token ? (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={rowIconActionClass}
-                title="Ещё"
-                aria-label="Ещё"
+        <UserAvatar
+          user={user}
+          className="size-10"
+          fallbackClassName="size-10"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{userLabel(user)}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            {presenceLabel(user, tc)}
+          </p>
+        </div>
+        <div
+          className="flex shrink-0 items-center gap-1"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {actions}
+          {onMessage ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={rowIconActionClass}
+              title={t('write')}
+              aria-label={t('write')}
+              onClick={onMessage}
+            >
+              <MessageCircleIcon className="size-4" />
+            </Button>
+          ) : null}
+          {token ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className={rowIconActionClass}
+                    title={t('more')}
+                    aria-label={t('more')}
+                  />
+                }
               >
                 <MoreHorizontalIcon className="size-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="bottom"
-              align="end"
-              className="w-auto min-w-[11rem] p-1"
-              onOpenAutoFocus={(event) => event.preventDefault()}
-            >
-              {user.relationship === 'Incoming' ? (
-                <FloatingMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      declineIncomingFriendRequest(token, user._id).pipe(
-                        Effect.ignore,
-                      ),
-                    )
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-44">
+                {user.relationship === 'Incoming' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        declineIncomingFriendRequest(token, user._id, tf).pipe(
+                          Effect.ignore,
+                        ),
+                      )
+                    }}
+                  >
+                    <XIcon className="size-3.5" />
+                    {t('declineRequest')}
+                  </DropdownMenuItem>
+                ) : null}
+                {user.relationship === 'Outgoing' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        cancelOutgoingFriendRequest(token, user._id, tf).pipe(
+                          Effect.ignore,
+                        ),
+                      )
+                    }}
+                  >
+                    <XIcon className="size-3.5" />
+                    {t('cancelRequest')}
+                  </DropdownMenuItem>
+                ) : null}
+                {user.relationship === 'Friend' ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      Effect.runFork(
+                        removeFriend(token, user._id, tf).pipe(Effect.ignore),
+                      )
+                    }}
+                  >
+                    <UserMinusIcon className="size-3.5" />
+                    {t('removeFriend')}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem onClick={() => void copyUserId()}>
+                  <CopyIcon className="size-3.5" />
+                  {t('copyId')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(event) => {
+                    event.preventDefault()
+                    setBlockDialogOpen(true)
                   }}
                 >
-                  <XIcon className="size-3.5" />
-                  Отклонить заявку
-                </FloatingMenuItem>
-              ) : null}
-              {user.relationship === 'Outgoing' ? (
-                <FloatingMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      cancelOutgoingFriendRequest(token, user._id).pipe(
-                        Effect.ignore,
-                      ),
-                    )
-                  }}
-                >
-                  <XIcon className="size-3.5" />
-                  Отменить заявку
-                </FloatingMenuItem>
-              ) : null}
-              {user.relationship === 'Friend' ? (
-                <FloatingMenuItem
-                  onClick={() => {
-                    Effect.runFork(
-                      removeFriend(token, user._id).pipe(Effect.ignore),
-                    )
-                  }}
-                >
-                  <UserMinusIcon className="size-3.5" />
-                  Удалить из друзей
-                </FloatingMenuItem>
-              ) : null}
-              <FloatingMenuItem onClick={() => void copyUserId()}>
-                <CopyIcon className="size-3.5" />
-                Копировать ID
-              </FloatingMenuItem>
-              <FloatingMenuItem onClick={handleBlock}>
-                <BanIcon className="size-3.5" />
-                Заблокировать
-              </FloatingMenuItem>
-            </PopoverContent>
-          </Popover>
-        ) : null}
+                  <BanIcon className="size-3.5" />
+                  {t('block')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
       </div>
-    </div>
+      {token ? (
+        <UserBlockDialog
+          user={user}
+          open={blockDialogOpen}
+          busy={blocking}
+          onOpenChange={setBlockDialogOpen}
+          onConfirm={() => void handleBlock()}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -232,6 +264,9 @@ type HomeViewProps = {
 }
 
 export function HomeView({ tab }: HomeViewProps) {
+  const t = useTranslations('home.friends')
+  const tf = useTranslations('friends')
+  const tu = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -273,7 +308,7 @@ export function HomeView({ tab }: HomeViewProps) {
   useEffect(() => {
     if (tab === 'pending' && !hasPending) {
       void navigate({
-        to: prefix,
+        to: prefix || '/',
         search: { tab: 'online' },
         replace: true,
       })
@@ -290,12 +325,16 @@ export function HomeView({ tab }: HomeViewProps) {
   async function openDm(userId: string) {
     if (!token) return
     await Effect.runPromise(
-      openDirectMessageChannel(token, userId, (channelId) =>
-        navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        }),
+      openDirectMessageChannel(
+        token,
+        userId,
+        (channelId) =>
+          navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          }),
+        tu,
       ).pipe(Effect.ignore),
     )
   }
@@ -307,7 +346,7 @@ export function HomeView({ tab }: HomeViewProps) {
 
     setSending(true)
     try {
-      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed))
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed, tf))
       setUsername('')
       setAddOpen(false)
     } catch {
@@ -319,10 +358,10 @@ export function HomeView({ tab }: HomeViewProps) {
 
   const sectionTitle =
     tab === 'online'
-      ? `В сети — ${visibleUsers.length}`
+      ? t('onlineCount', { count: visibleUsers.length })
       : tab === 'all'
-        ? `Все друзья — ${visibleUsers.length}`
-        : `Заявки — ${visibleUsers.length}`
+        ? t('allCount', { count: visibleUsers.length })
+        : t('pendingCount', { count: visibleUsers.length })
 
   return (
     <div className="flex min-w-0 flex-1">
@@ -330,29 +369,29 @@ export function HomeView({ tab }: HomeViewProps) {
         <header className="flex shrink-0 items-center gap-2 border-b border-shell-divider px-4 py-3">
           <div className="flex shrink-0 items-center gap-2">
             <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
-            <span className="text-sm font-semibold">Друзья</span>
+            <span className="text-sm font-semibold">{t('title')}</span>
           </div>
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {visibleTabs.map((item) => (
-              <Button
+              <Link
                 key={item.id}
-                variant={tab === item.id ? 'secondary' : 'ghost'}
-                size="sm"
+                to={prefix || '/'}
+                search={{ tab: item.id }}
                 className={cn(
-                  'shrink-0 rounded-md',
-                  tab === item.id && 'bg-muted',
+                  buttonVariants({
+                    variant: tab === item.id ? 'secondary' : 'ghost',
+                    size: 'sm',
+                  }),
+                  'shrink-0',
                 )}
-                asChild
               >
-                <Link to={prefix} search={{ tab: item.id }}>
-                  <span className="inline-flex items-center gap-1.5">
-                    {item.label}
-                    {item.id === 'pending' ? (
-                      <NotificationBadge badge={friendRequestBadge} />
-                    ) : null}
-                  </span>
-                </Link>
-              </Button>
+                <span className="inline-flex items-center gap-1.5">
+                  {t(`tabs.${item.key}`)}
+                  {item.id === 'pending' ? (
+                    <NotificationBadge badge={friendRequestBadge} />
+                  ) : null}
+                </span>
+              </Link>
             ))}
           </nav>
           <Button
@@ -362,7 +401,7 @@ export function HomeView({ tab }: HomeViewProps) {
             onClick={() => setAddOpen((open) => !open)}
           >
             <UserPlusIcon className="size-4" data-icon="inline-start" />
-            Добавить
+            {t('add')}
           </Button>
         </header>
 
@@ -378,11 +417,11 @@ export function HomeView({ tab }: HomeViewProps) {
               <Input
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="username"
+                placeholder={t('usernamePlaceholder')}
                 disabled={sending}
               />
               <Button type="submit" disabled={sending}>
-                Отправить
+                {t('send')}
               </Button>
             </form>
           </div>
@@ -392,8 +431,8 @@ export function HomeView({ tab }: HomeViewProps) {
           <Input
             value={friendSearch}
             onChange={(event) => setFriendSearch(event.target.value)}
-            placeholder="Поиск по друзьям"
-            className="h-9 max-w-md bg-muted/30"
+            placeholder={t('searchPlaceholder')}
+            className="h-9 max-w-md"
           />
         </div>
 
@@ -405,10 +444,10 @@ export function HomeView({ tab }: HomeViewProps) {
           {visibleUsers.length === 0 ? (
             <p className="px-4 py-8 text-sm text-muted-foreground">
               {tab === 'online'
-                ? 'Нет друзей в сети'
+                ? t('emptyOnline')
                 : tab === 'pending'
-                  ? 'Нет заявок'
-                  : 'Пока нет друзей'}
+                  ? t('emptyPending')
+                  : t('emptyAll')}
             </p>
           ) : (
             <div>
@@ -440,11 +479,12 @@ export function HomeView({ tab }: HomeViewProps) {
                                   acceptIncomingFriendRequest(
                                     token,
                                     user._id,
+                                    tf,
                                   ).pipe(Effect.ignore),
                                 )
                               }}
                             >
-                              Принять
+                              {t('accept')}
                             </Button>
                           ) : null}
                           <Button
@@ -457,6 +497,7 @@ export function HomeView({ tab }: HomeViewProps) {
                                   declineIncomingFriendRequest(
                                     token,
                                     user._id,
+                                    tf,
                                   ).pipe(Effect.ignore),
                                 )
                                 return
@@ -466,11 +507,12 @@ export function HomeView({ tab }: HomeViewProps) {
                                 cancelOutgoingFriendRequest(
                                   token,
                                   user._id,
+                                  tf,
                                 ).pipe(Effect.ignore),
                               )
                             }}
                           >
-                            {isOutgoing ? 'Отменить' : 'Отклонить'}
+                            {isOutgoing ? t('cancel') : t('decline')}
                           </Button>
                         </>
                       ) : null

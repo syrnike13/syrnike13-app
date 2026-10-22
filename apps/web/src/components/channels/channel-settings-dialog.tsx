@@ -1,9 +1,13 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { SettingsIcon } from '#/components/icons'
 import { useMatch, useNavigate } from '@tanstack/react-router'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import {
+  useAppRouteIdPrefix,
+  useAppRoutePrefix,
+} from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import {
@@ -27,11 +31,13 @@ export function ChannelSettingsDialog({
   open: _controlledOpen,
   onOpenChange,
 }: ChannelSettingsDialogProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
+  const routePrefix = useAppRouteIdPrefix()
   const channelRouteMatch = useMatch({
-    from: `${prefix}/c/$channelId`,
+    from: `${routePrefix}/c/$channelId`,
     shouldThrow: false,
   })
   const serverId = serverChannelServerId(channel)
@@ -89,7 +95,7 @@ export function ChannelSettingsDialog({
       variant="ghost"
       size="icon"
       className="size-8"
-      title="Настройки канала"
+      title={t('channelSettings')}
       onClick={openSettings}
     >
       <SettingsIcon className="size-4" />
