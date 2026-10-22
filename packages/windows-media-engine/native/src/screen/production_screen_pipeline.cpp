@@ -203,7 +203,7 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
 
 void ProductionScreenPipeline::run() noexcept {
   // MMCSS registration belongs to this thread: create and revert it here.
-  scheduling_boost_ = std::make_unique<ScreenSchedulingBoost>(device_owner_->device());
+  scheduling_boost_ = std::make_unique<ScreenSchedulingBoost>();
   try {
     while (true) {
       while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))
@@ -353,10 +353,7 @@ void ProductionScreenPipeline::run() noexcept {
     }
   } catch (const std::exception& error) {
     std::scoped_lock lock(mutex_);
-    const auto removed_reason = device_owner_->removedReason();
-    const bool device_lost = removed_reason == DXGI_ERROR_DEVICE_REMOVED ||
-                             removed_reason == DXGI_ERROR_DEVICE_RESET ||
-                             removed_reason == DXGI_ERROR_DEVICE_HUNG;
+    const bool device_lost = deviceLost();
     if (!failure_)
       failure_ = ScreenPublicationFailure{
           device_lost ? "screen_d3d11_device_lost" : "screen_pipeline_worker_failed", error.what(),
@@ -387,7 +384,9 @@ void ProductionScreenPipeline::run() noexcept {
 void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32_t height) {
   source_width_ = width;
   source_height_ = height;
-  const auto wanted = fitScreenOutput(profile_, width, height);
+  auto wanted = fitScreenOutput(profile_, width, height);
+  // A resize keeps the frame rate the load governor chose.
+  wanted.frames_per_second = output_.frames_per_second;
   if (wanted.width == output_.width && wanted.height == output_.height) {
     pending_output_.reset();
     return;
@@ -401,6 +400,12 @@ void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32
   }
   if (now - pending_output_since_ < kOutputResizeSettle) return;
   if (resizeOutput(wanted)) pending_output_.reset();
+}
+
+bool ProductionScreenPipeline::deviceLost() const noexcept {
+  const auto removed_reason = device_owner_->removedReason();
+  return removed_reason == DXGI_ERROR_DEVICE_REMOVED || removed_reason == DXGI_ERROR_DEVICE_RESET ||
+         removed_reason == DXGI_ERROR_DEVICE_HUNG;
 }
 
 bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
@@ -429,7 +434,7 @@ bool ProductionScreenPipeline::replaceEncoder(ScreenVideoProfile output) {
   auto converter = std::make_unique<GpuScreenConverter>(device_owner_, output, lab_frame_marker_);
   auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, output);
   if (const auto failure = encoder->start(std::chrono::milliseconds{3000}))
-    throw std::runtime_error(failure->message);
+    throw EncoderReplacementRefused(failure->message);
   if (!encoder_->stop(std::chrono::milliseconds{500}))
     throw std::runtime_error("Screen encoder did not drain before a resize");
   while (auto unsubmitted = encoder_->takeEncoded()) unsubmitted->release();

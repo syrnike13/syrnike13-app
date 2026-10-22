@@ -115,7 +115,7 @@ AdaptiveDecision evaluateAdaptiveScreenPolicy(
   }
   d.local_measured = m.local_measurements_fresh;
   d.local_pressure = local_pressure;
-  // Pacer queueing is not local starvation: it follows after the local check.
+  // Pacer queueing is not local starvation: it follows the local verdict.
   AdaptiveReason pressure = local_pressure;
   if (m.local_measurements_fresh && pressure == AdaptiveReason::healthy &&
       m.backpressure_permille >= 250)

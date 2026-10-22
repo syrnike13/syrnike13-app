@@ -1102,6 +1102,31 @@ describe('VoiceDirector', () => {
     expect(delays.at(-1)).toBe(1_000)
   })
 
+  it('gives a share on a new connection its own restart budget', async () => {
+    const harness = createHarness()
+    const failed: VoiceMediaSnapshot = {
+      state: 'failed',
+      error: { code: 'screen_keyframe_progress_deadline', message: 'no progress', retryable: true },
+    }
+    const first = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a' })
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      harness.engine.emit({
+        type: 'mediaState', kind: 'screen',
+        operationId: first.operationId, connectionEpoch: first.connectionEpoch, media: failed,
+      })
+      await waitUntil(() => harness.engine.retriedMedia.length === attempt)
+    }
+
+    const second = await connect(harness, 'B')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a' })
+    harness.engine.emit({
+      type: 'mediaState', kind: 'screen',
+      operationId: second.operationId, connectionEpoch: second.connectionEpoch, media: failed,
+    })
+    await waitUntil(() => harness.engine.retriedMedia.length === 4)
+  })
+
   it('does not restart a share the user stopped or that cannot be retried', async () => {
     let release: (() => void) | null = null
     const harness = createHarness({

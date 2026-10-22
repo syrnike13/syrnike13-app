@@ -141,7 +141,7 @@ add_library(media_screen STATIC
 windows_media_target(media_screen)
 target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen PUBLIC media_capture media_preview_budget PRIVATE
-  mf mfplat mfuuid wmcodecdspuuid avrt dxgi)
+  mf mfplat mfuuid wmcodecdspuuid avrt)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()

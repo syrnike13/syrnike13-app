@@ -1,9 +1,10 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+
+#include "screen/rolling_event_window.hpp"
 
 namespace syrnike::windows_media::screen {
 enum class KeyframeAction { none, request, exhausted };
@@ -43,10 +44,12 @@ inline constexpr std::uint64_t kEncoderRecoveryWindowMs = 60'000;
 
 class ScreenEncoderRecoveryBudget final {
  public:
-  [[nodiscard]] bool available(std::uint64_t now_ms) const noexcept;
-  void consume(std::uint64_t now_ms) noexcept;
+  [[nodiscard]] bool available(std::uint64_t now_ms) noexcept {
+    recoveries_.expire(now_ms, kEncoderRecoveryWindowMs);
+    return recoveries_.size() < kMaximumEncoderRecoveriesPerWindow;
+  }
+  void consume(std::uint64_t now_ms) noexcept { recoveries_.record(now_ms); }
  private:
-  std::array<std::uint64_t, kMaximumEncoderRecoveriesPerWindow> recoveries_ms_{};
-  std::size_t count_ = 0;
+  RollingEventWindow<kMaximumEncoderRecoveriesPerWindow> recoveries_;
 };
 }

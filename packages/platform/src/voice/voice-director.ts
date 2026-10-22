@@ -119,6 +119,8 @@ export class VoiceDirector {
   private selfStateSync: Fiber.Fiber<void, never> | null = null
   private disposed = false
   private idCounter = 0
+  // The restart budget belongs to one connection: a new lease starts over.
+  private screenRestartLease: VoiceLease | null = null
   private screenRestartAttempts = 0
   private screenRunningSinceMs: number | null = null
   private screenRestartAbort: AbortController | null = null
@@ -1073,6 +1075,12 @@ export class VoiceDirector {
   }
 
   private observeScreenState(media: VoiceSnapshot['screen'], lease: VoiceLease) {
+    if (this.screenRestartLease !== lease) {
+      this.cancelScreenRestart()
+      this.screenRestartLease = lease
+      this.screenRestartAttempts = 0
+      this.screenRunningSinceMs = null
+    }
     if (media.state === 'running') {
       this.screenRunningSinceMs ??= this.now()
       return

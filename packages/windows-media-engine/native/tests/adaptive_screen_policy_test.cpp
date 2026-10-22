@@ -419,7 +419,8 @@ void keyframes() {
 }
 void localPressure() {
   Trace lossy;
-  lossy.sample.network_poor = true;
+  // A link far below the preset: the network binds the bitrate here.
+  lossy.sample.available_outgoing_bitrate = 3'000'000;
   lossy.sample.publish_age_ms = 250;
   const auto decision = lossy.tick();
   require(decision.reason == AdaptiveReason::network, "network verdict changed");
@@ -470,6 +471,7 @@ void loadGovernor() {
   require(g.level() == L::boosted, "backed-off restore never happened");
   for (int i = 0; i < 59; ++i) require(step(false) == L::boosted, "boost released early");
   require(step(false) == L::normal, "boost never released");
+  require(g.restoreHoldMs() == 30'000, "back-off survived the end of the load");
   // A 30 fps preset has no lower rate: boost only.
   ScreenLoadGovernor thirty;
   t = 0;

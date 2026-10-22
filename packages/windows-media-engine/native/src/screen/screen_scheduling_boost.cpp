@@ -1,7 +1,6 @@
 #include "screen/screen_scheduling_boost.hpp"
 
 #include <avrt.h>
-#include <dxgi.h>
 
 namespace syrnike::windows_media::screen {
 namespace {
@@ -25,13 +24,7 @@ const GpuPriorityApi& gpuPriorityApi() noexcept {
   }();
   return api;
 }
-// The documented range of IDXGIDevice::SetGPUThreadPriority.
-constexpr INT kBoostedGpuThreadPriority = 7;
 }  // namespace
-
-ScreenSchedulingBoost::ScreenSchedulingBoost(ID3D11Device* device) noexcept {
-  if (device) (void)device->QueryInterface(IID_PPV_ARGS(&dxgi_device_));
-}
 
 ScreenSchedulingBoost::~ScreenSchedulingBoost() { set(false); }
 
@@ -49,36 +42,27 @@ void ScreenSchedulingBoost::apply() noexcept {
 
   const auto& api = gpuPriorityApi();
   std::int32_t previous = 0;
-  if (api.get && api.set && api.get(GetCurrentProcess(), &previous) == 0) {
-    // Windows may refuse high to an unelevated process; above normal is the
-    // fallback. The applied class is reported in screen_load_metrics.
-    for (const auto wanted : {GpuSchedulingPriorityClass::high,
-                              GpuSchedulingPriorityClass::above_normal}) {
-      if (static_cast<std::int32_t>(wanted) <= previous) break;
-      if (api.set(GetCurrentProcess(), static_cast<std::int32_t>(wanted)) == 0) {
-        previous_process_priority_ = previous;
-        stats_.gpu_process_priority = wanted;
-        break;
-      }
+  if (!api.get || !api.set || api.get(GetCurrentProcess(), &previous) != 0) return;
+  // Windows may refuse high to an unelevated process; above normal is the
+  // fallback. The applied class is reported in screen_load_metrics.
+  for (const auto wanted : {GpuSchedulingPriorityClass::high,
+                            GpuSchedulingPriorityClass::above_normal}) {
+    if (static_cast<std::int32_t>(wanted) <= previous) break;
+    if (api.set(GetCurrentProcess(), static_cast<std::int32_t>(wanted)) == 0) {
+      previous_process_priority_ = previous;
+      stats_.gpu_process_priority = wanted;
+      break;
     }
-  }
-
-  INT thread_previous = 0;
-  if (dxgi_device_ && SUCCEEDED(dxgi_device_->GetGPUThreadPriority(&thread_previous)) &&
-      thread_previous < kBoostedGpuThreadPriority &&
-      SUCCEEDED(dxgi_device_->SetGPUThreadPriority(kBoostedGpuThreadPriority))) {
-    previous_thread_priority_ = thread_previous;
-    stats_.gpu_thread_priority = kBoostedGpuThreadPriority;
   }
 }
 
 void ScreenSchedulingBoost::revert() noexcept {
-  if (previous_thread_priority_ && dxgi_device_)
-    (void)dxgi_device_->SetGPUThreadPriority(*previous_thread_priority_);
-  previous_thread_priority_.reset();
-  stats_.gpu_thread_priority.reset();
   const auto& api = gpuPriorityApi();
-  if (previous_process_priority_ && api.set)
+  std::int32_t current = 0;
+  // Restore only our own change: a class set since by someone else stays.
+  if (previous_process_priority_ && stats_.gpu_process_priority && api.get && api.set &&
+      api.get(GetCurrentProcess(), &current) == 0 &&
+      current == static_cast<std::int32_t>(*stats_.gpu_process_priority))
     (void)api.set(GetCurrentProcess(), *previous_process_priority_);
   previous_process_priority_.reset();
   stats_.gpu_process_priority.reset();

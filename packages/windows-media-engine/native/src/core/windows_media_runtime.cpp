@@ -199,12 +199,12 @@ void WindowsMediaRuntime::run() noexcept {
             {"admitted_fps", static_cast<double>(
                 pipeline.admitted_fps ? pipeline.admitted_fps : preset_fps)},
         }};
-        snapshot_.screen_load_metrics = std::array<DiagnosticMetric, 7>{{
+        snapshot_.screen_load_metrics = std::array<DiagnosticMetric, 6>{{
             {"load_level", static_cast<double>(pipeline.load_level)},
             {"mmcss_registered", pipeline.scheduling.mmcss_registered ? 1.0 : 0.0},
-            {"gpu_process_priority", static_cast<double>(
-                pipeline.scheduling.gpu_process_priority.value_or(::syrnike::windows_media::screen::GpuSchedulingPriorityClass::normal))},
-            {"gpu_thread_priority", static_cast<double>(pipeline.scheduling.gpu_thread_priority.value_or(0))},
+            // -1: no class applied (not boosted, or refused by Windows).
+            {"gpu_process_priority", pipeline.scheduling.gpu_process_priority
+                ? static_cast<double>(*pipeline.scheduling.gpu_process_priority) : -1.0},
             {"stale_encoded_drops", static_cast<double>(pipeline.stale_encoded_drops)},
             {"dependent_encoded_drops", static_cast<double>(pipeline.dependent_encoded_drops)},
             {"encoder_recoveries", static_cast<double>(pipeline.encoder_recoveries)},

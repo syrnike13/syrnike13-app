@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -26,6 +27,12 @@
 #include "screen/screen_scheduling_boost.hpp"
 
 namespace syrnike::windows_media::screen {
+
+// The replacement encoder did not start; the current one is untouched.
+class EncoderReplacementRefused final : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
 
 enum class ProductionScreenPipelineState {
   idle,
@@ -141,7 +148,7 @@ class ProductionScreenPipeline final {
   void runAdaptiveControl();
   void requestStartBitrate();
   void applyLoadLevel(ScreenLoadLevel level);
-  // The preset interval, doubled while the load governor halves the rate.
+  // The encoder's interval: the preset's, or half its rate under load.
   [[nodiscard]] std::int64_t frameIntervalUs() const noexcept;
   void reconfigure(std::size_t target_profile, std::uint64_t desired_revision);
   [[nodiscard]] ScreenCommandResult drainGeneration(std::chrono::steady_clock::time_point deadline,
@@ -151,6 +158,7 @@ class ProductionScreenPipeline final {
   void followSourceSize(std::uint32_t width, std::uint32_t height);
   [[nodiscard]] bool resizeOutput(ScreenVideoProfile output);
   [[nodiscard]] bool replaceEncoder(ScreenVideoProfile output);
+  [[nodiscard]] bool deviceLost() const noexcept;
   // Keyframes stopped reaching viewers: restart the encoder on the same
   // publication, a bounded number of times, before failing the share.
   [[nodiscard]] bool recoverEncoderInPlace(std::uint64_t now_ms);

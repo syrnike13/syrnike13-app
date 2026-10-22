@@ -36,9 +36,11 @@ ScreenLoadLevel ScreenLoadGovernor::observe(std::uint64_t now, bool measured,
     restored_at_ms_ = now;
     quiet_ms_ = 0;
   } else if (level_ == ScreenLoadLevel::boosted && quiet_ms_ >= kLoadRelaxBoostMs) {
+    // Load is gone entirely: an old premature restore no longer predicts it.
     level_ = ScreenLoadLevel::normal;
     level_since_ms_ = now;
     quiet_ms_ = 0;
+    restore_hold_ms_ = kLoadRestoreFrameRateMs;
   }
   return level_;
 }

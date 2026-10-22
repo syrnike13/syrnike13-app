@@ -73,6 +73,8 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   (void)keyframes_.requestThrough(profile_generation, keyframe_intents_->load());
   const auto keyframe_action = keyframes_.poll(now, encoder_->stats().submitted);
   if (keyframe_action == KeyframeAction::exhausted) {
+    // A lost device is not load: run() reports it so the utility is retired.
+    if (deviceLost()) throw std::runtime_error("Screen GPU device was lost");
     if (recoverEncoderInPlace(now)) return;
     std::scoped_lock lock(mutex_);
     // Sustained load, not a broken device: starting the share again can work.
@@ -215,7 +217,8 @@ bool ProductionScreenPipeline::recoverEncoderInPlace(std::uint64_t now) {
   if (!encoder_recoveries_.available(now)) return false;
   try {
     if (!replaceEncoder(output_)) return false;
-  } catch (const std::exception&) {
+  } catch (const EncoderReplacementRefused&) {
+    if (deviceLost()) throw;
     return false;
   }
   encoder_recoveries_.consume(now);
@@ -225,16 +228,24 @@ bool ProductionScreenPipeline::recoverEncoderInPlace(std::uint64_t now) {
 }
 
 std::int64_t ProductionScreenPipeline::frameIntervalUs() const noexcept {
-  const auto interval = static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
-  return frame_rate_reduced_ ? interval * 2 : interval;
+  return static_cast<std::int64_t>(1'000'000 / output_.frames_per_second);
 }
 
 void ProductionScreenPipeline::applyLoadLevel(ScreenLoadLevel level) {
   if (scheduling_boost_) scheduling_boost_->set(level != ScreenLoadLevel::normal);
   const bool reduced = level == ScreenLoadLevel::reduced_frame_rate;
   if (reduced != frame_rate_reduced_) {
-    frame_rate_reduced_ = reduced;
-    cadence_.reset();
+    // The encoder itself runs at the new rate: CBR budgets bits per
+    // configured frame, so only skipping input would also halve the bitrate.
+    auto output = output_;
+    output.frames_per_second = reduced ? profile_.frames_per_second / 2 : profile_.frames_per_second;
+    // Retried on the next sample while borrowed frames are still in flight;
+    // a failed replacement keeps the current encoder and rate.
+    try {
+      if (replaceEncoder(output)) frame_rate_reduced_ = reduced;
+    } catch (const EncoderReplacementRefused&) {
+      if (deviceLost()) throw;
+    }
   }
   std::scoped_lock lock(mutex_);
   stats_.load_level = level;
