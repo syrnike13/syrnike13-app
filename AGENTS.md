@@ -50,6 +50,19 @@ On Windows, missing OpenSSL/vcpkg/Docker for backend checks is an environment bl
 - Always distinguish local, committed, pushed, built, and deployed state.
 - `VERSION` changes and pushes to `main`/`develop` no longer start release workflows; production and nightly releases are manual `workflow_dispatch` runs.
 
+### Pull requests
+
+Every PR is written for a reviewer who did not watch the work happen. Fill `.github/PULL_REQUEST_TEMPLATE.md` in full.
+
+- Title uses Conventional Commits in English, matching the commit history. Body is Russian prose; keep code, commands, paths, identifiers, and quoted errors verbatim.
+- Start with a `TL;DR` of 1–4 plain-language bullets: what changed and why it matters. It is not a diff recap.
+- Show, do not explain. UI changes get before/after screenshots or a short clip captured from this branch's build. Performance and resource changes get before/after numbers with method, hardware, and build configuration. Behaviour, protocol, schema, and diagnostic changes get the exact observable difference. When an honest "before" is unavailable, show only "after" and say why; never reconstruct or stage "before" evidence.
+- Drop sections that do not apply instead of inventing content or leaving placeholders.
+- Before opening, fetch and refresh the branch onto the current base (`develop` unless the PR is stacked). Open only an up-to-date, conflict-free PR. If the base moves while the PR is open, refresh the branch and re-run the affected checks.
+- Run the checks for what changed (`pnpm check:ui`, `pnpm check:messages`, affected typecheck/test/build, `pnpm backend:check`, `pnpm livekit:check`) and list the exact commands and results. State what was not run or verified, and never claim CI passed before it finishes.
+- One logical change per PR. Unrelated fixes become follow-ups, not drive-by edits.
+- Update the body when the diff changes materially. Keep secrets, tokens, and personal data out of screenshots, logs, and pasted output.
+
 ## Client UI
 
 - Full UI rules, component catalog, reference screens and desktop contracts live in `packages/ui/AGENTS.md`. Read it before UI work; run `pnpm check:ui` and `pnpm lint:design` before finishing.
