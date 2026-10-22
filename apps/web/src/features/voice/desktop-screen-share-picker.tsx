@@ -129,17 +129,31 @@ export function canRequestSourceAudio(
   return source?.audioAvailable !== false
 }
 
-export function DesktopScreenSharePicker() {
+export type ScreenSharePickerDemo = {
+  request: DesktopDisplayMediaRequest
+  sources: readonly DesktopDisplayMediaSource[]
+  onSelect: (source: DesktopDisplayMediaSource, audioRequested: boolean) => void
+  onCancel: () => void
+}
+
+export function DesktopScreenSharePicker({
+  demo,
+}: {
+  /** Dev-only источник данных: показывает настоящий пикер без desktop-моста. */
+  demo?: ScreenSharePickerDemo
+} = {}) {
   const t = useTranslations('voice')
   const { desktop } = usePlatform()
   const [request, setRequest] = useState<DesktopDisplayMediaRequest | null>(
-    null,
+    demo?.request ?? null,
   )
   const [sources, setSources] = useState<DesktopDisplayMediaSource[]>([])
   const [loadedPage, setLoadedPage] = useState<LoadedSourcePage | null>(null)
   const loadedVisuals = useRef(new Set<string>())
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
-  const [audioRequested, setAudioRequested] = useState(true)
+  const [audioRequested, setAudioRequested] = useState(
+    demo?.request.audioRequested ?? true,
+  )
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(0)
   const [hasPreviousPage, setHasPreviousPage] = useState(false)
@@ -149,7 +163,7 @@ export function DesktopScreenSharePicker() {
   )
 
   useEffect(() => {
-    if (!desktop) return
+    if (!desktop || demo) return
     return desktop.media.onRequest((nextRequest) => {
       setRequest(nextRequest)
       setSources([])
@@ -162,11 +176,26 @@ export function DesktopScreenSharePicker() {
       setHasNextPage(false)
       setSubmittingSourceId(null)
     })
-  }, [desktop])
+  }, [demo, desktop])
+
+  useEffect(() => {
+    if (!demo) return
+    loadedVisuals.current.clear()
+    setSources([...demo.sources])
+    setLoadedPage(null)
+    setLoading(false)
+    setHasPreviousPage(false)
+    setHasNextPage(false)
+    setActiveTab(
+      demo.sources.some((source) => source.type === 'screen')
+        ? 'screen'
+        : 'applications',
+    )
+  }, [demo])
 
   const requestId = request?.id ?? null
   useEffect(() => {
-    if (!desktop || !requestId) return
+    if (demo || !desktop || !requestId) return
 
     let current = true
     setLoading(true)
@@ -214,7 +243,7 @@ export function DesktopScreenSharePicker() {
   }, [desktop, page, requestId, t])
 
   useEffect(() => {
-    if (!desktop || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
+    if (!desktop || demo || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
     const visibleSources = loadedPage.sources.filter((source) =>
       (activeTab === 'screen' ? source.type === 'screen' : source.type !== 'screen') &&
       !loadedVisuals.current.has(source.id),
@@ -237,7 +266,7 @@ export function DesktopScreenSharePicker() {
       current = false
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [activeTab, desktop, loadedPage, page, requestId])
+  }, [activeTab, desktop, demo, loadedPage, page, requestId])
 
   const screenSources = useMemo(
     () => sources.filter((source) => source.type === 'screen'),
@@ -256,13 +285,30 @@ export function DesktopScreenSharePicker() {
     setHasPreviousPage(false)
     setHasNextPage(false)
     setSubmittingSourceId(null)
-    if (desktop && activeRequest) {
+    if (demo) {
+      demo.onCancel()
+    } else if (desktop && activeRequest) {
       void desktop.media.cancelRequest(activeRequest.id)
     }
-  }, [desktop, request])
+  }, [demo, desktop, request])
 
   const selectSource = useCallback(
     async (source: DesktopDisplayMediaSource) => {
+      const selectedAudioRequested =
+        audioRequested && canRequestSourceAudio(source)
+
+      if (demo) {
+        demo.onSelect(source, selectedAudioRequested)
+        setRequest(null)
+        setSources([])
+        setLoadedPage(null)
+        setPage(0)
+        setHasPreviousPage(false)
+        setHasNextPage(false)
+        setSubmittingSourceId(null)
+        return
+      }
+
       if (!desktop || !request) return
 
       setSubmittingSourceId(source.id)
@@ -270,7 +316,7 @@ export function DesktopScreenSharePicker() {
         const selected = await desktop.media.selectDisplaySource(
           request.id,
           source.id,
-          audioRequested && canRequestSourceAudio(source),
+          selectedAudioRequested,
         )
         if (!selected) {
           toast.error(t('sharePicker.sourceGone'))
@@ -292,7 +338,7 @@ export function DesktopScreenSharePicker() {
         setSubmittingSourceId(null)
       }
     },
-    [audioRequested, desktop, request, t],
+    [audioRequested, demo, desktop, request, t],
   )
 
   const open = Boolean(request)
@@ -395,7 +441,7 @@ export function DesktopScreenSharePicker() {
               {t('sharePicker.cancel')}
             </Button>
             <ScreenSharePickerSettings
-              audioSupported={Boolean(request?.nativeVideo)}
+              audioSupported={demo ? true : Boolean(request?.nativeVideo)}
               audioRequested={audioRequested}
               onAudioRequestedChange={setAudioRequested}
               disabled={submitting}

@@ -25,6 +25,8 @@ import {
 } from '#/features/voice/dev-voice-stage-ghosts'
 import { cn } from '#/lib/utils'
 
+import { ScreenSharePickerDemoLauncher } from './screen-share-picker-demo'
+
 export function VoiceStagePreviewPanel() {
   const state = useDevVoiceGhostsState()
   const activeIds = new Set(state.activeIds)
@@ -52,6 +54,16 @@ export function VoiceStagePreviewPanel() {
           <RefreshIcon className="size-3" />
           Reset
         </Button>
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-border pt-4">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Screen share picker</p>
+          <p className="text-xs text-muted-foreground">
+            Real native picker with demo sources. Nothing is captured or sent.
+          </p>
+        </div>
+        <ScreenSharePickerDemoLauncher />
       </div>
 
       <label className="mt-3 flex items-center justify-between gap-2 text-xs">
