@@ -436,6 +436,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply release version
+        # This matrix also runs on windows-2022, where the default shell is
+        # pwsh: `printf` there receives an empty "$RELEASE_VERSION" because
+        # PowerShell needs "$env:RELEASE_VERSION" for environment variables.
+        shell: bash
         env:
           RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: printf '%s\n' "$RELEASE_VERSION" > VERSION
