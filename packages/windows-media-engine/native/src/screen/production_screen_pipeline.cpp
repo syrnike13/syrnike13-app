@@ -132,7 +132,9 @@ ScreenStartResult ProductionScreenPipeline::start(std::string track_name,
     track_name_ = std::move(track_name);
   }
   const auto started = startGeneration(deadline);
-  if (started.ok) worker_ = std::thread([this] { run(); });
+  if (!started.ok) return started;
+  requestStartBitrate();
+  worker_ = std::thread([this] { run(); });
   return started;
 }
 
@@ -200,6 +202,8 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
 }
 
 void ProductionScreenPipeline::run() noexcept {
+  // MMCSS registration belongs to this thread: create and revert it here.
+  scheduling_boost_ = std::make_unique<ScreenSchedulingBoost>();
   try {
     while (true) {
       while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))
@@ -237,8 +241,13 @@ void ProductionScreenPipeline::run() noexcept {
         std::scoped_lock lock(mutex_);
         if (stop_requested_ || cancellation_requested_ || !published_) continue;
       }
-      const auto frame_interval_us =
-          static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+      // The encoder's interval: the preset's, or twice it while the load
+      // governor halves the rate.
+      const auto frame_interval_us = frameIntervalUs();
+      // Below the preset floor the policy admits fewer frames; each keeps the
+      // nominal duration the encoder's per-frame budget is configured for.
+      const auto admission_interval_us =
+          screenAdmissionIntervalUs(admitted_fps_, profile_.frames_per_second);
 
       while (sender_->stats().video_depth < kScreenPublicationVideoCapacity) {
         auto output = encoder_->takeEncoded();
@@ -320,7 +329,7 @@ void ProductionScreenPipeline::run() noexcept {
         ++stats_.network_backpressure_drops;
         continue;
       }
-      if (!cadence_.due(timestamp_us, frame_interval_us)) {
+      if (!cadence_.due(timestamp_us, admission_interval_us)) {
         capture->release();
         std::scoped_lock lock(mutex_);
         ++stats_.frame_rate_drops;
@@ -337,17 +346,14 @@ void ProductionScreenPipeline::run() noexcept {
         ++stats_.encoder_rejections;
         continue;
       }
-      cadence_.accepted(timestamp_us, frame_interval_us);
+      cadence_.accepted(timestamp_us, admission_interval_us);
       last_submit_us_ = timestamp_us;
       keepForRepeat(*d3d, metadata);
       capture->release();
     }
   } catch (const std::exception& error) {
     std::scoped_lock lock(mutex_);
-    const auto removed_reason = device_owner_->removedReason();
-    const bool device_lost = removed_reason == DXGI_ERROR_DEVICE_REMOVED ||
-                             removed_reason == DXGI_ERROR_DEVICE_RESET ||
-                             removed_reason == DXGI_ERROR_DEVICE_HUNG;
+    const bool device_lost = deviceLost();
     if (!failure_)
       failure_ = ScreenPublicationFailure{
           device_lost ? "screen_d3d11_device_lost" : "screen_pipeline_worker_failed", error.what(),
@@ -363,6 +369,7 @@ void ProductionScreenPipeline::run() noexcept {
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
+  scheduling_boost_.reset();
   repeat_texture_.Reset();
   if (owns_preview_) LocalScreenPreview::processPreview().stopPublication();
   (void)capture_pipeline_->stop(std::chrono::steady_clock::now());
@@ -377,7 +384,9 @@ void ProductionScreenPipeline::run() noexcept {
 void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32_t height) {
   source_width_ = width;
   source_height_ = height;
-  const auto wanted = fitScreenOutput(profile_, width, height);
+  auto wanted = fitScreenOutput(profile_, width, height);
+  // A resize keeps the frame rate the load governor chose.
+  wanted.frames_per_second = output_.frames_per_second;
   if (wanted.width == output_.width && wanted.height == output_.height) {
     pending_output_.reset();
     return;
@@ -393,9 +402,23 @@ void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32
   if (resizeOutput(wanted)) pending_output_.reset();
 }
 
-// Replaces the converter and encoder on the same publication. The H.264
-// stream changes size on its next (key) frame; viewers keep their track.
+bool ProductionScreenPipeline::deviceLost() const noexcept {
+  const auto removed_reason = device_owner_->removedReason();
+  return removed_reason == DXGI_ERROR_DEVICE_REMOVED || removed_reason == DXGI_ERROR_DEVICE_RESET ||
+         removed_reason == DXGI_ERROR_DEVICE_HUNG;
+}
+
 bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
+  if (!replaceEncoder(output)) return false;
+  std::scoped_lock lock(mutex_);
+  ++stats_.output_resizes;
+  return true;
+}
+
+// Replaces the converter and encoder on the same publication. The H.264
+// stream continues (at the new size) from the next keyframe; viewers keep
+// their track and see a short stall at most.
+bool ProductionScreenPipeline::replaceEncoder(ScreenVideoProfile output) {
   // Encoded slot indices are reused by the next encoder: wait until the SDK
   // has returned every borrowed access unit of this one.
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
@@ -411,7 +434,7 @@ bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
   auto converter = std::make_unique<GpuScreenConverter>(device_owner_, output, lab_frame_marker_);
   auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, output);
   if (const auto failure = encoder->start(std::chrono::milliseconds{3000}))
-    throw std::runtime_error(failure->message);
+    throw EncoderReplacementRefused(failure->message);
   if (!encoder_->stop(std::chrono::milliseconds{500}))
     throw std::runtime_error("Screen encoder did not drain before a resize");
   while (auto unsubmitted = encoder_->takeEncoded()) unsubmitted->release();
@@ -425,7 +448,6 @@ bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
     keyframes_.begin(stats_.profile_generation);
     encoded_continuity_ = {};
     cadence_.reset();
-    ++stats_.output_resizes;
   }
   previous_policy_stats_.reset();
   // The new encoder starts at the preset bitrate; keep the adapted one.
@@ -433,6 +455,18 @@ bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
   if (stats_.target_bitrate && stats_.target_bitrate != profile_.bitrate &&
       encoder_->requestBitrate(bitrate_command_ + 1, stats_.target_bitrate))
     ++bitrate_command_;
+  // A frame rate waiting for the old encoder's confirmation now pairs with the
+  // command re-issued to the new one, or applies with its preset bitrate.
+  if (pending_fps_) {
+    if (bitrate_command_ != bitrate_completed_) {
+      pending_fps_->revision = bitrate_command_;
+    } else {
+      admitted_fps_ = pending_fps_->frame_rate;
+      pending_fps_.reset();
+      std::scoped_lock lock(mutex_);
+      stats_.admitted_fps = admitted_fps_;
+    }
+  }
   return true;
 }
 
@@ -480,7 +514,7 @@ void ProductionScreenPipeline::repeatLastFrame() {
   if (now_us - last_submit_us_ < kStaticRepeatIntervalUs) return;
   const auto now_ms = static_cast<std::uint64_t>(now_us / 1000);
   if (adapter_ && screenPacketQueueBackpressured(adapter_->networkObservation(), now_ms)) return;
-  const auto frame_interval_us = static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+  const auto frame_interval_us = frameIntervalUs();
   auto metadata = repeat_metadata_;
   metadata.capture_timestamp_100ns = now_us * 10;
   auto converted = converter_->convert({device_owner_, repeat_texture_.Get()}, metadata);

@@ -15,6 +15,7 @@ import {
 } from '@syrnike13/ui/primitives/radio-group'
 import { Slider } from '@syrnike13/ui/primitives/slider'
 import { Separator } from '@syrnike13/ui/primitives/separator'
+import { deviceLabel, selectableDevices } from '#/components/voice/voice-device-list'
 import {
   voiceStagePopoverContentClass,
   voiceStagePopoverHintClass,
@@ -39,16 +40,12 @@ import { cn } from '#/lib/utils'
 
 const METER_BAR_COUNT = 25
 
-function deviceLabel(device: MediaDeviceInfo, t: Translator) {
-  return device.label.trim() || t('devices.device')
-}
-
 function resolveSelectedDeviceLabel(
   devices: MediaDeviceInfo[],
   preferredId: string | undefined,
   t: Translator,
 ) {
-  const selectable = devices.filter((device) => device.deviceId.length > 0)
+  const selectable = selectableDevices(devices)
   if (!preferredId) {
     const first = selectable[0]
     return first
@@ -372,7 +369,7 @@ function MicSettingsDeviceRow({
   onSelect: (deviceId: string | undefined) => void
 }) {
   const t = useTranslations('voice')
-  const selectable = devices.filter((device) => device.deviceId.length > 0)
+  const selectable = selectableDevices(devices)
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

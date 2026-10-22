@@ -14,6 +14,7 @@ import {
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
+import { CameraDevicePickerAnchor } from '#/components/voice/voice-camera-split-control'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
@@ -112,7 +113,8 @@ export function VoicePanelMediaBar() {
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
   const connecting = voiceSession.status === 'connecting'
-  const cameraOn = voiceMedia.cameraEnabled
+  // A camera whose device failed keeps its "on" intent: the button turns it off.
+  const cameraOn = voiceMedia.cameraEnabled || voiceMedia.cameraDeviceFailed
   const sharingScreen = voiceMedia.screenShareEnabled
   const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
@@ -135,18 +137,20 @@ export function VoicePanelMediaBar() {
   return (
     <TooltipProvider delay={300}>
       <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
-        <PanelMediaButton
-          title={cameraControl.title}
-          active={cameraOn}
-          disabled={cameraControl.disabled}
-          onClick={voiceMedia.toggleCamera}
-        >
-          {cameraOn ? (
-            <VideoIcon className="size-4.5" />
-          ) : (
-            <VideoOffIcon className="size-4.5" />
-          )}
-        </PanelMediaButton>
+        <CameraDevicePickerAnchor className="flex min-w-0 flex-1">
+          <PanelMediaButton
+            title={cameraControl.title}
+            active={cameraOn}
+            disabled={cameraControl.disabled}
+            onClick={voiceMedia.toggleCamera}
+          >
+            {cameraOn ? (
+              <VideoIcon className="size-4.5" />
+            ) : (
+              <VideoOffIcon className="size-4.5" />
+            )}
+          </PanelMediaButton>
+        </CameraDevicePickerAnchor>
 
         <PanelMediaButton
           title={screenShareControl.title}

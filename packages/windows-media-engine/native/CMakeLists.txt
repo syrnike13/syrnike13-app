@@ -136,11 +136,12 @@ add_library(media_screen STATIC
   src/screen/production_screen_adaptation.cpp
   src/screen/production_screen_sender.cpp
   src/screen/local_screen_preview.cpp
+  src/screen/screen_scheduling_boost.cpp
 )
 windows_media_target(media_screen)
 target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen PUBLIC media_capture media_preview_budget PRIVATE
-  mf mfplat mfuuid wmcodecdspuuid)
+  mf mfplat mfuuid wmcodecdspuuid avrt)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()
@@ -413,7 +414,8 @@ add_test(NAME window-capture COMMAND window_capture_tests)
 set_tests_properties(window-capture PROPERTIES TIMEOUT 30)
 
 add_library(media_screen_policy STATIC
-  src/screen/adaptive_screen_policy.cpp src/screen/screen_keyframe_control.cpp)
+  src/screen/adaptive_screen_policy.cpp src/screen/screen_keyframe_control.cpp
+  src/screen/screen_load_governor.cpp)
 windows_media_target(media_screen_policy)
 target_include_directories(media_screen_policy PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen PUBLIC media_screen_policy)
@@ -454,6 +456,10 @@ add_executable(gpu_screen_converter_tests
 windows_media_target(gpu_screen_converter_tests)
 target_link_libraries(gpu_screen_converter_tests PRIVATE media_screen)
 add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
+# Manual hardware lab, not a ctest: build it explicitly with --target.
+add_executable(hardware_bitrate_cadence_lab EXCLUDE_FROM_ALL tests/hardware_bitrate_cadence_lab.cpp)
+windows_media_target(hardware_bitrate_cadence_lab)
+target_link_libraries(hardware_bitrate_cadence_lab PRIVATE media_screen)
 set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
 add_executable(local_screen_preview_tests tests/local_screen_preview_test.cpp)

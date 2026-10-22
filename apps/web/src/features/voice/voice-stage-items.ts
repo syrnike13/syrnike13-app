@@ -78,6 +78,8 @@ export function buildStageItems(options: {
     userId: string
     track: NativeVideoRegistryTrack['track']
   } | null
+  /** The local camera is starting or running; its preview track may outlive it. */
+  localCameraActive: boolean
   setNativeDemand: (
     sessionId: string,
     generation: number,
@@ -111,8 +113,11 @@ export function buildStageItems(options: {
     })
   }
 
+  // Unpublished native tracks are only the local camera self-view. Remote
+  // video exists through its publication; a retained last frame is not video.
   for (const native of options.nativeTracks) {
-    if (native.source === 'screen' || nativePublicationIds.has(native.trackId)) continue
+    if (!native.local || native.source !== 'camera' || !options.localCameraActive ||
+        nativePublicationIds.has(native.trackId)) continue
     const userId = baseVoiceIdentity(native.participantIdentity)
     if (!participantIds.has(userId)) continue
     tracks.push({

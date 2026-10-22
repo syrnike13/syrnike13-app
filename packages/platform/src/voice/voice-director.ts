@@ -29,6 +29,11 @@ import {
 
 const DEFAULT_COMMIT_TIMEOUT_MS = 20_000
 const DEFAULT_RECOVERY_DELAYS_MS = [250, 1_000, ...Array(18).fill(5_000)]
+// A share that failed with a retryable error (for example under heavy GPU
+// load) is started again without the user, a bounded number of times.
+const SCREEN_RESTART_DELAYS_MS = [1_000, 3_000, 10_000]
+// Running this long proves a restart held: a later failure starts over.
+const SCREEN_RESTART_STABLE_MS = 60_000
 
 export type VoiceDirectorOptions = Readonly<{
   authority: VoiceAuthorityAdapter
@@ -40,6 +45,7 @@ export type VoiceDirectorOptions = Readonly<{
   commitTimeoutMs?: number
   recoveryDelaysMs?: readonly number[]
   delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>
+  now?: () => number
 }>
 
 type CommitWaiter = {
@@ -86,6 +92,7 @@ export class VoiceDirector {
   private readonly delay:
     | ((milliseconds: number, signal: AbortSignal) => Promise<void>)
     | null
+  private readonly now: () => number
   private readonly commitWaiters = new Set<CommitWaiter>()
 
   private desiredMedia = createInitialVoiceMediaDesiredState()
@@ -113,6 +120,11 @@ export class VoiceDirector {
   private selfStateSync: Fiber.Fiber<void, never> | null = null
   private disposed = false
   private idCounter = 0
+  // The restart budget belongs to one connection: a new lease starts over.
+  private screenRestartLease: VoiceLease | null = null
+  private screenRestartAttempts = 0
+  private screenRunningSinceMs: number | null = null
+  private screenRestartAbort: AbortController | null = null
 
   private snapshotValue: VoiceSnapshot = {
     intentChannelId: null,
@@ -156,6 +168,7 @@ export class VoiceDirector {
     this.recoveryDelaysMs =
       options.recoveryDelaysMs ?? DEFAULT_RECOVERY_DELAYS_MS
     this.delay = options.delay ?? null
+    this.now = options.now ?? Date.now
     this.unsubscribeAuthority = this.authority.subscribe((event) =>
       this.handleAuthorityEvent(event),
     )
@@ -232,13 +245,18 @@ export class VoiceDirector {
       case 'configureRemoteAudio':
         this.engine.updateRemoteAudioSettings(command.settings)
         return
-      case 'setCamera':
-        this.updateDesiredMedia({
+      case 'setCamera': {
+        const changed = this.updateDesiredMedia({
           cameraEnabled: command.enabled,
           cameraDeviceId: command.deviceId,
           cameraProfile: command.profile ?? this.desiredMedia.cameraProfile,
         })
+        // Re-enabling the same camera after a failure is a restart: the
+        // unchanged intent alone never reaches the engine again.
+        if (!changed && command.enabled && this.snapshotValue.camera.state === 'failed')
+          this.engine.retryMedia('camera')
         return
+      }
       case 'setScreen':
         this.updateDesiredMedia({
           screenEnabled: command.enabled,
@@ -919,6 +937,7 @@ export class VoiceDirector {
           SCREEN_SOURCE_ENDED_CODES.has(event.media.error?.code ?? '')) {
         this.updateDesiredMedia({ screenEnabled: false, screenSourceId: undefined, screenAudioEnabled: false })
       }
+      if (event.kind === 'screen') this.observeScreenState(event.media, lease)
       return
     }
     if (event.type === 'transientReconnectStarted') {
@@ -960,14 +979,14 @@ export class VoiceDirector {
 
   private updateDesiredMedia(
     patch: Partial<VoiceMediaDesiredState>,
-  ) {
+  ): boolean {
     const previousReported = reportedSelfVoiceFlags(this.desiredMedia)
     const nextBase = { ...this.desiredMedia, ...patch }
     const nextDesired = {
       ...nextBase,
       effectiveMuted: computeEffectiveMuted(nextBase),
     }
-    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return
+    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return false
     this.desiredMedia = nextDesired
     this.engine.updateDesiredMedia(this.desiredMedia)
     this.updateSnapshot({
@@ -989,6 +1008,7 @@ export class VoiceDirector {
     ) {
       this.requestSelfStateSync()
     }
+    return true
   }
 
   private requestSelfStateSync() {
@@ -1058,6 +1078,56 @@ export class VoiceDirector {
         self.selfStateHandledRevision = handledRevision
       }
     })
+  }
+
+  private observeScreenState(media: VoiceSnapshot['screen'], lease: VoiceLease) {
+    if (this.screenRestartLease !== lease) {
+      this.cancelScreenRestart()
+      this.screenRestartLease = lease
+      this.screenRestartAttempts = 0
+      this.screenRunningSinceMs = null
+    }
+    if (media.state === 'running') {
+      this.screenRunningSinceMs ??= this.now()
+      return
+    }
+    if (media.state !== 'failed') {
+      if (media.state === 'off') {
+        this.cancelScreenRestart()
+        this.screenRestartAttempts = 0
+        this.screenRunningSinceMs = null
+      }
+      return
+    }
+    const runningSince = this.screenRunningSinceMs
+    this.screenRunningSinceMs = null
+    if (runningSince !== null && this.now() - runningSince >= SCREEN_RESTART_STABLE_MS) {
+      this.screenRestartAttempts = 0
+    }
+    if (!media.error?.retryable || SCREEN_SOURCE_ENDED_CODES.has(media.error.code) ||
+        !this.desiredMedia.screenEnabled) return
+    const delay = SCREEN_RESTART_DELAYS_MS[this.screenRestartAttempts]
+    if (delay === undefined) return
+    this.screenRestartAttempts += 1
+    this.cancelScreenRestart()
+    const abort = new AbortController()
+    this.screenRestartAbort = abort
+    this.runtime.runFork(this.delayEffect(delay, abort.signal).pipe(
+      Effect.andThen(Effect.sync(() => {
+        if (this.screenRestartAbort !== abort) return
+        this.screenRestartAbort = null
+        // The user stopped the share, left, or it already recovered.
+        if (this.activeLease !== lease || !this.desiredMedia.screenEnabled ||
+            this.snapshotValue.screen.state !== 'failed') return
+        this.engine.retryMedia('screen')
+      })),
+      Effect.ignore,
+    ))
+  }
+
+  private cancelScreenRestart() {
+    this.screenRestartAbort?.abort()
+    this.screenRestartAbort = null
   }
 
   private updateMediaSnapshot(

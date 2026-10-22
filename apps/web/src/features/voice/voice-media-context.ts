@@ -9,9 +9,15 @@ export type VoiceMediaContextValue = {
   /** Доступность микрофона, камеры и демонстрации на текущем устройстве. */
   mediaAvailability: VoiceMediaAvailabilityState
   cameraEnabled: boolean
+  /** Камера не открылась из-за самого устройства — нужно выбрать другое. */
+  cameraDeviceFailed: boolean
+  /** Растёт, когда нужно открыть выбор камеры (сбой устройства). */
+  cameraDevicePickerRequest: number
   screenShareEnabled: boolean
   screenShareStarting: boolean
   toggleCamera: () => void
+  /** Сохранить камеру и, если она включена или упала, перезапустить на ней. */
+  selectCameraDevice: (deviceId: string | undefined) => void
   toggleScreenShare: () => void
   /** Открыть выбор источника заново, не останавливая стрим (только desktop). */
   changeScreenShareSource?: () => void

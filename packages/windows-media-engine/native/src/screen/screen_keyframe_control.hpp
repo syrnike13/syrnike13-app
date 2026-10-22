@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+
+#include "screen/rolling_event_window.hpp"
 
 namespace syrnike::windows_media::screen {
 enum class KeyframeAction { none, request, exhausted };
@@ -21,10 +24,32 @@ class ScreenKeyframeControl final {
   [[nodiscard]] std::uint64_t pending() const noexcept { return requested_ - acknowledged_; }
   [[nodiscard]] std::uint32_t attempts() const noexcept { return attempts_; }
  private:
-  std::uint64_t generation_ = 0, requested_ = 0, issued_ = 0, acknowledged_ = 0;
+  // A retry must not invalidate the keyframe still answering an earlier
+  // attempt: with sparse input that keyframe completes after the retry.
+  struct Attempt { std::uint64_t watermark = 0, after_sequence = 0; };
+  static constexpr std::uint32_t kMaxAttempts = 3;
+  std::uint64_t generation_ = 0, requested_ = 0, acknowledged_ = 0;
   std::uint64_t issued_after_sequence_ = 0;
+  std::array<Attempt, kMaxAttempts> issued_{};
   std::uint32_t attempts_ = 0;
   std::optional<std::uint64_t> last_request_ms_;
   std::optional<std::uint64_t> last_poll_ms_;
+};
+
+// Exhausted keyframe retries first restart the encoder on the same
+// publication (viewers keep the track). Past this budget in-place restarts
+// are not helping: the share fails retryably and is published anew.
+inline constexpr std::size_t kMaximumEncoderRecoveriesPerWindow = 2;
+inline constexpr std::uint64_t kEncoderRecoveryWindowMs = 60'000;
+
+class ScreenEncoderRecoveryBudget final {
+ public:
+  [[nodiscard]] bool available(std::uint64_t now_ms) noexcept {
+    recoveries_.expire(now_ms, kEncoderRecoveryWindowMs);
+    return recoveries_.size() < kMaximumEncoderRecoveriesPerWindow;
+  }
+  void consume(std::uint64_t now_ms) noexcept { recoveries_.record(now_ms); }
+ private:
+  RollingEventWindow<kMaximumEncoderRecoveriesPerWindow> recoveries_;
 };
 }

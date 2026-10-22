@@ -14,8 +14,10 @@ server-local runtime state:
 - `livekit.yml`
 - `compose.override.yml`
 
-Production releases are driven by the root `VERSION` file. A push to `main`
-publishes and deploys release images only when `VERSION` changes.
+Production releases are driven by the manual `workflow_dispatch` run of
+`.github/workflows/release-images-and-deploy.yml` from `main`. The release
+version is typed into the run form; nothing is triggered by pushing commits or
+by editing the root `VERSION` file.
 
 The active deploy workflow is:
 

@@ -1109,6 +1109,8 @@ private:
         };
         emit("screen_audio", "screen_audio_metrics", media.screen_audio_metrics);
         emit("screen", "screen_video_metrics", media.screen_video_metrics);
+        emit("screen", "screen_bitrate_metrics", media.screen_bitrate_metrics);
+        emit("screen", "screen_load_metrics", media.screen_load_metrics);
         emit("camera", "camera_metrics", media.camera_metrics);
         emit("microphone", "microphone_metrics", media.microphone_metrics);
         emit("remote_audio", "remote_audio_ingress_metrics", media.remote_audio_ingress_metrics);

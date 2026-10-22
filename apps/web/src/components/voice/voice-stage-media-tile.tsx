@@ -271,8 +271,11 @@ export function StageMediaTile({
     isScreen && !isFailedScreen && !isUnsubscribedScreen && !item.isLocal && !item.live
   const isScreenPlaceholder =
     isFailedScreen || isUnsubscribedScreen || isLoadingScreen || isPausedScreen
+  // A muted remote camera keeps its last decoded frame: show the avatar.
+  const isMutedCamera = !isScreen && !item.isLocal && !item.live
   const hasVideo = Boolean(
-    item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen,
+    item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen &&
+      !isMutedCamera,
   )
   const fit =
     variant === 'focus'

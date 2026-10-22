@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -22,8 +23,16 @@
 #include "screen/local_screen_preview.hpp"
 #include "screen/adaptive_screen_policy.hpp"
 #include "screen/screen_keyframe_control.hpp"
+#include "screen/screen_load_governor.hpp"
+#include "screen/screen_scheduling_boost.hpp"
 
 namespace syrnike::windows_media::screen {
+
+// The replacement encoder did not start; the current one is untouched.
+class EncoderReplacementRefused final : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
 
 enum class ProductionScreenPipelineState {
   idle,
@@ -46,6 +55,7 @@ struct ProductionScreenPipelineStats {
   std::uint64_t capture_frames = 0;
   std::uint64_t frame_rate_drops = 0;
   std::uint64_t output_resizes = 0;
+  std::uint64_t encoder_recoveries = 0;
   std::uint64_t network_backpressure_drops = 0;
   std::uint64_t missing_gpu_frames = 0;
   std::uint64_t conversion_drops = 0;
@@ -77,9 +87,21 @@ struct ProductionScreenPipelineStats {
   AdaptiveReason decision_reason = AdaptiveReason::healthy;
   BitrateUpdateResult bitrate;
   std::uint32_t target_bitrate = 0;
+  // What the network allows now and the local-pressure cap (0: none).
+  std::uint32_t network_target_bitrate = 0;
+  std::uint32_t local_ceiling_bitrate = 0;
+  std::uint32_t admitted_fps = 0;
   std::uint64_t bitrate_updates = 0;
   bool quality_warning = false;
+  ScreenLoadLevel load_level = ScreenLoadLevel::normal;
+  ScreenSchedulingBoostStats scheduling;
 };
+
+// Capture admission interval for the policy's frame rate (0: the preset's).
+[[nodiscard]] constexpr std::int64_t screenAdmissionIntervalUs(
+    std::uint32_t admitted_fps, std::uint32_t preset_fps) noexcept {
+  return 1'000'000 / static_cast<std::int64_t>(admitted_fps ? admitted_fps : preset_fps);
+}
 
 using ScreenPublicationAdapterFactory = std::function<std::shared_ptr<ScreenPublicationAdapter>(
     std::function<void()> request_key_frame)>;
@@ -124,6 +146,10 @@ class ProductionScreenPipeline final {
   void run() noexcept;
   void handleEvent(ScreenPublicationEvent event) noexcept;
   void runAdaptiveControl();
+  void requestStartBitrate();
+  void applyLoadLevel(ScreenLoadLevel level);
+  // The encoder's interval: the preset's, or half its rate under load.
+  [[nodiscard]] std::int64_t frameIntervalUs() const noexcept;
   void reconfigure(std::size_t target_profile, std::uint64_t desired_revision);
   [[nodiscard]] ScreenCommandResult drainGeneration(std::chrono::steady_clock::time_point deadline,
                                                     bool capture_stopped) noexcept;
@@ -131,6 +157,11 @@ class ProductionScreenPipeline final {
   [[nodiscard]] ScreenStartResult startGeneration(std::chrono::milliseconds deadline);
   void followSourceSize(std::uint32_t width, std::uint32_t height);
   [[nodiscard]] bool resizeOutput(ScreenVideoProfile output);
+  [[nodiscard]] bool replaceEncoder(ScreenVideoProfile output);
+  [[nodiscard]] bool deviceLost() const noexcept;
+  // Keyframes stopped reaching viewers: restart the encoder on the same
+  // publication, a bounded number of times, before failing the share.
+  [[nodiscard]] bool recoverEncoderInPlace(std::uint64_t now_ms);
   void keepForRepeat(const capture::D3d11FrameView& frame, const capture::FrameMetadata& metadata);
   void repeatLastFrame();
 
@@ -155,11 +186,24 @@ class ProductionScreenPipeline final {
   std::size_t selected_preset_ = 4;
   std::uint64_t bitrate_command_ = 0;
   std::uint64_t bitrate_completed_ = 0;
+  // Capture admission rate chosen by the policy; 0 means the preset's.
+  std::uint32_t admitted_fps_ = 0;
+  // A frame rate waiting for its bitrate command's confirmation.
+  struct PendingFrameRate {
+    std::uint64_t revision = 0;
+    std::uint32_t frame_rate = 0;
+  };
+  std::optional<PendingFrameRate> pending_fps_;
   AdaptivePolicyState policy_state_;
   std::optional<ProductionScreenPipelineStats> previous_policy_stats_;
   std::uint64_t last_policy_ms_ = 0;
   std::uint64_t retired_publication_consumed_ = 0;
   std::uint64_t attempt_revision_ = 0;
+  // Worker-thread only, like the policy state above.
+  ScreenLoadGovernor load_governor_;
+  std::unique_ptr<ScreenSchedulingBoost> scheduling_boost_;
+  bool frame_rate_reduced_ = false;
+  ScreenEncoderRecoveryBudget encoder_recoveries_;
   std::chrono::steady_clock::time_point profile_deadline_{};
   mutable std::mutex mutex_;
   ProductionScreenPipelineState state_ = ProductionScreenPipelineState::idle;

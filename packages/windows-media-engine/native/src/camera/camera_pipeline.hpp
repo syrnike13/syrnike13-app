@@ -5,6 +5,9 @@
 namespace syrnike::windows_media::camera {
 struct CameraPipelineStats {
   CameraFailure failure = CameraFailure::none;
+  // Platform error of the last candidate that failed to open; the candidate
+  // itself is discarded on rollback, so its capture stats are not observable.
+  std::int64_t open_platform_error = 0;
   bool publication_demand = false, preview_demand = false, active = false, candidate = false, retired = false;
   std::uint64_t commits = 0, rollbacks = 0, opened = 0, forwarded = 0;
   CameraCaptureStats capture;

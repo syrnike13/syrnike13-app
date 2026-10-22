@@ -1612,6 +1612,9 @@
       "video": "Видео"
     },
     "devices": {
+      "camera": "Камера",
+      "cameraOpenFailed": "Не удалось включить камеру. Выберите устройство.",
+      "noCameras": "Камеры не найдены",
       "microphone": "Микрофон",
       "output": "Вывод",
       "voiceSettings": "Настройки голоса",

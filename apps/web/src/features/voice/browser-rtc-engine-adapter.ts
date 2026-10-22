@@ -819,13 +819,14 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     kind: VoiceMediaKind,
     error: unknown,
   ) {
+    const message = error instanceof Error ? error.message : `${kind} failed`
     this.emitMedia(active, kind, {
       state: 'failed',
-      error: {
-        code: `${kind}_unavailable`,
-        message: error instanceof Error ? error.message : `${kind} failed`,
-        retryable: true,
-      },
+      error: kind === 'camera' && isCameraDeviceError(error)
+        // The device itself could not be opened: choosing another one helps,
+        // unlike a denied permission.
+        ? { code: 'camera_input_failed', message, retryable: true, stage: 'camera' }
+        : { code: `${kind}_unavailable`, message, retryable: true },
     })
   }
 
@@ -1036,4 +1037,17 @@ function abortSignal(signal: AbortSignal) {
     signal.addEventListener('abort', onAbort, { once: true })
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
+}
+
+const CAMERA_DEVICE_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'NotFoundError',
+  'DevicesNotFoundError',
+  'NotReadableError',
+  'TrackStartError',
+  'OverconstrainedError',
+])
+
+function isCameraDeviceError(error: unknown) {
+  return typeof error === 'object' && error !== null && 'name' in error &&
+    typeof error.name === 'string' && CAMERA_DEVICE_ERROR_NAMES.has(error.name)
 }

@@ -12,6 +12,8 @@ export type NativeVideoTrackMetadata = {
   source: NativeVideoSource
   local: boolean
   sequence: number
+  /** Native capture/stream generation; its sequence restarts at one. */
+  captureGeneration?: number
   rendererEpoch: number
   nativeCaptureTimestampUs?: number
   runtimeEpoch?: number
@@ -52,6 +54,7 @@ const NativeVideoTrackMetadataSchema = Schema.Struct({
   ...NativeVideoPublicationMetadataSchema.fields,
   local: Schema.Boolean,
   sequence: Schema.Int,
+  captureGeneration: OptionalNonNegativeInteger,
   rendererEpoch: Schema.Int,
   nativeCaptureTimestampUs: OptionalNonNegativeInteger,
   runtimeEpoch: OptionalNonNegativeInteger,
@@ -586,7 +589,7 @@ export class NativeVideoRegistry {
       entry.metadata = metadata
     }
     if (entry && presentationEpochOrder === 0 &&
-      metadata.sequence <= entry.metadata.sequence) {
+      compareFrameOrder(metadata, entry.metadata) <= 0) {
       entry.presentation.framesDroppedStale += 1
       frame.close()
       return
@@ -802,6 +805,20 @@ export class NativeVideoRegistry {
     this.version += 1
     for (const listener of this.listeners) listener()
   }
+}
+
+/** Orders frames within one presentation epoch; a newer capture restarts sequence. */
+function compareFrameOrder(
+  candidate: Pick<NativeVideoTrackMetadata, 'captureGeneration' | 'sequence'>,
+  current: Pick<NativeVideoTrackMetadata, 'captureGeneration' | 'sequence'>,
+) {
+  const candidateCapture = candidate.captureGeneration ?? 0
+  const currentCapture = current.captureGeneration ?? 0
+  if (candidateCapture !== currentCapture) {
+    return candidateCapture < currentCapture ? -1 : 1
+  }
+  if (candidate.sequence === current.sequence) return 0
+  return candidate.sequence < current.sequence ? -1 : 1
 }
 
 function comparePresentationEpoch(
