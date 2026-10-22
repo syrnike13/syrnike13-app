@@ -132,7 +132,9 @@ ScreenStartResult ProductionScreenPipeline::start(std::string track_name,
     track_name_ = std::move(track_name);
   }
   const auto started = startGeneration(deadline);
-  if (started.ok) worker_ = std::thread([this] { run(); });
+  if (!started.ok) return started;
+  requestStartBitrate();
+  worker_ = std::thread([this] { run(); });
   return started;
 }
 
@@ -239,6 +241,10 @@ void ProductionScreenPipeline::run() noexcept {
       }
       const auto frame_interval_us =
           static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+      // Below the preset floor the policy admits fewer frames; each keeps the
+      // nominal duration the encoder's per-frame budget is configured for.
+      const auto admission_interval_us =
+          screenAdmissionIntervalUs(admitted_fps_, profile_.frames_per_second);
 
       while (sender_->stats().video_depth < kScreenPublicationVideoCapacity) {
         auto output = encoder_->takeEncoded();
@@ -320,7 +326,7 @@ void ProductionScreenPipeline::run() noexcept {
         ++stats_.network_backpressure_drops;
         continue;
       }
-      if (!cadence_.due(timestamp_us, frame_interval_us)) {
+      if (!cadence_.due(timestamp_us, admission_interval_us)) {
         capture->release();
         std::scoped_lock lock(mutex_);
         ++stats_.frame_rate_drops;
@@ -337,7 +343,7 @@ void ProductionScreenPipeline::run() noexcept {
         ++stats_.encoder_rejections;
         continue;
       }
-      cadence_.accepted(timestamp_us, frame_interval_us);
+      cadence_.accepted(timestamp_us, admission_interval_us);
       last_submit_us_ = timestamp_us;
       keepForRepeat(*d3d, metadata);
       capture->release();
@@ -433,6 +439,18 @@ bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
   if (stats_.target_bitrate && stats_.target_bitrate != profile_.bitrate &&
       encoder_->requestBitrate(bitrate_command_ + 1, stats_.target_bitrate))
     ++bitrate_command_;
+  // A frame rate waiting for the old encoder's confirmation now pairs with the
+  // command re-issued to the new one, or applies with its preset bitrate.
+  if (pending_fps_) {
+    if (bitrate_command_ != bitrate_completed_) {
+      pending_fps_->revision = bitrate_command_;
+    } else {
+      admitted_fps_ = pending_fps_->frame_rate;
+      pending_fps_.reset();
+      std::scoped_lock lock(mutex_);
+      stats_.admitted_fps = admitted_fps_;
+    }
+  }
   return true;
 }
 

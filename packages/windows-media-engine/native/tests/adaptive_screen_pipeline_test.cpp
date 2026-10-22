@@ -102,8 +102,15 @@ void automaticControlKeepsGeneration() {
   until([&] { return adapter->publishReady(); }); adapter->complete();
   until([&] { return pipeline.state() == ProductionScreenPipelineState::running; });
   const auto instance = pipeline.stats().encoder.instance_id;
+  // The encoder opens below the SDK's initial estimate and holds there while
+  // the network is unknown.
+  until([&] { return pipeline.stats().bitrate.applied_bitrate == 4'800'000; });
+  require(pipeline.stats().target_bitrate == 4'800'000, "start bitrate was not commanded");
   adapter->bandwidth = 1'000'000;
-  until([&] { return pipeline.stats().bitrate.applied_bitrate == 2'000'000; });
+  // Below the preset floor the stream fits the budget: per-frame quality falls
+  // to half the floor, then admitted frames carry the rest of the cut.
+  until([&] { return pipeline.stats().bitrate.applied_bitrate == 1'000'000; });
+  require(pipeline.stats().admitted_fps == 51, "a budget below half the floor kept every frame");
   const auto reduced = pipeline.stats();
   require(reduced.current_profile == 4 && reduced.profile_generation == 1 &&
           reduced.encoder.instance_id == instance && reduced.profile_changes == 0 &&
@@ -115,7 +122,22 @@ void automaticControlKeepsGeneration() {
           "stopped intent/warning fence failed");
 }
 }
+// Capture admission follows the policy's frame rate: a 60 Hz source passes
+// the admitted share of frames, and 0 restores the preset's rate.
+void admissionFollowsFrameRate() {
+  for (const auto [admitted, expected] : {std::pair{0U, 60}, {46U, 46}, {30U, 30}}) {
+    ScreenFrameCadence cadence;
+    const auto interval = screenAdmissionIntervalUs(admitted, 60);
+    int delivered = 0;
+    for (int frame = 0; frame < 60 * 60; ++frame) {
+      const auto time = 1'000'000LL + frame * 1'000'000LL / 60;
+      if (cadence.due(time, interval)) { cadence.accepted(time, interval); ++delivered; }
+    }
+    require(delivered >= (expected - 1) * 60 && delivered <= (expected + 1) * 60,
+            "capture admission did not follow the admitted frame rate");
+  }
+}
 int main() {
-  try { supersededSettingAndDrain(); automaticControlKeepsGeneration(); std::cout << "Fixed-preset sender control and explicit setting fences passed\n"; }
+  try { admissionFollowsFrameRate(); supersededSettingAndDrain(); automaticControlKeepsGeneration(); std::cout << "Fixed-preset sender control and explicit setting fences passed\n"; }
   catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

@@ -181,7 +181,28 @@ void WindowsMediaRuntime::run() noexcept {
             {"encoder_rejections", static_cast<double>(pipeline.encoder_rejections)},
             {"sender_superseded", static_cast<double>(pipeline.sender.superseded)},
         }};
-      } else snapshot_.screen_video_metrics.reset();
+        // Bitrate control: confirmed and commanded encoder rate, what WebRTC
+        // allows, the local-pressure cap (0: none), pacer queueing and the
+        // capture rate admitted below the preset floor.
+        const auto preset_fps = pipeline.current_profile < screen::kAdaptiveScreenProfiles.size()
+            ? screen::kAdaptiveScreenProfiles[pipeline.current_profile].fps : 0U;
+        snapshot_.screen_bitrate_metrics = std::array<DiagnosticMetric, 8>{{
+            {"applied_bitrate", static_cast<double>(pipeline.bitrate.applied_bitrate)},
+            {"target_bitrate", static_cast<double>(pipeline.target_bitrate)},
+            {"network_target_bitrate", static_cast<double>(pipeline.network_target_bitrate)},
+            {"local_ceiling_bitrate", static_cast<double>(pipeline.local_ceiling_bitrate)},
+            {"sender_bitrate_allocation", static_cast<double>(
+                pipeline.network.sender_bitrate_allocation.value_or(0))},
+            {"packet_send_delay_us", static_cast<double>(
+                pipeline.network.packet_send_delay_us.value_or(0))},
+            {"bitrate_update_outcome", static_cast<double>(pipeline.bitrate.outcome)},
+            {"admitted_fps", static_cast<double>(
+                pipeline.admitted_fps ? pipeline.admitted_fps : preset_fps)},
+        }};
+      } else {
+        snapshot_.screen_video_metrics.reset();
+        snapshot_.screen_bitrate_metrics.reset();
+      }
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();

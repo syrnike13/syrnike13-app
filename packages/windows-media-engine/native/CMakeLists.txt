@@ -438,6 +438,10 @@ add_executable(gpu_screen_converter_tests
 windows_media_target(gpu_screen_converter_tests)
 target_link_libraries(gpu_screen_converter_tests PRIVATE media_screen)
 add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
+# Manual hardware lab, not a ctest: build it explicitly with --target.
+add_executable(hardware_bitrate_cadence_lab EXCLUDE_FROM_ALL tests/hardware_bitrate_cadence_lab.cpp)
+windows_media_target(hardware_bitrate_cadence_lab)
+target_link_libraries(hardware_bitrate_cadence_lab PRIVATE media_screen)
 set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
 add_executable(local_screen_preview_tests tests/local_screen_preview_test.cpp)

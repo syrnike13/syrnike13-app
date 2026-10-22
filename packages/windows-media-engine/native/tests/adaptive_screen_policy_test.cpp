@@ -15,7 +15,10 @@ struct Change {
   std::uint64_t time;
   std::uint32_t bitrate;
   AdaptiveReason reason;
-  bool operator==(const Change&) const = default;
+  std::uint32_t frame_rate = 0;
+  bool operator==(const Change& other) const {
+    return time == other.time && bitrate == other.bitrate && reason == other.reason;
+  }
 };
 struct Trace {
   AdaptiveMeasurements sample;
@@ -33,11 +36,22 @@ struct Trace {
     state = decision.next;
     if (decision.action == AdaptiveAction::update_bitrate) {
       const auto& preset = kAdaptiveScreenProfiles[sample.selected_preset];
-      require(decision.target_bitrate >= preset.min_bitrate &&
+      require(decision.target_bitrate >= preset.min_bitrate / 8 / 25'000 * 25'000 &&
               decision.target_bitrate <= preset.max_bitrate, "bitrate escaped preset bounds");
-      changes.push_back({sample.now_ms, decision.target_bitrate, decision.reason});
+      require(decision.frame_rate >= adaptiveMinimumFrameRate(preset) &&
+              decision.frame_rate <= preset.fps, "frame rate escaped preset bounds");
+      // Below the floor, the stream still fits what the network allows.
+      if (decision.target_bitrate < preset.min_bitrate &&
+          decision.target_bitrate > preset.min_bitrate / 8 / 25'000 * 25'000)
+        require(static_cast<std::uint64_t>(decision.target_bitrate) * decision.frame_rate /
+                    preset.fps <= decision.network_target, "stream exceeded the budget");
+      changes.push_back({sample.now_ms, decision.target_bitrate, decision.reason,
+                         decision.frame_rate});
       state = recordAdaptiveBitrateAttempt(state, sample.now_ms);
-      if (apply) sample.applied_bitrate = decision.target_bitrate;
+      if (apply) {
+        sample.applied_bitrate = decision.target_bitrate;
+        sample.frame_rate = decision.frame_rate;
+      }
     }
     sample.now_ms += 500;
     return decision;
@@ -45,18 +59,62 @@ struct Trace {
   void ticks(unsigned count) { while (count--) tick(); }
 };
 void golden() {
-  Trace collapse;
-  collapse.sample.available_outgoing_bitrate = 1'000'000;
-  collapse.ticks(10);
-  require(collapse.changes == std::vector<Change>{{500, 2'000'000, AdaptiveReason::network}},
-          "collapse golden differs");
-  require(collapse.state.warning, "below minimum must warn without terminating");
-  collapse.sample.available_outgoing_bitrate = 20'000'000;
-  collapse.ticks(41);
-  require(collapse.changes == std::vector<Change>{{500, 2'000'000, AdaptiveReason::network},
-      {25000, 2'500'000, AdaptiveReason::healthy}}, "recovery golden differs");
-  require(!collapse.state.warning, "sustained recovery did not clear warning");
-  require(collapse.sample.selected_preset == 4, "automatic control changed user intent");
+  require(adaptiveStartBitrate(kAdaptiveScreenProfiles[4]) == 4'800'000 &&
+          adaptiveStartBitrate(kAdaptiveScreenProfiles[0]) == 375'000,
+          "start bitrate is not below the SDK's initial estimate");
+
+  // Startup: the encoder opens at 60% while WebRTC starts at 90% of the
+  // declared maximum, then follows the sender budget within seconds.
+  Trace start;
+  start.sample.applied_bitrate = 4'800'000;
+  start.state = recordAdaptiveBitrateAttempt(start.state, 0);
+  start.sample.now_ms = 500;
+  start.sample.available_outgoing_bitrate = 7'200'000;
+  start.ticks(2);
+  start.sample.sender_bitrate_allocation = 7'070'000;
+  start.ticks(2);
+  // Measured on loopback: the estimate tops out at the declared maxima and
+  // audio takes its share, so the video budget stays just below 8 Mbit/s.
+  start.sample.available_outgoing_bitrate = 8'120'000;
+  start.sample.sender_bitrate_allocation = 7'940'000;
+  start.ticks(3);
+  require(start.changes == std::vector<Change>{{1000, 6'100'000, AdaptiveReason::healthy},
+      {2000, 6'700'000, AdaptiveReason::healthy}, {3000, 8'000'000, AdaptiveReason::healthy}},
+      "startup did not follow the sender budget to the full preset");
+  require(!start.state.warning, "following the network raised a quality warning");
+
+  // Just below the full-budget threshold the overshoot margin applies again.
+  Trace margin;
+  margin.sample.sender_bitrate_allocation = 7'750'000;
+  margin.ticks(1);
+  require(margin.changes == std::vector<Change>{{0, 7'350'000, AdaptiveReason::network}},
+          "a constrained budget near the maximum lost its margin");
+
+  // The encoder follows a falling budget within one sample and a rising one
+  // after a second; it never waits for a long healthy interval.
+  Trace follow;
+  follow.sample.sender_bitrate_allocation = 3'000'000;
+  follow.ticks(1);
+  follow.sample.sender_bitrate_allocation = 6'000'000;
+  follow.ticks(3);
+  follow.sample.sender_bitrate_allocation = 1'000'000;
+  follow.ticks(2);
+  require(follow.changes == std::vector<Change>{{0, 2'850'000, AdaptiveReason::network},
+      {1000, 5'700'000, AdaptiveReason::healthy}, {2000, 1'000'000, AdaptiveReason::network}},
+      "sender budget golden differs");
+  require(follow.sample.frame_rate == 57, "a budget below half the floor kept every frame");
+  require(follow.state.warning, "a budget below the preset floor must warn");
+
+  // Before the first budget only the uncapped link estimate is known.
+  Trace link;
+  link.sample.available_outgoing_bitrate = 1'000'000;
+  link.ticks(10);
+  link.sample.available_outgoing_bitrate = 20'000'000;
+  link.ticks(3);
+  require(link.changes == std::vector<Change>{{0, 1'000'000, AdaptiveReason::network},
+      {5000, 8'000'000, AdaptiveReason::healthy}}, "link fallback golden differs");
+  require(link.sample.frame_rate == 60, "recovered budget did not restore the frame rate");
+  require(link.sample.selected_preset == 4, "automatic control changed user intent");
 
   for (const auto reason : {AdaptiveReason::encoder, AdaptiveReason::gpu,
                             AdaptiveReason::frame_age, AdaptiveReason::backpressure}) {
@@ -68,7 +126,97 @@ void golden() {
     if (reason == AdaptiveReason::backpressure) t.sample.backpressure_permille = 300;
     t.ticks(3);
     require(t.changes == std::vector<Change>{{2000, 6'000'000, reason}}, "pressure golden differs");
+    require(t.state.warning, "local pressure did not warn");
+    t.sample.encoder_outputs = 30;
+    t.sample.publication_gpu_pressure_permille = 0;
+    t.sample.publish_age_ms = 0;
+    t.sample.backpressure_permille = 0;
+    t.ticks(82);
+    require(t.changes == std::vector<Change>{{2000, 6'000'000, reason},
+        {22500, 7'500'000, AdaptiveReason::healthy}, {42500, 8'000'000, AdaptiveReason::healthy}},
+        "local recovery golden differs");
+    require(!t.state.warning && !t.state.local_ceiling, "recovered local cap remained");
   }
+
+  // Local pressure caps a generous network budget, and the tighter one wins.
+  Trace both;
+  both.sample.sender_bitrate_allocation = 8'000'000;
+  both.sample.publish_age_ms = 300;
+  both.ticks(2);
+  both.sample.sender_bitrate_allocation = 4'000'000;
+  both.ticks(1);
+  require(both.changes == std::vector<Change>{{500, 6'000'000, AdaptiveReason::frame_age},
+      {1000, 3'800'000, AdaptiveReason::network}}, "emergency or tighter budget golden differs");
+}
+// Below the preset floor smooth motion goes last: per-frame quality falls
+// first to half the floor, then the frame rate down to 30, then quality again.
+void belowFloor() {
+  Trace t;
+  t.sample.sender_bitrate_allocation = 1'600'000;
+  t.ticks(1);
+  require(t.sample.frame_rate == 60 && t.sample.applied_bitrate == 1'500'000,
+          "a budget above half the floor dropped frames");
+  t.sample.sender_bitrate_allocation = 800'000;
+  t.ticks(1);
+  require(t.sample.frame_rate == 46 && t.sample.applied_bitrate == 975'000,
+          "below half the floor the frame rate did not take over");
+  t.sample.sender_bitrate_allocation = 100'000;
+  t.ticks(1);
+  require(t.sample.frame_rate == 30 && t.sample.applied_bitrate == 250'000,
+          "a tiny budget went below 30 fps");
+  t.sample.sender_bitrate_allocation = 8'000'000;
+  t.ticks(3);
+  require(t.sample.frame_rate == 60 && t.sample.applied_bitrate == 8'000'000,
+          "a recovered budget did not restore the full preset");
+  require(t.changes.size() == 4 && t.changes[2].reason == AdaptiveReason::network &&
+          t.changes[3].reason == AdaptiveReason::healthy, "below-floor reasons differ");
+
+  // Without live encoder control, admission alone follows the budget, and a
+  // recovered budget restores every frame.
+  Trace fixed;
+  fixed.sample.applied_bitrate = 1'000'000;
+  fixed.sample.frame_rate = 30;
+  fixed.sample.live_update_available = false;
+  fixed.sample.sender_bitrate_allocation = 8'000'000;
+  auto decision = evaluateAdaptiveScreenPolicy(fixed.sample, fixed.state);
+  require(decision.action == AdaptiveAction::keep && decision.frame_rate == 60,
+          "lost live control froze a reduced frame rate");
+  fixed.sample.sender_bitrate_allocation = 400'000;
+  decision = evaluateAdaptiveScreenPolicy(fixed.sample, fixed.state);
+  require(decision.frame_rate == 30 && decision.network_target == 380'000,
+          "fixed command did not admit fewer frames for a tight budget");
+
+  // A paused share keeps its bitrate, frame rate and warning.
+  Trace paused;
+  paused.sample.paused = true;
+  paused.sample.sender_bitrate_allocation = 0;
+  paused.ticks(40);
+  require(paused.changes.empty() && !paused.state.warning,
+          "a paused share reacted to its zero budget");
+
+  // Steady below the floor, the reason compares the budget with the stream,
+  // not with the per-frame-scaled command.
+  Trace steady;
+  steady.sample.sender_bitrate_allocation = 400'000;
+  steady.ticks(6);
+  require(steady.changes.size() == 1 && steady.sample.frame_rate == 30, "below-floor setup");
+  decision = steady.tick();
+  require(decision.reason == AdaptiveReason::healthy, "a settled budget still reported network");
+
+  // The network target is reported even while an update is pending.
+  Trace pending;
+  pending.sample.sender_bitrate_allocation = 4'000'000;
+  pending.sample.update_pending = true;
+  require(pending.tick().network_target == 3'800'000, "pending update hid the network target");
+
+  // A 30 fps preset never loses frames; only per-frame quality falls.
+  Trace thirty;
+  thirty.sample.selected_preset = 3;
+  thirty.sample.applied_bitrate = 6'000'000;
+  thirty.sample.sender_bitrate_allocation = 300'000;
+  thirty.ticks(1);
+  require(thirty.sample.frame_rate == 30 && thirty.sample.applied_bitrate == 275'000,
+          "a 30 fps preset dropped frames");
 }
 void boundaries() {
   Trace t;
@@ -78,11 +226,12 @@ void boundaries() {
   duplicate.now_ms = 0;
   for (unsigned i = 0; i < 1000; ++i) {
     auto d = evaluateAdaptiveScreenPolicy(duplicate, t.state);
-    require(d.action == AdaptiveAction::keep && d.next.pressure_samples == 1,
-            "duplicate samples built pressure");
+    require(d.action == AdaptiveAction::keep, "duplicate samples changed bitrate");
   }
   t.sample.now_ms += 2000;
-  require(t.tick().action == AdaptiveAction::keep, "gap built pressure");
+  t.sample.available_outgoing_bitrate = 20'000'000;
+  require(t.tick().action == AdaptiveAction::keep, "a sampling gap changed bitrate");
+  t.changes.clear();
   t.sample.update_pending = true;
   t.ticks(30);
   require(t.changes.empty(), "pending operation created another command");
@@ -92,25 +241,33 @@ void boundaries() {
   unconfirmed.tick(false); unconfirmed.tick(false);
   require(unconfirmed.sample.applied_bitrate == 8'000'000,
           "policy pretended requested bitrate was applied");
+  const auto commanded = unconfirmed.changes.size();
   unconfirmed.sample.live_update_available = false;
   unconfirmed.ticks(2400);
-  require(unconfirmed.changes.size() == 1 && unconfirmed.state.warning,
+  require(unconfirmed.changes.size() == commanded && unconfirmed.state.warning,
           "unsupported update retried or cleared warning");
   unconfirmed.sample.available_outgoing_bitrate = 20'000'000;
   unconfirmed.ticks(2400);
   require(unconfirmed.state.warning, "healthy network pretended capability recovered");
 
-  for (int missing = 0; missing < 3; ++missing) {
+  // An unknown network never raises the bitrate.
+  for (int missing = 0; missing < 2; ++missing) {
     Trace unknown;
     unknown.sample.applied_bitrate = 2'000'000;
-    unknown.state.warning = true;
     if (missing == 0) unknown.sample.network_measurement_fresh = false;
-    if (missing == 1) unknown.sample.local_measurements_fresh = false;
-    if (missing == 2) unknown.sample.available_outgoing_bitrate.reset();
+    if (missing == 1) unknown.sample.available_outgoing_bitrate.reset();
     unknown.ticks(2400);
-    require(unknown.changes.empty() && unknown.state.warning,
-            "partially stale measurements proved recovery");
+    require(unknown.changes.empty(), "stale network measurements raised the bitrate");
   }
+  // A local cap is lifted only by fresh local evidence, never by the network.
+  Trace capped;
+  capped.sample.applied_bitrate = 6'000'000;
+  capped.state.local_ceiling = 6'000'000;
+  capped.state.local_reason = AdaptiveReason::gpu;
+  capped.sample.local_measurements_fresh = false;
+  capped.ticks(2400);
+  require(capped.changes.empty() && capped.state.warning && capped.state.local_ceiling,
+          "stale local measurements lifted the local cap");
   Trace static_screen;
   static_screen.sample.encoder_inputs = static_screen.sample.encoder_outputs = 0;
   static_screen.sample.local_measurements_fresh = false;
@@ -120,28 +277,41 @@ void boundaries() {
 
   for (std::size_t preset = 0; preset < kAdaptiveScreenProfiles.size(); ++preset) {
     Trace minimum;
+    const auto& profile = kAdaptiveScreenProfiles[preset];
     minimum.sample.selected_preset = preset;
-    minimum.sample.applied_bitrate = kAdaptiveScreenProfiles[preset].min_bitrate;
+    minimum.sample.applied_bitrate = profile.min_bitrate;
     minimum.sample.available_outgoing_bitrate = 1;
     minimum.ticks(2400);
-    require(minimum.changes.empty() && minimum.state.warning, "minimum did not continue bounded");
+    require(minimum.changes.size() == 1 && minimum.state.warning &&
+            minimum.sample.frame_rate == adaptiveMinimumFrameRate(profile) &&
+            minimum.sample.applied_bitrate <= profile.min_bitrate / 8,
+            "minimum did not continue bounded");
   }
 }
 void longTraces() {
-  Trace noisy, stable, contention;
+  Trace noisy, stable, jitter, contention;
   for (unsigned i = 0; i < 2400; ++i) {
-    noisy.sample.available_outgoing_bitrate = i % 2 ? 20'000'000 : 1'000'000;
-    noisy.tick(); stable.tick();
+    noisy.sample.sender_bitrate_allocation = i % 2 ? 8'000'000 : 1'000'000;
+    // WebRTC's budget wanders by a few percent between samples.
+    jitter.sample.sender_bitrate_allocation = i % 2 ? 5'000'000 : 5'200'000;
+    noisy.tick(); stable.tick(); jitter.tick();
     contention.sample.publication_gpu_pressure_permille = i % 120 < 20 ? 990 : 200;
     contention.tick();
   }
-  require(noisy.changes.empty() && stable.changes.empty(), "stable/noisy trace oscillated");
+  require(stable.changes.empty(), "stable trace changed bitrate");
+  require(jitter.changes.size() == 1, "small budget jitter caused platform calls");
   require(!contention.changes.empty(), "contention exercised no updates");
-  for (const auto& change : contention.changes) {
-    unsigned count = 0;
-    for (const auto& other : contention.changes)
-      if (other.time <= change.time && change.time - other.time < 60000) ++count;
-    require(count <= kAdaptiveMaxChangesPerMinute, "rolling update budget exceeded");
+  for (const auto* trace : {&noisy, &contention}) {
+    for (std::size_t i = 1; i < trace->changes.size(); ++i) {
+      const auto& previous = trace->changes[i - 1];
+      const auto& change = trace->changes[i];
+      const auto spacing = change.time - previous.time;
+      const auto stream = static_cast<std::uint64_t>(change.bitrate) * change.frame_rate;
+      const auto previous_stream = static_cast<std::uint64_t>(previous.bitrate) * previous.frame_rate;
+      require(spacing >= kAdaptiveDecreaseIntervalMs &&
+              (stream < previous_stream || spacing >= kAdaptiveIncreaseIntervalMs),
+              "bitrate updates exceeded the platform cadence");
+    }
   }
 }
 void mailboxFences() {
@@ -183,7 +353,18 @@ void mailboxFences() {
             "rejected update replaced last confirmed bitrate");
   }
   require(!rejected.request(5, 2'000'000) && !rejected.snapshot(25000).available,
-          "rejected updates exceeded finite lifetime budget");
+          "consecutive rejected updates exceeded their budget");
+  // A success between rejections restarts the budget: frequent updates must
+  // not end live control after scattered rejections.
+  LiveBitrateMailbox scattered(8'000'000);
+  for (std::uint64_t revision = 1; revision <= 30; ++revision) {
+    require(scattered.request(revision, 4'000'000) && scattered.take(revision * 10).has_value(),
+            "scattered rejections disabled live control");
+    scattered.complete(revision, revision % 3 ? BitrateUpdateOutcome::rejected
+                                              : BitrateUpdateOutcome::applied,
+                       0, revision * 10 + 1);
+  }
+  require(scattered.snapshot(400).available, "scattered rejections disabled live control");
   LiveBitrateMailbox hung(8'000'000);
   require(hung.request(1, 4'000'000) && hung.take(0).has_value(), "request missing");
   require(hung.snapshot(1999).outcome == BitrateUpdateOutcome::pending &&
@@ -216,6 +397,24 @@ void keyframes() {
   require(c.poll(62000, 2) == KeyframeAction::request, "second bounded retry missing");
   require(c.poll(63000, 3) == KeyframeAction::exhausted && c.pending() == 1,
           "retry budget lost intent or loops forever");
+
+  // Network backpressure leaves sparse input: each retry is due as soon as the
+  // keyframe input is admitted, before that keyframe is encoded and consumed.
+  c.begin(4);
+  require(c.poll(0, 10) == KeyframeAction::request, "late-keyframe request missing");
+  for (std::uint64_t round = 1; round <= 10; ++round) {
+    require(c.request(4), "lost late-keyframe intent");
+    const auto answer = 10 + round;
+    require(c.poll(round * 1000, answer) == KeyframeAction::request,
+            "late keyframe exhausted the retry budget");
+    c.progress(4, answer, true);
+  }
+  require(c.attempts() == 1 && c.pending() == 1, "late keyframes lost outstanding attempts");
+  c.progress(4, 20, true);
+  require(c.pending() == 1, "keyframe before the latest attempt acknowledged it");
+  c.progress(4, 21, true);
+  require(c.attempts() == 0 && c.pending() == 0,
+          "keyframe after the latest attempt not acknowledged");
 }
 
 }
@@ -254,7 +453,7 @@ int main() {
     require(!queue.observe("other", 5, 0, 4040).delay_us, "missing packet delay became pressure");
     queue.reset();
     require(!queue.observe("screen", 99, 20, 4060).delay_us, "Room reset retained packet history");
-    golden(); boundaries(); longTraces(); mailboxFences(); keyframes();
+    golden(); belowFloor(); boundaries(); longTraces(); mailboxFences(); keyframes();
     std::cout << "Fixed-preset bitrate golden traces and keyframe boundaries passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
