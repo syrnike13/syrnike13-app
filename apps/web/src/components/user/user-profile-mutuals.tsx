@@ -4,8 +4,8 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from '@syrnike13/ui/primitives/avatar'
+import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import { userAvatarUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
@@ -43,7 +43,7 @@ export function UserProfileMutuals({
               className={cn('size-4', index > 0 && '-ml-1')}
             >
               {userAvatarUrl(friend.avatar, { animated: false }) ? (
-                <AvatarImage
+                <RetryingAvatarImage
                   src={userAvatarUrl(friend.avatar, { animated: false })!}
                   alt=""
                   className="object-cover"

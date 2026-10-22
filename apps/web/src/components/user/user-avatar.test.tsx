@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react'
 import type { User } from '@syrnike13/api-types'
 import type { ReactNode } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
+import { IMAGE_RETRY_DELAYS_MS } from '#/hooks/use-image-retry'
 
 vi.mock('@syrnike13/ui/primitives/avatar', () => ({
   Avatar: ({
@@ -31,11 +38,20 @@ vi.mock('@syrnike13/ui/primitives/avatar', () => ({
     src,
     alt,
     className,
+    onLoadingStatusChange,
   }: {
     src: string
     alt: string
     className?: string
-  }) => <img src={src} alt={alt} className={className} />,
+    onLoadingStatusChange?: (status: 'error') => void
+  }) => (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => onLoadingStatusChange?.('error')}
+    />
+  ),
   AvatarFallback: ({ children }: { children: ReactNode }) => (
     <span>{children}</span>
   ),
@@ -205,5 +221,50 @@ describe('UserAvatar notification badge', () => {
 
     expect(screen.getByLabelText('1 уведомление')).toBeTruthy()
     expect(screen.queryByTitle('В сети')).toBeNull()
+  })
+})
+
+describe('UserAvatar image retry', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+
+  it('re-requests a failed avatar image after the first backoff', () => {
+    render(<UserAvatar user={user()} />)
+    const failed = avatarImage()
+
+    fireEvent.error(failed)
+
+    expect(avatarImage()).toBe(failed)
+
+    act(() => vi.advanceTimersByTime(IMAGE_RETRY_DELAYS_MS[0]))
+
+    expect(avatarImage()).not.toBe(failed)
+    expect(avatarImage().src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1',
+    )
+  })
+
+  it('hides a failed animated overlay until its retry succeeds', () => {
+    const { container } = render(
+      <UserAvatar user={user()} animated="speaking" speaking />,
+    )
+    const failedOverlay = animatedOverlay(container)
+
+    fireEvent.error(failedOverlay!)
+
+    expect(animatedOverlay(container)).toBeNull()
+
+    act(() => vi.advanceTimersByTime(IMAGE_RETRY_DELAYS_MS[0]))
+
+    expect(animatedOverlay(container)).not.toBe(failedOverlay)
+    expect(animatedOverlay(container)?.src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
+    )
   })
 })
