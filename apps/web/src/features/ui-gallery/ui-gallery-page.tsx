@@ -922,7 +922,14 @@ function FormGallery() {
         <PresetSliderDemo />
       </Demo>
       <Demo title="Select" hint="Grouped options.">
-        <Select defaultValue="general">
+        <Select
+          defaultValue="general"
+          items={[
+            { value: 'general', label: '# general' },
+            { value: 'voice', label: '# voice' },
+            { value: 'dev', label: '# dev' },
+          ]}
+        >
           <SelectTrigger className="w-56">
             <SelectValue placeholder="Choose channel" />
           </SelectTrigger>
@@ -1616,7 +1623,13 @@ function ExamplesGallery() {
           </div>
           <Field>
             <FieldLabel htmlFor="example-mic">Microphone</FieldLabel>
-            <Select defaultValue="default">
+            <Select
+              defaultValue="default"
+              items={[
+                { value: 'default', label: 'System default' },
+                { value: 'usb', label: 'USB microphone' },
+              ]}
+            >
               <SelectTrigger id="example-mic" className="w-full">
                 <SelectValue />
               </SelectTrigger>

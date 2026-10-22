@@ -695,6 +695,21 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
             {t('systemMessagesChannel')}
           </Label>
           <Select
+            items={[
+              { value: SYSTEM_MESSAGES_NONE, label: t('dontSend') },
+              ...(systemMessagesChannelId === SYSTEM_MESSAGES_MIXED
+                ? [
+                    {
+                      value: SYSTEM_MESSAGES_MIXED,
+                      label: t('mixedChannels'),
+                    },
+                  ]
+                : []),
+              ...systemMessageChannels.map((channel) => ({
+                value: channel._id,
+                label: `#${channel.name}`,
+              })),
+            ]}
             value={systemMessagesChannelId}
             disabled={saving}
             onValueChange={(value) => {

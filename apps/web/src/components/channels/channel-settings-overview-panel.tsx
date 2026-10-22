@@ -388,6 +388,10 @@ export function ChannelSettingsOverviewPanel({
                 {t('slowMode')}
               </Label>
               <Select
+                items={SLOWMODE_OPTIONS.map((option) => ({
+                  value: String(option.value),
+                  label: t(`slowModeOptions.${option.key}`),
+                }))}
                 value={String(slowmode)}
                 onValueChange={(value) => setSlowmode(Number(value))}
               >

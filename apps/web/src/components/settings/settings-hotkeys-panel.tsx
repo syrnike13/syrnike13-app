@@ -244,6 +244,13 @@ export function SettingsHotkeysPanel() {
                         {t('action')}
                       </p>
                       <Select
+                        items={HOTKEY_ACTIONS.map((item) => {
+                          const label = t(`actions.${item.id}.label`)
+                          return {
+                            value: item.id,
+                            label: item.available ? label : `${label}${t('soon')}`,
+                          }
+                        })}
                         value={binding.action}
                         onValueChange={(actionId) => {
                           const decoded = Schema.decodeUnknownOption(

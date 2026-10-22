@@ -514,8 +514,9 @@ function FeedbackQueueItem({
   onSelect: () => void
 }) {
   const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
   const { locale } = useLocale()
-  const statusLabel = feedbackProductStatusLabel(suggestion.status, t)
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
     <button
@@ -531,7 +532,7 @@ function FeedbackQueueItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-start gap-2">
           <FeedbackTag tone={suggestion.category === 'bug' ? 'danger' : 'success'}>
-            {feedbackCategoryLabel(suggestion.category, t)}
+            {feedbackCategoryLabel(suggestion.category, tm)}
           </FeedbackTag>
           {mode === 'published' && statusLabel ? (
             <FeedbackTag tone="status">{statusLabel}</FeedbackTag>
@@ -595,8 +596,9 @@ function FeedbackInspector({
   onRefresh: () => void
 }) {
   const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
   const { locale } = useLocale()
-  const statusLabel = feedbackProductStatusLabel(suggestion.status, t)
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col" aria-label={t('inspectorAria')}>
@@ -610,10 +612,10 @@ function FeedbackInspector({
           </h2>
           <div className="flex flex-wrap gap-2">
             <FeedbackTag tone={suggestion.category === 'bug' ? 'danger' : 'success'}>
-              {feedbackCategoryLabel(suggestion.category, t)}
+              {feedbackCategoryLabel(suggestion.category, tm)}
             </FeedbackTag>
             {suggestion.area ? (
-              <FeedbackTag tone="area">{feedbackAreaLabel(suggestion.area, t)}</FeedbackTag>
+              <FeedbackTag tone="area">{feedbackAreaLabel(suggestion.area, tm)}</FeedbackTag>
             ) : null}
             <FeedbackTag tone="platform">
               {suggestion.platform
@@ -821,7 +823,11 @@ function DuplicateCandidate({
 }) {
   const t = useTranslations('feedback.similarity')
   const tm = useTranslations('feedback.moderation')
-  const statusLabel = feedbackProductStatusLabel(candidate.suggestion.status, tm)
+  const tMeta = useTranslations('feedback.meta')
+  const statusLabel = feedbackProductStatusLabel(
+    candidate.suggestion.status,
+    tMeta,
+  )
 
   return (
     <label
@@ -902,7 +908,8 @@ function FeedbackComparisonItem({
   target?: boolean
 }) {
   const t = useTranslations('feedback.moderation')
-  const statusLabel = feedbackProductStatusLabel(suggestion.status, t)
+  const tm = useTranslations('feedback.meta')
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
     <div className="min-w-0 rounded-md bg-muted/25 p-3">
@@ -914,8 +921,8 @@ function FeedbackComparisonItem({
       </div>
       <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span>{t('votes', { count: suggestion.vote_count })}</span>
-        <span>{feedbackCategoryLabel(suggestion.category, t)}</span>
-        {suggestion.area ? <span>{feedbackAreaLabel(suggestion.area, t)}</span> : null}
+        <span>{feedbackCategoryLabel(suggestion.category, tm)}</span>
+        {suggestion.area ? <span>{feedbackAreaLabel(suggestion.area, tm)}</span> : null}
         {suggestion.platform ? <span>{feedbackPlatformLabel(suggestion.platform)}</span> : null}
         {target && statusLabel ? <span>{statusLabel}</span> : null}
       </div>
@@ -952,6 +959,7 @@ function PublishedFeedbackEditor({
   onSaved: () => void
 }) {
   const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
   const auth = useAuth()
   const token = auth.session?.token
   const [baseline, setBaseline] = useState<PublishedFeedbackDraft>(() =>
@@ -1062,6 +1070,10 @@ function PublishedFeedbackEditor({
         <div className="flex flex-col gap-2">
           <Label htmlFor={`status-${suggestion._id}`}>{t('statusLabel')}</Label>
           <Select
+            items={FEEDBACK_PRODUCT_STATUSES.map((item) => ({
+              value: item.value,
+              label: tm(item.labelKey),
+            }))}
             value={status}
             onValueChange={(value) => {
               const decoded = Schema.decodeUnknownOption(
@@ -1079,7 +1091,7 @@ function PublishedFeedbackEditor({
               <SelectGroup>
                 {FEEDBACK_PRODUCT_STATUSES.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
-                    {t(item.labelKey)}
+                    {tm(item.labelKey)}
                   </SelectItem>
                 ))}
               </SelectGroup>

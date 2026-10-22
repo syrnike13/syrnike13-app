@@ -267,6 +267,10 @@ export function FeedbackView({
             </label>
 
             <Select
+              items={[
+                { value: 'popular', label: t('sortPopular') },
+                { value: 'new', label: t('sortNew') },
+              ]}
               value={sort}
               onValueChange={(value) => {
                 const decoded = Schema.decodeUnknownOption(

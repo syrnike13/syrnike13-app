@@ -164,7 +164,16 @@ export function CreateChannelDialog({
               }}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  <span className="flex items-center gap-2">
+                    {type === 'Voice' ? (
+                      <Volume2BoldIcon className="size-4" />
+                    ) : (
+                      <HashIcon className="size-4" />
+                    )}
+                    {type === 'Voice' ? t('voice') : t('text')}
+                  </span>
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Text">

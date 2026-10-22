@@ -46,6 +46,10 @@ export function SoundSettings() {
     <SettingsBlock title={t('title')}>
       <SettingsRow label={t('packLabel')}>
         <Select
+          items={authorPacks.map((pack) => ({
+            value: pack.id,
+            label: t(pack.labelKey),
+          }))}
           value={preferences.authorPackId}
           onValueChange={(authorPackId) => {
             if (isSoundAuthorPackId(authorPackId)) {

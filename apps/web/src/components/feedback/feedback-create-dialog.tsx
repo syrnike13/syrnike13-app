@@ -343,6 +343,10 @@ export function FeedbackCreateDialog({
                       </span>
                     </Label>
                     <Select
+                      items={FEEDBACK_AREAS.map((item) => ({
+                        value: item.value,
+                        label: tm(item.labelKey),
+                      }))}
                       value={area}
                       onValueChange={(value) => {
                         const decoded = Schema.decodeUnknownOption(

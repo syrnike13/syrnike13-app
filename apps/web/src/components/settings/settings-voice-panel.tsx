@@ -79,11 +79,22 @@ function DeviceSelectField({
   const selectValue = value.length > 0 ? value : 'default'
   const unavailable = selectValue !== 'default' &&
     !selectableDevices.some((device) => device.deviceId === selectValue)
+  const items = [
+    { value: 'default', label: ts('defaultOption') },
+    ...(unavailable
+      ? [{ value: selectValue, label: ts('deviceUnavailable') }]
+      : []),
+    ...selectableDevices.map((device) => ({
+      value: device.deviceId,
+      label: device.label || ts('device'),
+    })),
+  ]
 
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
       <Select
+        items={items}
         value={selectValue}
         onValueChange={(deviceId) => {
           if (deviceId != null) onChange(deviceId)
@@ -245,6 +256,16 @@ export function SettingsVoicePanel() {
           />
           <SettingsRow label={ts('videoQuality')}>
             <Select
+              items={[
+                {
+                  value: 'hd720p30',
+                  label: t('preferences.quality720p30'),
+                },
+                {
+                  value: 'hd1080p30',
+                  label: t('preferences.quality1080p30'),
+                },
+              ]}
               value={prefs.cameraProfile}
               onValueChange={(value) => {
                 const profile = Schema.decodeUnknownOption(
@@ -404,6 +425,10 @@ export function SettingsVoicePanel() {
         <SettingsRow label={ts('defaultQuality')}>
           {capabilities.nativeScreenShare ? (
             <Select
+              items={NATIVE_SCREEN_SHARE_PROFILES.map((profile) => ({
+                value: profile,
+                label: t(`preferences.quality${profile}`),
+              }))}
               value={prefs.nativeScreenShareProfile}
               onValueChange={(value) => {
                 const profile = Schema.decodeUnknownOption(
@@ -432,6 +457,10 @@ export function SettingsVoicePanel() {
             </Select>
           ) : (
             <Select
+              items={SCREEN_SHARE_QUALITY_NAMES.map((name) => ({
+                value: name,
+                label: t(SCREEN_SHARE_QUALITY_LABEL_KEYS[name]),
+              }))}
               value={prefs.screenShareQuality}
               onValueChange={(value) => {
                 const quality = Schema.decodeUnknownOption(
@@ -459,6 +488,10 @@ export function SettingsVoicePanel() {
         {capabilities.nativeScreenShare ? (
           <SettingsRow label={ts('screenCapture')}>
             <Select
+              items={SCREEN_SHARE_CAPTURE_MODES.map((name) => ({
+                value: name,
+                label: t(SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS[name]),
+              }))}
               value={prefs.screenShareCaptureMode}
               onValueChange={(value) => {
                 const captureMode = Schema.decodeUnknownOption(
