@@ -253,14 +253,22 @@ void transactionalPipelineDemands() {
   require(control->opens == 1 && control->readers_alive == 1, "Preview opened or restarted a capture");
   const auto old_generation = pipeline.stats().capture.generation;
   control->fail_open = true;
+  control->open_platform_error = static_cast<std::int32_t>(0xC00D3704);
   require(pipeline.selectDevice(registry, devices.devices[1].id, {1920, 1080, 30}) == CameraFailure::unavailable,
           "Failed camera candidate unexpectedly committed");
+  require(pipeline.stats().failure == CameraFailure::unavailable &&
+          pipeline.stats().open_platform_error == static_cast<std::int32_t>(0xC00D3704),
+          "Failed camera open did not retain its platform cause");
+  require(pipeline.selectDevice(registry, CameraDeviceId{999}, {1920, 1080, 30}) == CameraFailure::unavailable &&
+          pipeline.stats().failure == CameraFailure::unavailable && pipeline.stats().open_platform_error == 0 &&
+          control->readers_alive == 1, "Missing camera kept a stale platform cause or touched the working capture");
   require(pipeline.stats().capture.generation == old_generation && control->readers_alive == 1 &&
           pipeline.stats().capture.state == CameraCaptureState::running, "Candidate failure destroyed the working camera");
   control->fail_open = false;
   require(pipeline.selectDevice(registry, devices.devices[1].id, {1920, 1080, 30}) == CameraFailure::none,
           "Healthy candidate failed to commit");
   const auto switched = pipeline.stats();
+  require(switched.open_platform_error == 0, "Committed camera kept a stale open failure");
   require(switched.capture.actual.width == 1920 && switched.capture.frames >= 3 && switched.commits == 2 &&
           control->maximum_readers == 2 && control->readers_alive == 1, "Candidate transaction exceeded capture limits");
   require(pipeline.setDemand(false, true) == CameraFailure::none && control->readers_alive == 1 &&

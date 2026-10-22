@@ -80,7 +80,7 @@ class SyntheticReader final : public CameraReader {
   }
   CameraOpenResult open(const CameraEndpoint&, CameraProfile requested, bool allow_downgrade) override {
     if (opened_) return {CameraFailure::invalid_state};
-    if (control_->fail_open) return {CameraFailure::unavailable};
+    if (control_->fail_open) return {CameraFailure::unavailable, {}, false, control_->open_platform_error};
     profile_ = requested;
     if (requested.width == 1920 && !control_->supports_1080) {
       if (!allow_downgrade) return {CameraFailure::unsupported_profile};

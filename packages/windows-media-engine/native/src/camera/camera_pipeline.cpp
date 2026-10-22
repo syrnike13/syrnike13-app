@@ -63,6 +63,8 @@ CameraFailure CameraPipeline::openCandidate(const CameraEndpoint& endpoint, Came
   const auto failure = candidate_->start(cancellation);
   if (failure != CameraFailure::none || cancellation.stop_requested()) {
     ++stats_.rollbacks;
+    // A cancelled candidate says nothing about the device; keep the last cause.
+    if (!cancellation.stop_requested()) stats_.open_platform_error = candidate_->stats().platform_error;
     if (!candidate_->stop(Clock::now() + std::chrono::seconds{5})) {
       stats_.retired = true;
       return stats_.failure = CameraFailure::stop_timeout;
@@ -82,6 +84,7 @@ CameraFailure CameraPipeline::openCandidate(const CameraEndpoint& endpoint, Came
   selected_ = endpoint;
   profile_ = profile;
   allow_downgrade_ = allow_downgrade;
+  stats_.open_platform_error = 0;
   ++stats_.commits;
   return stats_.failure = CameraFailure::none;
 }
@@ -90,7 +93,11 @@ CameraFailure CameraPipeline::selectDevice(CameraDeviceRegistry& registry, std::
   if (!onOwner() || !validCameraProfile(profile)) return CameraFailure::invalid_state;
   if (cancellation.stop_requested()) return CameraFailure::cancelled;
   const auto endpoint = registry.resolve(id);
-  if (!endpoint) return CameraFailure::unavailable;
+  if (!endpoint) {
+    // No device to open: report that instead of an earlier device's HRESULT.
+    stats_.open_platform_error = 0;
+    return stats_.failure = CameraFailure::unavailable;
+  }
   if (!stats_.publication_demand && !stats_.preview_demand) {
     selected_ = endpoint;
     intent_ = id;

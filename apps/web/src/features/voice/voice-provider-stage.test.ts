@@ -3,6 +3,31 @@ import { describe, expect, it, vi } from 'vitest'
 import { buildStageItems, type StageRoom } from './voice-stage-items'
 
 describe('desktop voice stage channel scope', () => {
+  it('drops the retained local camera frame once the camera is off', () => {
+    const items = buildStageItems({
+      ...localCameraStage(),
+      localCameraActive: false,
+    })
+
+    expect(items.some((item) => item.kind === 'camera')).toBe(false)
+  })
+
+  it('does not show a remote native track without its publication as camera', () => {
+    const stage = localCameraStage()
+    const items = buildStageItems({
+      ...stage,
+      participants: [{ id: 'local' }, { id: 'remote' }],
+      nativeTracks: [{
+        ...stage.nativeTracks[0]!,
+        trackId: 'remote-camera',
+        participantIdentity: 'voice:v1|windows_native|client|epoch|op|remote',
+        local: false,
+      }],
+    })
+
+    expect(items.some((item) => item.kind === 'camera')).toBe(false)
+  })
+
   it('shows the local native camera track as the current user self-view', () => {
     const track = { kind: 'video' }
     const items = buildStageItems({
@@ -29,6 +54,7 @@ describe('desktop voice stage channel scope', () => {
       }],
       nativePublications: [],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand: vi.fn(),
     })
 
@@ -61,6 +87,7 @@ describe('desktop voice stage channel scope', () => {
         publication('test_isa', 'current-screen'),
       ],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand: vi.fn(),
     })
 
@@ -91,6 +118,7 @@ describe('desktop voice stage channel scope', () => {
         error: 'Не удалось подключиться к демонстрации после 10 попыток',
       }],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand: vi.fn(),
     })
 
@@ -117,6 +145,7 @@ describe('desktop voice stage channel scope', () => {
       nativeTracks: [],
       nativePublications: [publication('remote', 'screen')],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand,
     })
 
@@ -146,6 +175,7 @@ describe('desktop voice stage channel scope', () => {
       nativeTracks: [],
       nativePublications: [publication('remote', 'screen')],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand,
     })
 
@@ -178,6 +208,7 @@ describe('desktop voice stage channel scope', () => {
         source: 'camera',
       }],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand,
     })
 
@@ -233,6 +264,7 @@ describe('desktop voice stage channel scope', () => {
       nativeTracks: [],
       nativePublications: [],
       localScreenPreview: null,
+      localCameraActive: true,
       setNativeDemand: vi.fn(),
     })
 
@@ -253,5 +285,35 @@ function publication(participantIdentity: string, trackId: string) {
     participantIdentity,
     source: 'screen' as const,
     track: null,
+  }
+}
+
+function localCameraStage() {
+  return {
+    room: null,
+    participants: [{ id: 'local' }],
+    currentUserId: 'local',
+    filters: {
+      showOwnStream: true,
+      showRemoteStreams: true,
+      showParticipantsWithoutMedia: true,
+    },
+    watchedRemoteScreenIds: new Set<string>(),
+    nativeTracks: [{
+      sessionId: 'voice-session',
+      generation: 2,
+      trackId: 'local-camera',
+      participantIdentity: 'voice:v1|windows_native|client|epoch|op|local',
+      source: 'camera' as const,
+      local: true,
+      sequence: 1,
+      rendererEpoch: 0,
+      track: { kind: 'video' } as never,
+      consumerCount: 0,
+    }],
+    nativePublications: [],
+    localScreenPreview: null,
+    localCameraActive: true,
+    setNativeDemand: vi.fn(),
   }
 }

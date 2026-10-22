@@ -326,14 +326,10 @@ export class MediaFrameController {
           if (!window || window.isDestroyed() || !this.renderer || metadata.rendererId !== this.renderer.id || epoch !== this.epoch)
             return Promise.resolve()
           const target = window.webContents.mainFrame
-          return transfers.send(texture, target, {
-            sessionId: this.sessionId || `local-${epoch}`, generation: epoch,
-            trackId: metadata.publicationId, participantIdentity: metadata.participantIdentity,
-            source: metadata.kind === 'camera_preview' ? 'camera' : metadata.kind === 'screen_preview' ? 'screen' : publication?.source,
-            local: metadata.kind !== 'remote', sequence: metadata.sequence,
-            rendererEpoch: this.renderer.epoch, runtimeEpoch: epoch,
-            nativeCaptureTimestampUs: metadata.timestamp,
-          }, broker.openReceiverProcess(target.osProcessId))
+          return transfers.send(texture, target, rendererFrameMetadata(metadata, {
+            sessionId: this.sessionId || `local-${epoch}`, epoch,
+            rendererEpoch: this.renderer.epoch, publicationSource: publication?.source,
+          }), broker.openReceiverProcess(target.osProcessId))
         },
         returnLease: lease => {
           if (epoch !== this.epoch || this.disposed) created.acknowledgeRelease(lease)
@@ -394,5 +390,23 @@ export class MediaFrameController {
     if (failure.stalledLeases.size > 0) return
     this.presentationFailures.delete(key)
     this.onPresentationChange()
+  }
+}
+
+/** Renderer-facing metadata for one transferred frame. */
+export function rendererFrameMetadata(
+  frame: Omit<MediaExportedFrame, 'handle'>,
+  context: { sessionId: string; epoch: number; rendererEpoch: number; publicationSource: string | undefined },
+) {
+  return {
+    sessionId: context.sessionId, generation: context.epoch,
+    trackId: frame.publicationId, participantIdentity: frame.participantIdentity,
+    source: frame.kind === 'camera_preview' ? 'camera' : frame.kind === 'screen_preview' ? 'screen' : context.publicationSource,
+    local: frame.kind !== 'remote', sequence: frame.sequence,
+    // Sequence restarts with every native capture; the exported
+    // generation tells the renderer a frame starts a new stream.
+    captureGeneration: frame.generation,
+    rendererEpoch: context.rendererEpoch, runtimeEpoch: context.epoch,
+    nativeCaptureTimestampUs: frame.timestamp,
   }
 }

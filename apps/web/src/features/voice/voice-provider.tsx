@@ -49,6 +49,11 @@ import {
   buildVoiceMediaAvailabilityState,
   type VoiceMediaAvailabilityState,
 } from '#/features/voice/voice-media-availability'
+import {
+  isCameraDeviceFailure,
+  isLocalCameraPreviewActive,
+  nextCameraEnabled,
+} from '#/features/voice/camera-device-issue'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { nativeScreenShareProfileSettings } from '#/features/voice/voice-preference-types'
@@ -283,6 +288,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     snapshot.screen.state === 'running'
   const screenMedia = useRestartAwareMediaState(snapshot.screen.state)
   const cameraMedia = useRestartAwareMediaState(snapshot.camera.state)
+  const localCameraActive = isLocalCameraPreviewActive(snapshot.camera)
 
   useEffect(() => {
     if (!desktop) return
@@ -775,9 +781,33 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     void dispatchVoice({ type: 'setUserDeafened', deafened })
   }, [dispatchVoice, snapshot.userDeafened])
 
+  // The default camera is the first enumerated device, which may be a virtual
+  // or busy one. A device failure asks the user to pick a camera explicitly.
+  const cameraDeviceFailed = isCameraDeviceFailure(snapshot.camera)
+  const [cameraDevicePickerRequest, setCameraDevicePickerRequest] = useState(0)
+  const cameraDeviceFailedRef = useRef(false)
+  useEffect(() => {
+    if (cameraDeviceFailed && !cameraDeviceFailedRef.current) {
+      setCameraDevicePickerRequest((request) => request + 1)
+    }
+    cameraDeviceFailedRef.current = cameraDeviceFailed
+  }, [cameraDeviceFailed])
+
+  const selectCameraDevice = useCallback((deviceId: string | undefined) => {
+    voicePreferenceStore.setPreferredVideoDevice(deviceId)
+    if (snapshot.camera.state === 'off') return
+    intentionalMediaStopRef.current.camera = false
+    // Picking the same device again restarts a failed camera in the director.
+    void dispatchVoice({
+      type: 'setCamera',
+      enabled: true,
+      deviceId,
+      profile: readVoicePreferences().cameraProfile,
+    })
+  }, [dispatchVoice, snapshot.camera.state])
+
   const toggleCamera = useCallback(() => {
-    const enabled =
-      snapshot.camera.state === 'off' || snapshot.camera.state === 'failed'
+    const enabled = nextCameraEnabled(snapshot.camera)
     intentionalMediaStopRef.current.camera = !enabled
     if (!enabled) {
       eventsGateway.send({ type: 'VoiceMediaStopped', source: 'camera' })
@@ -788,7 +818,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       deviceId: readVoicePreferences().preferredVideoDevice,
       profile: readVoicePreferences().cameraProfile,
     })
-  }, [dispatchVoice, snapshot.camera.state])
+  }, [dispatchVoice, snapshot.camera])
 
   const openDesktopDisplayPicker = useCallback(() => {
     if (!desktop) return
@@ -984,6 +1014,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
         }
         : null,
+      localCameraActive,
       setNativeDemand: setNativeVideoDemand,
     })
     return withConnectingLocalAvatarItem(items, {
@@ -1000,6 +1031,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     roomRevision,
     nativeVideoTracks,
     nativeVideoPublications,
+    localCameraActive,
     localScreenPreviewActive,
     stageMediaFilters,
     status,
@@ -1042,6 +1074,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
               }
             : null,
+        localCameraActive,
         setNativeDemand: setNativeVideoDemand,
       }).filter((item) => item.kind === 'screen'),
     [
@@ -1053,6 +1086,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       nativeVideoTracks,
       nativeVideoPublications,
       desktop,
+      localCameraActive,
       localScreenPreviewActive,
       setNativeVideoDemand,
       t,
@@ -1418,9 +1452,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micIssue,
       mediaAvailability,
       cameraEnabled: cameraMedia.live,
+      cameraDeviceFailed,
+      cameraDevicePickerRequest,
       screenShareEnabled: screenMedia.live,
       screenShareStarting: screenMedia.starting,
       toggleCamera,
+      selectCameraDevice,
       toggleScreenShare,
       changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
       setSelfMonitoringActive,
@@ -1433,8 +1470,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micIssue,
       setSelfMonitoringActive,
       cameraMedia.live,
+      cameraDeviceFailed,
+      cameraDevicePickerRequest,
       screenMedia.live,
       screenMedia.starting,
+      selectCameraDevice,
       toggleCamera,
       toggleScreenShare,
     ],

@@ -51,12 +51,14 @@ import {
 } from '#/features/voice/voice-media-availability'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
+import {
+  CameraDevicePickerAnchor,
+  VoiceCameraSplitControl,
+} from '#/components/voice/voice-camera-split-control'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
 import { VoiceStreamSettingsMenuContent } from '#/components/voice/voice-screen-share-quality'
 import {
   VoiceSplitControl,
-  splitControlDangerChevronClass,
-  splitControlDangerMainClass,
   splitControlDangerStandaloneClass,
 } from '#/components/voice/voice-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
@@ -95,24 +97,6 @@ const stageControlGroupClass =
 const stageControlIconClass =
   'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
-const stageControlNeutralMainGroupHoverClass =
-  'group-hover/media:bg-accent group-hover/media:text-foreground'
-
-const stageControlNeutralChevronGroupHoverClass =
-  'group-hover/media:bg-accent group-hover/media:text-foreground'
-
-/** Мьют: яркая красная иконка, полупрозрачный красный фон. */
-const stageControlDangerMainClass = splitControlDangerMainClass
-
-const stageControlDangerChevronClass = splitControlDangerChevronClass
-
-/** Камера включена. */
-const stageControlSuccessMainClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
-
-const stageControlSuccessChevronClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
-
 const stageControlHighlightClass =
   'bg-accent text-accent-foreground hover:bg-hover'
 
@@ -132,41 +116,6 @@ function stageIconButtonClass({
     danger && stageControlDangerStandaloneClass,
     highlight && !danger && stageControlHighlightClass,
     !danger && !highlight && 'text-muted-foreground hover:bg-accent hover:text-foreground',
-  )
-}
-
-const stageControlMediaMainClass = 'rounded-l-md rounded-r-none'
-
-const stageControlChevronClass =
-  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
-
-function stageMediaSegmentButtonClass(
-  segment: 'main' | 'chevron',
-  {
-    danger,
-    success,
-    chevronDisabled,
-  }: {
-    danger?: boolean
-    success?: boolean
-    chevronDisabled?: boolean
-  },
-) {
-  const isChevron = segment === 'chevron'
-
-  return cn(
-    isChevron
-      ? stageControlChevronClass
-      : cn(stageControlIconClass, stageControlMediaMainClass),
-    danger && (isChevron ? stageControlDangerChevronClass : stageControlDangerMainClass),
-    success &&
-      (isChevron ? stageControlSuccessChevronClass : stageControlSuccessMainClass),
-    !danger &&
-      !success &&
-      (isChevron
-        ? stageControlNeutralChevronGroupHoverClass
-        : stageControlNeutralMainGroupHoverClass),
-    isChevron && chevronDisabled && !danger && !success && 'opacity-40',
   )
 }
 
@@ -292,7 +241,9 @@ export function VoiceStageControls({
     deafened: voiceSession.deafened,
   })
   const soundOff = voiceSession.deafened
-  const cameraOn = voiceMedia.cameraEnabled
+  // A camera whose device failed keeps its "on" intent: the button turns it off,
+  // and the picker under it is how the user retries with another device.
+  const cameraOn = voiceMedia.cameraEnabled || voiceMedia.cameraDeviceFailed
   const sharingScreen = voiceMedia.screenShareEnabled
   const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
@@ -588,18 +539,20 @@ function VoiceStageMobileDrawerControlBar({
               <MicIcon className="size-5" />
             )}
           </MobileDrawerIconButton>
-          <MobileDrawerIconButton
-            title={cameraControl.title}
-            success={cameraOn}
-            disabled={cameraControl.disabled}
-            onClick={onToggleCamera}
-          >
-            {cameraOn ? (
-              <VideoIcon className="size-5" />
-            ) : (
-              <VideoOffIcon className="size-5" />
-            )}
-          </MobileDrawerIconButton>
+          <CameraDevicePickerAnchor className="flex">
+            <MobileDrawerIconButton
+              title={cameraControl.title}
+              success={cameraOn}
+              disabled={cameraControl.disabled}
+              onClick={onToggleCamera}
+            >
+              {cameraOn ? (
+                <VideoIcon className="size-5" />
+              ) : (
+                <VideoOffIcon className="size-5" />
+              )}
+            </MobileDrawerIconButton>
+          </CameraDevicePickerAnchor>
           <MobileDrawerIconButton
             title={screenShareControl.title}
             highlight={sharingScreen || screenShareStarting}
@@ -730,19 +683,13 @@ function VoiceStageOverlayControlBar({
 
         <StageControlDivider />
 
-        <StageMediaControl
+        <VoiceCameraSplitControl
+          surface="stage"
           title={cameraControl.title}
-          success={cameraOn}
           disabled={cameraControl.disabled}
-          onClick={onToggleCamera}
-          chevronDisabled
-        >
-          {cameraOn ? (
-            <VideoIcon className="size-5" />
-          ) : (
-            <VideoOffIcon className="size-5" />
-          )}
-        </StageMediaControl>
+          cameraOn={cameraOn}
+          onToggleCamera={onToggleCamera}
+        />
       </div>
 
       <div className={stageControlGroupClass}>
@@ -940,57 +887,6 @@ function VoiceStageExitControl({
   )
 }
 
-function StageMediaControl({
-  title,
-  danger,
-  success,
-  disabled,
-  onClick,
-  chevron,
-  chevronDisabled,
-  children,
-}: {
-  title: string
-  danger?: boolean
-  success?: boolean
-  disabled?: boolean
-  onClick: () => void
-  chevron?: ReactNode
-  chevronDisabled?: boolean
-  children: ReactNode
-}) {
-  const t = useTranslations('voice')
-  const segmentState = { danger, success, chevronDisabled }
-
-  const mainDisabled = Boolean(disabled)
-
-  return (
-    <div className="group/media flex items-center gap-px">
-      <VoiceControlTooltip title={title}>
-        <button
-          type="button"
-          aria-disabled={mainDisabled}
-          onClick={mainDisabled ? undefined : onClick}
-          className={stageMediaSegmentButtonClass('main', segmentState)}
-        >
-          {children}
-        </button>
-      </VoiceControlTooltip>
-      {chevron ?? (
-        <VoiceControlTooltip title={t('actions.cameraSettings')}>
-          <button
-            type="button"
-            aria-disabled={mainDisabled || chevronDisabled}
-            className={stageMediaSegmentButtonClass('chevron', segmentState)}
-          >
-            <ChevronDownIcon className="size-3.5" />
-          </button>
-        </VoiceControlTooltip>
-      )}
-    </div>
-  )
-}
-
 function StageControlDivider() {
   return <div className="mx-0.5 h-6 w-px shrink-0 bg-on-media/10" aria-hidden />
 }
@@ -1093,15 +989,17 @@ function LegacyControlBar({
         )}
       </LegacyControlButton>
 
-      <LegacyControlButton
-        title={cameraControl.title}
-        active={!cameraOn}
-        disabled={cameraControl.disabled}
-        compact={compact}
-        onClick={onToggleCamera}
-      >
-        {cameraOn ? <VideoIcon className="size-5" /> : <VideoOffIcon className="size-5" />}
-      </LegacyControlButton>
+      <CameraDevicePickerAnchor className="flex">
+        <LegacyControlButton
+          title={cameraControl.title}
+          active={!cameraOn}
+          disabled={cameraControl.disabled}
+          compact={compact}
+          onClick={onToggleCamera}
+        >
+          {cameraOn ? <VideoIcon className="size-5" /> : <VideoOffIcon className="size-5" />}
+        </LegacyControlButton>
+      </CameraDevicePickerAnchor>
 
       <LegacyControlButton
         title={screenShareControl.title}
