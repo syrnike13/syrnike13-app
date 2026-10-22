@@ -24,7 +24,7 @@
 
 ## 🚀 Как попасть
 
-Просто открой [syrnike13.ru](https://syrnike13.ru) в браузере — или скачай
+Открой [syrnike13.ru](https://syrnike13.ru) — а само приложение живёт на [app.syrnike13.ru](https://app.syrnike13.ru). Или скачай
 десктопное приложение.
 
 ## 📄 Лицензия

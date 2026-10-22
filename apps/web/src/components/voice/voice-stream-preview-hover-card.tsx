@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from '#/components/ui/hover-card'
-import { Button } from '#/components/ui/button'
+} from '@syrnike13/ui/primitives/hover-card'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { VoiceOnAirBadge } from './voice-participant-icons'
 import { useAuth } from '#/features/auth/auth-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
@@ -27,12 +28,13 @@ export function StreamPreviewCardContent({
   watching: boolean
   onWatch: () => void
 }) {
+  const t = useTranslations('voice')
   const [imageFailed, setImageFailed] = useState(false)
   useEffect(() => setImageFailed(false), [imageUrl])
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3 text-sm font-semibold">
-        Сейчас стримит <VoiceOnAirBadge />
+        {t('stream.nowStreaming')} <VoiceOnAirBadge />
       </div>
       <div
         className="relative mb-3 flex aspect-video items-center justify-center overflow-hidden rounded-md bg-muted text-center text-sm text-muted-foreground"
@@ -41,18 +43,20 @@ export function StreamPreviewCardContent({
         {imageUrl && !imageFailed ? (
           <img
             src={imageUrl}
-            alt="Превью трансляции"
+            alt={t('stream.previewAlt')}
             className="size-full object-contain"
             onError={() => setImageFailed(true)}
           />
         ) : (
           <span className={loading ? 'animate-pulse px-3' : 'px-3'}>
-            {loading ? 'Загрузка превью…' : 'Превью пока недоступно'}
+            {loading
+              ? t('stream.loadingPreview')
+              : t('stream.previewUnavailable')}
           </span>
         )}
       </div>
       <Button className="w-full" disabled={self || watching} onClick={onWatch}>
-        {streamPreviewWatchLabel(self, watching)}
+        {streamPreviewWatchLabel(self, watching, t)}
       </Button>
     </>
   )
@@ -136,23 +140,25 @@ export function VoiceStreamPreviewHoverCard({
       onOpenChange={(next) => {
         if (!next || (!blocked && !suspended)) setOpen(next)
       }}
-      openDelay={500}
-      closeDelay={200}
     >
-      <HoverCardTrigger asChild>
-        <div
-          onPointerDownCapture={() => {
-            setBlocked(true)
-            setOpen(false)
-          }}
-          onDragStartCapture={() => {
-            setBlocked(true)
-            setOpen(false)
-          }}
-          onPointerLeave={() => setBlocked(false)}
-        >
-          {children}
-        </div>
+      <HoverCardTrigger
+        delay={500}
+        closeDelay={200}
+        render={
+          <div
+            onPointerDownCapture={() => {
+              setBlocked(true)
+              setOpen(false)
+            }}
+            onDragStartCapture={() => {
+              setBlocked(true)
+              setOpen(false)
+            }}
+            onPointerLeave={() => setBlocked(false)}
+          />
+        }
+      >
+        {children}
       </HoverCardTrigger>
       <HoverCardContent
         side="right"

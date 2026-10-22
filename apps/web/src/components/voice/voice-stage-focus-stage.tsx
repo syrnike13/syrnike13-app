@@ -1,30 +1,34 @@
 import { ChevronDownIcon, ChevronUpIcon, UsersIcon } from '#/components/icons'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
 import { useVoiceStageFocusSizing } from '#/features/voice/use-voice-stage-focus-sizing'
 import { voiceStageChromeMotion } from '#/features/voice/use-voice-stage-chrome-visible'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_STREAM_ASPECT_RATIO = 16 / 9
 
 const focusStageFadeSlideClass =
-  'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
+  'transition duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-card px-2 text-sm font-medium text-primary-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-card px-2 text-sm font-medium text-card-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
 const STRIP_TOGGLE_INSET_PX = 8
 const STRIP_EXIT_DURATION_MS = 200
+/** Keep the strip readable instead of shrinking every participant into it. */
+const MAX_VISIBLE_STRIP_ITEMS = 6
 
 function stripToggleTopPx(focusHeight: number, stripCollapsed: boolean) {
   if (focusHeight <= 0) return undefined
@@ -55,17 +59,19 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
   chromeVisible,
   renderTile,
 }: VoiceStageFocusStageProps<TItem>) {
+  const t = useTranslations('voice')
   const layoutRef = useRef<HTMLDivElement>(null)
   const [streamAspectRatio, setStreamAspectRatio] = useState(
     DEFAULT_STREAM_ASPECT_RATIO,
   )
   const stripItems = mediaItems.filter((item) => item.id !== focusedItem.id)
+  const visibleStripItems = stripItems.slice(0, MAX_VISIBLE_STRIP_ITEMS)
   const [stripCollapsed, setStripCollapsed] = useState(false)
   const [stripMounted, setStripMounted] = useState(true)
   const { layout, stripMetrics } = useVoiceStageFocusSizing(
     layoutRef,
     streamAspectRatio,
-    stripItems.length,
+    visibleStripItems.length,
     stripCollapsed,
   )
 
@@ -106,11 +112,18 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
           )}
         >
           <div
-            className="max-w-full shrink-0 transition-[width,height] duration-200 ease-out motion-reduce:transition-none"
-            style={
+            className={cn(
+              'max-w-full shrink-0 motion-size duration-200 ease-out motion-reduce:transition-none',
               layout.focus.width > 0 && layout.focus.height > 0
-                ? { width: layout.focus.width, height: layout.focus.height }
-                : { width: '100%', aspectRatio: streamAspectRatio }
+                ? 'h-(--focus-height) w-(--focus-width)'
+                : 'aspect-(--focus-aspect) w-full',
+            )}
+            style={
+              {
+                '--focus-width': `${layout.focus.width}px`,
+                '--focus-height': `${layout.focus.height}px`,
+                '--focus-aspect': streamAspectRatio,
+              } as CSSVars
             }
           >
             <div className="size-full overflow-hidden rounded-md">
@@ -118,10 +131,12 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
             </div>
           </div>
 
-          {stripItems.length > 0 ? (
+          {visibleStripItems.length > 0 ? (
             <div
-              className="grid w-full transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
-              style={{ gridTemplateRows: stripCollapsed ? '0fr' : '1fr' }}
+              className={cn(
+                'grid w-full motion-rows duration-200 ease-out motion-reduce:transition-none',
+                stripCollapsed ? 'collapsed-rows' : 'expanded-rows',
+              )}
             >
               <div className="overflow-hidden">
                 <div
@@ -135,7 +150,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                 >
                   {stripMounted ? (
                     <VoiceStageFilmstrip
-                      items={mediaItems}
+                      items={visibleStripItems}
                       focusedMediaId={focusedItem.id}
                       tightTop
                       tileWidth={stripMetrics.width}
@@ -148,11 +163,11 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
             </div>
           ) : null}
 
-          {stripItems.length > 0 && stripToggleTop != null ? (
+          {visibleStripItems.length > 0 && stripToggleTop != null ? (
             <div
               data-voice-stage-chrome
-              className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 transition-[top] duration-200 ease-out motion-reduce:transition-none"
-              style={{ top: stripToggleTop }}
+              className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 top-(--strip-toggle-top) motion-top duration-200 ease-out motion-reduce:transition-none"
+              style={{ '--strip-toggle-top': `${stripToggleTop}px` } as CSSVars}
             >
               <div
                 className={cn(
@@ -160,31 +175,33 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                   voiceStageChromeMotion(chromeVisible, 'bottom'),
                 )}
               >
-                <TooltipProvider delayDuration={300}>
+                <TooltipProvider delay={300}>
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={voiceStageStripToggleButtonClass}
-                        aria-label={
-                          stripCollapsed
-                            ? 'Показать участников'
-                            : 'Убрать участников'
-                        }
-                        onClick={toggleStrip}
-                      >
-                        {stripCollapsed ? (
-                          <ChevronUpIcon className="size-3.5 shrink-0" />
-                        ) : (
-                          <ChevronDownIcon className="size-3.5 shrink-0" />
-                        )}
-                        <UsersIcon className="size-3.5 shrink-0" />
-                      </button>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          className={voiceStageStripToggleButtonClass}
+                          aria-label={
+                            stripCollapsed
+                              ? t('actions.showParticipants')
+                              : t('actions.hideParticipants')
+                          }
+                          onClick={toggleStrip}
+                        />
+                      }
+                    >
+                      {stripCollapsed ? (
+                        <ChevronUpIcon className="size-3.5 shrink-0" />
+                      ) : (
+                        <ChevronDownIcon className="size-3.5 shrink-0" />
+                      )}
+                      <UsersIcon className="size-3.5 shrink-0" />
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={8}>
                       {stripCollapsed
-                        ? 'Показать участников'
-                        : 'Убрать участников'}
+                        ? t('actions.showParticipants')
+                        : t('actions.hideParticipants')}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

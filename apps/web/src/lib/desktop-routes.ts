@@ -1,11 +1,21 @@
-const DESKTOP_ROUTE_PREFIXES = ['/app', '/m', '/desktop', '/invite', '/login', '/admin'] as const
+import { isAppPath } from './device-routing'
+
+const DESKTOP_PUBLIC_PREFIXES = [
+  '/m',
+  '/desktop',
+  '/invite',
+  '/login',
+  '/admin',
+] as const
+
 const DESKTOP_OVERLAY_PATH = '/desktop/overlay'
 
-export const DESKTOP_ENTRY_PATH = '/app'
+export const DESKTOP_ENTRY_PATH = '/'
 
-/** Пути, доступные в desktop-сборке (без лендинга и публичных web-only страниц). */
+/** Пути, доступные в desktop-сборке (приложение и его публичные входы). */
 export function isDesktopAllowedPath(pathname: string) {
-  return DESKTOP_ROUTE_PREFIXES.some(
+  if (isAppPath(pathname)) return true
+  return DESKTOP_PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   )
 }

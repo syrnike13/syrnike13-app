@@ -1,6 +1,7 @@
-import { CheckIcon } from '#/components/icons'
 import type { ManualPresence } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
+import { RadioGroup, RadioGroupItem } from '@syrnike13/ui/primitives/radio-group'
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { PRESENCE_DISPLAY, PRESENCE_OPTIONS } from '#/lib/presence'
 import { useSetPresence } from '#/features/users/use-set-presence'
@@ -15,6 +16,7 @@ export function PresencePickerList({
   onSelected,
   className,
 }: PresencePickerListProps) {
+  const t = useTranslations('chat')
   const { presence, setPresence, isPending } = useSetPresence()
   const current = PRESENCE_DISPLAY[presence ?? 'Online'] ?? PRESENCE_OPTIONS[0]
 
@@ -25,38 +27,34 @@ export function PresencePickerList({
   }
 
   return (
-    <div className={cn('flex flex-col gap-0.5 p-2', className)} role="listbox">
+    <RadioGroup
+      value={current.value}
+      disabled={isPending}
+      className={cn('flex flex-col gap-0.5 p-2', className)}
+      onValueChange={(next) => void pick(next as ManualPresence)}
+    >
       {PRESENCE_OPTIONS.map((option) => {
         const selected = option.value === current.value
         return (
-          <button
+          <label
             key={option.value}
-            type="button"
-            role="option"
-            aria-selected={selected}
-            disabled={isPending}
             className={cn(
               profileMenuRowClass,
-              'h-11 justify-between rounded-lg px-3',
+              'h-11 cursor-pointer justify-between rounded-lg px-3',
               selected && 'bg-accent/70 text-foreground',
             )}
-            onClick={() => void pick(option.value)}
           >
             <span className="flex min-w-0 items-center gap-3">
               <span
                 className={cn('size-3 shrink-0 rounded-full', option.dotClass)}
                 aria-hidden
               />
-              <span className="truncate text-base">{option.label}</span>
+              <span className="truncate text-base">{t(option.labelKey)}</span>
             </span>
-            {selected ? (
-              <CheckIcon className="size-4 shrink-0 text-primary" />
-            ) : (
-              <span className="size-4 shrink-0" aria-hidden />
-            )}
-          </button>
+            <RadioGroupItem value={option.value} disabled={isPending} />
+          </label>
         )
       })}
-    </div>
+    </RadioGroup>
   )
 }

@@ -6,6 +6,16 @@ import {
   ImageLightbox,
   type ImageLightboxAuthor,
 } from '#/components/media/image-lightbox'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from '@syrnike13/ui/primitives/attachment'
+
 import { FxImage } from '#/components/ui/fx-image'
 import {
   fileMosaicRatio,
@@ -15,12 +25,14 @@ import {
   isSpoilerFilename,
   stripSpoilerFilename,
 } from '#/lib/composer-files'
+import { formatFileSize } from '#/lib/file-size'
 import {
   attachmentOriginalUrl,
   attachmentPreviewUrl,
   imageFileAspectRatio,
   isImageFile,
 } from '#/lib/media'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type MessageAttachmentsProps = {
@@ -32,6 +44,7 @@ export function MessageAttachments({
   attachments,
   author,
 }: MessageAttachmentsProps) {
+  const t = useTranslations('chat')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [revealedSpoilers, setRevealedSpoilers] = useState<
     Record<string, true>
@@ -63,8 +76,14 @@ export function MessageAttachments({
         ) : mosaic ? (
           <div
             data-attachment-mosaic={imageFiles.length}
-            className="relative w-full max-w-md overflow-hidden rounded-md border"
-            style={{ aspectRatio: mosaic.aspectRatio }}
+            className="relative aspect-(--mosaic-aspect) max-h-87.5 w-(--mosaic-width) max-w-full overflow-hidden rounded-md border"
+            style={
+              {
+                '--mosaic-aspect': mosaic.aspectRatio,
+                // Максимум 550×350: ширина выводится из ratio до загрузки.
+                '--mosaic-width': `min(100%, 34.375rem, calc(21.875rem * ${mosaic.aspectRatio}))`,
+              } as CSSVars
+            }
           >
             {mosaic.tiles.map((tile) => {
               const file = imageFiles[tile.index]
@@ -78,19 +97,21 @@ export function MessageAttachments({
                   type="button"
                   aria-label={
                     spoiler
-                      ? 'Спойлер: нажмите, чтобы показать'
-                      : (file.filename ?? 'Изображение')
+                      ? t('spoilerShow')
+                      : (file.filename ?? t('image'))
                   }
                   className={cn(
-                    'absolute overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                    'absolute left-(--tile-left) top-(--tile-top) h-(--tile-height) w-(--tile-width) overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
                     'bg-border',
                   )}
-                  style={{
-                    left: `${tile.left}%`,
-                    top: `${tile.top}%`,
-                    width: `${tile.width}%`,
-                    height: `${tile.height}%`,
-                  }}
+                  style={
+                    {
+                      '--tile-left': `${tile.left}%`,
+                      '--tile-top': `${tile.top}%`,
+                      '--tile-width': `${tile.width}%`,
+                      '--tile-height': `${tile.height}%`,
+                    } as CSSVars
+                  }
                   onClick={() => {
                     if (spoiler) {
                       revealSpoiler(file._id)
@@ -101,7 +122,7 @@ export function MessageAttachments({
                 >
                   <FxImage
                     src={attachmentPreviewUrl(file)}
-                    alt={stripSpoilerFilename(file.filename) || 'Изображение'}
+                    alt={stripSpoilerFilename(file.filename) || t('image')}
                     fill
                     objectFit="cover"
                     className={cn(spoiler && 'scale-105 blur-xl')}
@@ -109,7 +130,7 @@ export function MessageAttachments({
                   />
                   {spoiler ? (
                     <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-xs font-semibold tracking-wide text-foreground uppercase">
-                      Спойлер
+                      {t('spoiler')}
                     </span>
                   ) : null}
                 </button>
@@ -122,30 +143,38 @@ export function MessageAttachments({
           const spoiler =
             isSpoilerFilename(file.filename) && !revealedSpoilers[file._id]
           const label = stripSpoilerFilename(file.filename) || file._id
-          if (spoiler) {
-            return (
-              <button
-                key={file._id}
-                type="button"
-                className="flex items-center gap-2 rounded-md border bg-background/40 px-3 py-2 text-sm hover:bg-background/70"
-                onClick={() => revealSpoiler(file._id)}
-              >
-                <FileIcon className="size-4 shrink-0" />
-                <span className="truncate font-semibold uppercase">Спойлер</span>
-              </button>
-            )
-          }
+
           return (
-            <a
-              key={file._id}
-              href={attachmentOriginalUrl(file)}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="flex items-center gap-2 rounded-md border bg-background/40 px-3 py-2 text-sm hover:bg-background/70"
-            >
-              <FileIcon className="size-4 shrink-0" />
-              <span className="truncate">{label}</span>
-            </a>
+            <Attachment key={file._id} size="sm" className="max-w-md">
+              <AttachmentMedia>
+                <FileIcon />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle className={cn(spoiler && 'uppercase')}>
+                  {spoiler ? t('spoiler') : label}
+                </AttachmentTitle>
+                <AttachmentDescription>
+                  {formatFileSize(file.size)}
+                </AttachmentDescription>
+              </AttachmentContent>
+              {spoiler ? (
+                <AttachmentTrigger
+                  onClick={() => revealSpoiler(file._id)}
+                  aria-label={t('spoilerShow')}
+                />
+              ) : (
+                <AttachmentTrigger
+                  render={
+                    <a
+                      href={attachmentOriginalUrl(file)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label={label}
+                    />
+                  }
+                />
+              )}
+            </Attachment>
           )
         })}
       </div>
@@ -174,23 +203,27 @@ function SingleImageAttachment({
   onRevealSpoiler: () => void
   onOpen: () => void
 }) {
+  const t = useTranslations('chat')
   /** Всегда резервируем box до decode: без ratio intrinsic width ≈ 0. */
   const aspectRatio = imageFileAspectRatio(file) ?? 1
   const spoiler = isSpoilerFilename(file.filename) && !spoilerRevealed
-  const label = stripSpoilerFilename(file.filename) || 'Изображение'
+  const label = stripSpoilerFilename(file.filename) || t('image')
 
   return (
     <button
       type="button"
       data-attachment-single
       data-aspect-ratio={String(aspectRatio)}
-      aria-label={spoiler ? 'Спойлер: нажмите, чтобы показать' : label}
-      className="relative block max-h-96 max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-[28rem]"
-      style={{
-        aspectRatio,
-        // Ширина до load: min(100%, 28rem, max-h-96 * ratio), иначе w-fit схлопывается.
-        width: `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
-      }}
+      aria-label={spoiler ? t('spoilerShow') : label}
+      className="relative block aspect-(--single-aspect) max-h-87.5 w-(--single-width) max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      style={
+        {
+          '--single-aspect': aspectRatio,
+          // Максимум 550×350. Ширина до load выводится из ratio,
+          // иначе w-fit схлопывается и лента прыгает.
+          '--single-width': `min(100%, 34.375rem, calc(21.875rem * ${aspectRatio}))`,
+        } as CSSVars
+      }
       onClick={() => {
         if (spoiler) {
           onRevealSpoiler()
@@ -209,7 +242,7 @@ function SingleImageAttachment({
       />
       {spoiler ? (
         <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-sm font-semibold tracking-wide text-foreground uppercase">
-          Спойлер
+          {t('spoiler')}
         </span>
       ) : null}
     </button>

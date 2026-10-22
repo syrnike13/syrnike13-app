@@ -261,7 +261,7 @@ void WindowsMediaRuntime::run() noexcept {
           audio_path.failure = audioFailure(*audio.failure);
       }
       if (desired_.camera.state == CameraIntentState::on) {
-        snapshot_.camera_metrics = std::array<DiagnosticMetric, 13>{{
+        snapshot_.camera_metrics = std::array<DiagnosticMetric, 15>{{
           {"capture_frames", static_cast<double>(camera.pipeline.capture.frames)},
           {"capture_stale", static_cast<double>(camera.pipeline.capture.stale)},
           {"capture_failure", static_cast<double>(camera.pipeline.capture.failure)},
@@ -275,6 +275,9 @@ void WindowsMediaRuntime::run() noexcept {
           {"preview_failure", static_cast<double>(camera.preview.failure)},
           {"publication_submitted", static_cast<double>(camera.publication.submitted)},
           {"publication_failure", static_cast<double>(camera.publication.failure)},
+          // The failed open is otherwise visible only as camera_input_failed.
+          {"open_failure", static_cast<double>(camera.pipeline.failure)},
+          {"open_platform_error", static_cast<double>(camera.pipeline.open_platform_error)},
         }};
       } else snapshot_.camera_metrics.reset();
       if (desired_.microphone.state != MicrophoneIntentState::off) {

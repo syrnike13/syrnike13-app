@@ -21,7 +21,7 @@ export function useWatchParticipantScreenShare() {
         return
       }
       void navigate({
-        to: '/app/c/$channelId',
+        to: '/c/$channelId',
         params: { channelId },
         search: { m: undefined },
       })

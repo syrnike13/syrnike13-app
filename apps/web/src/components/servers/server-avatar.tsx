@@ -1,4 +1,5 @@
 import type { Server } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { MonitorUpIcon, Volume2BoldIcon } from '#/components/icons'
 import { serverIconUrl } from '#/lib/media'
@@ -13,12 +14,13 @@ function ServerActivityBadge({
   kind: ServerActivityKind
   connected: boolean
 }) {
+  const t = useTranslations('servers.roles')
   if (!kind) return null
 
   const screenSharing = kind === 'screen-share'
   const label = screenSharing
-    ? 'На сервере демонстрируют экран'
-    : 'На сервере есть участники голосовых каналов'
+    ? t('activityScreenShare')
+    : t('activityVoice')
   const Icon = screenSharing ? MonitorUpIcon : Volume2BoldIcon
 
   return (

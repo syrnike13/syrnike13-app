@@ -27,7 +27,7 @@ describe('createRegisterSchema', () => {
 
     expect(result.issues).toContainEqual(
       expect.objectContaining({
-        message: 'Пароли не совпадают',
+        message: 'passwordsMismatch',
         path: ['confirm'],
       }),
     )
@@ -49,7 +49,7 @@ describe('createRegisterSchema', () => {
 
     expect(result.issues).toContainEqual(
       expect.objectContaining({
-        message: 'Нужен код приглашения',
+        message: 'inviteRequired',
         path: ['invite'],
       }),
     )

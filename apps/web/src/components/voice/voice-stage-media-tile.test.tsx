@@ -271,6 +271,26 @@ describe('StageMediaTile', () => {
     expect(document.querySelector('video')).toBeNull()
   })
 
+  it('shows the avatar instead of a frozen frame while a remote camera is muted', () => {
+    render(
+      <StageMediaTile
+        item={{
+          ...screenItemWithTrack,
+          id: 'remote-user:camera',
+          kind: 'camera',
+          source: 'camera',
+          live: false,
+        }}
+        displayName="Remote User"
+        variant="grid"
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(document.querySelector('video')).toBeNull()
+  })
+
   it('keeps strip avatars compact instead of filling the tile', () => {
     render(
       <StageMediaTile
@@ -303,7 +323,7 @@ describe('StageMediaTile', () => {
       .getByRole('button')
       .querySelector('[data-slot="avatar"]')
     expect(avatar).toBeTruthy()
-    expect(avatar?.className).toContain('size-[min(58cqh,36cqw,4.75rem)]')
+    expect(avatar?.className).toContain('size-media-avatar')
     expect(avatar?.className).not.toContain('size-full')
   })
 

@@ -6,7 +6,7 @@ type Mutable<Type> = Type extends ReadonlyArray<infer Item>
     ? { -readonly [Key in keyof Type]: Mutable<Type[Key]> }
     : Type
 
-/** Метод hybrid media engine (счётчики как в Discord RTC debug). */
+/** Метод hybrid media engine (счётчики RTC debug). */
 export type NativeMediaFrameMethod =
   | 'wgc_gpu'
   | 'dxgi_gpu'

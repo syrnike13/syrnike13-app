@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+// design-allow-file restyle-shared: media-overlay controls use on-media surfaces.
+import { useCallback, useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
-  Loader2Icon,
   Maximize2Icon,
   MonitorIcon,
   MonitorXIcon,
@@ -8,27 +9,25 @@ import {
 } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/context-menu'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import { UserAvatar } from '#/components/user/user-avatar'
 import {
   VoiceOnAirBadge,
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
-import {
-  VoiceStreamViewers,
-  type StreamViewer,
-} from '#/components/voice/voice-stream-viewers'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   formatUserVolumeLabel,
@@ -38,7 +37,7 @@ import {
 } from '#/features/voice/voice-listener-store'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
-import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type StageMediaTileVariant = 'grid' | 'focus' | 'strip' | 'fullscreen'
@@ -48,8 +47,6 @@ type StageMediaTileProps = {
   user?: User
   participant?: UserVoiceState
   displayName: string
-  /** Кто смотрит стрим (только для плиток экрана). */
-  viewers?: readonly StreamViewer[]
   /** Полупрозрачная плитка на время подключения к LiveKit. */
   dimmed?: boolean
   speaking?: boolean
@@ -61,43 +58,33 @@ type StageMediaTileProps = {
 
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 
-/** Нейтральный серый фон превью стрима (как в Discord), без палитры аватара. */
+/** Нейтральный серый фон превью стрима, без палитры аватара. */
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-white/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-white/20'
+  'h-auto rounded-md border border-border bg-card font-medium text-card-foreground shadow-sm transition-colors hover:bg-hover'
 
 const screenStreamOwnerLabelClass =
-  'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
+  'absolute z-10 flex min-w-0 max-w-media-inset-lg items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
 
 function screenStreamOwnerLabelPositionClass(variant: StageMediaTileVariant) {
   return variant === 'strip'
-    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-[10px] leading-tight'
+    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-xs leading-tight'
     : 'bottom-2 left-2 px-2 py-1 text-xs'
-}
-
-/** Keeps the bottom-left label clear of the bottom-right viewers chip. */
-function viewersReserveClass(variant: StageMediaTileVariant) {
-  return variant === 'strip'
-    ? 'max-w-[calc(100%-3rem)]'
-    : 'max-w-[calc(100%-6.5rem)]'
 }
 
 function ScreenStreamOwnerLabel({
   displayName,
   variant,
-  hasViewers = false,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers?: boolean
 }) {
   return (
     <div
       className={cn(
         screenStreamOwnerLabelClass,
         screenStreamOwnerLabelPositionClass(variant),
-        hasViewers && viewersReserveClass(variant),
       )}
     >
       <MonitorIcon className="size-3 shrink-0 opacity-90" aria-hidden />
@@ -110,13 +97,13 @@ function UnsubscribedScreenStreamTile({
   displayName,
   variant,
   onSubscribe,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
   onSubscribe: () => void
-  hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -140,15 +127,11 @@ function UnsubscribedScreenStreamTile({
             onSubscribe()
           }}
         >
-          Смотреть
+          {t('actions.watch')}
         </Button>
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -156,12 +139,12 @@ function UnsubscribedScreenStreamTile({
 function LoadingScreenStreamTile({
   displayName,
   variant,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -169,22 +152,18 @@ function LoadingScreenStreamTile({
       <div
         className="absolute inset-0 flex items-center justify-center p-3"
         role="status"
-        aria-label="Подключение к стриму"
+        aria-label={t('stage.streamConnecting')}
       >
-        <Loader2Icon
+        <Spinner
           className={cn(
-            'animate-spin text-white/80',
+            'text-on-media/80',
             variant === 'strip' ? 'size-5' : 'size-8',
           )}
           aria-hidden
         />
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -192,12 +171,12 @@ function LoadingScreenStreamTile({
 function PausedScreenStreamTile({
   displayName,
   variant,
-  hasViewers,
 }: {
   displayName: string
   variant: StageMediaTileVariant
-  hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -210,14 +189,10 @@ function PausedScreenStreamTile({
         role="status"
       >
         <PauseIcon className={variant === 'strip' ? 'size-4' : 'size-6'} aria-hidden />
-        <span>Трансляция на паузе</span>
+        <span>{t('stage.streamPaused')}</span>
       </div>
 
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -227,14 +202,14 @@ function FailedScreenStreamTile({
   error,
   variant,
   onRetry,
-  hasViewers,
 }: {
   displayName: string
   error: string
   variant: StageMediaTileVariant
   onRetry: () => void
-  hasViewers: boolean
 }) {
+  const t = useTranslations('voice')
+
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
@@ -256,14 +231,10 @@ function FailedScreenStreamTile({
             onRetry()
           }}
         >
-          Повторить
+          {t('actions.retry')}
         </Button>
       </div>
-      <ScreenStreamOwnerLabel
-        displayName={displayName}
-        variant={variant}
-        hasViewers={hasViewers}
-      />
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
   )
 }
@@ -273,7 +244,6 @@ export function StageMediaTile({
   user,
   participant,
   displayName,
-  viewers = [],
   dimmed = false,
   speaking = false,
   variant,
@@ -281,6 +251,7 @@ export function StageMediaTile({
   onSetSubscribed,
   onStreamAspectRatioChange,
 }: StageMediaTileProps) {
+  const t = useTranslations('voice')
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_SCREEN_ASPECT_RATIO)
   const isScreen = item.kind === 'screen'
   const muted = useVoiceListenerStore((s) =>
@@ -290,8 +261,6 @@ export function StageMediaTile({
     isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
   )
   const palette = useVoiceTilePalette(user, item.userId)
-  const streamViewers = item.kind === 'screen' ? viewers : []
-  const hasViewers = streamViewers.length > 0
   const isFailedScreen = isScreen && Boolean(item.error)
   const isUnsubscribedScreen =
     isScreen && !isFailedScreen && !item.isLocal && item.subscribed === false
@@ -302,8 +271,11 @@ export function StageMediaTile({
     isScreen && !isFailedScreen && !isUnsubscribedScreen && !item.isLocal && !item.live
   const isScreenPlaceholder =
     isFailedScreen || isUnsubscribedScreen || isLoadingScreen || isPausedScreen
+  // A muted remote camera keeps its last decoded frame: show the avatar.
+  const isMutedCamera = !isScreen && !item.isLocal && !item.live
   const hasVideo = Boolean(
-    item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen,
+    item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen &&
+      !isMutedCamera,
   )
   const fit =
     variant === 'focus'
@@ -311,17 +283,11 @@ export function StageMediaTile({
       : isScreen
         ? 'contain'
         : 'cover'
-  const mediaLabel = isScreen ? `Экран ${displayName}` : displayName
+  const mediaLabel = isScreen
+    ? t('stage.screenOf', { name: displayName })
+    : displayName
   const panelAspectRatio =
     isScreen && hasVideo ? aspectRatio : DEFAULT_SCREEN_ASPECT_RATIO
-  const tileStyle = useMemo(
-    () => ({
-      ...(!hasVideo && !isScreenPlaceholder ? tilePaletteStyle(palette) : {}),
-      // Размер grid-плитки задаёт обёртка (VoiceStageGrid), aspect-ratio не нужен.
-      ...(variant === 'focus' ? { aspectRatio: panelAspectRatio } : {}),
-    }),
-    [hasVideo, isScreenPlaceholder, palette, panelAspectRatio, variant],
-  )
   const updateVideoSize = useCallback(
     ({ width, height }: { width: number; height: number }) => {
       if (!isScreen || width <= 0 || height <= 0) return
@@ -342,15 +308,14 @@ export function StageMediaTile({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <article
+      <ContextMenuTrigger render={<article
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 overflow-hidden rounded-md outline-none transition-[filter,box-shadow,opacity]',
+            'group relative min-h-0 overflow-hidden rounded-md outline-none transition',
             variant !== 'grid' &&
               variant !== 'strip' &&
-              'ring-offset-2 ring-offset-black',
+              'ring-offset-2 ring-offset-media-backdrop',
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
@@ -365,16 +330,25 @@ export function StageMediaTile({
               variant !== 'grid' &&
               'ring-2 ring-chart-3',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
+            !hasVideo && !isScreenPlaceholder && 'tile-palette',
+            variant === 'focus' && 'aspect-(--tile-aspect)',
           )}
-          style={variant === 'strip' ? undefined : tileStyle}
+          style={
+            variant === 'strip'
+              ? undefined
+              : ({
+                  '--tile-from': palette.from,
+                  '--tile-to': palette.to,
+                  '--tile-aspect': panelAspectRatio,
+                } as CSSVars)
+          }
           onClick={() => onFocus(item.id)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault()
               onFocus(item.id)
             }
-          }}
-        >
+          }} />}>
           {hasVideo && item.track ? (
             variant === 'strip' ? (
               <div className={stripMediaClipClass}>
@@ -396,36 +370,37 @@ export function StageMediaTile({
           ) : isFailedScreen ? (
             <FailedScreenStreamTile
               displayName={displayName}
-              error={item.error ?? 'Не удалось подключиться к демонстрации'}
+              error={item.error ?? t('stage.screenShareError')}
               variant={variant}
               onRetry={() => onSetSubscribed(item.id, true)}
-              hasViewers={hasViewers}
             />
           ) : isUnsubscribedScreen ? (
             <UnsubscribedScreenStreamTile
               displayName={displayName}
               variant={variant}
               onSubscribe={() => onSetSubscribed(item.id, true)}
-              hasViewers={hasViewers}
             />
           ) : isPausedScreen ? (
             <PausedScreenStreamTile
               displayName={displayName}
               variant={variant}
-              hasViewers={hasViewers}
             />
           ) : isLoadingScreen ? (
             <LoadingScreenStreamTile
               displayName={displayName}
               variant={variant}
-              hasViewers={hasViewers}
             />
           ) : (
             <>
               {variant === 'strip' ? (
                 <div
-                  className={stripMediaClipClass}
-                  style={tilePaletteStyle(palette)}
+                  className={cn(stripMediaClipClass, 'tile-palette')}
+                  style={
+                    {
+                      '--tile-from': palette.from,
+                      '--tile-to': palette.to,
+                    } as CSSVars
+                  }
                 />
               ) : null}
               <div
@@ -438,14 +413,14 @@ export function StageMediaTile({
                   user={user}
                   className={cn(
                     variant === 'strip' &&
-                      'aspect-square size-[min(58cqh,36cqw,4.75rem)]',
+                      'aspect-square size-media-avatar',
                     variant === 'grid' && 'size-16 sm:size-20',
                     variant !== 'strip' &&
                       variant !== 'grid' &&
                       'size-24 sm:size-32',
                   )}
                   fallbackClassName={cn(
-                    variant === 'strip' && 'text-[min(1.125rem,26cqh)]',
+                    variant === 'strip' && 'text-stage-tile',
                     variant === 'grid' && 'size-16 text-base sm:size-20',
                     variant !== 'strip' &&
                       variant !== 'grid' &&
@@ -479,11 +454,10 @@ export function StageMediaTile({
           !isScreenPlaceholder ? (
             <div
               className={cn(
-                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',
+                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-media-backdrop/60 font-medium text-on-media',
                 variant === 'strip'
-                  ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-xs leading-tight'
-                  : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
-                hasViewers && viewersReserveClass(variant),
+                  ? 'bottom-1.5 left-1 max-w-media-inset-sm px-1.5 py-0.5 text-xs leading-tight'
+                  : 'bottom-2 left-2 max-w-media-inset-xl px-2 py-1 text-xs',
               )}
             >
               {participant ? (
@@ -500,43 +474,30 @@ export function StageMediaTile({
               <span className="min-w-0 truncate">{mediaLabel}</span>
             </div>
           ) : null}
-
-          {hasViewers ? (
-            <VoiceStreamViewers
-              viewers={streamViewers}
-              variant={variant === 'strip' ? 'count' : 'avatars'}
-              className={cn(
-                'absolute z-20',
-                variant === 'strip' ? 'right-1 bottom-1.5' : 'right-2 bottom-2',
-              )}
-            />
-          ) : null}
-        </article>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-muted text-foreground">
-        <ContextMenuItem onSelect={() => onFocus(item.id)}>
+        </ContextMenuTrigger>
+      <ContextMenuContent className="z-420 min-w-64 border-on-media/10">
+        <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
-          Сфокусировать
+          {t('actions.focus')}
         </ContextMenuItem>
         {item.kind === 'screen' ? (
           <ContextMenuItem
-            onSelect={() =>
+            onClick={() =>
               onSetSubscribed(item.id, item.subscribed === false)
             }
           >
             <MonitorXIcon />
             {item.isLocal
-              ? 'Прекратить демонстрацию'
+              ? t('actions.stopScreenShare')
               : item.subscribed === false
-                ? 'Подключиться к стриму'
-                : 'Отключиться от просмотра'}
+                ? t('actions.connectStream')
+                : t('actions.disconnectStream')}
           </ContextMenuItem>
         ) : null}
         <ContextMenuSeparator />
         <ContextMenuCheckboxItem
-          indicatorPosition="end"
           checked={muted}
-          onSelect={(event) => event.preventDefault()}
+          closeOnClick={false}
           onCheckedChange={(checked) => {
             if (isScreen) {
               voiceListenerStore.setStreamMuted(item.userId, checked === true)
@@ -545,16 +506,18 @@ export function StageMediaTile({
             }
           }}
         >
-          {isScreen ? 'Заглушить стрим' : 'Заглушить голос'}
+          {isScreen ? t('actions.muteStream') : t('actions.muteVoice')}
         </ContextMenuCheckboxItem>
         <div
           className="px-2 py-2"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          <ContextMenuLabel className="px-0 pb-2 text-xs text-white/70">
-            {isScreen ? 'Громкость стрима' : 'Громкость голоса'}
-          </ContextMenuLabel>
+          <ContextMenuGroup>
+            <ContextMenuLabel className="px-0 pb-2 text-xs text-on-media/70">
+              {isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
+            </ContextMenuLabel>
+          </ContextMenuGroup>
           <div className="flex items-center gap-2">
             <Slider
               className="flex-1"
@@ -562,7 +525,9 @@ export function StageMediaTile({
               max={VOICE_USER_VOLUME_MAX}
               step={0.1}
               value={[volume]}
-              onValueChange={([next]) => {
+              onValueChange={(value) => {
+                const next = typeof value === 'number' ? value : value[0]
+                if (next == null) return
                 if (isScreen) {
                   voiceListenerStore.setStreamVolume(item.userId, next)
                 } else {
@@ -570,7 +535,7 @@ export function StageMediaTile({
                 }
               }}
             />
-            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-white/70">
+            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-on-media/70">
               {formatUserVolumeLabel(volume)}
             </span>
           </div>

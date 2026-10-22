@@ -1,9 +1,19 @@
 import { useMemo, useState } from 'react'
 import type { Member, User } from '@syrnike13/api-types'
 import { Option, Schema } from 'effect'
+import {
+  useLocale,
+  useTranslations,
+  type AppLocale,
+  type Translator,
+} from '@syrnike13/ui/i18n'
 
 import { SearchIcon } from '#/components/icons'
-import { Input } from '#/components/ui/input'
+import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import { useAuth } from '#/features/auth/auth-context'
@@ -13,7 +23,9 @@ import {
   memberRoleEntries,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
+import { cn } from '#/lib/utils'
 
 type ServerSettingsMembersPanelProps = {
   serverId: string
@@ -26,11 +38,15 @@ function memberDisplayName(user: User, member?: Member) {
   return member?.nickname?.trim() || user.display_name || user.username
 }
 
-function formatJoinedAt(value: string | undefined) {
-  if (!value) return 'Неизвестно'
+function formatJoinedAt(
+  value: string | undefined,
+  locale: AppLocale,
+  t: Translator,
+) {
+  if (!value) return t('unknownDate')
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Неизвестно'
-  return new Intl.DateTimeFormat('ru', {
+  if (Number.isNaN(date.getTime())) return t('unknownDate')
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -40,6 +56,8 @@ function formatJoinedAt(value: string | undefined) {
 export function ServerSettingsMembersPanel({
   serverId,
 }: ServerSettingsMembersPanelProps) {
+  const t = useTranslations('servers.members')
+  const { locale } = useLocale()
   const auth = useAuth()
   useServerMembersSync(serverId, auth.session?.token)
   const server = useSyncStore((s) => s.servers[serverId])
@@ -83,19 +101,19 @@ export function ServerSettingsMembersPanel({
 
       return memberDisplayName(a.user, a.member).localeCompare(
         memberDisplayName(b.user, b.member),
-        'ru',
+        locale,
       )
     })
-  }, [members, query, server, sort])
+  }, [locale, members, query, server, sort])
 
   if (!server) return null
 
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold">Участники</h3>
+        <h3 className="text-base font-semibold">{t('title')}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          {members.length} участников. Действия доступны через ПКМ по строке.
+          {t('summary', { count: members.length })}
         </p>
       </div>
 
@@ -105,14 +123,14 @@ export function ServerSettingsMembersPanel({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск участников…"
-            className="h-9 bg-muted/40 pl-9"
+            placeholder={t('search')}
+            className="pl-9"
           />
         </div>
-        <select
+        <NativeSelect
           value={sort}
-          className="h-9 rounded-md border border-input bg-muted/40 px-3 text-sm outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
-          aria-label="Сортировка участников"
+          className="w-full sm:w-45"
+          aria-label={t('sortAria')}
           onChange={(event) => {
             const decoded = Schema.decodeUnknownOption(MemberSortSchema)(
               event.target.value,
@@ -120,20 +138,26 @@ export function ServerSettingsMembersPanel({
             if (Option.isSome(decoded)) setSort(decoded.value)
           }}
         >
-          <option value="name">Сортировать по имени</option>
-          <option value="joined">Сортировать по дате входа</option>
-          <option value="roles">Сортировать по ролям</option>
-        </select>
+          <NativeSelectOption value="name">
+            {t('sortName')}
+          </NativeSelectOption>
+          <NativeSelectOption value="joined">
+            {t('sortJoined')}
+          </NativeSelectOption>
+          <NativeSelectOption value="roles">
+            {t('sortRoles')}
+          </NativeSelectOption>
+        </NativeSelect>
       </div>
 
       <div className="overflow-hidden rounded-md border border-border">
-        <div className="grid grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_8.5rem_3rem] gap-3 border-b border-border bg-muted/30 px-3 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          <span>Имя</span>
-          <span>Роли</span>
-          <span>Дата вступления</span>
-          <span className="text-right">Действия</span>
+        <div className="grid member-table-grid gap-3 border-b border-border bg-muted/30 px-3 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          <span>{t('columnName')}</span>
+          <span>{t('columnRoles')}</span>
+          <span>{t('columnJoined')}</span>
+          <span className="text-right">{t('columnActions')}</span>
         </div>
-        <div className="max-h-[32rem] overflow-y-auto">
+        <div className="max-h-128 overflow-y-auto">
           {filteredMembers.map(({ member, user }) => {
             const roles = memberRoleEntries(server, member)
             const displayName = memberDisplayName(user, member)
@@ -150,7 +174,7 @@ export function ServerSettingsMembersPanel({
               >
                 <button
                   type="button"
-                  className="grid min-h-12 w-full grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_8.5rem_3rem] items-center gap-3 border-b border-border/70 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/45 focus-visible:outline-none"
+                  className="grid min-h-12 w-full member-table-grid items-center gap-3 border-b border-border px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/45 focus-visible:outline-none"
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <UserAvatar user={user} className="size-8 shrink-0" />
@@ -168,8 +192,17 @@ export function ServerSettingsMembersPanel({
                       roles.slice(0, 3).map((role) => (
                         <span
                           key={role.id}
-                          className="max-w-32 truncate rounded bg-muted px-1.5 py-0.5 text-xs font-medium"
-                          style={roleColourStyle(role.colour)}
+                          className={cn(
+                            'max-w-32 truncate rounded bg-muted px-1.5 py-0.5 text-xs font-medium',
+                            role.colour && 'text-(--role-color)',
+                          )}
+                          style={
+                            role.colour
+                              ? ({
+                                  '--role-color': normalizeRoleColour(role.colour),
+                                } as CSSVars)
+                              : undefined
+                          }
                         >
                           {role.name}
                         </span>
@@ -184,7 +217,7 @@ export function ServerSettingsMembersPanel({
                     ) : null}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    {formatJoinedAt(member.joined_at)}
+                    {formatJoinedAt(member.joined_at, locale, t)}
                   </span>
                   <span
                     className="text-right text-lg leading-none text-muted-foreground"
@@ -198,7 +231,7 @@ export function ServerSettingsMembersPanel({
           })}
           {filteredMembers.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Участники не найдены
+              {t('noMembers')}
             </div>
           ) : null}
         </div>

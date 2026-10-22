@@ -2,11 +2,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Badge } from '@syrnike13/api-types'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { BadgeIcon } from '#/components/badge-icon'
-import { FormField } from '#/components/form-field'
 import { IconDropzone } from '#/components/icon-dropzone'
 import {
   AdminPage,
@@ -15,12 +15,22 @@ import {
 } from '#/components/layout/page'
 import {
   CheckIcon,
-  Loader2Icon,
   Trash2Icon,
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
 import {
   Dialog,
   DialogContent,
@@ -28,10 +38,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Switch } from '#/components/ui/switch'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/dialog'
+import { Field, FieldLabel } from '@syrnike13/ui/primitives/field'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { Switch } from '@syrnike13/ui/primitives/switch'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   assignAdminUserBadgeEffect,
   createAdminBadgeEffect,
@@ -59,6 +71,8 @@ export function BadgeEditorPage({
   mode: 'create' | 'edit'
   badge?: Badge
 }) {
+  const t = useTranslations('badges.editor')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const token = auth.session?.token
   const navigate = useNavigate()
@@ -111,9 +125,9 @@ export function BadgeEditorPage({
     mutationFn: () =>
       Effect.runPromise(
         Effect.gen(function*() {
-          if (!token) return yield* Effect.fail(new Error('Нет сессии'))
+          if (!token) return yield* Effect.fail(new Error(t('noSession')))
           const iconFileId = iconFile
-            ? yield* uploadMediaFileEffect(token, 'badges', iconFile)
+            ? yield* uploadMediaFileEffect(token, 'badges', iconFile, tm)
             : undefined
           return yield* createAdminBadgeEffect(
             token,
@@ -126,11 +140,11 @@ export function BadgeEditorPage({
         ...c,
         created,
       ])
-      toast.success('Бейдж создан')
+      toast.success(t('created'))
       void navigate({ to: '/badges/$badgeId', params: { badgeId: created._id } })
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Не удалось создать бейдж')
+      toast.error(e instanceof Error ? e.message : t('createError'))
     },
   })
 
@@ -139,10 +153,10 @@ export function BadgeEditorPage({
       Effect.runPromise(
         Effect.gen(function*() {
           if (!token || !badge) {
-            return yield* Effect.fail(new Error('Бейдж не выбран'))
+            return yield* Effect.fail(new Error(t('selectError')))
           }
           const iconFileId = iconFile
-            ? yield* uploadMediaFileEffect(token, 'badges', iconFile)
+            ? yield* uploadMediaFileEffect(token, 'badges', iconFile, tm)
             : undefined
           return yield* updateAdminBadgeEffect(
             token,
@@ -157,10 +171,10 @@ export function BadgeEditorPage({
       )
       setIconFile(null)
       setRemoveIcon(false)
-      toast.success('Сохранено')
+      toast.success(t('saved'))
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить')
+      toast.error(e instanceof Error ? e.message : t('saveError'))
     },
   })
 
@@ -169,7 +183,7 @@ export function BadgeEditorPage({
       Effect.runPromise(
         Effect.gen(function*() {
           if (!token || !badge) {
-            return yield* Effect.fail(new Error('Бейдж не выбран'))
+            return yield* Effect.fail(new Error(t('selectError')))
           }
           yield* deleteAdminBadgeEffect(token, badge._id)
           return badge
@@ -179,11 +193,11 @@ export function BadgeEditorPage({
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (c = []) =>
         c.filter((item) => item._id !== deleted._id),
       )
-      toast.success('Удалено')
+      toast.success(t('deleted'))
       void navigate({ to: '/badges' })
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Не удалось удалить')
+      toast.error(e instanceof Error ? e.message : t('deleteError'))
     },
   })
 
@@ -192,7 +206,7 @@ export function BadgeEditorPage({
       Effect.runPromise(
         Effect.gen(function*() {
           if (!token || !badge) {
-            return yield* Effect.fail(new Error('Бейдж не выбран'))
+            return yield* Effect.fail(new Error(t('selectError')))
           }
           const user = yield* fetchAdminUserEffect(token, assignQuery.trim())
           return yield* assignAdminUserBadgeEffect(
@@ -203,12 +217,12 @@ export function BadgeEditorPage({
         }),
       ),
     onSuccess: () => {
-      toast.success('Выдано')
+      toast.success(t('assigned'))
       setAssignOpen(false)
       setAssignQuery('')
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Не удалось выдать')
+      toast.error(e instanceof Error ? e.message : t('assignError'))
     },
   })
 
@@ -228,22 +242,25 @@ export function BadgeEditorPage({
 
   return (
     <AdminPage
-      title={mode === 'create' ? 'Новый бейдж' : form.name || 'Бейдж'}
-      back={{ to: '/badges', label: 'Бейджи' }}
+      title={
+        mode === 'create' ? t('newBadge') : form.name || t('badgeFallback')
+      }
+      back={{ to: '/badges', label: t('backBadges') }}
       actions={
         mode === 'edit' ? (
           <Button type="button" variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
             <UserPlusIcon className="size-4" aria-hidden />
-            Выдать
+            {t('assign')}
           </Button>
         ) : undefined
       }
     >
       <form onSubmit={submit} className="space-y-5">
-        <div className="grid gap-5 lg:grid-cols-[1fr_16rem]">
+        <div className="grid gap-5 badge-editor-grid">
           <AdminSection className="p-4 sm:p-5">
             <div className="grid gap-4">
-              <FormField label="Название">
+              <Field>
+                <FieldLabel>{t('name')}</FieldLabel>
                 <Input
                   value={form.name}
                   onChange={(e) => {
@@ -258,8 +275,9 @@ export function BadgeEditorPage({
                     }))
                   }}
                 />
-              </FormField>
-              <FormField label="Slug">
+              </Field>
+              <Field>
+                <FieldLabel>{t('slug')}</FieldLabel>
                 <Input
                   value={form.slug}
                   className="font-mono"
@@ -268,16 +286,18 @@ export function BadgeEditorPage({
                     setForm({ ...form, slug: e.target.value })
                   }}
                 />
-              </FormField>
-              <FormField label="Описание">
+              </Field>
+              <Field>
+                <FieldLabel>{t('description')}</FieldLabel>
                 <Textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
                 />
-              </FormField>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Порядок">
+                <Field>
+                  <FieldLabel>{t('order')}</FieldLabel>
                   <Input
                     value={form.displayOrder}
                     inputMode="numeric"
@@ -286,15 +306,15 @@ export function BadgeEditorPage({
                       setForm({ ...form, displayOrder: e.target.value })
                     }
                   />
-                </FormField>
+                </Field>
                 <div className="space-y-3 pt-1">
                   <SwitchRow
-                    label="Видимый"
+                    label={t('visible')}
                     checked={form.visible}
                     onCheckedChange={(visible) => setForm({ ...form, visible })}
                   />
                   <SwitchRow
-                    label="Premium"
+                    label={t('premium')}
                     checked={form.premium}
                     onCheckedChange={(premium) => setForm({ ...form, premium })}
                   />
@@ -327,21 +347,26 @@ export function BadgeEditorPage({
                   }}
                 >
                   <XIcon className="size-4" aria-hidden />
-                  {removeIcon ? 'Отменить удаление' : 'Удалить иконку'}
+                  {removeIcon ? t('cancelRemoveIcon') : t('removeIcon')}
                 </Button>
               ) : null}
             </AdminSection>
-            <div className="flex items-center gap-2.5 rounded-md border border-border/60 bg-card/50 px-3 py-2">
+            <Card
+              size="sm"
+              className="flex-row items-center gap-2.5 px-3 py-2"
+            >
               <BadgeIcon
                 badge={{ icon: removeIcon && !iconFile ? undefined : badge?.icon }}
                 previewUrl={previewUrl}
                 size="sm"
               />
-              <div className="min-w-0 text-[12px]">
+              <div className="min-w-0 text-xs">
                 <div className="truncate font-medium">{form.name || '—'}</div>
-                <div className="truncate text-muted-foreground">@username</div>
+                <div className="truncate text-muted-foreground">
+                  {t('usernamePreview')}
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
         </div>
 
@@ -357,7 +382,7 @@ export function BadgeEditorPage({
                 onClick={() => setDeleteOpen(true)}
               >
                 <Trash2Icon className="size-4" aria-hidden />
-                Удалить
+                {t('delete')}
               </Button>
             ) : (
               <span />
@@ -375,64 +400,64 @@ export function BadgeEditorPage({
                 setRemoveIcon(false)
               }}
             >
-              Сбросить
+              {t('reset')}
             </Button>
             <Button type="submit" size="sm" disabled={busy || !canSave}>
               {busy ? (
-                <Loader2Icon className="size-4 animate-spin" aria-hidden />
+                <Spinner className="size-4" aria-hidden />
               ) : (
                 <CheckIcon className="size-4" aria-hidden />
               )}
-              {mode === 'create' ? 'Создать' : 'Сохранить'}
+              {mode === 'create' ? t('create') : t('save')}
             </Button>
           </div>
         </AdminStickyFooter>
       </form>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent showCloseButton={!deleteMutation.isPending}>
-          <DialogHeader>
-            <DialogTitle>Удалить бейдж?</DialogTitle>
-            <DialogDescription>
-              «{badge?.name}» будет удалён вместе с выдачами.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-              Отмена
-            </Button>
-            <Button
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteDescription', { name: badge?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => deleteMutation.mutate()}
             >
-              Удалить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Выдать бейдж</DialogTitle>
-            <DialogDescription>User id или username#0001</DialogDescription>
+            <DialogTitle>{t('assignTitle')}</DialogTitle>
+            <DialogDescription>{t('assignDescription')}</DialogDescription>
           </DialogHeader>
           <Input
             value={assignQuery}
             onChange={(e) => setAssignQuery(e.target.value)}
-            placeholder="user id или username#0001"
+            placeholder={t('assignPlaceholder')}
             autoFocus
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)}>
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               disabled={!assignQuery.trim() || assignMutation.isPending}
               onClick={() => assignMutation.mutate()}
             >
-              Выдать
+              {t('assign')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -462,7 +487,7 @@ function SwitchRow({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 text-[13px]">
+    <label className="flex items-center justify-between gap-3 text-sm">
       <span>{label}</span>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </label>

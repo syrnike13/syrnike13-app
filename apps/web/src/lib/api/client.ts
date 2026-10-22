@@ -3,11 +3,19 @@ import { Effect, Option, Schema } from 'effect'
 
 import { config } from '#/lib/config'
 
+export type ApiErrorCode =
+  | 'http'
+  | 'network'
+  | 'read'
+  | 'contract'
+  | 'email-taken'
+
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly body?: unknown,
+    readonly code: ApiErrorCode = 'http',
   ) {
     super(message)
     this.name = 'ApiError'
@@ -18,6 +26,7 @@ export class ApiNetworkError extends Error {
   constructor(
     message: string,
     readonly cause?: unknown,
+    readonly code: ApiErrorCode = 'network',
   ) {
     super(message)
     this.name = 'ApiNetworkError'
@@ -29,6 +38,13 @@ class ApiResponseReadError extends Error {
     super('Failed to read API response')
     this.name = 'ApiResponseReadError'
   }
+}
+
+/** Stable code for mapping API failures to localized UI copy. */
+export function apiErrorCode(error: unknown): ApiErrorCode | null {
+  return error instanceof ApiError || error instanceof ApiNetworkError
+    ? error.code
+    : null
 }
 
 export type ApiRequestOptions = Omit<RequestInit, 'body'> & {
@@ -101,11 +117,8 @@ export const apiRequestEffect = Effect.fn('api.request')(
       },
       catch: (cause) =>
         cause instanceof ApiResponseReadError
-          ? new ApiNetworkError(
-              'Не удалось прочитать ответ API',
-              cause.cause,
-            )
-          : new ApiNetworkError('Не удалось подключиться к API', cause),
+          ? new ApiNetworkError('Could not read the API response', cause.cause, 'read')
+          : new ApiNetworkError('Could not reach the API', cause, 'network'),
     })
     const contentType = response.headers.get('Content-Type') ?? ''
 
@@ -130,7 +143,7 @@ export const apiRequestEffect = Effect.fn('api.request')(
             'with' in parsed &&
             parsed.with === 'email'
           ) {
-            message = 'Аккаунт с таким email уже существует'
+            message = 'An account with this email already exists'
           }
         } else if (
           'message' in parsed &&
@@ -143,7 +156,19 @@ export const apiRequestEffect = Effect.fn('api.request')(
       }
 
       return yield* Effect.fail(
-        new ApiError(message, response.status, parsed ?? text),
+        new ApiError(
+          message,
+          response.status,
+          parsed ?? text,
+          typeof parsed === 'object' &&
+            parsed !== null &&
+            'type' in parsed &&
+            parsed.type === 'IncorrectData' &&
+            'with' in parsed &&
+            parsed.with === 'email'
+            ? 'email-taken'
+            : 'http',
+        ),
       )
     }
 
@@ -159,9 +184,10 @@ export const apiRequestEffect = Effect.fn('api.request')(
       Effect.mapError(
         () =>
           new ApiError(
-            'API вернул ответ, не соответствующий контракту',
+            'The API response does not match the contract',
             response.status,
             text || undefined,
+            'contract',
           ),
       ),
     )
@@ -207,8 +233,8 @@ export function apiBlobRequest(path: string, options: ApiRequestOptions = {}) {
         },
         catch: (cause) =>
           cause instanceof ApiResponseReadError
-            ? new ApiNetworkError('Не удалось прочитать ответ API', cause.cause)
-            : new ApiNetworkError('Не удалось подключиться к API', cause),
+            ? new ApiNetworkError('Could not read the API response', cause.cause, 'read')
+            : new ApiNetworkError('Could not reach the API', cause, 'network'),
       })
       if (response.status === 404) return null
       if (!response.ok) {

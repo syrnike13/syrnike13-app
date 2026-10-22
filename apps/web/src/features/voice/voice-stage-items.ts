@@ -4,6 +4,7 @@ import {
   type RemoteTrackPublication,
   type Room,
 } from 'livekit-client'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import type {
@@ -43,6 +44,7 @@ export type StageRoom = {
 export function createStageRoomFromLiveKit(
   room: Room,
   subscriptionErrors: ReadonlyMap<string, string>,
+  t: Translator,
 ): StageRoom {
   return {
     localParticipant: {
@@ -56,7 +58,7 @@ export function createStageRoomFromLiveKit(
         identity: participant.identity,
         tracks: [...participant.trackPublications.values()]
           .map((publication) =>
-            remoteStageRoomTrack(publication, subscriptionErrors),
+            remoteStageRoomTrack(publication, subscriptionErrors, t),
           )
           .filter((track) => track !== null),
       }),
@@ -76,6 +78,8 @@ export function buildStageItems(options: {
     userId: string
     track: NativeVideoRegistryTrack['track']
   } | null
+  /** The local camera is starting or running; its preview track may outlive it. */
+  localCameraActive: boolean
   setNativeDemand: (
     sessionId: string,
     generation: number,
@@ -109,8 +113,11 @@ export function buildStageItems(options: {
     })
   }
 
+  // Unpublished native tracks are only the local camera self-view. Remote
+  // video exists through its publication; a retained last frame is not video.
   for (const native of options.nativeTracks) {
-    if (native.source === 'screen' || nativePublicationIds.has(native.trackId)) continue
+    if (!native.local || native.source !== 'camera' || !options.localCameraActive ||
+        nativePublicationIds.has(native.trackId)) continue
     const userId = baseVoiceIdentity(native.participantIdentity)
     if (!participantIds.has(userId)) continue
     tracks.push({
@@ -239,6 +246,7 @@ function localStageRoomTrack(
 function remoteStageRoomTrack(
   publication: RemoteTrackPublication,
   subscriptionErrors: ReadonlyMap<string, string>,
+  t: Translator,
 ): StageRoomTrack | null {
   const source = stageTrackSource(publication.source)
   if (!source) return null
@@ -262,6 +270,7 @@ function remoteStageRoomTrack(
         ? browserScreenSubscriptionError(
             publication.trackSid,
             subscriptionErrors,
+            t,
           )
         : undefined,
   }
@@ -300,10 +309,11 @@ function liveKitPublicationOptions(
 function browserScreenSubscriptionError(
   trackSid: string,
   subscriptionErrors: ReadonlyMap<string, string>,
+  t: Translator,
 ) {
   if (!subscriptionErrors.has(trackSid)) return undefined
   const detail = subscriptionErrors.get(trackSid) ?? ''
   return detail
-    ? `Не удалось подключиться к демонстрации: ${detail}`
-    : 'Не удалось подключиться к демонстрации'
+    ? t('stage.streamErrorDetail', { detail })
+    : t('stage.streamError')
 }

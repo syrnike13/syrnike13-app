@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import ReactMarkdown, {
   defaultUrlTransform,
   type Components,
@@ -22,6 +23,7 @@ function SyrnikeEntityLink({
   href: string
   context: MessageFormatContext
 }) {
+  const t = useTranslations('chat')
   const parsed = parseSyrnikeEntityHref(href)
   if (!parsed) return null
 
@@ -78,7 +80,7 @@ function SyrnikeEntityLink({
     return (
       <span
         className="cursor-pointer rounded bg-foreground/10 px-1 text-transparent transition hover:text-inherit"
-        title="Спойлер — наведите, чтобы показать"
+        title={t('spoilerShow')}
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -140,7 +142,7 @@ function createMarkdownComponents(
       </li>
     ),
     pre: ({ children }) => (
-      <pre className="my-1 overflow-x-auto rounded-md bg-background/60 p-2 font-mono text-[0.9em]">
+      <pre className="my-1 overflow-x-auto rounded-md bg-background/60 p-2 font-mono text-sm">
         {children}
       </pre>
     ),
@@ -150,7 +152,7 @@ function createMarkdownComponents(
         return <code className={className}>{children}</code>
       }
       return (
-        <code className="rounded bg-background/60 px-1 py-0.5 font-mono text-[0.9em]">
+        <code className="rounded bg-background/60 px-1 py-0.5 font-mono text-sm">
           {children}
         </code>
       )

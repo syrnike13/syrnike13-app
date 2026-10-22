@@ -4,6 +4,7 @@ import type {
   FeedbackPlatform,
   FeedbackProductStatus,
 } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 export type PublicFeedbackProductStatus = Exclude<
   FeedbackProductStatus,
@@ -11,30 +12,30 @@ export type PublicFeedbackProductStatus = Exclude<
 >
 
 export const FEEDBACK_PRODUCT_STATUSES = [
-  { value: 'under_consideration', label: 'Рассматриваем' },
-  { value: 'planned', label: 'Запланировано' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'released', label: 'Выпущено' },
-  { value: 'not_planned', label: 'Не планируется' },
+  { value: 'under_consideration', labelKey: 'meta.status.under_consideration' },
+  { value: 'planned', labelKey: 'meta.status.planned' },
+  { value: 'in_progress', labelKey: 'meta.status.in_progress' },
+  { value: 'released', labelKey: 'meta.status.released' },
+  { value: 'not_planned', labelKey: 'meta.status.not_planned' },
 ] satisfies {
   value: PublicFeedbackProductStatus
-  label: string
+  labelKey: string
 }[]
 
-const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
-  bug: 'Баг',
-  idea: 'Идея',
+const CATEGORY_LABEL_KEYS: Record<FeedbackCategory, string> = {
+  bug: 'meta.category.bug',
+  idea: 'meta.category.idea',
 }
 
-const AREA_LABELS: Record<FeedbackArea, string> = {
-  navigation: 'Навигация и интерфейс',
-  voice_video: 'Голосовые и видео',
-  community: 'Серверы и сообщества',
-  messages: 'Сообщения и контент',
-  moderation: 'Модерация и безопасность',
-  desktop: 'Десктопное приложение',
-  activities: 'Активности',
-  other: 'Другое',
+const AREA_LABEL_KEYS: Record<FeedbackArea, string> = {
+  navigation: 'meta.area.navigation',
+  voice_video: 'meta.area.voice_video',
+  community: 'meta.area.community',
+  messages: 'meta.area.messages',
+  moderation: 'meta.area.moderation',
+  desktop: 'meta.area.desktop',
+  activities: 'meta.area.activities',
+  other: 'meta.area.other',
 }
 
 const PLATFORM_LABELS: Record<FeedbackPlatform, string> = {
@@ -46,24 +47,30 @@ const PLATFORM_LABELS: Record<FeedbackPlatform, string> = {
   ios: 'iOS',
 }
 
-export function feedbackCategoryLabel(category: FeedbackCategory) {
-  return CATEGORY_LABELS[category]
+export function feedbackCategoryLabel(
+  category: FeedbackCategory,
+  t: Translator,
+) {
+  return t(CATEGORY_LABEL_KEYS[category])
 }
 
-export function feedbackAreaLabel(area: FeedbackArea) {
-  return AREA_LABELS[area]
+export function feedbackAreaLabel(area: FeedbackArea, t: Translator) {
+  return t(AREA_LABEL_KEYS[area])
 }
 
 export function feedbackPlatformLabel(platform: FeedbackPlatform) {
   return PLATFORM_LABELS[platform]
 }
 
-export function feedbackProductStatusLabel(status: FeedbackProductStatus) {
+export function feedbackProductStatusLabel(
+  status: FeedbackProductStatus,
+  t: Translator,
+) {
   if (status === 'collecting') return null
-  return (
-    FEEDBACK_PRODUCT_STATUSES.find((item) => item.value === status)?.label ??
-    null
+  const entry = FEEDBACK_PRODUCT_STATUSES.find(
+    (item) => item.value === status,
   )
+  return entry ? t(entry.labelKey) : null
 }
 
 export function publicFeedbackStatus(

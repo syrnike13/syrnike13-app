@@ -10,16 +10,18 @@ import {
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
-import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
+import { DevToolsOverlay } from '#/features/dev-tools/dev-tools-overlay'
+import { HolidayProvider } from '@syrnike13/ui/holidays'
+import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
-import { SquircleNoScript } from '#/components/ui/squircle'
+import { SquircleNoScript } from '@syrnike13/ui/primitives/squircle'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
-import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { DesktopStartupUpdateGate } from '#/features/desktop/desktop-startup-update-gate'
 import { DiagnosticErrorReporter } from '#/features/diagnostics/diagnostic-error-reporter'
+import { AppLocaleProvider } from '#/features/i18n/locale-provider'
 
 import appCss from '../styles.css?url'
 
@@ -66,11 +68,13 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         !isDesktopOverlayPath(location.pathname)
       ) {
         const mobilePath = mapAppPathToMobile(location.pathname)
-        throw redirect({
-          to: mobilePath ?? '/m',
-          search: location.search,
-          replace: true,
-        })
+        if (mobilePath) {
+          throw redirect({
+            to: mobilePath,
+            search: location.search,
+            replace: true,
+          })
+        }
       }
     }
     if (!isDesktopRuntime()) return
@@ -95,6 +99,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         name: 'description',
+        // design-allow hardcoded-string: document metadata is resolved before LocaleProvider mounts
         content: 'Мессенджер syrnike13',
       },
       {
@@ -135,19 +140,17 @@ function RootComponent() {
     select: (state) => state.location.pathname,
   })
 
-  if (isDesktopOverlayPath(pathname)) {
-    return (
-      <AppearanceProvider>
-        <ThemeColorMeta />
-        <Outlet />
-      </AppearanceProvider>
-    )
-  }
-
-  return (
+  const content = isDesktopOverlayPath(pathname) ? (
+    <AppearanceProvider>
+      <ThemeColorMeta />
+      <Outlet />
+      {import.meta.env.DEV ? <DevToolsOverlay /> : null}
+    </AppearanceProvider>
+  ) : (
     <TanstackQueryProvider client={queryClient}>
       <AppearanceProvider>
         <ThemeColorMeta />
+        {import.meta.env.DEV ? <DevToolsOverlay /> : null}
         <DesktopStartupUpdateGate>
           <AuthProvider>
             <DiagnosticErrorReporter />
@@ -155,12 +158,23 @@ function RootComponent() {
               <NativeScrollbarEnhancer />
               <Outlet />
               <Toaster richColors closeButton />
-              <AgentationDevtools />
             </SyncProvider>
           </AuthProvider>
         </DesktopStartupUpdateGate>
       </AppearanceProvider>
     </TanstackQueryProvider>
+  )
+
+  return (
+    <AppLocaleProvider>
+      <HolidayProvider
+        overrideStorageKey={
+          import.meta.env.DEV ? 'syrnike13-holiday-override:v1' : undefined
+        }
+      >
+        {content}
+      </HolidayProvider>
+    </AppLocaleProvider>
   )
 }
 
@@ -169,6 +183,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        {/* eslint-disable-next-line shadcn/no-inline-styles -- pre-hydration theme CSS must be inline before stylesheets load */}
         <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />

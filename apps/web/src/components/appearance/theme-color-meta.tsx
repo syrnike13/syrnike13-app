@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
 import { useAppearance } from '#/features/appearance/appearance-context'
-import { getThemeTokens } from '#/features/appearance/theme-registry'
+import { getThemeTokens } from '@syrnike13/ui/tokens'
 import { cssColorToHex } from '#/features/appearance/theme-color-conversion'
 
 export function ThemeColorMeta() {

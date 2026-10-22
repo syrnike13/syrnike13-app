@@ -1,7 +1,7 @@
 use authifier::models::Session;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use syrnike_database::{Database, User};
+use syrnike_database::{grant_registration_badges, Database, User};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
 
@@ -45,10 +45,8 @@ pub async fn complete(
         })
     })?;
 
-    Ok(Json(
-        User::create(db, data.username, session.user_id, None)
-            .await?
-            .into_self_with_badges(db, false)
-            .await,
-    ))
+    let user = User::create(db, data.username, session.user_id, None).await?;
+    grant_registration_badges(db, &user.id).await;
+
+    Ok(Json(user.into_self_with_badges(db, false).await))
 }

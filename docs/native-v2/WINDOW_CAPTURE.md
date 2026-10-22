@@ -52,7 +52,7 @@ WGC delivers frames at the display refresh rate. The product share sets
 refresh rate still delivers at least the stream rate.
 
 Closing the shared window ends the share (`source_closed`/`source_replaced`
-turn the screen intent off in `VoiceDirector`), as in Discord, instead of
+turn the screen intent off in `VoiceDirector`), instead of
 leaving a failed path and an error banner.
 
 ## Identity and terminal behavior
@@ -80,8 +80,8 @@ rather than a frozen frame, the same signal a LiveKit browser viewer gets.
 
 ## Stale sessions
 
-A WGC session can stop delivering frames while its window is shown (Discord
-logs `stale frame, asking for repaint` and `stale frame, resetting`). The
+A WGC session can stop delivering frames while its window is shown. The
+capture layer asks the window for a repaint and recreates the session. The
 observer does the same: after 2 s without a frame from a shown, non-hung
 window it calls `RedrawWindow(RDW_INVALIDATE | RDW_ALLCHILDREN)`, which only
 invalidates and never waits for the target thread. A repainting window answers

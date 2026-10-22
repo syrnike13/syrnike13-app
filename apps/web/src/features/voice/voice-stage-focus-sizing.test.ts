@@ -47,6 +47,21 @@ describe('computeVoiceStageFocusLayout', () => {
     )
   })
 
+  it('fits every strip tile into the container without horizontal overflow', () => {
+    for (const stripCount of [5, 9, 20]) {
+      const layout = computeVoiceStageFocusLayout(
+        1369,
+        900,
+        16 / 9,
+        stripCount,
+      )
+      const rowWidth =
+        stripCount * layout.stripTile.width + (stripCount - 1) * 8 + 8
+
+      expect(rowWidth).toBeLessThanOrEqual(1369)
+    }
+  })
+
   it('grows focus to fill height when the strip is collapsed', () => {
     const withStrip = computeVoiceStageFocusLayout(1200, 500, 16 / 9, 2)
     const collapsed = computeVoiceStageFocusLayout(1200, 500, 16 / 9, 0, true)

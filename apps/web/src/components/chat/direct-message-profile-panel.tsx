@@ -1,17 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { FxImage } from '#/components/ui/fx-image'
-import { UserAvatar } from '#/components/user/user-avatar'
-import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
-import { fetchUserProfile } from '#/features/api/users-api'
-import { listMutualServers } from '#/features/sync/selectors'
+import { UserProfileHeader } from '#/components/user/user-profile-header'
+import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import { useUserMutuals } from '#/components/user/use-user-mutuals'
+import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
-import { useSyncStore } from '#/features/sync/sync-store'
-import { queryKeys } from '#/lib/api/query-keys'
-import { userBannerUrl } from '#/lib/media'
-import { userProfileBannerClassName } from '#/lib/user-profile-banner'
-import { cn } from '#/lib/utils'
 
 export const DM_PROFILE_PANEL_DEFAULT_SIZE = '320px'
 export const DM_PROFILE_PANEL_MIN_SIZE = '280px'
@@ -32,138 +26,58 @@ export function DirectMessageProfilePanel({
   aliases,
   onOpenProfile,
 }: DirectMessageProfilePanelProps) {
+  const t = useTranslations('chat')
+  const tu = useTranslations('users')
   useMutualServerMembersSync(user._id, currentUserId, token)
-  const mutualServers = useSyncStore((s) =>
-    listMutualServers(s, user._id, currentUserId),
-  )
-  const profileQuery = useQuery({
-    queryKey: queryKeys.users.profile(user._id),
-    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
-    enabled: Boolean(token),
-    staleTime: 60_000,
-  })
-
-  const displayName = user.display_name ?? user.username
-  const customStatus = user.status?.text?.trim()
-  const profileBio = profileQuery.data?.content?.trim()
-  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
-    animated: true,
-  })
-  const mutualServerNames = mutualServers.map((server) => server.name)
+  const { bio } = useUserProfileData(user._id)
+  const { mutualServers } = useUserMutuals(user._id)
 
   return (
     <aside
-      aria-label="Профиль пользователя"
-      className={cn(
-        'theme-surface-content gradient-surface-content flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-l border-shell-divider text-card-foreground',
-      )}
+      aria-label={t('profileLabel')}
+      className="theme-surface-content gradient-surface-content flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-l border-shell-divider text-card-foreground"
     >
-      <div className="relative shrink-0">
-        <div
-          className={userProfileBannerClassName(
-            'bg-secondary',
-            !bannerUrl &&
-              'bg-gradient-to-br from-secondary via-muted to-sidebar-accent',
-          )}
-        >
-          {bannerUrl ? (
-            <>
-              <FxImage
-                src={bannerUrl}
-                wrapperClassName="block h-full w-full"
-                className="h-full w-full object-cover"
-              />
-              <div
-                className="pointer-events-none absolute inset-0 bg-background/25"
-                aria-hidden
-              />
-            </>
-          ) : null}
-        </div>
-        <div className="absolute -bottom-10 left-4 z-10">
-          <UserProfileStatusBubble
-            status={customStatus}
-            className="left-full top-[45%] ml-2"
-          />
-          {onOpenProfile ? (
-            <button
-              type="button"
-              title="Открыть профиль"
-              className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
-              onClick={onOpenProfile}
-            >
-              <span className="relative block rounded-full">
-                <UserAvatar
-                  user={user}
-                  className="size-20"
-                  fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-muted"
-                  animated="always"
-                  showPresence
-                  presenceRingClassName="border-card"
-                />
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
-                />
-              </span>
-            </button>
-          ) : (
-            <UserAvatar
-              user={user}
-              className="size-20"
-              fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-muted"
-              animated="always"
-              showPresence
-              presenceRingClassName="border-card"
-            />
-          )}
-        </div>
-      </div>
+      <UserProfileHeader
+        user={user}
+        variant="panel"
+        onAvatarClick={onOpenProfile}
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 pt-14 pb-4">
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-bold leading-tight text-foreground">
-            {displayName}
-          </h2>
-          <p className="truncate text-sm text-muted-foreground">
-            {user.display_name ? `@${user.username}` : user.username}
+      <div className="flex min-w-0 flex-col gap-4 px-4 pt-1 pb-6">
+        <UserProfileIdentity user={user} />
+
+        {bio ? (
+          <section>
+            <h3 className="mb-1.5 text-xs leading-4 font-medium text-muted-foreground">
+              {t('about')}
+            </h3>
+            <p className="text-sm leading-4.5 whitespace-pre-wrap text-foreground">
+              {bio}
+            </p>
+          </section>
+        ) : null}
+
+        {aliases.length > 0 ? (
+          <section>
+            <h3 className="mb-1.5 text-xs leading-4 font-medium text-muted-foreground">
+              {tu('aka')}
+            </h3>
+            <p className="truncate text-sm leading-4.5 font-medium text-foreground">
+              {aliases.join(', ')}
+            </p>
+          </section>
+        ) : null}
+
+        <section>
+          <h3 className="mb-1.5 text-xs leading-4 font-medium text-muted-foreground">
+            {t('mutualServers', { count: mutualServers.length })}
+          </h3>
+          <p className="text-sm leading-4.5 text-muted-foreground">
+            {mutualServers.length > 0
+              ? mutualServers.map((server) => server.name).join(', ')
+              : t('noMutualServers')}
           </p>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {profileBio ? (
-            <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                О себе
-              </p>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                {profileBio}
-              </p>
-            </div>
-          ) : null}
-
-          {aliases.length > 0 ? (
-            <div className="rounded-md bg-secondary/70 p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                AKA
-              </p>
-              <p className="truncate text-sm font-medium text-foreground">
-                {aliases.join(', ')}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="rounded-md bg-secondary/70 p-3">
-            <p className="text-sm font-semibold text-foreground">
-              Общие серверы — {mutualServers.length}
-            </p>
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-              {mutualServerNames.length > 0
-                ? mutualServerNames.join(', ')
-                : 'Нет общих серверов'}
-            </p>
-          </div>
-        </div>
+        </section>
       </div>
     </aside>
   )

@@ -916,8 +916,8 @@ pub fn voice_session_for_join_request(
         rtc_engine,
         client_instance_id: client_instance_id.to_string(),
         connection_epoch: connection_epoch.to_string(),
-        // Self-deafen also disables the microphone, matching Discord's
-        // user-facing semantics and keeping public voice state truthful.
+        // Self-deafen also disables the microphone, matching user-facing
+        // semantics and keeping public voice state truthful.
         self_mute: self_mute || self_deaf,
         self_deaf,
         created_at,

@@ -123,7 +123,7 @@ vi.mock('#/features/api/servers-api', () => ({
   ) => mocks.setServerRolePermissions(...args),
 }))
 
-vi.mock('#/components/ui/popover', () => ({
+vi.mock('@syrnike13/ui/primitives/popover', () => ({
   Popover: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PopoverContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PopoverTrigger: ({ children }: { children: ReactNode }) => (
@@ -131,7 +131,7 @@ vi.mock('#/components/ui/popover', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div role="dialog">{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,

@@ -116,6 +116,7 @@ export const sendChannelMessageEffect = Effect.fn('web.messages.send')(
     }
 
     if (!body.content && !body.attachments?.length) {
+      // design-allow hardcoded-string: internal guard; the composer blocks empty sends
       return yield* Effect.fail(new Error('Пустое сообщение'))
     }
 

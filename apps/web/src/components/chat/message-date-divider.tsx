@@ -1,3 +1,5 @@
+import { Separator } from '@syrnike13/ui/primitives/separator'
+
 type MessageDateDividerProps = {
   label: string
 }
@@ -5,18 +7,15 @@ type MessageDateDividerProps = {
 export function MessageDateDivider({ label }: MessageDateDividerProps) {
   return (
     <div
-      className="relative flex items-center py-3"
+      className="relative mx-3.5 mt-6 mb-2 flex items-center"
       role="separator"
       aria-label={label}
     >
-      <div className="h-px flex-1 bg-border" />
-      <time
-        dateTime={label}
-        className="mx-3 shrink-0 rounded px-2 text-[11px] font-semibold text-muted-foreground"
-      >
+      <Separator aria-hidden className="flex-1" />
+      <span className="mx-3 shrink-0 text-xs font-medium text-muted-foreground">
         {label}
-      </time>
-      <div className="h-px flex-1 bg-border" />
+      </span>
+      <Separator aria-hidden className="flex-1" />
     </div>
   )
 }

@@ -14,11 +14,23 @@
     "web:dev:local": "pnpm --filter @syrnike13/web dev:local",
     "web:build": "pnpm version:sync && pnpm --filter @syrnike13/web build",
     "web:test": "pnpm --filter @syrnike13/web test",
+    "web:typecheck": "pnpm --filter @syrnike13/web typecheck",
+    "landing:dev": "pnpm --filter @syrnike13/landing dev",
+    "landing:build": "pnpm version:sync && pnpm --filter @syrnike13/landing build",
+    "landing:typecheck": "pnpm --filter @syrnike13/landing typecheck",
+    "landing:test": "pnpm --filter @syrnike13/landing test",
     "admin:dev": "pnpm --filter @syrnike13/admin dev",
     "admin:dev:prod": "pnpm --filter @syrnike13/admin dev:prod",
     "admin:dev:local": "pnpm --filter @syrnike13/admin dev:local",
     "admin:build": "pnpm version:sync && pnpm --filter @syrnike13/admin build",
     "admin:test": "pnpm --filter @syrnike13/admin test",
+    "admin:typecheck": "pnpm --filter @syrnike13/admin typecheck",
+    "ui:test": "pnpm --filter @syrnike13/ui test",
+    "ui:typecheck": "pnpm --filter @syrnike13/ui typecheck",
+    "check:ui": "node tooling/scripts/check-ui.mjs",
+    "check:messages": "node tooling/scripts/check-messages.mjs",
+    "lint:design": "eslint apps/web/src apps/landing/src apps/admin/src",
+    "check:ui:update": "node tooling/scripts/check-ui.mjs --update",
     "desktop:dev": "pnpm --filter @syrnike13/desktop dev",
     "desktop:dev:prod": "pnpm --filter @syrnike13/desktop dev:prod",
     "desktop:dev:local": "pnpm --filter @syrnike13/desktop dev:local",
@@ -43,6 +55,9 @@
     "livekit:check": "cd services/livekit-server && go test ./..."
   },
   "devDependencies": {
+    "@shadcn/lint": "^0.2.1",
+    "@typescript-eslint/parser": "^8.71.2",
+    "eslint": "^9.39.5",
     "typescript": "^6.0.2"
   }
 }

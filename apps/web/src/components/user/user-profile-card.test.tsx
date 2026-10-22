@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,7 +23,7 @@ const directMessageChannel = {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -35,9 +37,24 @@ vi.mock('#/features/dm/dm-actions', () => ({
   openDirectMessageChannel: openDirectMessageChannelMock,
 }))
 
-vi.mock('#/components/user/user-profile-card-header', () => ({
-  UserProfileCardHeader: () => <div data-testid="profile-card-header" />,
+vi.mock('#/features/settings/settings-modal-context', () => ({
+  useSettingsModal: () => ({ openSettings: vi.fn() }),
 }))
+
+vi.mock('#/features/api/users-api', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('#/features/api/users-api')>()
+  return {
+    ...actual,
+    fetchUserProfile: vi.fn(async () => ({ content: null, background: null })),
+    fetchUserMutual: vi.fn(async () => ({
+      users: [],
+      servers: [],
+      channels: [],
+    })),
+    fetchUser: vi.fn(async () => ({ badges: [] })),
+  }
+})
 
 const targetUser = {
   _id: 'target-user',
@@ -46,6 +63,15 @@ const targetUser = {
   relationship: 'Friend',
   online: true,
 } as User
+
+function renderProfile(ui: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  )
+}
 
 describe('UserProfileCard', () => {
   beforeEach(() => {
@@ -71,7 +97,7 @@ describe('UserProfileCard', () => {
   })
 
   it('opens a direct message from the profile popover', async () => {
-    render(<UserProfileCard user={targetUser} />)
+    renderProfile(<UserProfileCard user={targetUser} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Открыть ЛС' }))
 
@@ -80,10 +106,11 @@ describe('UserProfileCard', () => {
         'session-token',
         'target-user',
         expect.any(Function),
+        expect.anything(),
       )
     })
     expect(navigateMock).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })

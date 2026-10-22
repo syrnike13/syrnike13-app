@@ -9,6 +9,12 @@ describe('web admin redirect', () => {
     )
   })
 
+  it('redirects app subdomain users to admin', () => {
+    expect(getAdminRedirectUrl('app.syrnike13.ru')).toBe(
+      'https://admin.syrnike13.ru',
+    )
+  })
+
   it('redirects nightly web users to nightly admin', () => {
     expect(getAdminRedirectUrl('beta.syrnike13.ru')).toBe(
       'https://admin.beta.syrnike13.ru',

@@ -9107,6 +9107,7 @@ name = "syrnike-bonfire"
 version = "0.1.0"
 dependencies = [
  "async-channel 2.5.0",
+ "async-signal",
  "async-std",
  "async-tungstenite",
  "authifier",
@@ -9118,6 +9119,7 @@ dependencies = [
  "lru_time_cache",
  "once_cell",
  "querystring",
+ "rand 0.8.5",
  "redis-kiss",
  "regex",
  "rmp-serde",
@@ -9130,6 +9132,7 @@ dependencies = [
  "syrnike-permissions",
  "syrnike-presence",
  "syrnike-result",
+ "tokio 1.51.0",
  "ulid 1.2.1",
 ]
 

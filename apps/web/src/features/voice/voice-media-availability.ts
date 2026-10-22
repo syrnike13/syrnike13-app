@@ -1,3 +1,5 @@
+import type { Translator } from '@syrnike13/ui/i18n'
+
 import { shouldUseNativeMicrophone } from '#/features/voice/native-microphone-publish'
 import type { VoiceMicIssue } from '#/features/voice/voice-mic-status'
 import { getSyrnikeDesktop } from '#/platform/runtime'
@@ -53,61 +55,78 @@ export function isScreenShareCaptureSupported() {
   return typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 }
 
-export function resolveMicrophoneAvailability(options: {
-  inputDevices: readonly MediaDeviceInfo[]
-  micIssue: VoiceMicIssue | null
-}): VoiceMediaAvailability {
+export function resolveMicrophoneAvailability(
+  options: {
+    inputDevices: readonly MediaDeviceInfo[]
+    micIssue: VoiceMicIssue | null
+  },
+  t: Translator,
+): VoiceMediaAvailability {
   if (options.micIssue) {
-    return unavailable('Микрофон недоступен')
+    return unavailable(t('micUnavailable'))
   }
 
   if (!isMicrophoneCaptureSupported()) {
-    return unavailable('Микрофон недоступен')
+    return unavailable(t('micUnavailable'))
   }
 
   if (!hasDetectedMediaDevices(options.inputDevices)) {
-    return unavailable('Микрофон недоступен')
+    return unavailable(t('micUnavailable'))
   }
 
   return available()
 }
 
-export function resolveCameraAvailability(options: {
-  videoDevices: readonly MediaDeviceInfo[]
-}): VoiceMediaAvailability {
+export function resolveCameraAvailability(
+  options: {
+    videoDevices: readonly MediaDeviceInfo[]
+  },
+  t: Translator,
+): VoiceMediaAvailability {
   if (!isCameraCaptureSupported()) {
-    return unavailable('Камера недоступна')
+    return unavailable(t('cameraUnavailable'))
   }
 
   if (!hasDetectedMediaDevices(options.videoDevices)) {
-    return unavailable('Камера недоступна')
+    return unavailable(t('cameraUnavailable'))
   }
 
   return available()
 }
 
-export function resolveScreenShareAvailability(): VoiceMediaAvailability {
+export function resolveScreenShareAvailability(
+  t: Translator,
+): VoiceMediaAvailability {
   if (!isScreenShareCaptureSupported()) {
-    return unavailable('Демонстрация недоступна')
+    return unavailable(t('screenShareUnavailable'))
   }
 
   return available()
 }
 
-export function buildVoiceMediaAvailabilityState(options: {
-  inputDevices: readonly MediaDeviceInfo[]
-  videoDevices: readonly MediaDeviceInfo[]
-  micIssue: VoiceMicIssue | null
-}): VoiceMediaAvailabilityState {
+export function buildVoiceMediaAvailabilityState(
+  options: {
+    inputDevices: readonly MediaDeviceInfo[]
+    videoDevices: readonly MediaDeviceInfo[]
+    micIssue: VoiceMicIssue | null
+  },
+  t: Translator,
+): VoiceMediaAvailabilityState {
   return {
-    microphone: resolveMicrophoneAvailability({
-      inputDevices: options.inputDevices,
-      micIssue: options.micIssue,
-    }),
-    camera: resolveCameraAvailability({
-      videoDevices: options.videoDevices,
-    }),
-    screenShare: resolveScreenShareAvailability(),
+    microphone: resolveMicrophoneAvailability(
+      {
+        inputDevices: options.inputDevices,
+        micIssue: options.micIssue,
+      },
+      t,
+    ),
+    camera: resolveCameraAvailability(
+      {
+        videoDevices: options.videoDevices,
+      },
+      t,
+    ),
+    screenShare: resolveScreenShareAvailability(t),
   }
 }
 
@@ -138,19 +157,22 @@ export function voiceMediaControlState(options: {
   return { disabled, title }
 }
 
-export function microphoneMediaControlState(options: {
-  availability: VoiceMediaAvailability
-  inVoice: boolean
-  micMuted: boolean
-  connecting?: boolean
-}) {
+export function microphoneMediaControlState(
+  options: {
+    availability: VoiceMediaAvailability
+    inVoice: boolean
+    micMuted: boolean
+    connecting?: boolean
+  },
+  t: Translator,
+) {
   const unavailable = !options.availability.available && options.micMuted
 
   const title = unavailable
     ? options.availability.title
     : options.micMuted
-      ? 'Включить микрофон'
-      : 'Выключить микрофон'
+      ? t('enableMic')
+      : t('disableMic')
 
   return {
     disabled: Boolean(options.connecting) || unavailable,

@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -6,8 +7,12 @@ import { SettingsIcon, XIcon } from '#/components/icons'
 import { SettingsProfileStatusDialog } from '#/components/settings/settings-profile-status-dialog'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { MobilePresenceDrawer } from '#/components/user/mobile-presence-drawer'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { useSetCustomStatus } from '#/features/users/use-set-custom-status'
@@ -19,6 +24,7 @@ import { userAvatarUrl, userBannerUrl } from '#/lib/media'
  * Полноэкранная страница профиля текущего пользователя (мобильная).
  */
 export function MobileProfilePage() {
+  const t = useTranslations('layout.user')
   const auth = useAuth()
   const user = auth.user
   const token = auth.session?.token
@@ -44,7 +50,7 @@ export function MobileProfilePage() {
   })
 
   return (
-    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 flex-1 flex-col">
       <ScrollArea className="min-h-0 flex-1">
         <CurrentUserProfileMenu
           user={user}
@@ -52,26 +58,25 @@ export function MobileProfilePage() {
           onAvatarPress={() => setPresenceDrawerOpen(true)}
           bannerOverlay={
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-10 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-                aria-label="Закрыть"
-                title="Закрыть"
-                asChild
+              <Link
+                to="/m"
+                search={{ tab: 'online' }}
+                className={cn(
+                  buttonVariants({ variant: 'secondary', size: 'icon' }),
+                  'size-10 rounded-full',
+                )}
+                aria-label={t('close')}
+                title={t('close')}
               >
-                <Link to="/m" search={{ tab: 'online' }}>
-                  <XIcon className="size-5" />
-                </Link>
-              </Button>
+                <XIcon className="size-5" />
+              </Link>
               <Button
                 type="button"
-                variant="ghost"
+                variant="secondary"
                 size="icon"
-                className="size-10 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-                aria-label="Настройки"
-                title="Настройки"
+                className="size-10 rounded-full"
+                aria-label={t('settings')}
+                title={t('settings')}
                 onClick={() => openSettings()}
               >
                 <SettingsIcon className="size-5" />

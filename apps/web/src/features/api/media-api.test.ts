@@ -1,6 +1,10 @@
+import { createTranslator } from '@syrnike13/ui/i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import ru from '#/messages/ru.json'
 import { uploadAttachment } from '#/features/api/media-api'
+
+const t = createTranslator(ru, 'ru', 'media')
 
 vi.mock('#/lib/config', () => ({
   config: { mediaUrl: 'https://media.example.test' },
@@ -37,6 +41,7 @@ describe('uploadAttachment', () => {
 
     void uploadAttachment('session-token', new File(['data'], 'file.txt'), {
       onProgress,
+      t,
     })
 
     MockXMLHttpRequest.latest.upload.dispatchEvent(
@@ -55,7 +60,7 @@ describe('uploadAttachment', () => {
     const promise = uploadAttachment(
       'session-token',
       new File(['data'], 'file.txt'),
-      { signal: controller.signal },
+      { signal: controller.signal, t },
     )
 
     controller.abort()
@@ -68,6 +73,7 @@ describe('uploadAttachment', () => {
     const promise = uploadAttachment(
       'session-token',
       new File(['data'], 'file.txt'),
+      { t },
     )
 
     MockXMLHttpRequest.latest.dispatchEvent(new Event('error'))

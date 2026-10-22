@@ -13,7 +13,7 @@ export function MessageContentView({
   if (!content) return null
 
   return (
-    <div className="message-content text-sm leading-relaxed break-words">
+    <div className="message-content text-base leading-5.5 break-words">
       <MessageMarkdownRenderer content={content} context={context} />
     </div>
   )

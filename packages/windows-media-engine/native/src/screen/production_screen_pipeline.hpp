@@ -94,7 +94,7 @@ struct ProductionScreenPipelineStats {
 using ScreenPublicationAdapterFactory = std::function<std::shared_ptr<ScreenPublicationAdapter>(
     std::function<void()> request_key_frame)>;
 
-// The encoded size for a source inside a preset box, as Discord does: the
+// The encoded size for a source inside a preset box: the
 // source's aspect ratio, never upscaled (a tiny source is scaled to a 320 px
 // long side), multiples of 8. The preset's frame rate and bitrate are kept.
 [[nodiscard]] ScreenVideoProfile fitScreenOutput(ScreenVideoProfile box, std::uint32_t width,

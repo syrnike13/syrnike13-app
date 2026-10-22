@@ -8,18 +8,22 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
 COPY apps/web/package.json apps/web/
 COPY packages/api-types/package.json packages/api-types/
 COPY packages/platform/package.json packages/platform/
+COPY packages/ui/package.json packages/ui/
 
 RUN pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
 COPY packages/api-types packages/api-types
 COPY packages/platform packages/platform
+COPY packages/ui packages/ui
 COPY tooling tooling
 
 ENV NODE_ENV=production
 ARG VITE_APP_TITLE=syrnike13
 ARG VITE_RELEASE_CHANNEL=stable
 ARG VITE_API_URL=https://syrnike13.ru/api
+ARG VITE_PUBLIC_APP_URL=https://app.syrnike13.ru
+ARG VITE_PUBLIC_SITE_URL=https://syrnike13.ru
 ARG VITE_WS_URL=wss://syrnike13.ru/ws
 ARG VITE_MEDIA_URL=https://syrnike13.ru/autumn
 ARG VITE_PROXY_URL=https://syrnike13.ru/january
@@ -28,6 +32,8 @@ ARG VITE_VOICE_NODE=worldwide
 ENV VITE_APP_TITLE=$VITE_APP_TITLE
 ENV VITE_RELEASE_CHANNEL=$VITE_RELEASE_CHANNEL
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_PUBLIC_APP_URL=$VITE_PUBLIC_APP_URL
+ENV VITE_PUBLIC_SITE_URL=$VITE_PUBLIC_SITE_URL
 ENV VITE_WS_URL=$VITE_WS_URL
 ENV VITE_MEDIA_URL=$VITE_MEDIA_URL
 ENV VITE_PROXY_URL=$VITE_PROXY_URL

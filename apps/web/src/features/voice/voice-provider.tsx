@@ -1,3 +1,4 @@
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   useCallback,
   useEffect,
@@ -25,6 +26,7 @@ import { Effect, Fiber, Schedule } from 'effect'
 import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { callAudioBitrateBps } from '#/lib/channel-audio-bitrate'
 import {
@@ -47,6 +49,11 @@ import {
   buildVoiceMediaAvailabilityState,
   type VoiceMediaAvailabilityState,
 } from '#/features/voice/voice-media-availability'
+import {
+  isCameraDeviceFailure,
+  isLocalCameraPreviewActive,
+  nextCameraEnabled,
+} from '#/features/voice/camera-device-issue'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { nativeScreenShareProfileSettings } from '#/features/voice/voice-preference-types'
@@ -162,11 +169,9 @@ const INITIAL_SNAPSHOT: VoiceSnapshot = {
   speakingUserIds: [],
 }
 
-const DEVICE_FALLBACK_WARNINGS: Partial<Record<string, string>> = {
-  output_device_fallback:
-    'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.',
-  microphone_device_fallback:
-    'Выбранный микрофон недоступен. Используем микрофон по умолчанию.',
+const DEVICE_FALLBACK_WARNING_KEYS: Partial<Record<string, string>> = {
+  output_device_fallback: 'errors.outputUnavailable',
+  microphone_device_fallback: 'errors.micFallback',
 }
 
 let remoteAudioCommandRevision = 0
@@ -177,6 +182,8 @@ const REMOTE_AUDIO_PUBLISH_INTERVAL_MS = 40
 const MEDIA_STOP_SOUND_GRACE_MS = 2_000
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations('voice')
+  const tMedia = useTranslations('voice.media')
   const auth = useAuth()
   const desktop = getSyrnikeDesktop()
   const [nativeVideoTracks, setNativeVideoTracks] = useState<NativeVideoRegistryTrack[]>([])
@@ -281,6 +288,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     snapshot.screen.state === 'running'
   const screenMedia = useRestartAwareMediaState(snapshot.screen.state)
   const cameraMedia = useRestartAwareMediaState(snapshot.camera.state)
+  const localCameraActive = isLocalCameraPreviewActive(snapshot.camera)
 
   useEffect(() => {
     if (!desktop) return
@@ -621,7 +629,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ? `${snapshot.failure.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousFailureRef.current) {
-      toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
+      toast.error(snapshot.failure?.message ?? t('errors.connectVoice'))
       // A native cause is already queued by main and leased by the renderer.
       // Keep its snapshot projection without enqueuing a second root report.
       if (auth.session?.token && snapshot.failure && !snapshot.failure.diagnosticCorrelationId) {
@@ -634,7 +642,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
     }
     previousFailureRef.current = failureKey
-  }, [auth.session?.token, desktop, snapshot])
+  }, [auth.session?.token, desktop, snapshot, t])
 
   useEffect(() => {
     const mediaFailure = ([
@@ -651,12 +659,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (failureKey && failureKey !== previousMediaFailureRef.current) {
       // A fallback keeps media working on the default device: warn the user,
       // but it is not a failure worth an automatic report.
-      const fallback = DEVICE_FALLBACK_WARNINGS[error?.code ?? '']
+      const fallbackKey = DEVICE_FALLBACK_WARNING_KEYS[error?.code ?? '']
+      const fallback = fallbackKey ? t(fallbackKey) : undefined
       if (fallback) {
         toast.warning(desktop ? fallback : error?.message ?? fallback)
       } else if (!desktop) {
         // Desktop path failures already have localized, actionable runtime banners.
-        toast.error(error?.message ?? 'Медиа недоступно')
+        toast.error(error?.message ?? t('errors.mediaUnavailable'))
       }
       if (!fallback && auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
@@ -721,7 +730,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     async (channelId: string) => {
       const channel = syncStore.getState().channels[channelId]
       if (!canJoinVoiceChannel(channel)) {
-        toast.error('Голос недоступен в этом канале')
+        toast.error(t('errors.voiceUnavailable'))
         return false
       }
       try {
@@ -743,11 +752,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         await dispatchVoice({ type: 'join', channelId, recipients })
         return true
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Нет сессии')
+        toast.error(apiErrorMessage(error, t('errors.noSession')))
         return false
       }
     },
-    [auth.user?._id, dispatchVoice, resetRemoteStageMedia],
+    [auth.user?._id, dispatchVoice, resetRemoteStageMedia, t],
   )
 
   const leave = useCallback(() => {
@@ -772,9 +781,33 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     void dispatchVoice({ type: 'setUserDeafened', deafened })
   }, [dispatchVoice, snapshot.userDeafened])
 
+  // The default camera is the first enumerated device, which may be a virtual
+  // or busy one. A device failure asks the user to pick a camera explicitly.
+  const cameraDeviceFailed = isCameraDeviceFailure(snapshot.camera)
+  const [cameraDevicePickerRequest, setCameraDevicePickerRequest] = useState(0)
+  const cameraDeviceFailedRef = useRef(false)
+  useEffect(() => {
+    if (cameraDeviceFailed && !cameraDeviceFailedRef.current) {
+      setCameraDevicePickerRequest((request) => request + 1)
+    }
+    cameraDeviceFailedRef.current = cameraDeviceFailed
+  }, [cameraDeviceFailed])
+
+  const selectCameraDevice = useCallback((deviceId: string | undefined) => {
+    voicePreferenceStore.setPreferredVideoDevice(deviceId)
+    if (snapshot.camera.state === 'off') return
+    intentionalMediaStopRef.current.camera = false
+    // Picking the same device again restarts a failed camera in the director.
+    void dispatchVoice({
+      type: 'setCamera',
+      enabled: true,
+      deviceId,
+      profile: readVoicePreferences().cameraProfile,
+    })
+  }, [dispatchVoice, snapshot.camera.state])
+
   const toggleCamera = useCallback(() => {
-    const enabled =
-      snapshot.camera.state === 'off' || snapshot.camera.state === 'failed'
+    const enabled = nextCameraEnabled(snapshot.camera)
     intentionalMediaStopRef.current.camera = !enabled
     if (!enabled) {
       eventsGateway.send({ type: 'VoiceMediaStopped', source: 'camera' })
@@ -785,7 +818,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       deviceId: readVoicePreferences().preferredVideoDevice,
       profile: readVoicePreferences().cameraProfile,
     })
-  }, [dispatchVoice, snapshot.camera.state])
+  }, [dispatchVoice, snapshot.camera])
 
   const openDesktopDisplayPicker = useCallback(() => {
     if (!desktop) return
@@ -800,15 +833,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось открыть выбор демонстрации',
+              apiErrorMessage(error, t('errors.openPicker')),
             )
           }),
         ),
       ),
     )
-  }, [desktop])
+  }, [desktop, t])
 
   const toggleScreenShare = useCallback(() => {
     if (snapshot.screen.state === 'running' || snapshot.screen.state === 'starting') {
@@ -896,15 +927,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         : [],
     sameVoiceParticipantList,
   )
-  const micIssue = mediaIssue(snapshot)
+  const micIssue = mediaIssue(snapshot, t)
   const mediaAvailability = useMemo<VoiceMediaAvailabilityState>(
     () =>
-      buildVoiceMediaAvailabilityState({
-        inputDevices,
-        videoDevices,
-        micIssue,
-      }),
-    [inputDevices, micIssue, videoDevices],
+      buildVoiceMediaAvailabilityState(
+        {
+          inputDevices,
+          videoDevices,
+          micIssue,
+        },
+        tMedia,
+      ),
+    [inputDevices, micIssue, videoDevices, tMedia],
   )
 
   const viewedRemoteScreenIds = useMemo(
@@ -965,6 +999,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         ? createStageRoomFromLiveKit(
             room,
             browserSubscriptionErrorsRef.current,
+            t,
           )
         : null,
       participants,
@@ -979,6 +1014,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
         }
         : null,
+      localCameraActive,
       setNativeDemand: setNativeVideoDemand,
     })
     return withConnectingLocalAvatarItem(items, {
@@ -995,10 +1031,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     roomRevision,
     nativeVideoTracks,
     nativeVideoPublications,
+    localCameraActive,
     localScreenPreviewActive,
     stageMediaFilters,
     status,
     setNativeVideoDemand,
+    t,
     viewedRemoteScreenIds,
   ])
   // Своя трансляция пересобирается (смена качества): показываем загрузку на превью.
@@ -1016,6 +1054,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           ? createStageRoomFromLiveKit(
               room,
               browserSubscriptionErrorsRef.current,
+              t,
             )
           : null,
         participants,
@@ -1035,6 +1074,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
               }
             : null,
+        localCameraActive,
         setNativeDemand: setNativeVideoDemand,
       }).filter((item) => item.kind === 'screen'),
     [
@@ -1046,8 +1086,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       nativeVideoTracks,
       nativeVideoPublications,
       desktop,
+      localCameraActive,
       localScreenPreviewActive,
       setNativeVideoDemand,
+      t,
     ],
   )
   const streamMediaItems = useHeldRemoteScreenTracks(
@@ -1410,9 +1452,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micIssue,
       mediaAvailability,
       cameraEnabled: cameraMedia.live,
+      cameraDeviceFailed,
+      cameraDevicePickerRequest,
       screenShareEnabled: screenMedia.live,
       screenShareStarting: screenMedia.starting,
       toggleCamera,
+      selectCameraDevice,
       toggleScreenShare,
       changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
       setSelfMonitoringActive,
@@ -1425,8 +1470,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micIssue,
       setSelfMonitoringActive,
       cameraMedia.live,
+      cameraDeviceFailed,
+      cameraDevicePickerRequest,
       screenMedia.live,
       screenMedia.starting,
+      selectCameraDevice,
       toggleCamera,
       toggleScreenShare,
     ],
@@ -1582,9 +1630,7 @@ function createDesktopVoiceClient(
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Native voice command failed',
+                apiErrorMessage(error, 'Native voice command failed'),
               )
             }),
           ),
@@ -1658,11 +1704,14 @@ function connectionPhaseFromSnapshot(
   }
 }
 
-function mediaIssue(snapshot: VoiceSnapshot): VoiceMicIssue | null {
+function mediaIssue(
+  snapshot: VoiceSnapshot,
+  t: Translator,
+): VoiceMicIssue | null {
   const error = snapshot.microphone.error
   if (!error) return null
   return {
-    label: 'Микрофон недоступен',
+    label: t('errors.micUnavailableLabel'),
     hint: error.message,
     retryable: error.retryable,
   }
@@ -1789,7 +1838,6 @@ function useHeldRemoteScreenTracks(
     for (const id of [...held.keys()]) if (!present.has(id)) held.delete(id)
     return { result, nextExpiry }
     // expiryTick re-evaluates held tracks once their grace runs out.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, localScreenRestarting, expiryTick])
   useEffect(() => {
     if (nextExpiry === null) return

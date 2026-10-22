@@ -44,7 +44,7 @@ vi.mock('#/components/servers/server-invite-dialog', () => ({
   ServerInviteDialog: () => null,
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({
     children,
     open,
@@ -53,7 +53,9 @@ vi.mock('#/components/ui/dialog', () => ({
     open?: boolean
   }) => (open ? <>{children}</> : null),
   DialogContent: ({ children }: { children: ReactNode }) => (
-    <div role="dialog">{children}</div>
+    <div role="dialog" data-slot="dialog-content">
+      {children}
+    </div>
   ),
   DialogDescription: ({ children }: { children: ReactNode }) => (
     <p>{children}</p>
@@ -81,7 +83,7 @@ vi.mock('#/features/api/servers-api', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
 }))
 
 function upsertServer(owner = 'user-1') {
@@ -118,10 +120,10 @@ describe('ServerHeaderMenu', () => {
     expect(triggerClass).toContain('hover:backdrop-blur-sm')
   })
 
-  it('renders the server name with the heaviest font weight', () => {
+  it('renders the server name with the header weight', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
-    expect(screen.getByText('Server').className).toContain('font-black')
+    expect(screen.getByText('Server').className).toContain('font-semibold')
   })
 
   beforeEach(() => {
@@ -139,16 +141,24 @@ describe('ServerHeaderMenu', () => {
     vi.clearAllMocks()
   })
 
-  it('labels the owner destructive action as deleting the server', () => {
+  it('shows the invite action next to the server menu', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    expect(
+      screen.getByRole('button', { name: 'Пригласить на сервер' }),
+    ).toBeTruthy()
+  })
+
+  it('does not expose a server removal action to the owner', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
 
     expect(
-      screen.getByRole('button', { name: 'Удалить сервер' }),
-    ).toBeTruthy()
+      screen.queryByRole('menuitem', { name: 'Удалить сервер' }),
+    ).toBeNull()
     expect(
-      screen.queryByRole('button', { name: 'Покинуть сервер' }),
+      screen.queryByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeNull()
   })
 
@@ -161,41 +171,11 @@ describe('ServerHeaderMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
 
     expect(
-      screen.getByRole('button', { name: 'Покинуть сервер' }),
+      screen.getByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeTruthy()
     expect(
-      screen.queryByRole('button', { name: 'Удалить сервер' }),
+      screen.queryByRole('menuitem', { name: 'Удалить сервер' }),
     ).toBeNull()
-  })
-
-  it('confirms server deletion in a dialog before calling the API', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Удалить сервер' }),
-    )
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toContain('Server')
-
-    fireEvent.click(
-      within(dialog).getByRole('button', {
-        name: 'Удалить сервер',
-      }),
-    )
-
-    await waitFor(() => {
-      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
-        'session-token',
-        'server-1',
-      )
-    })
   })
 
   it('confirms leaving a server in a dialog before calling the API', async () => {
@@ -207,13 +187,20 @@ describe('ServerHeaderMenu', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
     fireEvent.click(
-      screen.getByRole('button', { name: 'Покинуть сервер' }),
+      screen.getByRole('menuitem', { name: 'Покинуть сервер' }),
     )
 
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
 
-    const dialog = screen.getByRole('dialog')
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="dialog-content"]'),
+      ).toBeTruthy()
+    })
+    const dialog = document.querySelector<HTMLElement>(
+      '[data-slot="dialog-content"]',
+    )!
     expect(dialog.textContent).toContain('Server')
 
     fireEvent.click(
@@ -234,19 +221,19 @@ describe('ServerHeaderMenu', () => {
     render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Роли' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Роли' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/servers/$serverId/settings',
+      to: '/servers/$serverId/settings',
       params: { serverId: 'server-1' },
       search: { tab: 'roles' },
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Server' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Журнал аудита' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Журнал аудита' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/servers/$serverId/settings',
+      to: '/servers/$serverId/settings',
       params: { serverId: 'server-1' },
       search: { tab: 'audit' },
     })

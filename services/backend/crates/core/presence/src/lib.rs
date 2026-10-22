@@ -11,8 +11,8 @@ use std::{
 
 mod operations;
 use operations::{
-    __add_to_set_string, __add_to_set_u32, __delete_key, __get_set_members_as_string,
-    __get_set_members_as_u32, __get_set_size, __remove_from_set_string, __remove_from_set_u32,
+    __add_to_set_string, __add_to_set_u32, __delete_key, __get_set_members_as_u32, __get_set_size,
+    __remove_from_set_string, __remove_from_set_u32,
 };
 
 pub static REGION_ID: Lazy<u16> = Lazy::new(|| {
@@ -22,8 +22,25 @@ pub static REGION_ID: Lazy<u16> = Lazy::new(|| {
         .unwrap()
 });
 
-pub static REGION_KEY: Lazy<String> = Lazy::new(|| format!("region{}", &*REGION_ID));
+/// Prefix shared by every gateway process in this region.
+static REGION_PREFIX: Lazy<String> = Lazy::new(|| format!("region{}", &*REGION_ID));
+
+/// Sessions owned by this process. Each process has its own set, so a new
+/// gateway started next to a draining one does not clear the sessions that
+/// are still connected to the old process.
+pub static REGION_KEY: Lazy<String> = Lazy::new(|| {
+    format!(
+        "{}:{:016x}",
+        &*REGION_PREFIX,
+        rand::thread_rng().gen::<u64>()
+    )
+});
 pub static ONLINE_SET: &str = "online";
+
+/// A process refreshes its liveness key well within this TTL; a region whose
+/// key expired belongs to a process that is gone.
+pub const REGION_ALIVE_TTL_SECS: u64 = 30;
+const REGION_ALIVE_SUFFIX: &str = ":alive";
 
 pub static FLAG_BITS: u32 = 0b1;
 pub const SYSTEM_IDLE_AFTER_MS: u64 = 5 * 60 * 1000;
@@ -269,9 +286,18 @@ pub async fn filter_online(user_ids: &'_ [String]) -> HashSet<String> {
 /// Reset any stale presence data
 pub async fn clear_region(region_id: Option<&str>) {
     let region_id = region_id.unwrap_or(&*REGION_KEY);
-    let mut conn = get_connection().await.expect("Redis connection");
-
-    let sessions = __get_set_members_as_string(&mut conn, region_id).await;
+    // Runs periodically, so a Redis error skips this pass instead of panicking.
+    let Ok(mut conn) = get_connection().await else {
+        warn!("Could not clear presence region {region_id}: no Redis connection.");
+        return;
+    };
+    let sessions: Vec<String> = match conn.smembers(region_id).await {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            warn!("Could not read presence region {region_id}: {error:?}");
+            return;
+        }
+    };
     if !sessions.is_empty() {
         info!(
             "Cleaning up {} sessions, this may take a while...",
@@ -293,6 +319,59 @@ pub async fn clear_region(region_id: Option<&str>) {
         __delete_key(&mut conn, region_id).await;
 
         info!("Clean up complete.");
+    }
+}
+
+/// Mark this process's region as alive for `REGION_ALIVE_TTL_SECS`.
+pub async fn mark_region_alive() {
+    if let Ok(mut conn) = get_connection().await {
+        let key = format!("{}{REGION_ALIVE_SUFFIX}", &*REGION_KEY);
+        let _: Option<()> = conn
+            .set_ex(key, 1, REGION_ALIVE_TTL_SECS as usize)
+            .await
+            .ok();
+    }
+}
+
+/// Remove this process's region once all of its sessions are gone.
+pub async fn release_region() {
+    if let Ok(mut conn) = get_connection().await {
+        __delete_key(&mut conn, &format!("{}{REGION_ALIVE_SUFFIX}", &*REGION_KEY)).await;
+    }
+    clear_region(None).await;
+}
+
+/// Reset stale presence data left by gateway processes that are gone,
+/// including the shared set used before regions were per process.
+pub async fn clear_dead_regions() {
+    let Ok(mut conn) = get_connection().await else {
+        return;
+    };
+
+    let mut regions = Vec::new();
+    {
+        let pattern = format!("{}*", &*REGION_PREFIX);
+        let Ok(mut keys) = conn.scan_match::<_, String>(pattern).await else {
+            return;
+        };
+        while let Some(key) = keys.next_item().await {
+            let owned_by_region =
+                key == *REGION_PREFIX || key.starts_with(&format!("{}:", &*REGION_PREFIX));
+            if owned_by_region && !key.ends_with(REGION_ALIVE_SUFFIX) && key != *REGION_KEY {
+                regions.push(key);
+            }
+        }
+    }
+
+    for region in regions {
+        let alive: bool = conn
+            .exists(format!("{region}{REGION_ALIVE_SUFFIX}"))
+            .await
+            .unwrap_or(true);
+        if !alive {
+            info!("Clearing presence of stopped gateway region {region}.");
+            clear_region(Some(&region)).await;
+        }
     }
 }
 

@@ -35,7 +35,6 @@ function syncGeneratedVersionFiles() {
     ['apps/web/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
     ['apps/admin/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
     ['services/backend/VERSION', `${version}\n`],
-    ['services/livekit-server/APP_VERSION', `${version}\n`],
   ]
 
   for (const [relativePath, content] of files) {
@@ -48,11 +47,13 @@ function syncGeneratedVersionFiles() {
 
 syncPackageJson('package.json')
 syncPackageJson('apps/web/package.json')
+syncPackageJson('apps/landing/package.json')
 syncPackageJson('apps/admin/package.json')
 syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
 syncPackageJson('packages/desktop-native/package.json')
 syncPackageJson('packages/platform/package.json')
+syncPackageJson('packages/ui/package.json')
 syncGeneratedVersionFiles()
 
 console.log(`[version] synced ${version}`)

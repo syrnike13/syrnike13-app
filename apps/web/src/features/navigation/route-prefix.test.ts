@@ -10,8 +10,8 @@ describe('appRoutePrefixForPath', () => {
   })
 
   it('does not treat non-/m prefixes as mobile routes', () => {
-    expect(appRoutePrefixForPath('/mobile')).toBe('/app')
-    expect(appRoutePrefixForPath('/meetings')).toBe('/app')
-    expect(appRoutePrefixForPath('/m-admin')).toBe('/app')
+    expect(appRoutePrefixForPath('/mobile')).toBe('')
+    expect(appRoutePrefixForPath('/meetings')).toBe('')
+    expect(appRoutePrefixForPath('/m-admin')).toBe('')
   })
 })

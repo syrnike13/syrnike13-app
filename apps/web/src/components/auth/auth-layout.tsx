@@ -1,15 +1,17 @@
-import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ComponentProps, PropsWithChildren } from 'react'
 
 import { HomeIcon } from '#/components/icons'
+import { PUBLIC_SITE_ORIGIN } from '#/lib/public-site'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
-import { Card } from '#/components/ui/card'
+import { Card } from '@syrnike13/ui/primitives/card'
 import { config as appConfig } from '#/lib/config'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
 
 export function AuthLayout({ children }: PropsWithChildren) {
   const { isDesktop } = usePlatform()
+  const t = useTranslations('auth')
 
   return (
     <div className="auth-shell gradient-surface-content">
@@ -17,10 +19,10 @@ export function AuthLayout({ children }: PropsWithChildren) {
       <main className="auth-stage">
         <header className="auth-stage-header">
           {!isDesktop ? (
-            <Link to="/" className="auth-home-link">
+            <a href={PUBLIC_SITE_ORIGIN} className="auth-home-link">
               <HomeIcon aria-hidden="true" />
-              На главную
-            </Link>
+              {t('home')}
+            </a>
           ) : null}
         </header>
 

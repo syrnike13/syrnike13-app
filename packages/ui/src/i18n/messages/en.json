@@ -1,0 +1,11 @@
+{
+  "ui": {
+    "close": "Close",
+    "clear": "Clear",
+    "loading": "Loading",
+    "empty": "Nothing here yet",
+    "cancel": "Cancel",
+    "save": "Save",
+    "search": "Search"
+  }
+}

@@ -1,0 +1,25 @@
+/* Shared design-system styles. */
+@import './shadcn.css';
+
+@utility cn-font-heading {
+  font-family: var(--font-display);
+}
+
+/* Places a slider mark or label on the usable track: the same half-thumb
+   inset the slider thumb uses, so ticks and thumb centres agree. */
+@utility slider-mark-position {
+  left: calc(
+    var(--slider-thumb-size, 1.125rem) / 2 +
+      (100% - var(--slider-thumb-size, 1.125rem)) * var(--slider-mark-progress, 0)
+  );
+}
+
+@theme inline {
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-scrim: var(--scrim);
+  --color-on-scrim: var(--on-scrim);
+  --color-on-solid: var(--on-solid);
+  --color-on-media: var(--on-media);
+  --color-media-backdrop: var(--media-backdrop);
+}

@@ -1,5 +1,6 @@
 import { Link, Outlet, useBlocker, useRouterState } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 
 import {
@@ -14,16 +15,26 @@ import {
   UserSearchIcon,
 } from '#/components/icons'
 import { AccessDenied } from '#/components/access-denied'
-import { Button } from '#/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'
 
 const NAV = [
-  { to: '/diagnostics', label: 'Диагностика', icon: BugIcon },
-  { to: '/badges', label: 'Бейджи', icon: AwardIcon },
-  { to: '/users', label: 'Пользователи', icon: UserSearchIcon },
-  { to: '/feedback', label: 'Обращения', icon: SparklesIcon },
+  { to: '/diagnostics', labelKey: 'nav.diagnostics', icon: BugIcon },
+  { to: '/badges', labelKey: 'nav.badges', icon: AwardIcon },
+  { to: '/users', labelKey: 'nav.users', icon: UserSearchIcon },
+  { to: '/feedback', labelKey: 'nav.feedback', icon: SparklesIcon },
 ] as const
 
 export function AdminShell({ children }: { children?: ReactNode }) {
@@ -35,35 +46,50 @@ export function AdminShell({ children }: { children?: ReactNode }) {
 }
 
 function AdminShellContent({ children }: { children?: ReactNode }) {
+  const t = useTranslations('shell')
+  const tCommon = useTranslations('common')
   const auth = useAuth()
   const draftController = useAdminDraftController()
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
-  useBlocker({
-    shouldBlockFn: () => {
-      if (!draftController?.isDirty) return false
-      return !window.confirm(
-        'Есть несохранённые изменения. Покинуть страницу без сохранения?',
-      )
-    },
+  const blocker = useBlocker({
+    shouldBlockFn: () => Boolean(draftController?.isDirty),
     enableBeforeUnload: () => Boolean(draftController?.isDirty),
+    withResolver: true,
   })
 
   if (!auth.isPrivileged) {
     return <AccessDenied />
   }
 
-  const name = auth.user?.display_name ?? auth.user?.username ?? 'Admin'
+  const name =
+    auth.user?.display_name ?? auth.user?.username ?? t('userFallback')
+
+  const logout = () => {
+    draftController?.reset()
+    Effect.runFork(auth.logout())
+  }
+
+  const requestLogout = () => {
+    if (draftController?.isDirty) {
+      setLogoutConfirmOpen(true)
+      return
+    }
+    logout()
+  }
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
-      <aside className="flex w-[var(--shell-sidebar-width)] shrink-0 flex-col border-r border-border/60 bg-sidebar">
+      <aside className="flex w-(--shell-sidebar-width) shrink-0 flex-col border-r border-border bg-sidebar">
         <div className="flex h-14 items-center gap-2.5 px-4">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <SparklesIcon className="size-3.5" aria-hidden />
           </span>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-[13px] font-semibold">syrnike13</div>
-            <div className="text-[10px] text-muted-foreground">admin</div>
+            <div className="truncate text-sm font-semibold">syrnike13</div>
+            <div className="text-xs text-muted-foreground">
+              {t('adminLabel')}
+            </div>
           </div>
         </div>
 
@@ -73,17 +99,17 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t border-border/60 p-2">
+        <div className="border-t border-border p-2">
           {config.releaseChannel === 'nightly' ? (
-            <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-wide text-warning">
-              Nightly
+            <div className="mb-2 px-2 text-xs font-medium uppercase tracking-wide text-warning">
+              {tCommon('nightly')}
             </div>
           ) : null}
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-medium">{name}</div>
+              <div className="truncate text-xs font-medium">{name}</div>
               {auth.user?.username ? (
-                <div className="truncate text-[11px] text-muted-foreground">
+                <div className="truncate text-xs text-muted-foreground">
                   @{auth.user.username}
                 </div>
               ) : null}
@@ -92,19 +118,8 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
               variant="ghost"
               size="icon-sm"
               className="shrink-0 text-muted-foreground"
-              aria-label="Выйти"
-              onClick={() => {
-                if (
-                  draftController?.isDirty &&
-                  !window.confirm(
-                    'Есть несохранённые изменения. Выйти без сохранения?',
-                  )
-                ) {
-                  return
-                }
-                draftController?.reset()
-                Effect.runFork(auth.logout())
-              }}
+              aria-label={t('logoutAria')}
+              onClick={requestLogout}
             >
               <LogOutIcon className="size-4" aria-hidden />
             </Button>
@@ -112,22 +127,63 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
         </div>
       </aside>
 
-      <main className="admin-scroll min-w-0 flex-1 overflow-y-auto bg-surface">
+      <main className="admin-scroll min-w-0 flex-1 overflow-y-auto bg-background">
         {children ?? <Outlet />}
       </main>
+
+      <AlertDialog
+        open={blocker.status === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open) blocker.reset?.()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('leaveTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('leaveConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('stayAction')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blocker.proceed?.()}>
+              {t('leaveAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('logoutTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('logoutConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setLogoutConfirmOpen(false)
+                logout()
+              }}
+            >
+              {tCommon('logout')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
 
 function NavLink({
   to,
-  label,
+  labelKey,
   icon: Icon,
 }: {
   to: string
-  label: string
+  labelKey: string
   icon: typeof AwardIcon
 }) {
+  const t = useTranslations('shell')
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const active = pathname === to || pathname.startsWith(`${to}/`)
 
@@ -135,14 +191,14 @@ function NavLink({
     <Link
       to={to}
       className={cn(
-        'flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] transition-colors',
+        'flex h-8 items-center gap-2 rounded-md px-2.5 text-sm transition-colors',
         active
           ? 'bg-sidebar-accent font-medium text-foreground'
           : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground',
       )}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
-      {label}
+      {t(labelKey)}
     </Link>
   )
 }

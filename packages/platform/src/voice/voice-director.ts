@@ -227,13 +227,18 @@ export class VoiceDirector {
       case 'configureRemoteAudio':
         this.engine.updateRemoteAudioSettings(command.settings)
         return
-      case 'setCamera':
-        this.updateDesiredMedia({
+      case 'setCamera': {
+        const changed = this.updateDesiredMedia({
           cameraEnabled: command.enabled,
           cameraDeviceId: command.deviceId,
           cameraProfile: command.profile ?? this.desiredMedia.cameraProfile,
         })
+        // Re-enabling the same camera after a failure is a restart: the
+        // unchanged intent alone never reaches the engine again.
+        if (!changed && command.enabled && this.snapshotValue.camera.state === 'failed')
+          this.engine.retryMedia('camera')
         return
+      }
       case 'setScreen':
         this.updateDesiredMedia({
           screenEnabled: command.enabled,
@@ -826,7 +831,7 @@ export class VoiceDirector {
     this.setIntent(lease.channelId, false)
   }
 
-  // Like Discord, a moderator disconnect ends the session: recovering from the
+  // A moderator disconnect ends the session: recovering from the
   // transport removal that enforces it would put the user straight back.
   private handleForcedDisconnect(
     from: NonNullable<AuthoritativeVoiceSnapshot['membership']>,
@@ -908,7 +913,7 @@ export class VoiceDirector {
     }
     if (event.type === 'mediaState') {
       this.updateMediaSnapshot(event.kind, event.media)
-      // Like Discord, closing the shared window ends the share; it is not a
+      // Closing the shared window ends the share; it is not a
       // failure the user has to dismiss or retry.
       if (event.kind === 'screen' && event.media.state === 'failed' &&
           SCREEN_SOURCE_ENDED_CODES.has(event.media.error?.code ?? '')) {
@@ -955,7 +960,7 @@ export class VoiceDirector {
 
   private updateDesiredMedia(
     patch: Partial<VoiceMediaDesiredState>,
-  ) {
+  ): boolean {
     const previousUserMuted = this.desiredMedia.userMuted
     const previousUserDeafened = this.desiredMedia.userDeafened
     const nextBase = { ...this.desiredMedia, ...patch }
@@ -963,7 +968,7 @@ export class VoiceDirector {
       ...nextBase,
       effectiveMuted: computeEffectiveMuted(nextBase),
     }
-    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return
+    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return false
     this.desiredMedia = nextDesired
     this.engine.updateDesiredMedia(this.desiredMedia)
     this.updateSnapshot({
@@ -983,6 +988,7 @@ export class VoiceDirector {
     ) {
       this.requestSelfStateSync()
     }
+    return true
   }
 
   private requestSelfStateSync() {
