@@ -404,7 +404,7 @@ export function DesktopScreenSharePicker({
         </Tabs>
 
         <Separator />
-        <DialogFooter className="flex-row items-center justify-between px-4 py-3 sm:justify-between">
+        <DialogFooter className="mx-0 mb-0 flex-row items-center justify-between rounded-none border-t-0 bg-transparent px-4 py-3 sm:justify-between">
           <ScreenSharePickerQualitySummary />
           <div className="flex items-center gap-2">
             {hasPreviousPage || hasNextPage ? (
