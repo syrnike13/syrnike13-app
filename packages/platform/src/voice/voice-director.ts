@@ -831,7 +831,7 @@ export class VoiceDirector {
     this.setIntent(lease.channelId, false)
   }
 
-  // Like Discord, a moderator disconnect ends the session: recovering from the
+  // A moderator disconnect ends the session: recovering from the
   // transport removal that enforces it would put the user straight back.
   private handleForcedDisconnect(
     from: NonNullable<AuthoritativeVoiceSnapshot['membership']>,
@@ -913,7 +913,7 @@ export class VoiceDirector {
     }
     if (event.type === 'mediaState') {
       this.updateMediaSnapshot(event.kind, event.media)
-      // Like Discord, closing the shared window ends the share; it is not a
+      // Closing the shared window ends the share; it is not a
       // failure the user has to dismiss or retry.
       if (event.kind === 'screen' && event.media.state === 'failed' &&
           SCREEN_SOURCE_ENDED_CODES.has(event.media.error?.code ?? '')) {

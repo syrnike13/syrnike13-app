@@ -11,6 +11,11 @@ export type AppearanceColorMode = typeof AppearanceColorModeSchema.Type
 export const APPEARANCE_GRADIENT_MIN_COLORS = 1
 export const APPEARANCE_GRADIENT_MAX_COLORS = 5
 
+/** Масштаб интерфейса в процентах; меняет rem-размеры через font-size корня. */
+export const APPEARANCE_SCALE_MIN = 80
+export const APPEARANCE_SCALE_MAX = 150
+export const APPEARANCE_SCALE_STEP = 5
+
 export type AppearanceGradientSettings = {
   colors: string[]
   angle: number
@@ -26,6 +31,8 @@ export const AppearanceGradientSettingsSchema = Schema.Struct({
 export type AppearanceSettings = {
   themeId: string
   colorMode: AppearanceColorMode
+  /** Масштаб интерфейса в процентах: 100 — исходный размер. */
+  scale: number
   /** `null` использует градиент выбранной палитры. */
   gradient: AppearanceGradientSettings | null
 }
@@ -33,14 +40,16 @@ export type AppearanceSettings = {
 export const AppearanceSettingsSchema = Schema.Struct({
   themeId: Schema.String,
   colorMode: AppearanceColorModeSchema,
+  scale: Schema.Finite,
   gradient: Schema.Union([AppearanceGradientSettingsSchema, Schema.Null]),
 })
 
-export const DEFAULT_THEME_ID = 'syrnike'
+export const DEFAULT_THEME_ID = 'monolit'
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   themeId: DEFAULT_THEME_ID,
   colorMode: 'dark',
+  scale: 100,
   gradient: null,
 }
 
@@ -100,6 +109,19 @@ export function normalizeAppearanceColorMode(
   )
 }
 
+export function normalizeAppearanceScale(
+  value: unknown,
+  fallback: number = DEFAULT_APPEARANCE_SETTINGS.scale,
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  const clamped = clamp(value, APPEARANCE_SCALE_MIN, APPEARANCE_SCALE_MAX)
+  // The scale slider is a stop list, so keep stored values on its grid.
+  const steps = Math.round(
+    (clamped - APPEARANCE_SCALE_MIN) / APPEARANCE_SCALE_STEP,
+  )
+  return APPEARANCE_SCALE_MIN + steps * APPEARANCE_SCALE_STEP
+}
+
 export function normalizeAppearanceSettings(
   value: unknown,
   defaults: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS,
@@ -116,6 +138,7 @@ export function normalizeAppearanceSettings(
   return {
     themeId,
     colorMode: normalizeAppearanceColorMode(settings.colorMode, defaults.colorMode),
+    scale: normalizeAppearanceScale(settings.scale, defaults.scale),
     gradient:
       settings.gradient === null
         ? null
@@ -142,6 +165,13 @@ export function normalizeAppearanceSettingsPatch(
   }
   if ('colorMode' in patch) {
     next.colorMode = normalizeAppearanceColorMode(patch.colorMode)
+  }
+  if (
+    'scale' in patch &&
+    typeof patch.scale === 'number' &&
+    Number.isFinite(patch.scale)
+  ) {
+    next.scale = normalizeAppearanceScale(patch.scale)
   }
   if ('gradient' in patch) {
     if (patch.gradient === null) {

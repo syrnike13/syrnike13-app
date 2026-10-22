@@ -1,16 +1,18 @@
+// design-allow-file restyle-shared: the voice-stage popover surface is shared by
+// PopoverContent consumers and intentionally pins one Prism surface (popover
+// background, shell divider ring, elevated shadow) for all of them.
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
 import { cn } from '#/lib/utils'
 
 /**
- * Поверхность поповеров на голосовой сцене — темнее обычного `popover`,
- * ближе к панели контролов (`#1e1f22`), но через токен темы.
+ * Поверхность поповеров на голосовой сцене — Prism-роль `popover`.
  */
 const voiceStagePopoverSurfaceClass =
-  'border-border bg-sidebar text-popover-foreground shadow-xl ring-1 ring-shell-divider'
+  'border-border bg-popover text-popover-foreground shadow-xl ring-1 ring-shell-divider'
 
 /** Общий контейнер поповеров на голосовой сцене (поверх дефолтного PopoverContent). */
 export const voiceStagePopoverContentClass = cn(
-  'z-[420] overflow-visible p-2 text-sm',
+  'z-420 overflow-visible p-2 text-sm',
   voiceStagePopoverSurfaceClass,
 )
 
@@ -22,12 +24,6 @@ export const voiceStagePopoverMicSettingsClass = cn(
 export const voiceStagePopoverSettingsClass = cn(
   voiceStagePopoverContentClass,
   'w-72',
-)
-
-/** Вложенное подменю справа от строки. */
-export const voiceStagePopoverSubmenuClass = cn(
-  'absolute top-0 left-full z-[430] ml-1 w-56 rounded-md p-1',
-  voiceStagePopoverSurfaceClass,
 )
 
 /** Строка с подзаголовком (устройство, профиль). */
@@ -46,9 +42,4 @@ export const voiceStagePopoverSectionTitleClass =
   'text-xs font-semibold text-foreground'
 
 export const voiceStagePopoverHintClass =
-  'text-[11px] leading-snug text-muted-foreground'
-
-export const voiceStagePopoverSeparatorClass = 'my-0.5 h-px bg-border'
-
-export const voiceStagePopoverCheckboxClass =
-  'size-4 shrink-0 rounded border-input accent-primary'
+  'text-xs leading-snug text-muted-foreground'

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
-import { Drawer, DrawerContent } from '#/components/ui/drawer'
+import { Drawer, DrawerContent } from '@syrnike13/ui/primitives/drawer'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useAuth } from '#/features/auth/auth-context'
@@ -20,9 +21,11 @@ import { cn } from '#/lib/utils'
  * Drawer голосового канала для мобильной оболочки.
  *
  * Монтируется только из `m/route.tsx`, поэтому guard `useIsCompact` не нужен —
- * в десктопной зоне `/app` компонент не появляется.
+ * в десктопной зоне `/` компонент не появляется.
  */
 export function MobileVoiceChannelDrawer() {
+  const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const { channelId, openVoiceChannelDrawer, closeVoiceChannelDrawer } =
@@ -73,22 +76,22 @@ export function MobileVoiceChannelDrawer() {
 
   const title =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
-      : 'Голосовой канал'
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
+      : t('channel')
 
   return (
     <Drawer
       open={open}
+      showSwipeHandle={!fullscreen}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) closeVoiceChannelDrawer()
       }}
     >
       <DrawerContent
-        showHandle={!fullscreen}
         className={cn(
           fullscreen
-            ? 'inset-0 top-0 h-[100dvh] max-h-[100dvh] rounded-none border-0 pb-0'
-            : 'h-[min(85dvh,720px)] max-h-[min(92dvh,820px)]',
+            ? 'inset-0 top-0 h-dvh max-h-dvh rounded-none border-0 pb-0'
+            : 'h-mobile-voice-drawer-tall max-h-mobile-voice-drawer',
           'flex flex-col gap-0 overflow-hidden p-0',
         )}
       >
@@ -98,10 +101,10 @@ export function MobileVoiceChannelDrawer() {
               className={cn(
                 'flex min-h-0 flex-col overflow-hidden',
                 chatOpen && !fullscreen
-                  ? 'h-[min(52dvh,420px)] shrink-0'
+                  ? 'h-mobile-voice-drawer shrink-0'
                   : 'min-h-0 flex-1',
                 fullscreen && !chatOpen && 'min-h-0 flex-1',
-                fullscreen && chatOpen && 'h-[55%] shrink-0',
+                fullscreen && chatOpen && 'h-55/100 shrink-0',
               )}
             >
               <VoiceStageView
@@ -110,14 +113,14 @@ export function MobileVoiceChannelDrawer() {
                 chatOpen={chatOpen}
                 onToggleChat={() => setChatOpen((value) => !value)}
                 mobileDrawer
-                joinButtonLabel="Войти в голос"
+                joinButtonLabel={t('actions.joinVoice')}
                 onClose={closeVoiceChannelDrawer}
               />
             </div>
             {chatOpen ? (
               <div
                 className={cn(
-                  'gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider bg-background',
+                  'theme-surface-content gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider text-card-foreground',
                   fullscreen ? 'flex-1' : 'flex-1',
                 )}
               >

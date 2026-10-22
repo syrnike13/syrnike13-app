@@ -1,13 +1,14 @@
 import type { Message } from '@syrnike13/api-types'
 
 import {
-  formatDateDivider,
+  formatDateDividerDate,
   messageCreatedAt,
   shouldCompactMessage,
 } from '#/lib/message-time'
 
 export type MessageFeedItem =
   | { type: 'date'; key: string; dateLabel: string }
+  | { type: 'unread'; key: string; messageId: string }
   | {
       type: 'message'
       key: string
@@ -15,10 +16,21 @@ export type MessageFeedItem =
       compact: boolean
     }
 
-export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
+type BuildMessageFeedOptions = {
+  /** Первое непрочитанное сообщение: перед ним ставится divider. */
+  unreadMessageId?: string | null
+  formatDateLabel?: (date: Date) => string
+}
+
+export function buildMessageFeedItems(
+  messages: Message[],
+  options: BuildMessageFeedOptions = {},
+): MessageFeedItem[] {
+  const { unreadMessageId, formatDateLabel = formatDateDividerDate } = options
   const items: MessageFeedItem[] = []
   let previous: Message | undefined
   let previousDayKey: string | undefined
+  let unreadInserted = false
 
   for (const message of messages) {
     const created = messageCreatedAt(message)
@@ -28,10 +40,19 @@ export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
       items.push({
         type: 'date',
         key: `date-${dayKey}`,
-        dateLabel: formatDateDivider(created),
+        dateLabel: formatDateLabel(created),
       })
       previousDayKey = dayKey
       previous = undefined
+    }
+
+    if (!unreadInserted && unreadMessageId === message._id) {
+      items.push({
+        type: 'unread',
+        key: `unread-${message._id}`,
+        messageId: message._id,
+      })
+      unreadInserted = true
     }
 
     const compact = shouldCompactMessage(previous, message)
@@ -45,15 +66,4 @@ export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
   }
 
   return items
-}
-
-export function feedItemEstimateHeight(item: MessageFeedItem): number {
-  if (item.type === 'date') return 52
-  if (item.message.system?.type === 'call_started') return 104
-  // Карточка embed выше обычной строки; точную высоту даст measureElement.
-  if (item.type === 'message' && item.message.embeds?.length) return 240
-  if (item.type === 'message' && item.message.replies?.[0] && !item.compact) {
-    return 92
-  }
-  return item.compact ? 26 : 72
 }

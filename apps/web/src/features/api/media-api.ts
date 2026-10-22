@@ -1,3 +1,4 @@
+import type { Translator } from '@syrnike13/ui/i18n'
 import { config } from '#/lib/config'
 import { Cause, Effect, Option, Schema } from 'effect'
 
@@ -6,6 +7,7 @@ export type UploadProgressHandler = (progress: number) => void
 export type UploadAttachmentOptions = {
   onProgress?: UploadProgressHandler
   signal?: AbortSignal
+  t: Translator
 }
 
 const UploadResponseSchema = Schema.Struct({
@@ -18,6 +20,7 @@ type UploadRequestOptions = {
   endpoint: string
   failureMessage: string
   networkFailureMessage?: string
+  abortMessage: string
   onProgress?: UploadProgressHandler
   clampProgress?: boolean
 }
@@ -41,7 +44,9 @@ const uploadFile = Effect.fn('media.uploadFile')(
       }
       const rejectAbort = () =>
         settle(
-          Effect.fail(new DOMException('Загрузка отменена', 'AbortError')),
+          Effect.fail(
+            new DOMException(options.abortMessage, 'AbortError'),
+          ),
         )
       const handleProgress = (event: ProgressEvent) => {
         if (!event.lengthComputable || event.total <= 0) return
@@ -68,7 +73,7 @@ const uploadFile = Effect.fn('media.uploadFile')(
         settle(
           Effect.fail(
             new Error(
-              options.networkFailureMessage ?? 'Ошибка сети при загрузке',
+              options.networkFailureMessage ?? options.failureMessage,
             ),
           ),
         )
@@ -90,10 +95,10 @@ const uploadFile = Effect.fn('media.uploadFile')(
   },
 )
 
-function abortUpload(signal: AbortSignal) {
+function abortUpload(signal: AbortSignal, abortMessage: string) {
   return Effect.callback<never, DOMException>((resume) => {
     const onAbort = () =>
-      resume(Effect.fail(new DOMException('Загрузка отменена', 'AbortError')))
+      resume(Effect.fail(new DOMException(abortMessage, 'AbortError')))
     if (signal.aborted) {
       onAbort()
       return
@@ -105,20 +110,24 @@ function abortUpload(signal: AbortSignal) {
 
 function interruptibleUpload(
   effect: Effect.Effect<string, Error>,
+  abortMessage: string,
   signal?: AbortSignal,
 ) {
-  return signal ? effect.pipe(Effect.raceFirst(abortUpload(signal))) : effect
+  return signal
+    ? effect.pipe(Effect.raceFirst(abortUpload(signal, abortMessage)))
+    : effect
 }
 
 function runUpload(
   effect: Effect.Effect<string, Error>,
+  abortMessage: string,
   signal?: AbortSignal,
 ) {
   const interruptAsAbort = Effect.uninterruptibleMask((restore) =>
     restore(effect).pipe(
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)
-          ? Effect.fail(new DOMException('Загрузка отменена', 'AbortError'))
+          ? Effect.fail(new DOMException(abortMessage, 'AbortError'))
           : Effect.fail(Cause.squash(cause)),
       ),
     ),
@@ -133,17 +142,20 @@ export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
   function*(
     token: string,
     file: File,
-    options: UploadAttachmentOptions = {},
+    options: UploadAttachmentOptions,
   ) {
     return yield* interruptibleUpload(
       uploadFile({
         token,
         file,
         endpoint: 'attachments',
-        failureMessage: 'Не удалось загрузить файл',
+        failureMessage: options.t('uploadFailed'),
+        networkFailureMessage: options.t('networkError'),
+        abortMessage: options.t('uploadCancelled'),
         onProgress: options.onProgress,
         clampProgress: true,
       }),
+      options.t('uploadCancelled'),
       options.signal,
     )
   },
@@ -152,13 +164,15 @@ export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
 export function uploadAttachment(
   token: string,
   file: File,
-  options: UploadAttachmentOptions = {},
+  options: UploadAttachmentOptions,
 ): Promise<string> {
   const effect = uploadAttachmentEffect(token, file, {
     onProgress: options.onProgress,
+    t: options.t,
   })
   return runUpload(
     effect,
+    options.t('uploadCancelled'),
     options.signal,
   )
 }
@@ -175,13 +189,16 @@ export const uploadMediaFileEffect = Effect.fn('media.uploadMediaFile')(
     token: string,
     tag: MediaUploadTag,
     file: File,
+    t: Translator,
     onProgress?: UploadProgressHandler,
   ) {
     return yield* uploadFile({
       token,
       file,
       endpoint: tag,
-      failureMessage: 'Не удалось загрузить файл',
+      failureMessage: t('uploadFailed'),
+      networkFailureMessage: t('networkError'),
+      abortMessage: t('uploadCancelled'),
       onProgress,
     })
   },
@@ -191,22 +208,26 @@ export function uploadMediaFile(
   token: string,
   tag: MediaUploadTag,
   file: File,
+  t: Translator,
   onProgress?: UploadProgressHandler,
   signal?: AbortSignal,
 ): Promise<string> {
   return runUpload(
-    uploadMediaFileEffect(token, tag, file, onProgress),
+    uploadMediaFileEffect(token, tag, file, t, onProgress),
+    t('uploadCancelled'),
     signal,
   )
 }
 
 export const uploadEmojiEffect = Effect.fn('media.uploadEmoji')(
-  function*(token: string, file: File) {
+  function*(token: string, file: File, t: Translator) {
     return yield* uploadFile({
       token,
       file,
       endpoint: 'emojis',
-      failureMessage: 'Не удалось загрузить emoji',
+      failureMessage: t('emojiUploadFailed'),
+      networkFailureMessage: t('networkError'),
+      abortMessage: t('uploadCancelled'),
     })
   },
 )
@@ -214,7 +235,8 @@ export const uploadEmojiEffect = Effect.fn('media.uploadEmoji')(
 export function uploadEmoji(
   token: string,
   file: File,
+  t: Translator,
   signal?: AbortSignal,
 ): Promise<string> {
-  return runUpload(uploadEmojiEffect(token, file), signal)
+  return runUpload(uploadEmojiEffect(token, file, t), t('uploadCancelled'), signal)
 }

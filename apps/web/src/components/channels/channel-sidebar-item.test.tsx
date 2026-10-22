@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
   deleteChannel: vi.fn((_token: string, _channelId: string) => Effect.void),
-  pathname: '/app/',
+  pathname: '/',
   voice: {
     channelId: 'voice-main' as string | null,
     status: 'connected' as 'idle' | 'connecting' | 'connected',
@@ -42,7 +42,7 @@ vi.mock('@tanstack/react-router', () => ({
     onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void
     params: { channelId: string }
   }) => (
-    <a href={`/app/c/${params.channelId}`} onClick={onClick}>
+    <a href={`/c/${params.channelId}`} onClick={onClick}>
       {children}
     </a>
   ),
@@ -103,29 +103,33 @@ vi.mock('#/components/voice/voice-channel-preview', () => ({
   VoiceChannelPreview: () => null,
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
   ContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
   ContextMenuItem: ({
     children,
-    onSelect,
+    onClick,
   }: {
     children: ReactNode
-    onSelect?: () => void
+    onClick?: () => void
   }) => (
-    <button type="button" onClick={() => onSelect?.()}>
+    <button type="button" onClick={onClick}>
       {children}
     </button>
   ),
   ContextMenuSeparator: () => null,
-  ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  ContextMenuTrigger: ({
+    children,
+    render,
+  }: {
+    children?: ReactNode
+    render?: ReactNode
+  }) => <>{render ?? children}</>,
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({
     children,
     open,
@@ -224,7 +228,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.openVoiceChannelDrawer.mockClear()
     mocks.deleteChannel.mockReturnValue(Effect.void)
     mocks.deleteChannel.mockClear()
-    mocks.pathname = '/app/'
+    mocks.pathname = '/'
     mocks.voice.channelId = 'voice-main'
     mocks.voice.status = 'connected'
     mocks.voice.join = mocks.join
@@ -243,10 +247,48 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
+  })
+
+  it('keeps regular channel names muted until hover or selection', () => {
+    mocks.voice.channelId = null
+    mocks.voice.status = 'idle'
+    renderVoiceItem('text-general')
+
+    const link = screen.getByRole('link', { name: 'main' })
+    const row = link.parentElement
+
+    expect(row?.className).toContain('text-muted-foreground')
+    expect(row?.className).toContain('hover:text-foreground')
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
+  })
+
+  it('keeps the medium weight for the active channel', () => {
+    mocks.voice.channelId = null
+    mocks.voice.status = 'idle'
+    renderVoiceItem('voice-main')
+
+    const row = screen.getByRole('link', { name: 'main' }).parentElement
+
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
+  })
+
+  it('renders the connected voice channel name in foreground', () => {
+    mocks.voice.channelId = 'voice-main'
+    mocks.voice.status = 'connected'
+    renderVoiceItem('text-general')
+
+    const row = screen.getByRole('link', { name: 'main' }).parentElement
+
+    expect(row?.className).toContain('text-foreground')
+    expect(row?.className).not.toContain('text-muted-foreground')
+    expect(row?.className).toContain('font-medium')
+    expect(row?.className).not.toContain('font-normal')
   })
 
   it('reasserts the selected intent when reopening its voice screen', () => {
@@ -256,7 +298,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
@@ -298,7 +340,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(requestOpen).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })

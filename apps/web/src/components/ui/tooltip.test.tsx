@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -26,7 +26,7 @@ describe('TooltipContent', () => {
     cleanup()
   })
 
-  it('uses the solid themed surface without an arrow', () => {
+  it('renders the shadcn tooltip content without an arrow', () => {
     render(
       <TooltipProvider>
         <Tooltip open>
@@ -37,8 +37,8 @@ describe('TooltipContent', () => {
     )
 
     const content = document.querySelector('[data-slot="tooltip-content"]')
-    expect(content?.classList.contains('gradient-surface-solid')).toBe(true)
-    expect(content?.classList.contains('gradient-surface-floating')).toBe(false)
+    expect(content).toBeInTheDocument()
+    expect(content).toHaveTextContent('Подсказка')
     expect(content?.querySelector('svg')).toBeNull()
   })
 })

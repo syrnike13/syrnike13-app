@@ -19,6 +19,14 @@ export interface paths {
   "/diagnostics/reports": {
     post: operations["diagnostics_create_report"];
   };
+  "/users/@me/badges/unseen": {
+    /** Retrieve badges whose unlock notification has not been shown yet. */
+    get: operations["unseen_badges_fetch"];
+  };
+  "/users/@me/badges/seen": {
+    /** Mark badge unlock notifications as shown. */
+    put: operations["unseen_badges_acknowledge"];
+  };
   "/users/@me": {
     /** Retrieve your user information. */
     get: operations["fetch_self_fetch"];
@@ -3020,6 +3028,11 @@ export interface components {
       /** @description Whether onboarding is required */
       onboarding: boolean;
     };
+    /** Seen Badges */
+    DataAcknowledgeBadges: {
+      /** @description Badge ids whose unlock notification was shown */
+      badges: string[];
+    };
     /** New User Data */
     DataOnboard: {
       /** @description New username which will be used to identify the user on the platform */
@@ -3616,6 +3629,39 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["DiagnosticReportUpload"];
+      };
+    };
+  };
+  /** Retrieve badges whose unlock notification has not been shown yet. */
+  unseen_badges_fetch: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["UserBadge"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Mark badge unlock notifications as shown. */
+  unseen_badges_acknowledge: {
+    responses: {
+      200: unknown;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataAcknowledgeBadges"];
       };
     };
   };

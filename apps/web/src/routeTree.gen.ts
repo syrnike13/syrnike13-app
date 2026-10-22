@@ -9,15 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
-import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as MRouteRouteImport } from './routes/m/route'
-import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as AppFriendsRouteImport } from './routes/app/friends'
-import { Route as AppSettingsRouteImport } from './routes/app/settings'
-import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAchievementsDebugRouteImport } from './routes/_app/achievements-debug'
+import { Route as AppFriendsRouteImport } from './routes/_app/friends'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppVoiceDebugRouteImport } from './routes/_app/voice-debug'
 import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
+import { Route as DevUiRouteImport } from './routes/dev/ui'
 import { Route as InviteCodeRouteImport } from './routes/invite/$code'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LoginCheckRouteImport } from './routes/login/check'
@@ -30,31 +31,25 @@ import { Route as MFriendsRouteImport } from './routes/m/friends'
 import { Route as MProfileRouteImport } from './routes/m/profile'
 import { Route as MSettingsRouteImport } from './routes/m/settings'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
-import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
-import { Route as AppFeedbackIndexRouteImport } from './routes/app/feedback/index'
-import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/app/feedback/$feedbackId'
-import { Route as AppFeedbackNewRouteImport } from './routes/app/feedback/new'
+import { Route as AppCChannelIdRouteImport } from './routes/_app/c/$channelId'
+import { Route as AppFeedbackIndexRouteImport } from './routes/_app/feedback/index'
+import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/_app/feedback/$feedbackId'
+import { Route as AppFeedbackNewRouteImport } from './routes/_app/feedback/new'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
 import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
 import { Route as MFeedbackIndexRouteImport } from './routes/m/feedback/index'
 import { Route as MFeedbackFeedbackIdRouteImport } from './routes/m/feedback/$feedbackId'
 import { Route as MFeedbackNewRouteImport } from './routes/m/feedback/new'
-import { Route as AppServersServerIdSettingsRouteImport } from './routes/app/servers/$serverId/settings'
+import { Route as AppServersServerIdSettingsRouteImport } from './routes/_app/servers/$serverId/settings'
 import { Route as MServersServerIdSettingsRouteImport } from './routes/m/servers/$serverId/settings'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppRouteRoute = AppRouteRouteImport.update({
-  id: '/app',
-  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MRouteRoute = MRouteRouteImport.update({
@@ -65,6 +60,11 @@ const MRouteRoute = MRouteRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAchievementsDebugRoute = AppAchievementsDebugRouteImport.update({
+  id: '/achievements-debug',
+  path: '/achievements-debug',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFriendsRoute = AppFriendsRouteImport.update({
@@ -85,6 +85,11 @@ const AppVoiceDebugRoute = AppVoiceDebugRouteImport.update({
 const DesktopOverlayRoute = DesktopOverlayRouteImport.update({
   id: '/desktop/overlay',
   path: '/desktop/overlay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevUiRoute = DevUiRouteImport.update({
+  id: '/dev/ui',
+  path: '/dev/ui',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InviteCodeRoute = InviteCodeRouteImport.update({
@@ -206,14 +211,15 @@ const MServersServerIdSettingsRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/admin': typeof AdminRouteRoute
-  '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
-  '/app/friends': typeof AppFriendsRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/achievements-debug': typeof AppAchievementsDebugRoute
+  '/friends': typeof AppFriendsRoute
+  '/settings': typeof AppSettingsRoute
+  '/voice-debug': typeof AppVoiceDebugRoute
   '/desktop/overlay': typeof DesktopOverlayRoute
+  '/dev/ui': typeof DevUiRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -224,28 +230,28 @@ export interface FileRoutesByFullPath {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
-  '/app/c/$channelId': typeof AppCChannelIdRoute
-  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
-  '/app/feedback/new': typeof AppFeedbackNewRoute
+  '/c/$channelId': typeof AppCChannelIdRoute
+  '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
   '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
   '/m/feedback/new': typeof MFeedbackNewRoute
-  '/app/feedback/': typeof AppFeedbackIndexRoute
+  '/feedback/': typeof AppFeedbackIndexRoute
   '/m/feedback/': typeof MFeedbackIndexRoute
-  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
+  '/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/admin': typeof AdminRouteRoute
-  '/app/friends': typeof AppFriendsRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/achievements-debug': typeof AppAchievementsDebugRoute
+  '/friends': typeof AppFriendsRoute
+  '/settings': typeof AppSettingsRoute
+  '/voice-debug': typeof AppVoiceDebugRoute
   '/desktop/overlay': typeof DesktopOverlayRoute
+  '/dev/ui': typeof DevUiRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -256,31 +262,32 @@ export interface FileRoutesByTo {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/app': typeof AppIndexRoute
+  '/': typeof AppIndexRoute
   '/login': typeof LoginIndexRoute
   '/m': typeof MIndexRoute
-  '/app/c/$channelId': typeof AppCChannelIdRoute
-  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
-  '/app/feedback/new': typeof AppFeedbackNewRoute
+  '/c/$channelId': typeof AppCChannelIdRoute
+  '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
   '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
   '/m/feedback/new': typeof MFeedbackNewRoute
-  '/app/feedback': typeof AppFeedbackIndexRoute
+  '/feedback': typeof AppFeedbackIndexRoute
   '/m/feedback': typeof MFeedbackIndexRoute
-  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
+  '/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteRouteWithChildren
   '/admin': typeof AdminRouteRoute
-  '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
-  '/app/friends': typeof AppFriendsRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/_app/achievements-debug': typeof AppAchievementsDebugRoute
+  '/_app/friends': typeof AppFriendsRoute
+  '/_app/settings': typeof AppSettingsRoute
+  '/_app/voice-debug': typeof AppVoiceDebugRoute
   '/desktop/overlay': typeof DesktopOverlayRoute
+  '/dev/ui': typeof DevUiRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -291,19 +298,19 @@ export interface FileRoutesById {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/app/': typeof AppIndexRoute
+  '/_app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
-  '/app/c/$channelId': typeof AppCChannelIdRoute
-  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
-  '/app/feedback/new': typeof AppFeedbackNewRoute
+  '/_app/c/$channelId': typeof AppCChannelIdRoute
+  '/_app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/_app/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
   '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
   '/m/feedback/new': typeof MFeedbackNewRoute
-  '/app/feedback/': typeof AppFeedbackIndexRoute
+  '/_app/feedback/': typeof AppFeedbackIndexRoute
   '/m/feedback/': typeof MFeedbackIndexRoute
-  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
+  '/_app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRouteTypes {
@@ -311,12 +318,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
-    | '/app'
     | '/m'
-    | '/app/friends'
-    | '/app/settings'
-    | '/app/voice-debug'
+    | '/achievements-debug'
+    | '/friends'
+    | '/settings'
+    | '/voice-debug'
     | '/desktop/overlay'
+    | '/dev/ui'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -327,28 +335,28 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/app/'
     | '/login/'
     | '/m/'
-    | '/app/c/$channelId'
-    | '/app/feedback/$feedbackId'
-    | '/app/feedback/new'
+    | '/c/$channelId'
+    | '/feedback/$feedbackId'
+    | '/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
     | '/m/feedback/$feedbackId'
     | '/m/feedback/new'
-    | '/app/feedback/'
+    | '/feedback/'
     | '/m/feedback/'
-    | '/app/servers/$serverId/settings'
+    | '/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/admin'
-    | '/app/friends'
-    | '/app/settings'
-    | '/app/voice-debug'
+    | '/achievements-debug'
+    | '/friends'
+    | '/settings'
+    | '/voice-debug'
     | '/desktop/overlay'
+    | '/dev/ui'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -359,30 +367,31 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/app'
+    | '/'
     | '/login'
     | '/m'
-    | '/app/c/$channelId'
-    | '/app/feedback/$feedbackId'
-    | '/app/feedback/new'
+    | '/c/$channelId'
+    | '/feedback/$feedbackId'
+    | '/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
     | '/m/feedback/$feedbackId'
     | '/m/feedback/new'
-    | '/app/feedback'
+    | '/feedback'
     | '/m/feedback'
-    | '/app/servers/$serverId/settings'
+    | '/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   id:
     | '__root__'
-    | '/'
+    | '/_app'
     | '/admin'
-    | '/app'
     | '/m'
-    | '/app/friends'
-    | '/app/settings'
-    | '/app/voice-debug'
+    | '/_app/achievements-debug'
+    | '/_app/friends'
+    | '/_app/settings'
+    | '/_app/voice-debug'
     | '/desktop/overlay'
+    | '/dev/ui'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -393,28 +402,28 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/app/'
+    | '/_app/'
     | '/login/'
     | '/m/'
-    | '/app/c/$channelId'
-    | '/app/feedback/$feedbackId'
-    | '/app/feedback/new'
+    | '/_app/c/$channelId'
+    | '/_app/feedback/$feedbackId'
+    | '/_app/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
     | '/m/feedback/$feedbackId'
     | '/m/feedback/new'
-    | '/app/feedback/'
+    | '/_app/feedback/'
     | '/m/feedback/'
-    | '/app/servers/$serverId/settings'
+    | '/_app/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AdminRouteRoute: typeof AdminRouteRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  AdminRouteRoute: typeof AdminRouteRoute
   MRouteRoute: typeof MRouteRouteWithChildren
   DesktopOverlayRoute: typeof DesktopOverlayRoute
+  DevUiRoute: typeof DevUiRoute
   InviteCodeRoute: typeof InviteCodeRoute
   LoginCheckRoute: typeof LoginCheckRoute
   LoginOnboardRoute: typeof LoginOnboardRoute
@@ -427,11 +436,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -441,13 +450,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof AppRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/m': {
       id: '/m'
       path: '/m'
@@ -455,31 +457,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/': {
-      id: '/app/'
+    '/_app/': {
+      id: '/_app/'
       path: '/'
-      fullPath: '/app/'
+      fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/friends': {
-      id: '/app/friends'
+    '/_app/achievements-debug': {
+      id: '/_app/achievements-debug'
+      path: '/achievements-debug'
+      fullPath: '/achievements-debug'
+      preLoaderRoute: typeof AppAchievementsDebugRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/friends': {
+      id: '/_app/friends'
       path: '/friends'
-      fullPath: '/app/friends'
+      fullPath: '/friends'
       preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/settings': {
-      id: '/app/settings'
+    '/_app/settings': {
+      id: '/_app/settings'
       path: '/settings'
-      fullPath: '/app/settings'
+      fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/voice-debug': {
-      id: '/app/voice-debug'
+    '/_app/voice-debug': {
+      id: '/_app/voice-debug'
       path: '/voice-debug'
-      fullPath: '/app/voice-debug'
+      fullPath: '/voice-debug'
       preLoaderRoute: typeof AppVoiceDebugRouteImport
       parentRoute: typeof AppRouteRoute
     }
@@ -488,6 +497,13 @@ declare module '@tanstack/react-router' {
       path: '/desktop/overlay'
       fullPath: '/desktop/overlay'
       preLoaderRoute: typeof DesktopOverlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/ui': {
+      id: '/dev/ui'
+      path: '/dev/ui'
+      fullPath: '/dev/ui'
+      preLoaderRoute: typeof DevUiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite/$code': {
@@ -574,31 +590,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerifyTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/c/$channelId': {
-      id: '/app/c/$channelId'
+    '/_app/c/$channelId': {
+      id: '/_app/c/$channelId'
       path: '/c/$channelId'
-      fullPath: '/app/c/$channelId'
+      fullPath: '/c/$channelId'
       preLoaderRoute: typeof AppCChannelIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/feedback/': {
-      id: '/app/feedback/'
+    '/_app/feedback/': {
+      id: '/_app/feedback/'
       path: '/feedback'
-      fullPath: '/app/feedback/'
+      fullPath: '/feedback/'
       preLoaderRoute: typeof AppFeedbackIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/feedback/$feedbackId': {
-      id: '/app/feedback/$feedbackId'
+    '/_app/feedback/$feedbackId': {
+      id: '/_app/feedback/$feedbackId'
       path: '/feedback/$feedbackId'
-      fullPath: '/app/feedback/$feedbackId'
+      fullPath: '/feedback/$feedbackId'
       preLoaderRoute: typeof AppFeedbackFeedbackIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/feedback/new': {
-      id: '/app/feedback/new'
+    '/_app/feedback/new': {
+      id: '/_app/feedback/new'
       path: '/feedback/new'
-      fullPath: '/app/feedback/new'
+      fullPath: '/feedback/new'
       preLoaderRoute: typeof AppFeedbackNewRouteImport
       parentRoute: typeof AppRouteRoute
     }
@@ -637,10 +653,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MFeedbackNewRouteImport
       parentRoute: typeof MRouteRoute
     }
-    '/app/servers/$serverId/settings': {
-      id: '/app/servers/$serverId/settings'
+    '/_app/servers/$serverId/settings': {
+      id: '/_app/servers/$serverId/settings'
       path: '/servers/$serverId/settings'
-      fullPath: '/app/servers/$serverId/settings'
+      fullPath: '/servers/$serverId/settings'
       preLoaderRoute: typeof AppServersServerIdSettingsRouteImport
       parentRoute: typeof AppRouteRoute
     }
@@ -655,6 +671,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
+  AppAchievementsDebugRoute: typeof AppAchievementsDebugRoute
   AppFriendsRoute: typeof AppFriendsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVoiceDebugRoute: typeof AppVoiceDebugRoute
@@ -667,6 +684,7 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAchievementsDebugRoute: AppAchievementsDebugRoute,
   AppFriendsRoute: AppFriendsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVoiceDebugRoute: AppVoiceDebugRoute,
@@ -722,11 +740,11 @@ const LoginResetRouteWithChildren = LoginResetRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AdminRouteRoute: AdminRouteRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
+  AdminRouteRoute: AdminRouteRoute,
   MRouteRoute: MRouteRouteWithChildren,
   DesktopOverlayRoute: DesktopOverlayRoute,
+  DevUiRoute: DevUiRoute,
   InviteCodeRoute: InviteCodeRoute,
   LoginCheckRoute: LoginCheckRoute,
   LoginOnboardRoute: LoginOnboardRoute,

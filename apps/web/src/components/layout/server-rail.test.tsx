@@ -3,19 +3,27 @@
 import {
   cleanup,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react'
+import { renderWithI18n } from '@syrnike13/ui/test-utils'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerRail } from '#/components/layout/server-rail'
+import en from '#/messages/en.json'
+import ru from '#/messages/ru.json'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
+
+function renderRail() {
+  return renderWithI18n(<ServerRail variant="desktop" />, {
+    messages: { en, ru },
+  })
+}
 
 vi.mock('@tanstack/react-router', () => ({
   Link: forwardRef<
@@ -45,11 +53,11 @@ vi.mock('@tanstack/react-router', () => ({
       : to,
   }),
   useMatch: ({ from }: { from: string }) =>
-    from === '/app/' || from === '/m/'
+    from === '/_app/' || from === '/m/'
       ? { routeId: from, params: {}, search: {} }
       : false,
   useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
-    select({ location: { pathname: '/app' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -99,12 +107,16 @@ describe('ServerRail', () => {
   })
 
   it('shows home notifications on the home rail button', () => {
-    const { container } = render(<ServerRail variant="desktop" />)
+    const { container } = renderRail()
 
     expect(screen.getByRole('link', { name: 'Главная' })).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
-    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(true)
-    expect(container.firstElementChild?.classList.contains('pb-3')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(false)
+    expect(
+      container.firstElementChild?.classList.contains(
+        'pb-(--rail-bottom-reserve)',
+      ),
+    ).toBe(true)
     expect(container.firstElementChild?.classList.contains('py-3')).toBe(false)
   })
 
@@ -140,7 +152,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const image = screen
       .getByRole('link', { name: 'Demo' })
@@ -170,23 +182,19 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
-    fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
-      pointerType: 'mouse',
-    })
+    const demoTooltipTrigger = screen.getByRole('link', { name: 'Demo' })
+    fireEvent.pointerEnter(demoTooltipTrigger, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(demoTooltipTrigger)
 
     await waitFor(() => {
-      const tooltip = screen.getByRole('tooltip')
-      const tooltipContent = document.querySelector(
+      const tooltipContent = document.querySelector<HTMLElement>(
         '[data-slot="tooltip-content"]',
       )
-      expect(tooltip.textContent).toBe('Demo')
+      expect(tooltipContent).toBeTruthy()
+      expect(tooltipContent?.textContent).toBe('Demo')
       expect(tooltipContent?.className).toContain('font-black')
-      expect(tooltipContent?.firstElementChild?.className).toContain('w-max')
-      expect(tooltipContent?.firstElementChild?.className).not.toContain(
-        'min-w-32',
-      )
     })
   })
 
@@ -273,7 +281,7 @@ describe('ServerRail', () => {
       voice_calls: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const activityBadge = serverLink.querySelector<HTMLElement>(
@@ -285,9 +293,8 @@ describe('ServerRail', () => {
       'На сервере демонстрируют экран',
     )
 
-    fireEvent.pointerMove(serverLink, {
-      pointerType: 'mouse',
-    })
+    fireEvent.pointerEnter(serverLink, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(serverLink)
 
     await waitFor(() => {
       const tooltipContent = document.querySelector<HTMLElement>(
@@ -356,7 +363,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const image = serverLink.querySelector('img')
@@ -422,7 +429,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
     await waitFor(() => expect(mediaListener).toHaveBeenCalled())
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
@@ -474,7 +481,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const home = screen.getByRole('link', { name: 'Главная' })
     expect(screen.getByTitle('alice')).toBeTruthy()
@@ -520,7 +527,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     expect(screen.queryByTitle('alice')).toBeNull()
   })
@@ -578,7 +585,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const home = screen.getByRole('link', { name: 'Главная' })
     const person = screen.getByTitle('alice')
@@ -628,7 +635,7 @@ describe('ServerRail', () => {
     } as never)
     syncStore.setSelectedServerId('server-1')
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     fireEvent.click(screen.getByTitle('alice'))
 
@@ -681,7 +688,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverLink = screen.getByRole('link', { name: 'Demo' })
     const serverRow = serverLink.closest('.group')
@@ -741,7 +748,7 @@ describe('ServerRail', () => {
       voice_states: [],
     } as never)
 
-    render(<ServerRail variant="desktop" />)
+    renderRail()
 
     const serverRow = screen
       .getByRole('link', { name: 'Demo' })

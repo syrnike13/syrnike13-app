@@ -5,7 +5,7 @@ import { messageDeepLink } from './message-link'
 describe('messageDeepLink', () => {
   it('uses the public app origin instead of the current browser origin', () => {
     expect(messageDeepLink('channel-1', 'message 1')).toBe(
-      'https://syrnike13.ru/app/c/channel-1?m=message%201',
+      'https://app.syrnike13.ru/c/channel-1?m=message%201',
     )
   })
 })

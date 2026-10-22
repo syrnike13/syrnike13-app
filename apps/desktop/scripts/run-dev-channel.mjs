@@ -70,6 +70,6 @@ await run(
   [
     'pnpm exec concurrently -k -n web,electron',
     `"pnpm --filter @syrnike13/web ${channel.webScript}"`,
-    '"wait-on http-get://127.0.0.1:3000 && pnpm exec electron ."',
+    '"wait-on http-get://127.0.0.1:3001 && pnpm exec electron ."',
   ].join(' '),
 )

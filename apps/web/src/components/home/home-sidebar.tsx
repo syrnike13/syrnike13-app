@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { LightbulbIcon, UsersIcon } from '#/components/icons'
 
 import { CommandPaletteTrigger } from '#/components/command-palette/command-palette-trigger'
@@ -6,9 +7,11 @@ import { DmChannelList } from '#/components/home/dm-channel-list'
 import { NewConversationButton } from '#/components/home/new-conversation-button'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import type { CSSVars } from '#/lib/css-vars'
+import { cn } from '#/lib/utils'
 type HomeSidebarProps = {
   activeChannelId?: string
   reserveUserPanelSpace?: boolean
@@ -23,47 +26,51 @@ export function HomeSidebar({
   reserveUserPanelSpace = true,
   userPanelReservePx = USER_PANEL_RESERVE_PX,
 }: HomeSidebarProps) {
+  const tFriends = useTranslations('home.friends')
+  const tFeedback = useTranslations('feedback.view')
   const prefix = useAppRoutePrefix()
+  const navLinkClass = (className: string) =>
+    cn(buttonVariants({ variant: 'ghost' }), className)
   return (
     <aside
-      className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
+      className={cn(
+        'flex h-full min-h-0 w-full flex-col',
+        shellNavSurface,
+        reserveUserPanelSpace && 'pb-(--sidebar-bottom-reserve)',
+      )}
       style={
         reserveUserPanelSpace
-          ? { paddingBottom: userPanelReservePx }
+          ? ({
+              '--sidebar-bottom-reserve': `${userPanelReservePx}px`,
+            } as CSSVars)
           : undefined
       }
     >
       <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
         <CommandPaletteTrigger />
-        <Button
-          variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-2 font-medium"
-          asChild
+        <Link
+          to={prefix || '/'}
+          search={{ tab: 'online' }}
+          activeOptions={{ exact: true }}
+          activeProps={{ className: activeNavItemClassName }}
+          className={navLinkClass(
+            'h-9 w-full justify-start gap-2 px-2 font-medium',
+          )}
         >
-          <Link
-            to={prefix}
-            search={{ tab: 'online' }}
-            activeOptions={{ exact: true }}
-            activeProps={{ className: activeNavItemClassName }}
-          >
-            <UsersIcon className="size-4 shrink-0" />
-            Друзья
-          </Link>
-        </Button>
-        <Button
-          variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-2 font-medium"
-          asChild
+          <UsersIcon className="size-4 shrink-0" />
+          {tFriends('title')}
+        </Link>
+        <Link
+          to={`${prefix}/feedback`}
+          search={{ view: 'all' }}
+          activeProps={{ className: activeNavItemClassName }}
+          className={navLinkClass(
+            'h-9 w-full justify-start gap-2 px-2 font-medium',
+          )}
         >
-          <Link
-            to={`${prefix}/feedback`}
-            search={{ view: 'all' }}
-            activeProps={{ className: activeNavItemClassName }}
-          >
-            <LightbulbIcon className="size-4 shrink-0" />
-            Идеи
-          </Link>
-        </Button>
+          <LightbulbIcon className="size-4 shrink-0" />
+          {tFeedback('title')}
+        </Link>
       </div>
 
       <div className="flex items-center justify-between px-3 py-2">

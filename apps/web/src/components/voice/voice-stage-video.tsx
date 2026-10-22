@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Loader2Icon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import type { VideoTrack } from 'livekit-client'
 
 import type { VoiceStageMediaTrack } from '#/features/voice/voice-context'
@@ -104,15 +105,17 @@ export function VoiceStageVideo({
 
 /** Shown over the last frame while the stream switches resolution/FPS. */
 function QualitySwitchOverlay() {
+  const t = useTranslations('voice')
+
   return (
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none absolute inset-0 z-[1] flex flex-col items-center justify-center gap-2 bg-black/50 px-2 text-white"
+      className="pointer-events-none absolute inset-0 z-1 flex flex-col items-center justify-center gap-2 bg-media-backdrop/50 px-2 text-on-media"
     >
-      <Loader2Icon className="size-6 shrink-0 animate-spin" aria-hidden />
+      <Spinner className="size-6 shrink-0" aria-hidden />
       <span className="max-w-full truncate text-xs font-medium">
-        Переключение качества…
+        {t('stage.videoQualitySwitching')}
       </span>
     </div>
   )

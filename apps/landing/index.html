@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru" suppressHydrationWarning>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4a3f8f" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/app-logo.png" />
+    <title>syrnike13</title>
+    <script>
+      ;(() => {
+        try {
+          const stored = localStorage.getItem('syrnike13-appearance')
+          const mode = stored ? JSON.parse(stored).colorMode : null
+          const dark =
+            mode === 'dark' ||
+            (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

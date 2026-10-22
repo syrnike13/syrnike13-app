@@ -33,15 +33,15 @@ vi.mock('#/features/settings/settings-modal-context', () => ({
   useSettingsModal: () => ({ openSettings: vi.fn() }),
 }))
 
-function renderControl(onToggleCamera = vi.fn()) {
-  return render(
+function cameraControl(onToggleCamera = vi.fn(), cameraOn = false) {
+  return (
     <VoiceCameraSplitControl
       surface="stage"
       title="Включить камеру"
       disabled={false}
-      cameraOn={false}
+      cameraOn={cameraOn}
       onToggleCamera={onToggleCamera}
-    />,
+    />
   )
 }
 
@@ -57,35 +57,30 @@ describe('VoiceCameraSplitControl', () => {
   })
 
   it('keeps the device list closed until it is requested', () => {
-    renderControl()
+    render(cameraControl())
 
     expect(screen.queryByText('HD Webcam')).toBeNull()
   })
 
   it('opens the device list when the camera device fails', () => {
-    const view = renderControl()
+    const view = render(cameraControl())
 
     media.cameraDeviceFailed = true
     media.cameraDevicePickerRequest = 1
-    view.rerender(
-      <VoiceCameraSplitControl
-        surface="stage"
-        title="Включить камеру"
-        disabled={false}
-        cameraOn={false}
-        onToggleCamera={vi.fn()}
-      />,
-    )
+    view.rerender(cameraControl())
 
     expect(
       screen.getByText('Не удалось включить камеру. Выберите устройство.'),
     ).toBeTruthy()
-    expect(screen.getByText('По умолчанию (OBS Virtual Camera)')).toBeTruthy()
+    expect(screen.getByText('HD Webcam')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'HD Webcam' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'HD Webcam' }))
 
     expect(media.selectCameraDevice).toHaveBeenCalledWith('12')
-    expect(screen.queryByText('HD Webcam')).toBeNull()
+    // The list closes; Base UI keeps it mounted until the exit transition ends.
+    expect(document.querySelector('[data-slot="popover-content"]')).toHaveAttribute(
+      'data-closed',
+    )
   })
 
   it('opens one device list when the stage and the panel both show a camera button', () => {
@@ -94,13 +89,7 @@ describe('VoiceCameraSplitControl', () => {
         <CameraDevicePickerAnchor>
           <button type="button">panel camera</button>
         </CameraDevicePickerAnchor>
-        <VoiceCameraSplitControl
-          surface="stage"
-          title="Включить камеру"
-          disabled={false}
-          cameraOn={false}
-          onToggleCamera={vi.fn()}
-        />
+        {cameraControl()}
       </>
     )
     const view = render(tree())
@@ -115,11 +104,11 @@ describe('VoiceCameraSplitControl', () => {
   })
 
   it('opens the device list from the chevron', () => {
-    renderControl()
+    render(cameraControl())
 
     fireEvent.click(screen.getByRole('button', { name: 'Параметры камеры' }))
-    fireEvent.click(screen.getByRole('button', { name: 'По умолчанию (OBS Virtual Camera)' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'HD Webcam' }))
 
-    expect(media.selectCameraDevice).toHaveBeenCalledWith(undefined)
+    expect(media.selectCameraDevice).toHaveBeenCalledWith('12')
   })
 })

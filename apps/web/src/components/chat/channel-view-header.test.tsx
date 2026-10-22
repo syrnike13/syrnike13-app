@@ -42,7 +42,7 @@ const chatState = vi.hoisted(() => ({
 }))
 const routerMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  pathname: '/app/c/test',
+  pathname: '/c/test',
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -50,6 +50,44 @@ vi.mock('@tanstack/react-router', () => ({
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
     select({ location: { pathname: routerMocks.pathname } }),
 }))
+
+vi.mock('#/features/auth/auth-context', () => ({
+  useAuth: () => ({
+    hydrated: true,
+    isLoading: false,
+    session: { token: 'test-token' },
+    user: {
+      _id: 'current-user',
+      username: 'me',
+      discriminator: '0001',
+      relationship: 'User',
+      online: true,
+    },
+    gatewayState: 'ready',
+    mfaChallenge: null,
+    profileLoadError: null,
+    needsOnboarding: false,
+    onboardingChecked: true,
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
+    retryProfileLoad: vi.fn(),
+  }),
+}))
+
+vi.mock('#/features/api/users-api', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('#/features/api/users-api')>()
+  return {
+    ...actual,
+    fetchUserProfile: vi.fn(async () => ({ content: null, background: null })),
+    fetchUserMutual: vi.fn(async () => ({
+      users: [],
+      servers: [],
+      channels: [],
+    })),
+    fetchUser: vi.fn(async () => ({ badges: [] })),
+  }
+})
 
 class FakeResizeObserver {
   observe = vi.fn()
@@ -279,7 +317,7 @@ describe('ChannelView direct message header', () => {
     cancelDirectMessageCallMock.mockClear()
     declineDirectMessageCallMock.mockClear()
     routerMocks.navigate.mockClear()
-    routerMocks.pathname = '/app/c/test'
+    routerMocks.pathname = '/c/test'
     voiceState.channelId = null
     voiceState.status = 'idle'
     chatState.channel = directMessageChannel

@@ -63,20 +63,20 @@ export const SCREEN_SHARE_CAPTURE_MODES = [
   'native',
 ] satisfies ScreenShareCaptureMode[]
 
-export const SCREEN_SHARE_CAPTURE_MODE_LABELS: Record<
+export const SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS: Record<
   ScreenShareCaptureMode,
   string
 > = {
-  auto: 'Авто (нативный на Windows)',
-  native: 'Нативный (Windows)',
+  auto: 'preferences.captureAuto',
+  native: 'preferences.captureNative',
 }
 
-export const SCREEN_SHARE_QUALITY_LABELS: Record<
+export const SCREEN_SHARE_QUALITY_LABEL_KEYS: Record<
   ScreenShareQualityName,
   string
 > = {
-  low: '720p, 30 FPS',
-  high: '1080p, 30 FPS',
-  high60: '1080p, 60 FPS',
-  text: 'Исходное разрешение, 5 FPS',
+  low: 'preferences.quality720p30',
+  high: 'preferences.quality1080p30',
+  high60: 'preferences.quality1080p60',
+  text: 'preferences.qualitySource',
 }

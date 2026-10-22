@@ -323,7 +323,7 @@ describe('StageMediaTile', () => {
       .getByRole('button')
       .querySelector('[data-slot="avatar"]')
     expect(avatar).toBeTruthy()
-    expect(avatar?.className).toContain('size-[min(58cqh,36cqw,4.75rem)]')
+    expect(avatar?.className).toContain('size-media-avatar')
     expect(avatar?.className).not.toContain('size-full')
   })
 

@@ -1,23 +1,26 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Loader2Icon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
+} from '@syrnike13/ui/primitives/card'
 import { verifyAccountEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { clearPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/verify/$token')({
   beforeLoad: () => {
@@ -34,6 +37,7 @@ type VerifyState =
   | { status: 'success'; hasTicket: boolean }
 
 function VerifyEmailPage() {
+  const t = useTranslations('auth')
   const { token } = Route.useParams()
   const auth = useAuth()
   const navigate = useNavigate()
@@ -47,7 +51,7 @@ function VerifyEmailPage() {
         if (!ticket) {
           yield* Effect.sync(() => {
             setState({ status: 'success', hasTicket: false })
-            toast.success('Email подтверждён')
+            toast.success(t('verify.successTitle'))
           })
           return
         }
@@ -70,10 +74,7 @@ function VerifyEmailPage() {
           Effect.sync(() => {
             setState({
               status: 'error',
-              message:
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось подтвердить email',
+              message: apiErrorMessage(error, t('verify.error')),
             })
           }),
         ),
@@ -82,7 +83,7 @@ function VerifyEmailPage() {
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на token
+    // Один раз на token.
   }, [token])
 
   return (
@@ -90,30 +91,29 @@ function VerifyEmailPage() {
       <AuthCard>
         <CardHeader>
           <CardTitle>
-            {state.status === 'loading' && 'Проверяем ссылку'}
-            {state.status === 'success' && 'Email подтверждён'}
-            {state.status === 'error' && 'Ссылка не сработала'}
+            {state.status === 'loading' && t('verify.loadingTitle')}
+            {state.status === 'success' && t('verify.successTitle')}
+            {state.status === 'error' && t('verify.errorTitle')}
           </CardTitle>
           <CardDescription>
-            {state.status === 'loading' &&
-              'Это займёт всего несколько секунд.'}
+            {state.status === 'loading' && t('verify.loadingDescription')}
             {state.status === 'success' &&
               (state.hasTicket
-                ? 'Вход выполнен, перенаправляем…'
-                : 'Аккаунт подтверждён. Теперь можно войти.')}
+                ? t('verify.successTicket')
+                : t('verify.successNoTicket'))}
             {state.status === 'error' && state.message}
           </CardDescription>
         </CardHeader>
         {state.status === 'loading' ? (
           <CardContent className="flex justify-center py-6">
-            <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
+            <Spinner className="size-8 text-muted-foreground" />
           </CardContent>
         ) : null}
         {state.status !== 'loading' ? (
           <CardFooter className="flex flex-col gap-2">
-            <Button className="w-full" asChild>
-              <Link to="/login">Перейти ко входу</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('verify.toLogin')}
+            </Link>
           </CardFooter>
         ) : null}
       </AuthCard>

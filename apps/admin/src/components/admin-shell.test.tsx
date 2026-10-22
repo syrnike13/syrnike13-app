@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +22,11 @@ const mocks = vi.hoisted(() => ({
         enableBeforeUnload: () => boolean
       }
     | undefined,
+  blocker: {
+    status: 'idle' as 'idle' | 'blocked',
+    proceed: vi.fn(),
+    reset: vi.fn(),
+  },
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -30,6 +42,7 @@ vi.mock('@tanstack/react-router', () => ({
   Outlet: () => <div data-testid="outlet" />,
   useBlocker: (options: NonNullable<typeof mocks.blockerOptions>) => {
     mocks.blockerOptions = options
+    return mocks.blocker
   },
   useRouterState: () => '/badges',
 }))
@@ -51,6 +64,10 @@ describe('AdminShell', () => {
   afterEach(() => {
     cleanup()
     mocks.blockerOptions = undefined
+    mocks.blocker.status = 'idle'
+    mocks.blocker.proceed.mockClear()
+    mocks.blocker.reset.mockClear()
+    mocks.auth.logout.mockClear()
   })
 
   it('renders navigation for privileged users', () => {
@@ -69,7 +86,7 @@ describe('AdminShell', () => {
 
   it('blocks shell navigation and browser unload for a dirty draft', async () => {
     mocks.auth.isPrivileged = true
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const confirm = vi.spyOn(window, 'confirm')
 
     render(
       <AdminShell>
@@ -81,8 +98,49 @@ describe('AdminShell', () => {
       expect(mocks.blockerOptions?.enableBeforeUnload()).toBe(true)
     })
     expect(mocks.blockerOptions?.shouldBlockFn()).toBe(true)
-    expect(confirm).toHaveBeenCalledOnce()
+    expect(confirm).not.toHaveBeenCalled()
 
     confirm.mockRestore()
+  })
+
+  it('asks before leaving through a blocked navigation', async () => {
+    mocks.auth.isPrivileged = true
+    mocks.blocker.status = 'blocked'
+
+    render(<AdminShell />)
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Несохранённые изменения')).not.toBeNull()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Остаться' }))
+    expect(mocks.blocker.reset).toHaveBeenCalledOnce()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Покинуть' }))
+    expect(mocks.blocker.proceed).toHaveBeenCalledOnce()
+  })
+
+  it('asks before signing out with a dirty draft', async () => {
+    mocks.auth.isPrivileged = true
+
+    render(
+      <AdminShell>
+        <DirtyDraft />
+      </AdminShell>,
+    )
+
+    await waitFor(() => {
+      expect(mocks.blockerOptions?.shouldBlockFn()).toBe(true)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Выйти?')).not.toBeNull()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Выйти' }))
+
+    await waitFor(() => {
+      expect(mocks.auth.logout).toHaveBeenCalledOnce()
+    })
   })
 })

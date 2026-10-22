@@ -21,7 +21,7 @@ VideoProcessor conversion, and Media Foundation therefore use the same D3D11
 device. Conversion submits a BGRA-to-NV12 VideoProcessor blit with BT.709 studio
 range and never maps, flushes, or waits on a GPU fence.
 
-The preset is a box, not the stream size. As in Discord, the stream keeps the
+The preset is a box, not the stream size. The stream keeps the
 source's aspect ratio inside it (`fitScreenOutput`): never upscaled, a tiny
 source raised to a 320 px long side, sides in multiples of 8, the preset's FPS
 and bitrate. An ultrawide 3440x1440 monitor is sent as 1920x800, a portrait

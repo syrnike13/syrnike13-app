@@ -5,6 +5,7 @@ import {
   RiCheckboxBlankCircleLine,
   RiDeleteBinLine,
   RiDownloadLine,
+  RiDraggable,
   RiErrorWarningLine,
   RiEyeLine,
   RiFolderAddLine,
@@ -91,4 +92,9 @@ export const AlertCircleIcon = defineIcon(RiErrorWarningLine, {
 export const BellOffIcon = defineIcon(RiNotificationOffLine, {
   pack: 'remixicon',
   name: 'RiNotificationOffLine',
+})
+
+export const DraggableIcon = defineIcon(RiDraggable, {
+  pack: 'remixicon',
+  name: 'RiDraggable',
 })

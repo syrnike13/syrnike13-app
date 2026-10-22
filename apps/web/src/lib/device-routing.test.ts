@@ -31,8 +31,8 @@ describe('device-routing', () => {
     })
 
     it('rejects non-mobile paths', () => {
-      expect(isMobileAllowedPath('/app')).toBe(false)
-      expect(isMobileAllowedPath('/app/c/abc')).toBe(false)
+      expect(isMobileAllowedPath('/')).toBe(false)
+      expect(isMobileAllowedPath('/c/abc')).toBe(false)
       expect(isMobileAllowedPath('/login')).toBe(false)
       expect(isMobileAllowedPath('/mobile-thing')).toBe(false)
     })
@@ -161,46 +161,46 @@ describe('device-routing', () => {
   })
 
   describe('mapAppPathToMobile', () => {
-    it('maps /app to /m', () => {
-      expect(mapAppPathToMobile('/app')).toBe('/m')
+    it('maps the app home to /m', () => {
+      expect(mapAppPathToMobile('/')).toBe('/m')
     })
 
-    it('maps /app/c/$id to /m/c/$id', () => {
-      expect(mapAppPathToMobile('/app/c/abc123')).toBe('/m/c/abc123')
+    it('maps /c/$id to /m/c/$id', () => {
+      expect(mapAppPathToMobile('/c/abc123')).toBe('/m/c/abc123')
     })
 
     it('maps nested app paths', () => {
-      expect(mapAppPathToMobile('/app/servers/x/settings')).toBe(
+      expect(mapAppPathToMobile('/servers/x/settings')).toBe(
         '/m/servers/x/settings',
       )
-      expect(mapAppPathToMobile('/app/profile')).toBe('/m/profile')
+      expect(mapAppPathToMobile('/friends')).toBe('/m/friends')
     })
 
     it('returns null for non-app paths', () => {
       expect(mapAppPathToMobile('/login')).toBeNull()
-      expect(mapAppPathToMobile('/')).toBeNull()
       expect(mapAppPathToMobile('/invite/abc')).toBeNull()
+      expect(mapAppPathToMobile('/profile')).toBeNull()
     })
   })
 
   describe('mapMobilePathToApp', () => {
-    it('maps /m to /app', () => {
-      expect(mapMobilePathToApp('/m')).toBe('/app')
+    it('maps /m to the app home', () => {
+      expect(mapMobilePathToApp('/m')).toBe('/')
     })
 
-    it('maps /m/c/$id to /app/c/$id', () => {
-      expect(mapMobilePathToApp('/m/c/abc123')).toBe('/app/c/abc123')
+    it('maps /m/c/$id to /c/$id', () => {
+      expect(mapMobilePathToApp('/m/c/abc123')).toBe('/c/abc123')
     })
 
     it('maps nested mobile paths', () => {
-      expect(mapMobilePathToApp('/m/profile')).toBe('/app/profile')
+      expect(mapMobilePathToApp('/m/profile')).toBe('/profile')
       expect(mapMobilePathToApp('/m/servers/x/settings')).toBe(
-        '/app/servers/x/settings',
+        '/servers/x/settings',
       )
     })
 
     it('returns null for non-mobile paths', () => {
-      expect(mapMobilePathToApp('/app')).toBeNull()
+      expect(mapMobilePathToApp('/')).toBeNull()
       expect(mapMobilePathToApp('/login')).toBeNull()
     })
   })

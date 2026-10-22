@@ -1,26 +1,41 @@
+import { Fragment, useMemo, useState, type ReactElement } from 'react'
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { PhoneFilledIcon, PhoneOffIcon, PinIcon, ReplyIcon } from '#/components/icons'
-import { useMemo, type ReactElement } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { PinIcon } from '#/components/icons'
 
-import {
-  MESSAGE_AVATAR_COLUMN,
-  MESSAGE_COMPACT_CONTENT_INSET,
-  MESSAGE_COMPACT_TIME_CLASS,
-  MESSAGE_ROW_PADDING_X,
-} from '#/components/chat/message-layout'
-import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
-import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
+import { InlineReplyQuote, messageAuthorName } from '#/components/chat/message-reply-preview'
+import { useMessageActions } from '#/components/chat/message-actions'
 import { MessageAttachments } from '#/components/chat/message-attachments'
 import { MessageEmbeds, visibleEmbeds } from '#/components/chat/message-embeds'
+import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageReactions } from '#/components/chat/message-reactions'
+import { MessageSystemRow } from '#/components/chat/message-system-row'
+import { MESSAGE_COMPACT_TIME_CLASS } from '#/components/chat/message-layout'
+import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfilePopover } from '#/components/user/user-profile-popover'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
-import { UserAvatar } from '#/components/user/user-avatar'
-import { UserProfilePopover } from '#/components/user/user-profile-popover'
+} from '@syrnike13/ui/primitives/context-menu'
+import {
+  Message as MessagePrimitive,
+  MessageAvatar,
+  MessageContent,
+  MessageHeader,
+} from '@syrnike13/ui/primitives/message'
 import {
   memberRoleEntries,
   type MemberRoleEntry,
@@ -28,11 +43,9 @@ import {
 import { useSyncStore } from '#/features/sync/sync-store'
 import { isMessageMentioningUser } from '#/lib/mentions'
 import { renderMessageContent } from '#/lib/message-markdown'
-import {
-  formatMessageTimeShort,
-  formatMessageTimestamp,
-  messageCreatedAt,
-} from '#/lib/message-time'
+import { messageCreatedAt } from '#/lib/message-time'
+import { useMessageTimeShort, useMessageTimestamp } from '#/lib/use-message-time'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type MessageRowProps = {
@@ -61,14 +74,6 @@ export type MessageRowProps = {
   ) => void
 }
 
-function authorLabel(message: Message, users: Record<string, User>) {
-  if (message.user) {
-    return message.user.display_name ?? message.user.username
-  }
-  const user = users[message.author]
-  return user?.display_name ?? user?.username ?? 'Неизвестный'
-}
-
 function memberDisplayColor(
   server: Server | undefined,
   member: Member | undefined,
@@ -81,148 +86,6 @@ function memberDisplayColor(
     return colour.startsWith('#') ? colour : `#${colour}`
   }
   return undefined
-}
-
-function callParticipantName(userId: string, users: Record<string, User>) {
-  const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Пользователь'
-}
-
-function formatCallDuration(startedAt: Date, finishedAt: string) {
-  const finishedAtMs = new Date(finishedAt).getTime()
-  if (!Number.isFinite(finishedAtMs)) return null
-
-  const durationSeconds = Math.max(
-    1,
-    Math.round((finishedAtMs - startedAt.getTime()) / 1000),
-  )
-
-  if (durationSeconds < 60) {
-    return `${durationSeconds} сек`
-  }
-
-  const durationMinutes = Math.max(1, Math.round(durationSeconds / 60))
-  if (durationMinutes < 60) {
-    return `${durationMinutes} мин`
-  }
-
-  const durationHours = Math.max(1, Math.round(durationMinutes / 60))
-  return `${durationHours} ч`
-}
-
-function isSuccessfulVoiceCall(
-  system: Extract<Message['system'], { type: 'call_started' }>,
-) {
-  return (
-    Boolean(system.finished_at) &&
-    (system.ended_reason ?? 'completed') === 'completed'
-  )
-}
-
-function VoiceCallSystemCard({
-  message,
-  users,
-  serverId,
-  currentUserId,
-}: {
-  message: Message
-  users: Record<string, User>
-  serverId?: string
-  currentUserId?: string
-}) {
-  if (message.system?.type !== 'call_started') return null
-
-  const server = useSyncStore((s) =>
-    serverId ? s.servers[serverId] : undefined,
-  )
-  const callerId = message.system.by
-  const callerUser = users[callerId]
-  const member = useSyncStore((s) =>
-    serverId ? s.members[`${serverId}:${callerId}`] : undefined,
-  )
-  const callerName = callParticipantName(callerId, users)
-  const callerRoles =
-    server && member ? memberRoleEntries(server, member) : undefined
-  const hideCallerMessage = callerUser?._id === currentUserId
-  const startedAt = messageCreatedAt(message)
-  const timestamp = formatMessageTimestamp(startedAt)
-  const duration = message.system.finished_at
-    ? formatCallDuration(startedAt, message.system.finished_at)
-    : null
-  const endedReason = message.system.ended_reason ?? 'completed'
-  const endedStatus =
-    endedReason === 'cancelled'
-      ? 'Отменён'
-      : endedReason === 'missed'
-        ? 'Пропущен'
-        : 'Завершён'
-  const callInfo = message.system.finished_at
-    ? `начал звонок · ${endedStatus}${duration ? ` · ${duration}` : ''}`
-    : 'начал звонок · Идёт сейчас'
-  const successfulCall = isSuccessfulVoiceCall(message.system)
-
-  const callerNameButton = callerUser ? (
-    <MessageAuthorProfileTrigger
-      user={callerUser}
-      serverId={serverId}
-      serverName={server?.name}
-      roles={callerRoles}
-      hideMessage={hideCallerMessage}
-    >
-      <button
-        type="button"
-        className={cn(
-          'max-w-full truncate rounded-sm font-semibold text-left',
-          'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-        )}
-      >
-        {callerName}
-      </button>
-    </MessageAuthorProfileTrigger>
-  ) : (
-    <span className="truncate font-semibold">{callerName}</span>
-  )
-
-  return (
-    <article
-      data-message-id={message._id}
-      className={cn(
-        'group relative -mx-4 flex items-center hover:bg-muted/40',
-        cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
-      )}
-    >
-      <div className={MESSAGE_AVATAR_COLUMN} aria-hidden>
-        <div
-          className={cn(
-            'flex size-10 items-center justify-center',
-            successfulCall ? 'text-chart-3' : 'text-muted-foreground',
-          )}
-          aria-label={successfulCall ? 'Успешный звонок' : 'Неуспешный звонок'}
-        >
-          {successfulCall ? (
-            <PhoneFilledIcon className="size-5" />
-          ) : (
-            <PhoneOffIcon className="size-5" />
-          )}
-        </div>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[15px] leading-snug">
-          <span className="min-w-0">
-            {callerNameButton}
-            <span className="text-muted-foreground">{` ${callInfo}`}</span>
-          </span>
-          <time
-            className="shrink-0 text-[11px] font-medium text-muted-foreground"
-            dateTime={timestamp}
-          >
-            {timestamp}
-          </time>
-        </p>
-      </div>
-    </article>
-  )
 }
 
 function MessageAuthorProfileTrigger({
@@ -255,85 +118,6 @@ function MessageAuthorProfileTrigger({
   )
 }
 
-function systemUserLabel(userId: string, users: Record<string, User>) {
-  const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Пользователь'
-}
-
-function systemMessageText(
-  system: NonNullable<Message['system']>,
-  users: Record<string, User>,
-) {
-  switch (system.type) {
-    case 'text':
-      return system.content
-    case 'user_added':
-      return `${systemUserLabel(system.by, users)} добавляет ${systemUserLabel(system.id, users)}`
-    case 'user_remove':
-      return `${systemUserLabel(system.by, users)} удаляет ${systemUserLabel(system.id, users)}`
-    case 'user_joined':
-      return `${systemUserLabel(system.id, users)} присоединяется к серверу`
-    case 'user_left':
-      return `${systemUserLabel(system.id, users)} покидает сервер`
-    case 'user_kicked':
-      return `${systemUserLabel(system.id, users)} исключён из сервера`
-    case 'user_banned':
-      return `${systemUserLabel(system.id, users)} заблокирован на сервере`
-    case 'channel_renamed':
-      return `${systemUserLabel(system.by, users)} переименовывает канал в «${system.name}»`
-    case 'channel_description_changed':
-      return `${systemUserLabel(system.by, users)} изменяет описание канала`
-    case 'channel_icon_changed':
-      return `${systemUserLabel(system.by, users)} изменяет значок канала`
-    case 'channel_ownership_changed':
-      return `${systemUserLabel(system.from, users)} передаёт владение ${systemUserLabel(system.to, users)}`
-    case 'message_pinned':
-      return `${systemUserLabel(system.by, users)} закрепляет сообщение`
-    case 'message_unpinned':
-      return `${systemUserLabel(system.by, users)} открепляет сообщение`
-    case 'call_started':
-      return ''
-  }
-}
-
-function StandardSystemMessageRow({
-  message,
-  users,
-}: {
-  message: Message
-  users: Record<string, User>
-}) {
-  if (!message.system || message.system.type === 'call_started') return null
-
-  const timestamp = formatMessageTimestamp(messageCreatedAt(message))
-
-  return (
-    <article
-      data-message-id={message._id}
-      className={cn(
-        'group relative -mx-4 flex min-h-10 items-center gap-3 py-2 text-sm',
-        MESSAGE_ROW_PADDING_X,
-        'hover:bg-muted/40',
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-base text-muted-foreground"
-      >
-        •
-      </span>
-      <p className="min-w-0 text-muted-foreground">
-        <span className="text-foreground">
-          {systemMessageText(message.system, users)}
-        </span>{' '}
-        <time className="text-[11px] font-medium" dateTime={timestamp}>
-          {timestamp}
-        </time>
-      </p>
-    </article>
-  )
-}
-
 export function MessageRow({
   message,
   channelId,
@@ -353,6 +137,12 @@ export function MessageRow({
   onUnpin,
   onToggleReaction,
 }: MessageRowProps) {
+  const t = useTranslations('chat')
+  const ts = useTranslations('chat.system')
+  const formatTimestamp = useMessageTimestamp()
+  const formatTimeShort = useMessageTimeShort()
+  const [deleteOpen, setDeleteOpen] = useState(false)
+
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
@@ -365,8 +155,10 @@ export function MessageRow({
       : undefined,
   )
 
-  const name = authorLabel(message, users)
+  const name = messageAuthorName(message, users, ts('unknownUser'))
   const authorUser = message.user ?? users[message.author]
+  const avatarOverride =
+    message.masquerade?.avatar ?? message.webhook?.avatar ?? undefined
   const own = message.author === currentUserId
   const hasContent = Boolean(message.content?.trim())
   const hasAttachments = Boolean(message.attachments?.length)
@@ -376,11 +168,10 @@ export function MessageRow({
   const isCompact = compact && !hasEmbeds
   const replyId = message.replies?.[0]
   const showReplyQuote = Boolean(replyId && !isCompact)
-  const edited = Boolean(
-    (message as Message & { edited?: string | null }).edited,
-  )
+  const edited = Boolean(message.edited)
   const createdAt = messageCreatedAt(message)
-  const timestamp = formatMessageTimestamp(createdAt)
+  const timestamp = formatTimestamp(createdAt)
+  const shortTime = formatTimeShort(createdAt)
   const nameColor = memberDisplayColor(server, member)
   const authorRoles =
     server && member ? memberRoleEntries(server, member) : undefined
@@ -419,9 +210,22 @@ export function MessageRow({
     ],
   )
 
-  if (message.system?.type === 'call_started') {
+  const requestDelete = onDelete ? () => setDeleteOpen(true) : undefined
+  const contextActions = useMessageActions({
+    message,
+    channelId,
+    own,
+    onReply: onReply ? () => onReply(message) : () => {},
+    onEdit: onEdit ? () => onEdit(message) : undefined,
+    onDelete: requestDelete,
+    onBlock: onBlock && !own ? () => onBlock(message) : undefined,
+    onPin: onPin ? () => onPin(message) : undefined,
+    onUnpin: onUnpin ? () => onUnpin(message) : undefined,
+  })
+
+  if (message.system) {
     return (
-      <VoiceCallSystemCard
+      <MessageSystemRow
         message={message}
         users={users}
         serverId={serverId}
@@ -430,72 +234,94 @@ export function MessageRow({
     )
   }
 
-  if (message.system) {
-    return <StandardSystemMessageRow message={message} users={users} />
-  }
+  const authorButton = authorUser ? (
+    <MessageAuthorProfileTrigger
+      user={authorUser}
+      serverId={serverId}
+      serverName={server?.name}
+      roles={authorRoles}
+      hideMessage={hideAuthorMessage}
+    >
+      <button
+        type="button"
+        className={cn(
+          'max-w-full truncate rounded-sm text-left font-medium tracking-tight',
+          nameColor && 'text-(--author-name-color)',
+          'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        )}
+        style={
+          nameColor
+            ? ({ '--author-name-color': nameColor } as CSSVars)
+            : undefined
+        }
+      >
+        {name}
+      </button>
+    </MessageAuthorProfileTrigger>
+  ) : (
+    <span className="truncate font-medium">{name}</span>
+  )
+
+  const avatar = (
+    <UserAvatar
+      user={authorUser}
+      imageSrc={avatarOverride}
+      className="size-10"
+      fallbackClassName="size-10"
+      showPresence={false}
+    />
+  )
 
   const row = (
-    <article
+    // design-allow restyle-shared: mention/highlight background is a message state.
+    <MessagePrimitive
       data-message-id={message._id}
       className={cn(
-        'group relative -mx-4 flex items-start hover:bg-muted/40',
-        isCompact
-          ? cn('min-h-[1.375rem] py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
-          : cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
-        highlighted && 'bg-primary/10 hover:bg-primary/15',
-        mentionsCurrentUser &&
-          !highlighted &&
-          'bg-chart-2/10 hover:bg-chart-2/15',
+        'relative flex w-full min-w-0 items-start gap-4 py-0.5 pr-6 pl-18 hover:bg-hover',
+        isCompact ? 'min-h-5.5' : 'mt-4.25',
+        highlighted && 'bg-primary/10',
+        mentionsCurrentUser && !highlighted && 'bg-chart-2/10',
       )}
     >
       {isCompact ? (
         <time
-          dateTime={formatMessageTimestamp(createdAt)}
+          dateTime={createdAt.toISOString()}
           className={MESSAGE_COMPACT_TIME_CLASS}
         >
-          {formatMessageTimeShort(createdAt)}
+          {shortTime}
         </time>
       ) : null}
 
       {!isCompact ? (
-      <div
-        className={cn(
-          MESSAGE_AVATAR_COLUMN,
-          showReplyQuote && 'mt-5',
-        )}
-      >
-        {authorUser ? (
-          <MessageAuthorProfileTrigger
-            user={authorUser}
-            serverId={serverId}
-            serverName={server?.name}
-            roles={authorRoles}
-            hideMessage={hideAuthorMessage}
-          >
-            <button
-              type="button"
-              className="rounded-full transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+        <MessageAvatar
+          className={
+            showReplyQuote
+              ? 'absolute top-5.5 left-4 w-10'
+              : 'absolute top-0.5 left-4 w-10'
+          }
+        >
+          {authorUser ? (
+            <MessageAuthorProfileTrigger
+              user={authorUser}
+              serverId={serverId}
+              serverName={server?.name}
+              roles={authorRoles}
+              hideMessage={hideAuthorMessage}
             >
-              <UserAvatar
-                user={authorUser}
-                className="size-10"
-                fallbackClassName="size-10"
-                showPresence={false}
-              />
-            </button>
-          </MessageAuthorProfileTrigger>
-        ) : (
-          <UserAvatar
-            user={authorUser}
-            className="size-10"
-            fallbackClassName="size-10"
-            showPresence={false}
-          />
-        )}
-      </div>
+              <button
+                type="button"
+                className="rounded-full transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {avatar}
+              </button>
+            </MessageAuthorProfileTrigger>
+          ) : (
+            avatar
+          )}
+        </MessageAvatar>
       ) : null}
 
-      <div className="relative min-w-0 flex-1">
+      <MessageContent className="relative min-w-0 flex-1 gap-1 text-base leading-5.5">
         {showReplyQuote && replyId ? (
           <InlineReplyQuote
             replyId={replyId}
@@ -507,52 +333,26 @@ export function MessageRow({
         ) : null}
 
         {!isCompact ? (
-          <header className="mb-0.5 flex min-h-5 items-baseline gap-2 leading-snug">
-            {authorUser ? (
-              <MessageAuthorProfileTrigger
-                user={authorUser}
-                serverId={serverId}
-                serverName={server?.name}
-                roles={authorRoles}
-                hideMessage={hideAuthorMessage}
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    'max-w-full truncate rounded-sm font-semibold text-left',
-                    'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                  )}
-                  style={nameColor ? { color: nameColor } : undefined}
-                >
-                  {name}
-                </button>
-              </MessageAuthorProfileTrigger>
-            ) : (
-              <span
-                className="truncate font-semibold"
-                style={nameColor ? { color: nameColor } : undefined}
-              >
-                {name}
-              </span>
-            )}
+          <MessageHeader className="mb-0.5 flex min-h-5.5 items-baseline gap-2 px-0 text-base leading-snug text-foreground">
+            {authorButton}
             <time
-              className="shrink-0 text-[11px] font-medium text-muted-foreground"
-              dateTime={timestamp}
+              className="shrink-0 text-xs font-medium leading-5.5 text-muted-foreground"
+              dateTime={createdAt.toISOString()}
             >
               {timestamp}
             </time>
             {message.pinned ? (
               <PinIcon
                 className="size-3 shrink-0 text-primary"
-                aria-label="Закреплено"
+                aria-label={ts('pinned')}
               />
             ) : null}
             {edited ? (
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                (изменено)
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {ts('edited')}
               </span>
             ) : null}
-          </header>
+          </MessageHeader>
         ) : (
           <span className="sr-only">
             {name}, {timestamp}
@@ -568,7 +368,7 @@ export function MessageRow({
             currentUserId={currentUserId}
             onReply={() => onReply(message)}
             onEdit={onEdit ? () => onEdit(message) : undefined}
-            onDelete={onDelete ? () => onDelete(message) : undefined}
+            onDelete={requestDelete}
             onBlock={onBlock && !own ? () => onBlock(message) : undefined}
             onPin={onPin ? () => onPin(message) : undefined}
             onUnpin={onUnpin ? () => onUnpin(message) : undefined}
@@ -578,7 +378,7 @@ export function MessageRow({
           />
         ) : null}
 
-        <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
+        <div className="flex flex-col gap-1 text-base leading-5.5 text-foreground">
           {hasContent ? (
             <div className="select-text break-words">{renderedContent}</div>
           ) : null}
@@ -596,7 +396,7 @@ export function MessageRow({
           {hasEmbeds ? <MessageEmbeds embeds={embeds} /> : null}
           {!hasContent && !hasAttachments && !hasEmbeds ? (
             <p className="text-xs text-muted-foreground italic">
-              [системное сообщение]
+              {ts('systemMessage')}
             </p>
           ) : null}
         </div>
@@ -613,21 +413,61 @@ export function MessageRow({
             />
           </div>
         ) : null}
-      </div>
-    </article>
+      </MessageContent>
+    </MessagePrimitive>
   )
 
-  if (!onReply) return row
+  const deleteDialog = onDelete ? (
+    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('delete')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t('deleteMessageConfirm')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => onDelete(message)}
+          >
+            {t('delete')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  ) : null
+
+  if (!onReply) {
+    return (
+      <>
+        {row}
+        {deleteDialog}
+      </>
+    )
+  }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="w-36">
-        <ContextMenuItem onSelect={() => onReply(message)}>
-          <ReplyIcon className="size-4" />
-          Ответить
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger render={row} />
+        <ContextMenuContent className="w-52">
+          {contextActions.map((action) => (
+            <Fragment key={action.key}>
+              {action.separatorBefore ? <ContextMenuSeparator /> : null}
+              <ContextMenuItem
+                variant={action.destructive ? 'destructive' : 'default'}
+                onClick={action.onSelect}
+              >
+                {action.icon}
+                {action.label}
+              </ContextMenuItem>
+            </Fragment>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
+      {deleteDialog}
+    </>
   )
 }

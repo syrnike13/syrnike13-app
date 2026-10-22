@@ -17,8 +17,8 @@ vi.mock('@tanstack/react-router', () => ({
       to: string
     }
   >(({ children, params, to, ...props }, ref) => {
-    const href = to === '/app/c/$channelId'
-      ? `/app/c/${params?.channelId ?? ''}`
+    const href = to === '/c/$channelId'
+      ? `/c/${params?.channelId ?? ''}`
       : to
 
     return (
@@ -28,7 +28,7 @@ vi.mock('@tanstack/react-router', () => ({
     )
   }),
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

@@ -30,10 +30,14 @@ jobs:
           cache: pnpm
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check UI rules
+        run: pnpm check:ui && pnpm check:messages
+      - name: Typecheck frontend
+        run: pnpm ui:typecheck && pnpm web:typecheck && pnpm landing:typecheck && pnpm admin:typecheck
       - name: Test frontend
-        run: pnpm web:test
+        run: pnpm ui:test && pnpm web:test && pnpm landing:test && pnpm admin:test
       - name: Build frontend
-        run: pnpm web:build
+        run: pnpm web:build && pnpm landing:build && pnpm admin:build
 
   backend:
     name: Backend

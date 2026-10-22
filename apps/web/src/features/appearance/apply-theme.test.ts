@@ -6,9 +6,9 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 import {
   applyThemeToDocument,
   readSystemPrefersDark,
-} from '#/features/appearance/apply-theme'
-import { THEME_TOKEN_KEYS } from '#/features/appearance/theme-tokens'
-import { THEME_SURFACE_VARIABLE_KEYS } from '#/features/appearance/theme-surfaces'
+} from '@syrnike13/ui/tokens'
+import { THEME_TOKEN_KEYS } from '@syrnike13/ui/tokens'
+import { THEME_SURFACE_VARIABLE_KEYS } from '@syrnike13/ui/tokens'
 
 describe('applyThemeToDocument', () => {
   beforeEach(() => {
@@ -38,7 +38,7 @@ describe('applyThemeToDocument', () => {
     })
     expect(variant).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.documentElement.dataset.theme).toBe('syrnike')
+    expect(document.documentElement.dataset.theme).toBe('monolit')
     expect(document.documentElement.dataset.themeGradient).toBe('none')
   })
 
@@ -48,7 +48,7 @@ describe('applyThemeToDocument', () => {
       themeId: 'unknown-theme',
     })
 
-    expect(document.documentElement.dataset.theme).toBe('syrnike')
+    expect(document.documentElement.dataset.theme).toBe('monolit')
   })
 
   it('writes css variables for active tokens', () => {
@@ -57,55 +57,21 @@ describe('applyThemeToDocument', () => {
       colorMode: 'dark',
     })
     const primary = document.documentElement.style.getPropertyValue('--primary')
-    expect(primary).toContain('oklch')
+    expect(primary.trim()).toBe('#fafafa')
     expect(
       document.documentElement.style.getPropertyValue('--theme-surface-content'),
     ).toBe(document.documentElement.style.getPropertyValue('--card'))
   })
 
-  it('applies custom gradient colors and marks their source', () => {
+  it('derives primary and ring from the selected theme accent', () => {
     applyThemeToDocument({
       ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'gradient',
-      gradient: {
-        colors: ['#112233', '#AABBCC'],
-        angle: 45,
-        saturation: 80,
-      },
-    })
-
-    expect(document.documentElement.dataset.themeGradient).toBe('custom')
-    expect(
-      document.documentElement.style.getPropertyValue('--theme-backdrop'),
-    ).toBe('linear-gradient(45deg, #112233, #AABBCC)')
-  })
-
-  it('ignores a stored gradient while a solid theme is active', () => {
-    applyThemeToDocument({
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'lug',
-      gradient: {
-        colors: ['#112233', '#AABBCC'],
-        angle: 45,
-        saturation: 80,
-      },
-    })
-
-    expect(document.documentElement.dataset.themeGradient).toBe('none')
-    expect(
-      document.documentElement.style.getPropertyValue('--theme-backdrop'),
-    ).toBe(document.documentElement.style.getPropertyValue('--background'))
-  })
-
-  it('uses syrnike brand tokens when another theme is selected', () => {
-    applyThemeToDocument({
-      ...DEFAULT_APPEARANCE_SETTINGS,
-      themeId: 'lug',
+      themeId: 'glina',
       colorMode: 'light',
     })
     const style = document.documentElement.style
-    expect(style.getPropertyValue('--primary').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
-    expect(style.getPropertyValue('--ring').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
+    expect(style.getPropertyValue('--primary').trim()).toBe('#a85b3b')
+    expect(style.getPropertyValue('--ring').trim()).toBe('#a85b3b')
     expect(style.getPropertyValue('--destructive').trim()).toBe(
       'oklch(0.7040 0.1910 22.2160)',
     )

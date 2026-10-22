@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
@@ -6,6 +7,7 @@ import { usePlatform } from '#/platform/use-platform'
 import type { DesktopUpdateState } from '@syrnike13/platform'
 
 export function DesktopStartupUpdateGate({ children }: { children: ReactNode }) {
+  const t = useTranslations('desktopUpdates')
   const { desktop } = usePlatform()
   const [state, setState] = useState<DesktopUpdateState | null>(null)
   const [startupSettled, setStartupSettled] = useState(false)
@@ -55,24 +57,27 @@ export function DesktopStartupUpdateGate({ children }: { children: ReactNode }) 
   return (
     <GatewayLoadingScreen
       gatewayState="idle"
-      statusText={startupUpdateStatus(state)}
+      statusText={startupUpdateStatus(state, t)}
     />
   )
 }
 
-function startupUpdateStatus(state: DesktopUpdateState | null) {
-  if (!state || state.status === 'checking') return 'Проверка обновлений…'
+function startupUpdateStatus(
+  state: DesktopUpdateState | null,
+  t: Translator,
+) {
+  if (!state || state.status === 'checking') return t('checking')
 
   switch (state.status) {
     case 'available':
-      return `Подготовка обновления v${state.version}…`
+      return t('preparing', { version: state.version })
     case 'downloading':
-      return `Загрузка обновления… ${Math.round(state.percent)}%`
+      return t('downloading', { percent: Math.round(state.percent) })
     case 'ready':
     case 'installing':
-      return `Установка обновления v${state.version}…`
+      return t('installing', { version: state.version })
     case 'idle':
     case 'error':
-      return 'Запуск…'
+      return t('launching')
   }
 }

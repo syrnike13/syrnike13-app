@@ -94,6 +94,30 @@ describe('MessageRow system call messages', () => {
   })
 })
 
+describe('MessageRow hover surface', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('uses the Prism hover token instead of per-state opacity overrides', () => {
+    const message = textMessage()
+    const { container } = render(
+      <MessageRow
+        message={message}
+        channelId={CHANNEL_ID}
+        users={{ [CALLER_ID]: caller }}
+        emojis={{}}
+        messagesById={{ [MESSAGE_ID]: message }}
+      />,
+    )
+
+    const row = container.querySelector('[data-slot="message"]')
+    expect(row?.className).toContain('hover:bg-hover')
+    expect(row?.className).not.toContain('hover:bg-primary/15')
+    expect(row?.className).not.toContain('hover:bg-chart-2/15')
+  })
+})
+
 describe('MessageRow context menu', () => {
   afterEach(() => {
     cleanup()

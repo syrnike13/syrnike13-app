@@ -8,20 +8,22 @@ import type {
 } from '@syrnike13/platform'
 import { HotkeyActionSchema } from '@syrnike13/platform'
 import { Effect, Fiber, Option, Schema, Semaphore } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Switch } from '#/components/ui/switch'
+} from '@syrnike13/ui/primitives/select'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
 import {
   HOTKEY_ACTIONS,
@@ -37,6 +39,7 @@ import { cn } from '#/lib/utils'
 const REGISTERABLE_ACTION = HOTKEY_ACTIONS.find((action) => action.available)!
 
 export function SettingsHotkeysPanel() {
+  const t = useTranslations('settings.hotkeys')
   const { desktop } = usePlatform()
   const [bindings, setBindings] = useState<HotkeyBinding[]>([])
   const [results, setResults] = useState<HotkeyRegistrationResult[]>([])
@@ -207,18 +210,20 @@ export function SettingsHotkeysPanel() {
 
   return (
     <div className="space-y-2">
-      <SettingsBlock title="Горячие клавиши">
+      <SettingsBlock title={t('title')}>
         <div className="mb-4 flex justify-end">
           <Button type="button" size="sm" onClick={addBinding}>
-            Добавить горячую клавишу
+            {t('add')}
           </Button>
         </div>
 
         {!loaded ? (
-          <p className="text-sm text-muted-foreground">Загрузка…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : bindings.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            Горячих клавиш пока нет.
+          <div className="rounded-md border border-dashed border-border px-4 py-8">
+            <Empty className="p-0">
+              <EmptyDescription>{t('empty')}</EmptyDescription>
+            </Empty>
           </div>
         ) : (
           <div className="space-y-0">
@@ -228,11 +233,15 @@ export function SettingsHotkeysPanel() {
               const recording = recordingId === binding.id
 
               return (
-                <SettingsRow key={binding.id} label={action.label} stacked>
-                  <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_auto_auto] md:items-start">
+                <SettingsRow
+                  key={binding.id}
+                  label={t(`actions.${action.id}.label`)}
+                  stacked
+                >
+                  <div className="grid w-full grid-cols-1 gap-3 settings-hotkeys-grid md:items-start">
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-muted-foreground">
-                        Действие
+                        {t('action')}
                       </p>
                       <Select
                         value={binding.action}
@@ -257,8 +266,8 @@ export function SettingsHotkeysPanel() {
                               value={item.id}
                               disabled={!item.available}
                             >
-                              {item.label}
-                              {!item.available ? ' · Скоро' : ''}
+                              {t(`actions.${item.id}.label`)}
+                              {!item.available ? t('soon') : ''}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -267,7 +276,7 @@ export function SettingsHotkeysPanel() {
 
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-muted-foreground">
-                        Горячие клавиши
+                        {t('combo')}
                       </p>
                       <button
                         type="button"
@@ -286,14 +295,14 @@ export function SettingsHotkeysPanel() {
                           )}
                         >
                           {recording
-                            ? 'Нажмите сочетание…'
-                            : comboDisplayLabel(binding.combo)}
+                            ? t('pressCombo')
+                            : comboDisplayLabel(binding.combo, t)}
                         </span>
                         <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-                          {recording ? 'Запись' : 'Изменить'}
+                          {recording ? t('recording') : t('change')}
                         </span>
                       </button>
-                      <HotkeyStatusMessage status={status} />
+                      <HotkeyStatusMessage status={status} t={t} />
                     </div>
 
                     <Button
@@ -304,7 +313,7 @@ export function SettingsHotkeysPanel() {
                       onClick={() => removeBinding(binding.id)}
                     >
                       <Trash2Icon className="size-4" />
-                      <span className="sr-only">Удалить горячую клавишу</span>
+                      <span className="sr-only">{t('delete')}</span>
                     </Button>
 
                     <div className="mt-6 flex justify-start md:justify-end">
@@ -329,10 +338,12 @@ export function SettingsHotkeysPanel() {
 
 function HotkeyStatusMessage({
   status,
+  t,
 }: {
   status: HotkeyRegistrationStatus
+  t: Translator
 }) {
-  const message = statusMessage(status)
+  const message = statusMessage(status, t)
   if (!message) return null
 
   return (
@@ -343,17 +354,20 @@ function HotkeyStatusMessage({
   )
 }
 
-function statusMessage(status: HotkeyRegistrationStatus) {
+function statusMessage(
+  status: HotkeyRegistrationStatus,
+  t: Translator,
+) {
   switch (status) {
     case 'registered':
     case 'disabled':
       return null
     case 'invalid':
-      return 'Назначьте горячую клавишу.'
+      return t('statusInvalid')
     case 'taken':
-      return 'Эта комбинация уже используется.'
+      return t('statusTaken')
     case 'unsupported':
-      return 'Это действие появится позже.'
+      return t('statusUnsupported')
   }
 }
 

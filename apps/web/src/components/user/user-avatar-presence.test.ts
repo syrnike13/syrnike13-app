@@ -35,17 +35,17 @@ describe('resolvePresenceBadgeLayout', () => {
     expect(resolvePresenceBadgeLayout(24)).toEqual({
       sizePx: Math.round(6 * PRESENCE_BADGE_SIZE_SCALE),
       ringPx: Math.round(1 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-[20%] translate-y-[20%]',
+      offsetClass: 'translate-x-1/5 translate-y-1/5',
     })
     expect(resolvePresenceBadgeLayout(32)).toEqual({
       sizePx: Math.round(8 * PRESENCE_BADGE_SIZE_SCALE),
       ringPx: Math.round(2 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-[18%] translate-y-[18%]',
+      offsetClass: 'translate-x-9/50 translate-y-9/50',
     })
     expect(resolvePresenceBadgeLayout(88)).toEqual({
       sizePx: Math.round(16 * PRESENCE_BADGE_SIZE_SCALE),
       ringPx: Math.round(3 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-[14%] translate-y-[14%]',
+      offsetClass: 'translate-x-7/50 translate-y-7/50',
     })
   })
 })

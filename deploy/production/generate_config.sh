@@ -215,6 +215,7 @@ fi
 
 # set hostname for Caddy and vite variables
 echo "HOSTNAME=$SYRNIKE_HOSTNAME" > .env.web
+echo "APP_HOSTNAME=${SYRNIKE_APP_DOMAIN:-app.$DOMAIN}" >> .env.web
 echo "ADMIN_HOSTNAME=admin.$DOMAIN" >> .env.web
 echo "SYRNIKE_PUBLIC_URL=https://$DOMAIN/api" >> .env.web
 echo "VITE_API_URL=https://$DOMAIN/api" >> .env.web
@@ -229,7 +230,7 @@ echo "# Any configuration added to this file will be overwritten by generate_con
 echo "# the script will back up your old configuration so you can copy over your old configuration" >> Syrnike.toml
 echo "# values if needed." >> Syrnike.toml
 echo "[hosts]" >> Syrnike.toml
-echo "app = \"https://$DOMAIN\"" >> Syrnike.toml
+echo "app = \"https://${SYRNIKE_APP_DOMAIN:-app.$DOMAIN}\"" >> Syrnike.toml
 echo "api = \"https://$DOMAIN/api\"" >> Syrnike.toml
 echo "events = \"wss://$DOMAIN/ws\"" >> Syrnike.toml
 echo "autumn = \"https://$DOMAIN/autumn\"" >> Syrnike.toml

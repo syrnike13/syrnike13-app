@@ -38,5 +38,6 @@ COPY crates/daemons/voice-ingress/Cargo.toml ./crates/daemons/voice-ingress/
 RUN sh /tmp/build-image-layer.sh deps
 
 # Build all apps
+COPY VERSION ./VERSION
 COPY crates ./crates
 RUN sh /tmp/build-image-layer.sh apps

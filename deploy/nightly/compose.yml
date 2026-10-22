@@ -218,6 +218,17 @@ services:
           - syrnike13-nightly-livekit
     restart: always
 
+  # Landing site
+  landing:
+    image: ghcr.io/syrnike13/app-landing:nightly
+    logging: *json-log-rotation
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-landing
+    restart: always
+
   web:
     image: ghcr.io/syrnike13/app-web:nightly
     logging: *json-log-rotation

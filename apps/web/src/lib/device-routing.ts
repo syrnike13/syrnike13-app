@@ -4,9 +4,27 @@ export const MOBILE_ROUTE_PREFIX = '/m'
 
 const MOBILE_ROUTE_PREFIXES = [MOBILE_ROUTE_PREFIX, '/admin'] as const
 
+/** Верхнеуровневые пути десктопного приложения. */
+export const APP_ROUTE_PREFIXES = [
+  '/c',
+  '/friends',
+  '/settings',
+  '/servers',
+  '/feedback',
+  '/voice-debug',
+] as const
+
 /** Пути мобильной зоны. Используется для защиты от зацикленного редиректа. */
 export function isMobileAllowedPath(pathname: string): boolean {
   return MOBILE_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
+}
+
+/** Является ли путь частью десктопного приложения (не публичной страницы). */
+export function isAppPath(pathname: string): boolean {
+  if (pathname === '/') return true
+  return APP_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   )
 }
@@ -53,40 +71,37 @@ export function shouldUseMobileLayout(): boolean {
 }
 
 /**
- * Переводит путь из `/app/*` в `/m/*` с сохранением path- и search-параметров.
- *
- * Если путь не относится к `/app`, возвращает null (не подлежит маппингу).
+ * Переводит путь десктопного приложения в `/m/*` с сохранением path- и
+ * search-параметров. Для публичных страниц возвращает null.
  *
  * Примеры:
- *   /app                       → /m
- *   /app?tab=online            → /m?tab=online
- *   /app/c/abc                 → /m/c/abc
- *   /app/c/abc?m=msg1          → /m/c/abc?m=msg1
- *   /app/servers/x/settings    → /m/servers/x/settings
- *   /app/profile               → /m/profile
+ *   /                          → /m
+ *   /?tab=online               → /m?tab=online
+ *   /c/abc                     → /m/c/abc
+ *   /c/abc?m=msg1              → /m/c/abc?m=msg1
+ *   /servers/x/settings        → /m/servers/x/settings
+ *   /friends                   → /m/friends
  *   /login                     → null
  */
 export function mapAppPathToMobile(pathname: string): string | null {
-  if (pathname === '/app') return MOBILE_ROUTE_PREFIX
-  if (pathname.startsWith('/app/')) {
-    return `${MOBILE_ROUTE_PREFIX}${pathname.slice('/app'.length)}`
-  }
-  return null
+  if (!isAppPath(pathname)) return null
+  if (pathname === '/') return MOBILE_ROUTE_PREFIX
+  return `${MOBILE_ROUTE_PREFIX}${pathname}`
 }
 
 /**
- * Переводит путь из `/m/*` обратно в `/app/*`.
+ * Переводит путь из `/m/*` обратно в путь десктопного приложения.
  *
  * Примеры:
- *   /m            → /app
- *   /m/c/abc      → /app/c/abc
- *   /m/profile    → /app/profile
+ *   /m            → /
+ *   /m/c/abc      → /c/abc
+ *   /m/friends    → /friends
  *   /other        → null
  */
 export function mapMobilePathToApp(pathname: string): string | null {
-  if (pathname === MOBILE_ROUTE_PREFIX) return '/app'
+  if (pathname === MOBILE_ROUTE_PREFIX) return '/'
   if (pathname.startsWith(`${MOBILE_ROUTE_PREFIX}/`)) {
-    return `/app${pathname.slice(MOBILE_ROUTE_PREFIX.length)}`
+    return pathname.slice(MOBILE_ROUTE_PREFIX.length)
   }
   return null
 }

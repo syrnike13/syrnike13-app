@@ -10,12 +10,20 @@ import {
   RiHomeLine,
   RiLoader4Line,
   RiLogoutBoxLine,
+  RiRefreshLine,
   RiShareForwardBoxLine,
   RiSquareLine,
   RiSubtractLine,
 } from '@remixicon/react'
 
 import { defineIcon } from '#/components/icons/define-icon'
+import { PumpkinIcon } from '#/components/icons/holiday/halloween'
+import { defineHolidayIcon } from '#/components/icons/holiday-icon'
+
+export const RefreshIcon = defineIcon(RiRefreshLine, {
+  pack: 'remixicon',
+  name: 'RiRefreshLine',
+})
 
 export const ChevronDownIcon = defineIcon(RiArrowDownSLine, {
   pack: 'remixicon',
@@ -67,10 +75,11 @@ export const Maximize2Icon = defineIcon(RiExpandDiagonalLine, {
   name: 'RiExpandDiagonalLine',
 })
 
-export const HomeIcon = defineIcon(RiHomeLine, {
-  pack: 'remixicon',
-  name: 'RiHomeLine',
-})
+export const HomeIcon = defineHolidayIcon(
+  RiHomeLine,
+  { pack: 'remixicon', name: 'RiHomeLine' },
+  { halloween: PumpkinIcon },
+)
 
 export const LogOutIcon = defineIcon(RiLogoutBoxLine, {
   pack: 'remixicon',

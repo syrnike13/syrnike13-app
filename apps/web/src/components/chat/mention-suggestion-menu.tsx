@@ -1,9 +1,17 @@
+// design-allow-file restyle-shared: Tiptap suggestion listbox owns keyboard/focus through the
+// contenteditable (aria-activedescendant; Enter/Tab/Escape handled by the editor). A focusable
+// Popover/Command would steal focus and cmdk would capture arrow/Enter, while the shared
+// PopoverContent positioner cannot anchor to the caret rect here — so the caret-anchored
+// listbox surface stays hand-rolled instead of being replaced without a typing regression.
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { usePortalContainer } from '@syrnike13/ui/primitives/portal-container'
 import type { SuggestionProps } from '@tiptap/suggestion'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 export type MentionSuggestionState = SuggestionProps<MentionSuggestionItem> & {
@@ -33,6 +41,13 @@ function MentionSuggestionRow({
   buttonRef?: React.Ref<HTMLButtonElement>
   id: string
 }) {
+  const entryColour =
+    item.kind === 'user'
+      ? item.nameColour
+      : item.kind === 'role'
+        ? item.colour
+        : undefined
+
   return (
     <button
       ref={buttonRef}
@@ -66,21 +81,18 @@ function MentionSuggestionRow({
         className={cn(
           'min-w-0 flex-1 truncate text-sm font-medium leading-none',
           item.kind !== 'user' && item.kind !== 'role' && 'text-foreground',
+          entryColour && 'text-(--mention-entry-color)',
         )}
         style={
-          item.kind === 'user'
-            ? item.nameColour
-              ? { color: item.nameColour }
-              : undefined
-            : item.kind === 'role' && item.colour
-              ? { color: item.colour }
-              : undefined
+          entryColour
+            ? ({ '--mention-entry-color': entryColour } as CSSVars)
+            : undefined
         }
       >
         {item.kind === 'user' ? item.serverName : item.label}
       </span>
 
-      <span className="ml-4 max-w-[55%] shrink-0 truncate text-right text-xs text-muted-foreground">
+      <span className="ml-4 max-w-55/100 shrink-0 truncate text-right text-xs text-muted-foreground">
         {item.kind === 'user' ? `@${item.username}` : item.description}
       </span>
     </button>
@@ -93,6 +105,8 @@ export function MentionSuggestionMenu({
   anchorRef,
   surfaceClassName = 'bg-popover text-popover-foreground',
 }: MentionSuggestionMenuProps) {
+  const t = useTranslations('chat')
+  const portalContainer = usePortalContainer()
   const menuRef = useRef<HTMLDivElement>(null)
   const selectedItemRef = useRef<HTMLButtonElement>(null)
   const [coords, setCoords] = useState<{
@@ -174,26 +188,27 @@ export function MentionSuggestionMenu({
       ref={menuRef}
       id={id}
       role="listbox"
-      aria-label="Упоминания"
+      aria-label={t('mentions')}
       className={cn(
-        'gradient-surface-solid pointer-events-auto fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
+        'gradient-surface-solid pointer-events-auto fixed left-(--mention-menu-left) top-(--mention-menu-top) z-300 flex w-(--mention-menu-width) -translate-y-full flex-col overflow-hidden rounded-lg border border-border p-1 shadow-lg',
         surfaceClassName,
       )}
-      style={{
-        left: coords.left,
-        width: coords.width,
-        top: coords.top,
-        transform: 'translateY(-100%)',
-      }}
+      style={
+        {
+          '--mention-menu-left': `${coords.left}px`,
+          '--mention-menu-top': `${coords.top}px`,
+          '--mention-menu-width': `${coords.width}px`,
+        } as CSSVars
+      }
       onMouseDown={(event) => event.preventDefault()}
     >
       {participantEntries.length > 0 ? (
-        <div role="group" aria-label="Участники">
+        <div role="group" aria-label={t('members')}>
           <div
             role="presentation"
             className="px-3 py-1.5 text-xs font-medium text-muted-foreground"
           >
-            Участники
+            {t('members')}
           </div>
           {participantEntries.map(renderEntry)}
         </div>
@@ -202,16 +217,16 @@ export function MentionSuggestionMenu({
       {otherEntries.length > 0 ? (
         <div
           role="group"
-          aria-label="Другие упоминания"
+          aria-label={t('otherMentions')}
           className={cn(
             participantEntries.length > 0 &&
-              'mt-1 border-t border-border/20 pt-1',
+              'mt-1 border-t border-border pt-1',
           )}
         >
           {otherEntries.map(renderEntry)}
         </div>
       ) : null}
     </div>,
-    document.body,
+    portalContainer ?? document.body,
   )
 }

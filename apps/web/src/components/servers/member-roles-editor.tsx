@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import type { Member, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
-import { Switch } from '#/components/ui/switch'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -14,7 +15,8 @@ import {
   listServerRoles,
 } from '#/lib/member-roles'
 import { roleIconUrl } from '#/lib/media'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type MemberRolesEditorProps = {
@@ -34,6 +36,7 @@ export function MemberRolesEditor({
   compact = false,
   roleSearch = '',
 }: MemberRolesEditorProps) {
+  const t = useTranslations('servers.roleMembers')
   const auth = useAuth()
   const actorMember = useSyncStore((state) =>
     auth.user?._id
@@ -132,9 +135,8 @@ export function MemberRolesEditor({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : 'Не удалось обновить роли',
-            )
+            console.error('[member-roles] update failed', error)
+            toast.error(t('updateRolesError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingRoleId(null))),
@@ -149,7 +151,7 @@ export function MemberRolesEditor({
   if (roles.length === 0) {
     return (
       <p className={cn('text-sm text-muted-foreground', className)}>
-        На сервере пока нет ролей.
+        {t('noRoles')}
       </p>
     )
   }
@@ -157,7 +159,7 @@ export function MemberRolesEditor({
   if (editableRoles.length === 0) {
     return (
       <p className={cn('text-sm text-muted-foreground', className)}>
-        Недостаточно прав для изменения ролей этого участника.
+        {t('insufficientPermissions')}
       </p>
     )
   }
@@ -166,7 +168,7 @@ export function MemberRolesEditor({
     <div className={cn(compact ? 'space-y-0' : 'space-y-2', className)}>
       {showHeading ? (
         <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Роли
+          {t('roles')}
         </p>
       ) : null}
       <ul className={cn(compact ? 'space-y-0' : 'space-y-1')}>
@@ -202,17 +204,31 @@ export function MemberRolesEditor({
                   />
                 ) : (
                   <span
-                    className="size-2.5 shrink-0 rounded-full bg-muted-foreground"
+                    className={cn(
+                      'size-2.5 shrink-0 rounded-full',
+                      role.colour ? 'bg-(--role-color)' : 'bg-muted-foreground',
+                    )}
                     style={
                       role.colour
-                        ? { backgroundColor: normalizeRoleColour(role.colour) }
+                        ? ({
+                            '--role-color': normalizeRoleColour(role.colour),
+                          } as CSSVars)
                         : undefined
                     }
                   />
                 )}
                 <span
-                  className="truncate text-sm font-medium"
-                  style={roleColourStyle(role.colour)}
+                  className={cn(
+                    'truncate text-sm font-medium',
+                    role.colour && 'text-(--role-color)',
+                  )}
+                  style={
+                    role.colour
+                      ? ({
+                          '--role-color': normalizeRoleColour(role.colour),
+                        } as CSSVars)
+                      : undefined
+                  }
                 >
                   {role.name}
                 </span>
@@ -233,7 +249,7 @@ export function MemberRolesEditor({
             compact ? 'py-4' : 'py-6',
           )}
         >
-          {roleSearch.trim() ? 'Роли не найдены.' : 'На сервере пока нет ролей.'}
+          {roleSearch.trim() ? t('noMatchingRoles') : t('noRoles')}
         </p>
       ) : null}
     </div>

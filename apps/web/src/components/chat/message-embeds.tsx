@@ -1,4 +1,5 @@
 import type { Embed, File as MediaFile } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ReactNode } from 'react'
 
 import { FileIcon, PlayIcon } from '#/components/icons'
@@ -10,6 +11,7 @@ import {
   imageFileAspectRatio,
   isImageFile,
 } from '#/lib/media'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 /** Ссылку открываем только по http(s): javascript:/data: из чужой og-разметки не пускаем. */
@@ -90,9 +92,10 @@ function EmbedCardShell({
     <div
       data-embed={type}
       className={cn(
-        'flex max-w-lg flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-sm',
+        'flex max-w-137.5 flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-base leading-5.5',
+        accent && 'border-l-(--embed-accent)',
       )}
-      style={accent ? { borderLeftColor: accent } : undefined}
+      style={accent ? ({ '--embed-accent': accent } as CSSVars) : undefined}
     >
       {children}
     </div>
@@ -178,11 +181,13 @@ function EmbedImageBox({
     <div
       data-embed-image
       data-aspect-ratio={String(aspectRatio)}
-      className="relative max-h-96 w-full max-w-full overflow-hidden rounded-md border border-border bg-border"
-      style={{
-        aspectRatio,
-        width: `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
-      }}
+      className="relative aspect-(--embed-aspect) max-h-87.5 w-(--embed-width) max-w-full overflow-hidden rounded-md border border-border bg-border"
+      style={
+        {
+          '--embed-aspect': aspectRatio,
+          '--embed-width': `min(100%, 34.375rem, calc(21.875rem * ${aspectRatio}))`,
+        } as CSSVars
+      }
     >
       <FxImage src={src} alt={alt} fill objectFit="contain" />
     </div>
@@ -198,8 +203,9 @@ function EmbedVideoLink({
   width?: number | null
   height?: number | null
 }) {
+  const t = useTranslations('chat')
   const link = safeLink(url)
-  const host = hostnameOf(url) ?? 'Видео'
+  const host = hostnameOf(url) ?? t('video')
   const className =
     'flex items-center gap-2 rounded-md border border-border bg-background/40 px-3 py-2 text-xs text-foreground'
 
@@ -233,6 +239,7 @@ function EmbedVideoLink({
 }
 
 function WebsiteEmbed({ embed }: { embed: Extract<Embed, { type: 'Website' }> }) {
+  const t = useTranslations('chat')
   const link = safeLink(embed.url) ?? safeLink(embed.original_url)
   const title = embed.title?.trim()
   const imageUrl = safeLink(embed.image?.url)
@@ -262,7 +269,7 @@ function WebsiteEmbed({ embed }: { embed: Extract<Embed, { type: 'Website' }> })
           <span className="relative size-20 shrink-0 overflow-hidden rounded-md border border-border bg-border">
             <FxImage
               src={embedMediaUrl(thumbnail)}
-              alt={title ?? 'Превью ссылки'}
+              alt={title ?? t('linkPreview')}
               fill
               objectFit="cover"
             />
@@ -272,7 +279,7 @@ function WebsiteEmbed({ embed }: { embed: Extract<Embed, { type: 'Website' }> })
       {hero ? (
         <EmbedImageBox
           src={embedMediaUrl(hero)}
-          alt={title ?? 'Превью ссылки'}
+          alt={title ?? t('linkPreview')}
           ratio={embedAspectRatio(embed.image?.width, embed.image?.height)}
         />
       ) : null}
@@ -281,11 +288,12 @@ function WebsiteEmbed({ embed }: { embed: Extract<Embed, { type: 'Website' }> })
 }
 
 function ImageEmbed({ embed }: { embed: Extract<Embed, { type: 'Image' }> }) {
+  const t = useTranslations('chat')
   const link = safeLink(embed.url)
   const box = (
     <EmbedImageBox
       src={embedMediaUrl(embed.url)}
-      alt="Изображение"
+      alt={t('image')}
       ratio={embedAspectRatio(embed.width, embed.height)}
     />
   )
@@ -308,8 +316,9 @@ function ImageEmbed({ embed }: { embed: Extract<Embed, { type: 'Image' }> }) {
 }
 
 function VideoEmbed({ embed }: { embed: Extract<Embed, { type: 'Video' }> }) {
+  const t = useTranslations('chat')
   const link = safeLink(embed.url)
-  const host = hostnameOf(embed.url) ?? 'Видео'
+  const host = hostnameOf(embed.url) ?? t('video')
 
   if (!link) {
     return (
@@ -352,6 +361,7 @@ function EmbedMediaLink({ media }: { media: MediaFile }) {
 }
 
 function TextEmbed({ embed }: { embed: Extract<Embed, { type: 'Text' }> }) {
+  const t = useTranslations('chat')
   const link = safeLink(embed.url)
   const title = embed.title?.trim()
   const description = embed.description?.trim()
@@ -368,7 +378,7 @@ function TextEmbed({ embed }: { embed: Extract<Embed, { type: 'Text' }> }) {
         isImageFile(media) ? (
           <EmbedImageBox
             src={attachmentPreviewUrl(media)}
-            alt={media.filename?.trim() || 'Изображение'}
+            alt={media.filename?.trim() || t('image')}
             ratio={imageFileAspectRatio(media)}
           />
         ) : (

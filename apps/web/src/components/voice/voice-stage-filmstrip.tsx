@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   voiceStageFilmstripSpacingClass,
   voiceStageFilmstripTightTopClass,
 } from '#/components/voice/voice-stage-layout'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type VoiceStageFilmstripItem = Readonly<{ id: string }>
@@ -25,40 +27,31 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
   tileHeight,
   renderTile,
 }: VoiceStageFilmstripProps<TItem>) {
+  const t = useTranslations('voice')
   const stripItems = items.filter((item) => item.id !== focusedMediaId)
   if (stripItems.length === 0) return null
 
   const many = stripItems.length > 4
-  const tileStyle =
-    tileWidth > 0 && tileHeight > 0
-      ? { width: tileWidth, height: tileHeight }
-      : undefined
 
   return (
     <div
       className={cn(
-        'relative shrink-0',
+        'relative w-full min-w-0 shrink-0',
         many &&
-          'before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-4 before:bg-gradient-to-r before:from-black/80 before:to-transparent',
+          'before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-4 before:bg-gradient-to-r before:from-media-backdrop/80 before:to-transparent',
         many &&
-          'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-10 after:w-6 after:bg-gradient-to-l after:from-black/80 after:to-transparent',
+          'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-10 after:w-6 after:bg-gradient-to-l after:from-media-backdrop/80 after:to-transparent',
       )}
     >
-      {many ? (
-        <span className="pointer-events-none absolute top-0 right-1 z-20 rounded bg-black/75 px-1.5 py-px text-[10px] font-semibold tabular-nums text-white/90">
-          +{stripItems.length}
-        </span>
-      ) : null}
       <div
         className={cn(
-          'overflow-x-auto overscroll-x-contain scroll-smooth py-0.5',
-          '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20',
+          'w-full overflow-x-auto overscroll-x-contain scroll-smooth py-0.5 no-scrollbar',
           many && 'px-1',
         )}
       >
         <div
           role="list"
-          aria-label="Другие трансляции в канале"
+          aria-label={t('stage.otherStreams')}
           className={cn(
             'mx-auto flex w-max min-w-full items-center justify-center',
             tightTop
@@ -70,8 +63,20 @@ export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
             <div
               key={item.id}
               role="listitem"
-              className="shrink-0"
-              style={tileStyle}
+              className={cn(
+                'shrink-0',
+                tileWidth > 0 &&
+                  tileHeight > 0 &&
+                  'h-(--strip-tile-height) w-(--strip-tile-width)',
+              )}
+              style={
+                tileWidth > 0 && tileHeight > 0
+                  ? ({
+                      '--strip-tile-width': `${tileWidth}px`,
+                      '--strip-tile-height': `${tileHeight}px`,
+                    } as CSSVars)
+                  : undefined
+              }
             >
               {renderTile(item, 'strip')}
             </div>

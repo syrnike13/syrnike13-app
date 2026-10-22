@@ -87,13 +87,6 @@ vi.mock('#/components/servers/create-channel-dialog', () => ({
   CreateChannelDialog: () => null,
 }))
 
-vi.mock('#/components/ui/floating-menu', () => ({
-  FloatingMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  FloatingMenuItem: ({ children }: { children: ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
-}))
-
 function channelNames() {
   return screen.getAllByTestId('channel').map((item) => item.textContent)
 }

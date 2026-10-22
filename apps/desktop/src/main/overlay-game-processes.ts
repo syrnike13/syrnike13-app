@@ -1,8 +1,9 @@
 ﻿/**
  * Lowercase Windows game executable names used as an additive overlay detection signal.
  *
- * Seeded from Discord verified games, ReShade compatibility data, and current
- * high-traffic PC titles. Keep launcher, service, setup, and generic process
+ * Seeded from publicly verified game process lists, ReShade compatibility data,
+ * and current high-traffic PC titles. Keep launcher, service, setup, and generic
+ * process
  * names out of this file; those belong in overlay-game-exclusions instead.
  */
 export const POPULAR_GAME_PROCESS_NAME_LIST = [

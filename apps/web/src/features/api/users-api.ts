@@ -80,6 +80,27 @@ export function fetchUserProfile(
   )
 }
 
+export const fetchUserMutualEffect = Effect.fn('web.users.fetchMutual')(
+  function*(token: string, userId: string) {
+    return yield* apiRequestEffect(
+      `/users/${userId}/mutual`,
+      ApiSchema.MutualResponse,
+      { token },
+    )
+  },
+)
+
+export function fetchUserMutual(
+  token: string,
+  userId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchUserMutualEffect(token, userId),
+    signal ? { signal } : undefined,
+  )
+}
+
 export const sendFriendRequestEffect = Effect.fn('web.users.sendFriendRequest')(
   function*(token: string, username: string) {
     const body: DataSendFriendRequest = { username }

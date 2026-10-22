@@ -9,19 +9,24 @@ export type VoiceConnectionPhase =
   | 'reconnecting'
   | 'failed'
 
-const voiceConnectionPhaseLabels = {
-  idle: 'Не подключён',
-  joining_channel: 'Подключение к каналу…',
-  fetching_rtc_token: 'Получение RTC-сессии…',
-  connecting_rtc: 'Подключение к RTC…',
-  connecting_microphone: 'Подключение голосового потока…',
-  connected: 'Голос подключён',
-  reconnecting: 'Переподключение к голосу…',
-  failed: 'Ошибка подключения',
+import type { Translator } from '@syrnike13/ui/i18n'
+
+const voiceConnectionPhaseKeys = {
+  idle: 'idle',
+  joining_channel: 'joiningChannel',
+  fetching_rtc_token: 'fetchingToken',
+  connecting_rtc: 'connectingRtc',
+  connecting_microphone: 'connectingMic',
+  connected: 'connected',
+  reconnecting: 'reconnecting',
+  failed: 'failed',
 } as const satisfies Record<VoiceConnectionPhase, string>
 
-export function voiceConnectionPhaseLabel(phase: VoiceConnectionPhase) {
-  return voiceConnectionPhaseLabels[phase]
+export function voiceConnectionPhaseLabel(
+  phase: VoiceConnectionPhase,
+  t: Translator,
+) {
+  return t(voiceConnectionPhaseKeys[phase])
 }
 
 export function isVoiceSessionInChannel(
@@ -47,47 +52,52 @@ export type VoiceMicIssue = {
   retryable?: boolean
 }
 
-export function describeMicDeviceError(error: unknown): VoiceMicIssue {
+export function describeMicDeviceError(
+  error: unknown,
+  t: Translator,
+): VoiceMicIssue {
   const name =
     error instanceof DOMException || error instanceof Error ? error.name : ''
 
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
     return {
-      label: 'Нет доступа к микрофону',
-      hint: 'Разрешите доступ к микрофону в настройках браузера для syrnike13.ru.',
+      label: t('noAccessLabel'),
+      hint: t('noAccessHint'),
     }
   }
 
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return {
-      label: 'Микрофон не найден',
-      hint: 'Подключите микрофон или выберите другое устройство в настройках.',
+      label: t('notFoundLabel'),
+      hint: t('notFoundHint'),
     }
   }
 
   if (name === 'NotReadableError' || name === 'TrackStartError') {
     return {
-      label: 'Микрофон занят',
-      hint: 'Закройте другие вкладки, профили Chrome или программы, которые используют микрофон.',
+      label: t('busyLabel'),
+      hint: t('busyHint'),
     }
   }
 
   if (error instanceof Error && error.message.trim()) {
     return {
-      label: 'Микрофон недоступен',
+      label: t('unavailableLabel'),
       hint: error.message,
     }
   }
 
   return {
-    label: 'Микрофон недоступен',
-    hint: 'Не удалось включить микрофон. Проверьте разрешения и устройство.',
+    label: t('unavailableLabel'),
+    hint: t('unavailableHint'),
   }
 }
 
-export const MIC_BLOCKED_WITHOUT_ERROR: VoiceMicIssue = {
-  label: 'Микрофон не работает',
-  hint: 'Браузер не передал звук с микрофона. Проверьте разрешения и другие вкладки или профили Chrome.',
+export function micBlockedWithoutError(t: Translator): VoiceMicIssue {
+  return {
+    label: t('blockedLabel'),
+    hint: t('blockedHint'),
+  }
 }
 
 export function isMicVisuallyMuted(options: {

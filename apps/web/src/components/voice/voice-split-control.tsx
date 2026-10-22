@@ -5,8 +5,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { TooltipProvider } from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/popover'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { voiceStagePopoverMicSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
@@ -21,8 +21,6 @@ type SegmentState = {
 const splitControlSuccessMainClass =
   'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
 
-const splitControlSuccessChevronClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
 
 export const splitControlDangerMainClass =
   'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
@@ -39,46 +37,21 @@ export function splitControlMainButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerMainClass
         : success
           ? splitControlSuccessMainClass
-          : 'group-hover/media:bg-white/10 group-hover/media:text-white',
+          : 'group-hover/media:bg-accent group-hover/media:text-foreground',
     )
   }
 
   return cn(
-    'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+    'flex size-8 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerMainClass
       : success
         ? splitControlSuccessMainClass
-        : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
-  )
-}
-
-export function splitControlChevronButtonClass(
-  surface: VoiceSplitControlSurface,
-  { danger, success }: SegmentState,
-) {
-  if (surface === 'stage') {
-    return cn(
-      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
-      danger
-        ? splitControlDangerChevronClass
-        : success
-          ? splitControlSuccessChevronClass
-          : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
-    )
-  }
-
-  return cn(
-    'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
-    danger
-      ? splitControlDangerChevronClass
-      : success
-        ? splitControlSuccessChevronClass
         : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
@@ -102,23 +75,37 @@ function SplitControlChevron({
   popoverOpen?: boolean
   onPopoverOpenChange?: (open: boolean) => void
 }) {
-  const segmentState = { danger, success }
+  const chevronClass =
+    surface === 'stage'
+      ? cn(
+          'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          danger
+            ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+            : success
+              ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
+              : 'group-hover/media:bg-accent group-hover/media:text-foreground',
+        )
+      : cn(
+          'flex h-8 w-4 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          danger
+            ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+            : success
+              ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
+              : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+        )
 
   return (
     <Popover open={popoverOpen} onOpenChange={onPopoverOpenChange}>
       <VoiceControlTooltip title={title}>
-        <PopoverTrigger asChild>
-          <button
+        <PopoverTrigger render={<button
             type="button"
             aria-label={title}
             aria-disabled={disabled}
-            className={splitControlChevronButtonClass(surface, segmentState)}
-          >
+            className={chevronClass} />}>
             <ChevronDownIcon
               className={surface === 'panel' ? 'size-3' : 'size-3.5'}
             />
-          </button>
-        </PopoverTrigger>
+          </PopoverTrigger>
       </VoiceControlTooltip>
       <PopoverContent
         align="start"
@@ -126,10 +113,10 @@ function SplitControlChevron({
         sideOffset={8}
         data-voice-stage-popover
         className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
           voiceStagePopoverMicSettingsClass,
-          surface === 'panel' && 'z-[200]',
+          surface === 'panel' && 'z-200',
         )}
-        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {popoverContent}
       </PopoverContent>
@@ -166,7 +153,7 @@ export function VoiceSplitControl({
   const segmentState = { danger, success }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className="group/media flex items-center gap-px">
         <VoiceControlTooltip title={mainTitle}>
           <button
