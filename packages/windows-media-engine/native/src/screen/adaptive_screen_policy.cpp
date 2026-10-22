@@ -103,14 +103,23 @@ AdaptiveDecision evaluateAdaptiveScreenPolicy(
 
   // Local resources: bounded cuts on sustained evidence, slow verified recovery.
   const auto age = (std::max)({m.capture_age_ms, m.convert_age_ms, m.publish_age_ms});
-  AdaptiveReason pressure = AdaptiveReason::healthy;
+  // Local (GPU, encoder, frame age) load of this sample, judged even when the
+  // network also suffers: a lossy link must not hide a GPU starved by a game
+  // from the load governor, which schedules the share and trades frame rate.
+  AdaptiveReason local_pressure = AdaptiveReason::healthy;
   if (m.local_measurements_fresh) {
-    if (m.publication_gpu_pressure_permille >= 850) pressure = AdaptiveReason::gpu;
+    if (m.publication_gpu_pressure_permille >= 850) local_pressure = AdaptiveReason::gpu;
     else if (m.encoder_inputs >= 4 && m.encoder_outputs * 10 < m.encoder_inputs * 7)
-      pressure = AdaptiveReason::encoder;
-    else if (age > preset.frame_age_budget_ms) pressure = AdaptiveReason::frame_age;
-    else if (m.backpressure_permille >= 250) pressure = AdaptiveReason::backpressure;
+      local_pressure = AdaptiveReason::encoder;
+    else if (age > preset.frame_age_budget_ms) local_pressure = AdaptiveReason::frame_age;
   }
+  d.local_measured = m.local_measurements_fresh;
+  d.local_pressure = local_pressure;
+  // Pacer queueing is not local starvation: it follows the local verdict.
+  AdaptiveReason pressure = local_pressure;
+  if (m.local_measurements_fresh && pressure == AdaptiveReason::healthy &&
+      m.backpressure_permille >= 250)
+    pressure = AdaptiveReason::backpressure;
   if (pressure != AdaptiveReason::healthy) {
     const bool emergency = age >= 300 || m.publication_gpu_pressure_permille >= 980;
     d.next.healthy_since_ms.reset();

@@ -73,11 +73,15 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   (void)keyframes_.requestThrough(profile_generation, keyframe_intents_->load());
   const auto keyframe_action = keyframes_.poll(now, encoder_->stats().submitted);
   if (keyframe_action == KeyframeAction::exhausted) {
+    // A lost device is not load: run() reports it so the utility is retired.
+    if (deviceLost()) throw std::runtime_error("Screen GPU device was lost");
+    if (recoverEncoderInPlace(now)) return;
     std::scoped_lock lock(mutex_);
+    // Sustained load, not a broken device: starting the share again can work.
     failure_ = ScreenPublicationFailure{
         "screen_keyframe_progress_deadline",
         "Three bounded keyframe requests produced no confirmed publication progress",
-        "screen_keyframe"};
+        "screen_keyframe", true};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
     return;
@@ -141,7 +145,7 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       (std::min)(current.converter.gpu_duration_last_us / 1000, 60'000ULL));
   m.publish_age_ms =
       static_cast<std::uint32_t>((std::min)(current.publish_age_last_us / 1000, 60'000ULL));
-  const auto frame_interval = 1'000'000ULL / kAdaptiveScreenProfiles[current.current_profile].fps;
+  const auto frame_interval = static_cast<std::uint64_t>(frameIntervalUs());
   m.publication_gpu_pressure_permille = static_cast<std::uint32_t>(
       (std::min)(current.converter.gpu_duration_last_us * 1000 / frame_interval, 1000ULL));
   if (previous_policy_stats_) {
@@ -179,6 +183,8 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   last_policy_ms_ = now;
   const auto decision = evaluateAdaptiveScreenPolicy(m, policy_state_);
   policy_state_ = decision.next;
+  applyLoadLevel(load_governor_.observe(now, decision.local_measured,
+      decision.local_pressure != AdaptiveReason::healthy, profile_.frames_per_second >= 60));
   {
     std::scoped_lock lock(mutex_);
     stats_.decision_reason = decision.reason;
@@ -205,6 +211,45 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       policy_state_ = recordAdaptiveBitrateAttempt(policy_state_, now);
     }
   }
+}
+
+bool ProductionScreenPipeline::recoverEncoderInPlace(std::uint64_t now) {
+  if (!encoder_recoveries_.available(now)) return false;
+  try {
+    if (!replaceEncoder(output_)) return false;
+  } catch (const EncoderReplacementRefused&) {
+    if (deviceLost()) throw;
+    return false;
+  }
+  encoder_recoveries_.consume(now);
+  std::scoped_lock lock(mutex_);
+  ++stats_.encoder_recoveries;
+  return true;
+}
+
+std::int64_t ProductionScreenPipeline::frameIntervalUs() const noexcept {
+  return static_cast<std::int64_t>(1'000'000 / output_.frames_per_second);
+}
+
+void ProductionScreenPipeline::applyLoadLevel(ScreenLoadLevel level) {
+  if (scheduling_boost_) scheduling_boost_->set(level != ScreenLoadLevel::normal);
+  const bool reduced = level == ScreenLoadLevel::reduced_frame_rate;
+  if (reduced != frame_rate_reduced_) {
+    // The encoder itself runs at the new rate: CBR budgets bits per
+    // configured frame, so only skipping input would also halve the bitrate.
+    auto output = output_;
+    output.frames_per_second = reduced ? profile_.frames_per_second / 2 : profile_.frames_per_second;
+    // Retried on the next sample while borrowed frames are still in flight;
+    // a failed replacement keeps the current encoder and rate.
+    try {
+      if (replaceEncoder(output)) frame_rate_reduced_ = reduced;
+    } catch (const EncoderReplacementRefused&) {
+      if (deviceLost()) throw;
+    }
+  }
+  std::scoped_lock lock(mutex_);
+  stats_.load_level = level;
+  if (scheduling_boost_) stats_.scheduling = scheduling_boost_->stats();
 }
 
 void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t revision) {

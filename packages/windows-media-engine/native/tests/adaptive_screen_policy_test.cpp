@@ -3,6 +3,7 @@
 #include "core/packet_send_delay.hpp"
 #include <limits>
 #include "screen/screen_keyframe_control.hpp"
+#include "screen/screen_load_governor.hpp"
 #include "screen/live_bitrate_mailbox.hpp"
 #include <iostream>
 #include <stdexcept>
@@ -416,6 +417,67 @@ void keyframes() {
   require(c.attempts() == 0 && c.pending() == 0,
           "keyframe after the latest attempt not acknowledged");
 }
+void localPressure() {
+  Trace lossy;
+  // A link far below the preset: the network binds the bitrate here.
+  lossy.sample.available_outgoing_bitrate = 3'000'000;
+  lossy.sample.publish_age_ms = 250;
+  const auto decision = lossy.tick();
+  require(decision.reason == AdaptiveReason::network, "network verdict changed");
+  require(decision.local_measured && decision.local_pressure == AdaptiveReason::frame_age,
+          "lossy network hid local load");
+  Trace stale;
+  stale.sample.local_measurements_fresh = false;
+  stale.sample.publish_age_ms = 250;
+  require(!stale.tick().local_measured, "stale sample judged local load");
+}
+void encoderRecoveryBudget() {
+  ScreenEncoderRecoveryBudget budget;
+  require(budget.available(1'000), "first in-place recovery refused");
+  budget.consume(1'000);
+  require(budget.available(2'000), "second in-place recovery refused");
+  budget.consume(2'000);
+  require(!budget.available(3'000), "in-place recoveries were unbounded");
+  require(!budget.available(60'999), "recovery window expired early");
+  require(budget.available(61'000), "recovery window never expired");
+  budget.consume(61'000);
+  require(!budget.available(61'500), "newest recoveries were forgotten");
+  require(budget.available(122'000), "budget did not recover after a quiet minute");
+}
+void loadGovernor() {
+  using L = ScreenLoadLevel;
+  ScreenLoadGovernor g;
+  std::uint64_t t = 0;
+  const auto step = [&](bool pressure, bool measured = true, bool reducible = true) {
+    t += 500;
+    return g.observe(t, measured, pressure, reducible);
+  };
+  require(step(true) == L::normal && step(true) == L::normal, "boosted before sustained load");
+  require(step(false) == L::normal, "single quiet sample kept pressure streak");
+  step(true); step(true);
+  require(step(true) == L::boosted, "sustained load not boosted");
+  for (int i = 0; i < 5; ++i) require(step(true) == L::boosted, "frame rate dropped before boost settled");
+  require(step(true) == L::reduced_frame_rate, "persisting load kept full frame rate");
+  for (int i = 0; i < 100; ++i) require(step(false, false) == L::reduced_frame_rate,
+                                         "unmeasured samples relaxed the level");
+  // The first measured sample after the gap counts one capped interval (1 s).
+  for (int i = 0; i < 58; ++i) require(step(false) == L::reduced_frame_rate, "frame rate restored early");
+  require(step(false) == L::boosted, "frame rate never restored");
+  // Load returns right after the restore: back to half rate, longer hold.
+  for (int i = 0; i < 6; ++i) step(true);
+  require(g.level() == L::reduced_frame_rate && g.restoreHoldMs() == 60'000,
+          "premature restore did not back off");
+  for (int i = 0; i < 120; ++i) step(false);
+  require(g.level() == L::boosted, "backed-off restore never happened");
+  for (int i = 0; i < 59; ++i) require(step(false) == L::boosted, "boost released early");
+  require(step(false) == L::normal, "boost never released");
+  require(g.restoreHoldMs() == 30'000, "back-off survived the end of the load");
+  // A 30 fps preset has no lower rate: boost only.
+  ScreenLoadGovernor thirty;
+  t = 0;
+  for (int i = 0; i < 40; ++i) { t += 500; thirty.observe(t, true, true, false); }
+  require(thirty.level() == L::boosted, "30 fps preset lost frame rate or boost");
+}
 
 }
 int main() {
@@ -454,6 +516,7 @@ int main() {
     queue.reset();
     require(!queue.observe("screen", 99, 20, 4060).delay_us, "Room reset retained packet history");
     golden(); belowFloor(); boundaries(); longTraces(); mailboxFences(); keyframes();
+    localPressure(); loadGovernor(); encoderRecoveryBudget();
     std::cout << "Fixed-preset bitrate golden traces and keyframe boundaries passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

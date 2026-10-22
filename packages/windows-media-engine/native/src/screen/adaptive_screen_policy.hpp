@@ -75,6 +75,10 @@ struct AdaptiveDecision {
   std::uint32_t frame_rate = 0;
   // Bitrate the network allows now, before local pressure; 0 when unknown.
   std::uint32_t network_target = 0;
+  // Local (GPU, encoder, frame age) load of this sample, independent of the
+  // network verdict. Unset when the sample had no fresh local measurement.
+  bool local_measured = false;
+  AdaptiveReason local_pressure = AdaptiveReason::healthy;
   AdaptivePolicyState next;
 };
 
