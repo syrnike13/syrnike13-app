@@ -15,6 +15,8 @@ export type VoiceMediaContextValue = {
   toggleScreenShare: () => void
   /** Открыть выбор источника заново, не останавливая стрим (только desktop). */
   changeScreenShareSource?: () => void
+  /** Проверка голоса: полный мут с прослушкой себя. */
+  selfMonitoringActive: boolean
   setSelfMonitoringActive: (active: boolean) => void
   /** Трек активной native mic-сессии для превью в настройках без второго захвата. */
   getNativeMicrophonePreviewTrack: () => MediaStreamTrack | null

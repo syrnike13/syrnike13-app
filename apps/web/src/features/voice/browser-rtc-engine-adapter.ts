@@ -17,6 +17,7 @@ import type {
   VoiceMediaKind,
   VoiceMediaSnapshot,
 } from '@syrnike13/platform'
+import { computeEffectiveDeafened } from '@syrnike13/platform'
 
 import {
   createVoiceRoomOptions,
@@ -732,7 +733,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   ) {
     const outputKey = JSON.stringify([
       desired.outputDeviceId ?? '',
-      desired.userDeafened || desired.serverDeafened,
+      computeEffectiveDeafened(desired),
       desired.outputVolume,
     ])
     if (active.appliedOutputKey === outputKey) return Effect.void
@@ -740,11 +741,11 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       const outputDeviceId = desired.outputDeviceId ?? 'default'
       yield* active.audioMixer.setOutputDeviceEffect(desired.outputDeviceId)
       active.appliedOutputDeviceId = outputDeviceId
-      const muted = desired.userDeafened || desired.serverDeafened
+      const muted = computeEffectiveDeafened(desired)
       yield* active.audioMixer.applyVolumesEffect(muted, desired.outputVolume)
       yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'output', {
-        state: desired.userDeafened || desired.serverDeafened ? 'muted' : 'running',
+        state: computeEffectiveDeafened(desired) ? 'muted' : 'running',
       })
       active.appliedOutputKey = outputKey
     }).pipe(
@@ -768,18 +769,18 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       if (desired.outputDeviceId) {
         yield* active.audioMixer.setOutputDeviceEffect(undefined)
         yield* active.audioMixer.applyVolumesEffect(
-          desired.userDeafened || desired.serverDeafened,
+          computeEffectiveDeafened(desired),
           desired.outputVolume,
         )
         yield* this.assertCurrentEffect(active)
         active.appliedOutputDeviceId = 'default'
         active.appliedOutputKey = JSON.stringify([
           desired.outputDeviceId,
-          desired.userDeafened || desired.serverDeafened,
+          computeEffectiveDeafened(desired),
           desired.outputVolume,
         ])
         this.emitMedia(active, 'output', {
-          state: desired.userDeafened || desired.serverDeafened ? 'muted' : 'running',
+          state: computeEffectiveDeafened(desired) ? 'muted' : 'running',
           error: {
             code: 'output_device_fallback',
             message: 'Selected audio output is unavailable; using system default',
@@ -905,7 +906,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   ) {
     this.effectRuntime.runFork(
       active.audioMixer.applyVolumesEffect(
-        desired.userDeafened || desired.serverDeafened,
+        computeEffectiveDeafened(desired),
         desired.outputVolume,
       ).pipe(Effect.ignore),
     )

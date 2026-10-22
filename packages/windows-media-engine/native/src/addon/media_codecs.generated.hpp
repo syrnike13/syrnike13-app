@@ -187,6 +187,9 @@ inline MicrophoneIntent readMicrophoneIntent(Napi::Env env, const Napi::Value& v
   result.gate_threshold_db = readNumber(env, object.Get("gateThresholdDb"), -100, 0, false);
   result.gate_auto_threshold = readBoolean(env, object.Get("gateAutoThreshold"));
   result.meter_demand = readBoolean(env, object.Get("meterDemand"));
+  result.monitor = readBoolean(env, object.Get("monitor"));
+  if (!object.Get("monitorDeviceId").IsNull()) result.monitor_device_id = readIdentifier(env, object.Get("monitorDeviceId"));
+  result.monitor_volume = readNumber(env, object.Get("monitorVolume"), 0, 3, false);
   result.bitrate = static_cast<std::uint64_t>(readNumber(env, object.Get("bitrate"), 6000, 512000, true));
   result.retry_revision = static_cast<std::uint64_t>(readNumber(env, object.Get("retryRevision"), 0, 9007199254740991, true));
   return result;
@@ -209,6 +212,10 @@ inline Napi::Object writeModel(Napi::Env env, const MicrophoneIntent& value) {
   object.Set("gateThresholdDb", value.gate_threshold_db);
   object.Set("gateAutoThreshold", value.gate_auto_threshold);
   object.Set("meterDemand", value.meter_demand);
+  object.Set("monitor", value.monitor);
+  if (value.monitor_device_id) object.Set("monitorDeviceId", *value.monitor_device_id);
+  else object.Set("monitorDeviceId", env.Null());
+  object.Set("monitorVolume", value.monitor_volume);
   object.Set("bitrate", Napi::Number::New(env, static_cast<double>(value.bitrate)));
   object.Set("retryRevision", Napi::Number::New(env, static_cast<double>(value.retry_revision)));
   return object;

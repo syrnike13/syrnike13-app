@@ -1,30 +1,21 @@
 #include "audio/remote_audio_playout.hpp"
+#include "audio/shared_render_client.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
 #include <avrt.h>
-#include <mmdeviceapi.h>
 #include <wrl/client.h>
 #include <livekit/fresh_audio_stream.h>
 #include <livekit/livekit.h>
 
 #include <algorithm>
-#include <charconv>
 #include <memory>
 #include <stdexcept>
 
 namespace syrnike::windows_media::audio {
 namespace {
 using Clock = std::chrono::steady_clock;
-using Microsoft::WRL::ComPtr;
 using namespace std::chrono_literals;
-// LiveKit disables its built-in playback through the default process session.
-// Keep product output in a dedicated, stable session so device replacement
-// preserves Windows mixer preferences without inheriting the SDK's mute.
-constexpr GUID kOutputAudioSession{
-    0x3a1665b2, 0xa3b5, 0x467c, {0x9b, 0x1c, 0x39, 0xf0, 0x46, 0x2f, 0xe3, 0x57}};
-// 20 ms device buffer, written in whole 10 ms frames.
-constexpr REFERENCE_TIME kDeviceBuffer100ns = 200'000;
 constexpr auto kDeviceRetry = 2s;
 // Renderer epochs fence echo references in the warm microphone DSP, which
 // outlives every device. They never repeat within a process.
@@ -48,11 +39,7 @@ std::int64_t timestamp100ns() noexcept {
 }
 AudioDeviceIntent outputDevice(const OutputIntent& intent) {
   AudioDeviceIntent result{AudioDirection::output, {}};
-  if (!intent.device_id) return result;
-  AudioDeviceId id = 0;
-  const auto& text = *intent.device_id;
-  const auto parsed = std::from_chars(text.data(), text.data() + text.size(), id);
-  if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && id != 0) result.explicit_id = id;
+  if (intent.device_id) result.explicit_id = parseAudioDeviceId(*intent.device_id);
   return result;
 }
 struct Apartment {
@@ -70,60 +57,19 @@ struct ExternalPlayout {
 };
 }  // namespace
 
-// One open shared-mode render client, owned by the playout thread.
-struct RemoteAudioPlayout::Device {
+static_assert(kRemoteAudioRate == kSharedRenderRate && kRemoteAudioChannels == kSharedRenderChannels &&
+              kRemoteAudioFrames == kSharedRenderPeriodFrames, "Remote mix frames must match the render client");
+
+// One open render client and its echo reference, owned by the playout thread.
+struct RemoteAudioPlayout::Device : SharedRenderClient {
   std::wstring endpoint_id;
-  ComPtr<IAudioClient2> client;
-  ComPtr<IAudioRenderClient> render;
-  HANDLE event = nullptr;
-  UINT32 buffer_frames = 0;
-  std::uint32_t latency_ms = 0;
   std::shared_ptr<RenderedEchoReference> echo;
   EchoReferenceFrame reference;
-  bool started = false;
-  ~Device() {
-    if (client && started) { (void)client->Stop(); (void)client->Reset(); }
-    if (echo) echo->retire();
-    if (event) CloseHandle(event);
-  }
+  ~Device() { if (echo) echo->retire(); }
   static HRESULT open(const AudioEndpoint& endpoint, std::unique_ptr<Device>& result) {
     auto device = std::make_unique<Device>();
     device->endpoint_id = endpoint.endpoint_id;
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    HRESULT status = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
-    ComPtr<IMMDevice> endpoint_device;
-    if (SUCCEEDED(status)) status = enumerator->GetDevice(endpoint.endpoint_id.c_str(), &endpoint_device);
-    if (SUCCEEDED(status)) status = endpoint_device->Activate(__uuidof(IAudioClient2), CLSCTX_ALL, nullptr,
-        reinterpret_cast<void**>(device->client.GetAddressOf()));
-    if (SUCCEEDED(status)) {
-      AudioClientProperties properties{};
-      properties.cbSize = sizeof(properties);
-      properties.eCategory = AudioCategory_Other;
-      status = device->client->SetClientProperties(&properties);
-    }
-    WAVEFORMATEX format{WAVE_FORMAT_PCM, 2, kRemoteAudioRate, kRemoteAudioRate * 4, 4, 16, 0};
-    if (SUCCEEDED(status)) status = device->client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-        kDeviceBuffer100ns, 0, &format, &kOutputAudioSession);
-    if (SUCCEEDED(status)) {
-      device->event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-      status = device->event ? device->client->SetEventHandle(device->event) : HRESULT_FROM_WIN32(GetLastError());
-    }
-    if (SUCCEEDED(status)) status = device->client->GetService(IID_PPV_ARGS(&device->render));
-    if (SUCCEEDED(status)) status = device->client->GetBufferSize(&device->buffer_frames);
-    REFERENCE_TIME latency = 0;
-    if (SUCCEEDED(status)) status = device->client->GetStreamLatency(&latency);
-    if (SUCCEEDED(status) && device->buffer_frames < kRemoteAudioFrames) status = AUDCLNT_E_BUFFER_SIZE_ERROR;
-    if (SUCCEEDED(status)) {
-      // Prime the whole buffer with silence so the first period cannot starve.
-      BYTE* data = nullptr;
-      status = device->render->GetBuffer(device->buffer_frames, &data);
-      if (SUCCEEDED(status)) status = device->render->ReleaseBuffer(device->buffer_frames, AUDCLNT_BUFFERFLAGS_SILENT);
-    }
-    if (SUCCEEDED(status)) status = device->client->Start();
-    if (FAILED(status)) return status;
-    device->started = true;
-    device->latency_ms = static_cast<std::uint32_t>(latency / 10'000);
+    if (const auto status = device->SharedRenderClient::open(endpoint.endpoint_id); FAILED(status)) return status;
     const auto epoch = ++next_renderer_epoch;
     device->echo = std::make_shared<RenderedEchoReference>(epoch);
     device->reference.renderer_epoch = epoch;

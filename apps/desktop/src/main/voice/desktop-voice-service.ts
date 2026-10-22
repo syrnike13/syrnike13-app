@@ -12,6 +12,7 @@ import {
 import {
   GatewayVoiceAuthorityAdapter,
   VoiceDirector,
+  deafenToggleCommand,
   type DesktopStoredSession,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
@@ -412,8 +413,8 @@ export class DesktopVoiceService {
     }
     if (action === 'push-to-mute') {
       this.runtime.director.dispatch({
-        type: 'setSelfMonitoringActive',
-        active: phase === 'pressed',
+        type: 'setPushToMuteHeld',
+        held: phase === 'pressed',
       })
       return
     }
@@ -434,12 +435,11 @@ export class DesktopVoiceService {
       })
       this.persistPreference({ micEnabled })
     } else if (action === 'toggle-deafen') {
-      const deafened = !snapshot.userDeafened
-      this.runtime.director.dispatch({
-        type: 'setUserDeafened',
-        deafened,
-      })
-      this.persistPreference({ deafened })
+      const command = deafenToggleCommand(snapshot)
+      this.runtime.director.dispatch(command)
+      if (command.type === 'setUserDeafened') {
+        this.persistPreference({ deafened: command.deafened })
+      }
     } else if (action === 'toggle-camera') {
       this.runtime.director.dispatch({
         type: 'setCamera',

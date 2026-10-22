@@ -127,9 +127,10 @@ function snapshot({
     serverMuted: false,
     serverDeafened: false,
     systemPrivacyMuted: false,
-    monitoringMuted: false,
+    selfMonitoringActive: false,
     inputMode: 'voice_activity',
     pushToTalkHeld: false,
+    pushToMuteHeld: false,
     effectiveMuted: true,
     speakingUserIds: [],
   }

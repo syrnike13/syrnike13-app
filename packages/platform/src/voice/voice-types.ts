@@ -72,9 +72,10 @@ export type VoiceMediaDesiredState = Readonly<{
   serverMuted: boolean
   serverDeafened: boolean
   systemPrivacyMuted: boolean
-  monitoringMuted: boolean
+  selfMonitoringActive: boolean
   inputMode: VoiceInputMode
   pushToTalkHeld: boolean
+  pushToMuteHeld: boolean
   effectiveMuted: boolean
   microphoneDeviceId?: string
   bypassSystemAudioInputProcessing: boolean
@@ -163,9 +164,10 @@ export type VoiceSnapshot = Readonly<{
   serverMuted: boolean
   serverDeafened: boolean
   systemPrivacyMuted: boolean
-  monitoringMuted: boolean
+  selfMonitoringActive: boolean
   inputMode: VoiceInputMode
   pushToTalkHeld: boolean
+  pushToMuteHeld: boolean
   effectiveMuted: boolean
   speakingUserIds: readonly string[]
 }>
@@ -186,6 +188,7 @@ export type VoiceCommand =
   | Readonly<{ type: 'setPushToTalkHeld'; held: boolean }>
   | Readonly<{ type: 'setSystemPrivacyMuted'; muted: boolean }>
   | Readonly<{ type: 'setSelfMonitoringActive'; active: boolean }>
+  | Readonly<{ type: 'setPushToMuteHeld'; held: boolean }>
   | Readonly<{
       type: 'configureMicrophone'
       deviceId?: string
@@ -291,6 +294,10 @@ export const VoiceCommandSchema = Schema.Union([
     active: Schema.Boolean,
   }),
   Schema.Struct({
+    type: Schema.Literal('setPushToMuteHeld'),
+    held: Schema.Boolean,
+  }),
+  Schema.Struct({
     type: Schema.Literal('configureMicrophone'),
     deviceId: Schema.optional(VoiceIdentifierSchema),
     bypassSystemAudioInputProcessing: Schema.Boolean,
@@ -378,9 +385,10 @@ export const VoiceSnapshotSchema = Schema.Struct({
   serverMuted: Schema.Boolean,
   serverDeafened: Schema.Boolean,
   systemPrivacyMuted: Schema.Boolean,
-  monitoringMuted: Schema.Boolean,
+  selfMonitoringActive: Schema.Boolean,
   inputMode: Schema.Literals(['voice_activity', 'push_to_talk']),
   pushToTalkHeld: Schema.Boolean,
+  pushToMuteHeld: Schema.Boolean,
   effectiveMuted: Schema.Boolean,
   speakingUserIds: Schema.Array(VoiceIdentifierSchema),
 })
@@ -413,9 +421,10 @@ export function computeEffectiveMuted(
     | 'serverMuted'
     | 'serverDeafened'
     | 'systemPrivacyMuted'
-    | 'monitoringMuted'
+    | 'selfMonitoringActive'
     | 'inputMode'
     | 'pushToTalkHeld'
+    | 'pushToMuteHeld'
   >,
 ) {
   return (
@@ -424,9 +433,55 @@ export function computeEffectiveMuted(
     state.serverMuted ||
     state.serverDeafened ||
     state.systemPrivacyMuted ||
-    state.monitoringMuted ||
+    state.selfMonitoringActive ||
+    state.pushToMuteHeld ||
     (state.inputMode === 'push_to_talk' && !state.pushToTalkHeld)
   )
+}
+
+/**
+ * Remote audio is silent while the user, the server or a self-monitoring
+ * check deafens the session.
+ */
+export function computeEffectiveDeafened(
+  state: Pick<
+    VoiceMediaDesiredState,
+    'userDeafened' | 'serverDeafened' | 'selfMonitoringActive'
+  >,
+) {
+  return (
+    state.userDeafened || state.serverDeafened || state.selfMonitoringActive
+  )
+}
+
+/**
+ * What the deafen control does. A running self-monitoring check shows as
+ * deafened, so the control returns the sound by ending the check instead of
+ * saving a deafen preference.
+ */
+export function deafenToggleCommand(
+  state: Pick<VoiceMediaDesiredState, 'userDeafened' | 'selfMonitoringActive'>,
+): VoiceCommand {
+  if (state.selfMonitoringActive && !state.userDeafened) {
+    return { type: 'setSelfMonitoringActive', active: false }
+  }
+  return { type: 'setUserDeafened', deafened: !state.userDeafened }
+}
+
+/**
+ * Self flags other participants see. A self-monitoring check is a full mute,
+ * so it reports the user as deafened without changing the saved preference.
+ */
+export function reportedSelfVoiceFlags(
+  state: Pick<
+    VoiceMediaDesiredState,
+    'userMuted' | 'userDeafened' | 'selfMonitoringActive'
+  >,
+) {
+  return {
+    userMuted: state.userMuted,
+    userDeafened: state.userDeafened || state.selfMonitoringActive,
+  }
 }
 
 /** Voice channels without a bitrate setting publish at 64 kbps. */
@@ -439,9 +494,10 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
     serverMuted: false,
     serverDeafened: false,
     systemPrivacyMuted: false,
-    monitoringMuted: false,
+    selfMonitoringActive: false,
     inputMode: 'voice_activity' as const,
     pushToTalkHeld: false,
+    pushToMuteHeld: false,
     bypassSystemAudioInputProcessing: false,
     automaticGainControl: true,
     noiseSuppression: true,
@@ -471,9 +527,10 @@ export function areVoiceMediaDesiredStatesEqual(
     left.serverMuted === right.serverMuted &&
     left.serverDeafened === right.serverDeafened &&
     left.systemPrivacyMuted === right.systemPrivacyMuted &&
-    left.monitoringMuted === right.monitoringMuted &&
+    left.selfMonitoringActive === right.selfMonitoringActive &&
     left.inputMode === right.inputMode &&
     left.pushToTalkHeld === right.pushToTalkHeld &&
+    left.pushToMuteHeld === right.pushToMuteHeld &&
     left.effectiveMuted === right.effectiveMuted &&
     left.microphoneDeviceId === right.microphoneDeviceId &&
     left.bypassSystemAudioInputProcessing ===

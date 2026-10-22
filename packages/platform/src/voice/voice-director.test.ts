@@ -734,6 +734,70 @@ describe('VoiceDirector', () => {
     expect(harness.engine.connected).toHaveLength(connectsBefore)
   })
 
+  it('reports a self-monitoring check as deafened and restores the saved flags', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setUserMuted', muted: false })
+
+    harness.director.dispatch({ type: 'setSelfMonitoringActive', active: true })
+    expect(harness.director.snapshot()).toMatchObject({
+      userMuted: false,
+      userDeafened: false,
+      selfMonitoringActive: true,
+      effectiveMuted: true,
+    })
+    expect(harness.engine.desired.at(-1)?.selfMonitoringActive).toBe(true)
+    await waitUntil(() =>
+      harness.authority.selfStateUpdates.at(-1)?.userDeafened === true,
+    )
+    expect(harness.authority.selfStateUpdates.at(-1)).toMatchObject({
+      operationId: lease.operationId,
+      userMuted: false,
+    })
+
+    harness.director.dispatch({ type: 'setSelfMonitoringActive', active: false })
+    await waitUntil(() =>
+      harness.authority.selfStateUpdates.at(-1)?.userDeafened === false,
+    )
+    expect(harness.director.snapshot()).toMatchObject({
+      userDeafened: false,
+      effectiveMuted: false,
+    })
+  })
+
+  it('mutes push-to-mute without reporting deafen or ending a self-monitoring check', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setUserMuted', muted: false })
+    harness.director.dispatch({ type: 'setSelfMonitoringActive', active: true })
+    await waitUntil(() =>
+      harness.authority.selfStateUpdates.at(-1)?.userDeafened === true,
+    )
+    const updates = harness.authority.selfStateUpdates.length
+
+    harness.director.dispatch({ type: 'setPushToMuteHeld', held: true })
+    harness.director.dispatch({ type: 'setPushToMuteHeld', held: false })
+    expect(harness.director.snapshot()).toMatchObject({
+      selfMonitoringActive: true,
+      pushToMuteHeld: false,
+      effectiveMuted: true,
+    })
+
+    harness.director.dispatch({ type: 'setSelfMonitoringActive', active: false })
+    harness.director.dispatch({ type: 'setPushToMuteHeld', held: true })
+    expect(harness.director.snapshot().effectiveMuted).toBe(true)
+    harness.director.dispatch({ type: 'setPushToMuteHeld', held: false })
+    expect(harness.director.snapshot().effectiveMuted).toBe(false)
+    await waitUntil(() =>
+      harness.authority.selfStateUpdates.at(-1)?.userDeafened === false,
+    )
+    expect(
+      harness.authority.selfStateUpdates
+        .slice(updates)
+        .filter((update) => update.userDeafened),
+    ).toHaveLength(0)
+  })
+
   it('projects speaking participants without changing connection ownership', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')
