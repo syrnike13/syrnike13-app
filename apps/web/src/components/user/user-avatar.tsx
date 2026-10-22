@@ -6,13 +6,14 @@ import {
   Avatar,
   AvatarBadge,
   AvatarFallback,
-  AvatarImage,
 } from '@syrnike13/ui/primitives/avatar'
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
+import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import {
   presenceRingColorVar,
   resolvePresenceBadgeLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
+import { useImageRetry } from '#/hooks/use-image-retry'
 import { userAvatarUrl } from '#/lib/media'
 import { getUserPresence, presenceDotTitle } from '#/lib/presence'
 import type { CSSVars } from '#/lib/css-vars'
@@ -151,6 +152,7 @@ export function UserAvatar({
     hasAnimatedVariant
       ? animatedAvatarSrc
       : staticAvatarSrc
+  const animatedRetry = useImageRetry(animatedAvatarSrc)
   const presenceBadge = resolvePresenceBadgeLayoutForAvatar(
     className,
     fallbackClassName,
@@ -202,7 +204,7 @@ export function UserAvatar({
       {/* eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing */}
       <Avatar className={cn(className, fallbackClassName)}>
         {avatarSrc ? (
-          <AvatarImage
+          <RetryingAvatarImage
             src={avatarSrc}
             alt={name}
             onLoadingStatusChange={onImageLoadingChange}
@@ -212,8 +214,10 @@ export function UserAvatar({
             )}
           />
         ) : null}
-        {mountAnimatedOverlay && animatedAvatarSrc ? (
+        {mountAnimatedOverlay && animatedAvatarSrc && !animatedRetry.failed ? (
           <img
+            key={animatedRetry.attempt}
+            onError={animatedRetry.onError}
             src={animatedAvatarSrc}
             alt=""
             aria-hidden="true"
