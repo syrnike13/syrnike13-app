@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -32,5 +33,20 @@ class ScreenKeyframeControl final {
   std::uint32_t attempts_ = 0;
   std::optional<std::uint64_t> last_request_ms_;
   std::optional<std::uint64_t> last_poll_ms_;
+};
+
+// Exhausted keyframe retries first restart the encoder on the same
+// publication (viewers keep the track). Past this budget in-place restarts
+// are not helping: the share fails retryably and is published anew.
+inline constexpr std::size_t kMaximumEncoderRecoveriesPerWindow = 2;
+inline constexpr std::uint64_t kEncoderRecoveryWindowMs = 60'000;
+
+class ScreenEncoderRecoveryBudget final {
+ public:
+  [[nodiscard]] bool available(std::uint64_t now_ms) const noexcept;
+  void consume(std::uint64_t now_ms) noexcept;
+ private:
+  std::array<std::uint64_t, kMaximumEncoderRecoveriesPerWindow> recoveries_ms_{};
+  std::size_t count_ = 0;
 };
 }

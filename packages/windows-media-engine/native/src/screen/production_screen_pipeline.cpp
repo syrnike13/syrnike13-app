@@ -202,6 +202,8 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
 }
 
 void ProductionScreenPipeline::run() noexcept {
+  // MMCSS registration belongs to this thread: create and revert it here.
+  scheduling_boost_ = std::make_unique<ScreenSchedulingBoost>(device_owner_->device());
   try {
     while (true) {
       while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))
@@ -239,8 +241,9 @@ void ProductionScreenPipeline::run() noexcept {
         std::scoped_lock lock(mutex_);
         if (stop_requested_ || cancellation_requested_ || !published_) continue;
       }
-      const auto frame_interval_us =
-          static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+      // The encoder's interval: the preset's, or twice it while the load
+      // governor halves the rate.
+      const auto frame_interval_us = frameIntervalUs();
       // Below the preset floor the policy admits fewer frames; each keeps the
       // nominal duration the encoder's per-frame budget is configured for.
       const auto admission_interval_us =
@@ -369,6 +372,7 @@ void ProductionScreenPipeline::run() noexcept {
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
+  scheduling_boost_.reset();
   repeat_texture_.Reset();
   if (owns_preview_) LocalScreenPreview::processPreview().stopPublication();
   (void)capture_pipeline_->stop(std::chrono::steady_clock::now());
@@ -399,9 +403,17 @@ void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32
   if (resizeOutput(wanted)) pending_output_.reset();
 }
 
-// Replaces the converter and encoder on the same publication. The H.264
-// stream changes size on its next (key) frame; viewers keep their track.
 bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
+  if (!replaceEncoder(output)) return false;
+  std::scoped_lock lock(mutex_);
+  ++stats_.output_resizes;
+  return true;
+}
+
+// Replaces the converter and encoder on the same publication. The H.264
+// stream continues (at the new size) from the next keyframe; viewers keep
+// their track and see a short stall at most.
+bool ProductionScreenPipeline::replaceEncoder(ScreenVideoProfile output) {
   // Encoded slot indices are reused by the next encoder: wait until the SDK
   // has returned every borrowed access unit of this one.
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
@@ -431,7 +443,6 @@ bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
     keyframes_.begin(stats_.profile_generation);
     encoded_continuity_ = {};
     cadence_.reset();
-    ++stats_.output_resizes;
   }
   previous_policy_stats_.reset();
   // The new encoder starts at the preset bitrate; keep the adapted one.
@@ -498,7 +509,7 @@ void ProductionScreenPipeline::repeatLastFrame() {
   if (now_us - last_submit_us_ < kStaticRepeatIntervalUs) return;
   const auto now_ms = static_cast<std::uint64_t>(now_us / 1000);
   if (adapter_ && screenPacketQueueBackpressured(adapter_->networkObservation(), now_ms)) return;
-  const auto frame_interval_us = static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+  const auto frame_interval_us = frameIntervalUs();
   auto metadata = repeat_metadata_;
   metadata.capture_timestamp_100ns = now_us * 10;
   auto converted = converter_->convert({device_owner_, repeat_texture_.Get()}, metadata);

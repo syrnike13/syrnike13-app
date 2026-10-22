@@ -73,11 +73,13 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   (void)keyframes_.requestThrough(profile_generation, keyframe_intents_->load());
   const auto keyframe_action = keyframes_.poll(now, encoder_->stats().submitted);
   if (keyframe_action == KeyframeAction::exhausted) {
+    if (recoverEncoderInPlace(now)) return;
     std::scoped_lock lock(mutex_);
+    // Sustained load, not a broken device: starting the share again can work.
     failure_ = ScreenPublicationFailure{
         "screen_keyframe_progress_deadline",
         "Three bounded keyframe requests produced no confirmed publication progress",
-        "screen_keyframe"};
+        "screen_keyframe", true};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
     return;
@@ -141,7 +143,7 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       (std::min)(current.converter.gpu_duration_last_us / 1000, 60'000ULL));
   m.publish_age_ms =
       static_cast<std::uint32_t>((std::min)(current.publish_age_last_us / 1000, 60'000ULL));
-  const auto frame_interval = 1'000'000ULL / kAdaptiveScreenProfiles[current.current_profile].fps;
+  const auto frame_interval = static_cast<std::uint64_t>(frameIntervalUs());
   m.publication_gpu_pressure_permille = static_cast<std::uint32_t>(
       (std::min)(current.converter.gpu_duration_last_us * 1000 / frame_interval, 1000ULL));
   if (previous_policy_stats_) {
@@ -179,6 +181,8 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   last_policy_ms_ = now;
   const auto decision = evaluateAdaptiveScreenPolicy(m, policy_state_);
   policy_state_ = decision.next;
+  applyLoadLevel(load_governor_.observe(now, decision.local_measured,
+      decision.local_pressure != AdaptiveReason::healthy, profile_.frames_per_second >= 60));
   {
     std::scoped_lock lock(mutex_);
     stats_.decision_reason = decision.reason;
@@ -205,6 +209,36 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       policy_state_ = recordAdaptiveBitrateAttempt(policy_state_, now);
     }
   }
+}
+
+bool ProductionScreenPipeline::recoverEncoderInPlace(std::uint64_t now) {
+  if (!encoder_recoveries_.available(now)) return false;
+  try {
+    if (!replaceEncoder(output_)) return false;
+  } catch (const std::exception&) {
+    return false;
+  }
+  encoder_recoveries_.consume(now);
+  std::scoped_lock lock(mutex_);
+  ++stats_.encoder_recoveries;
+  return true;
+}
+
+std::int64_t ProductionScreenPipeline::frameIntervalUs() const noexcept {
+  const auto interval = static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+  return frame_rate_reduced_ ? interval * 2 : interval;
+}
+
+void ProductionScreenPipeline::applyLoadLevel(ScreenLoadLevel level) {
+  if (scheduling_boost_) scheduling_boost_->set(level != ScreenLoadLevel::normal);
+  const bool reduced = level == ScreenLoadLevel::reduced_frame_rate;
+  if (reduced != frame_rate_reduced_) {
+    frame_rate_reduced_ = reduced;
+    cadence_.reset();
+  }
+  std::scoped_lock lock(mutex_);
+  stats_.load_level = level;
+  if (scheduling_boost_) stats_.scheduling = scheduling_boost_->stats();
 }
 
 void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t revision) {

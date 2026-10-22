@@ -36,6 +36,20 @@ KeyframeAction ScreenKeyframeControl::poll(
   ++attempts_;
   return KeyframeAction::request;
 }
+bool ScreenEncoderRecoveryBudget::available(std::uint64_t now) const noexcept {
+  std::size_t recent = 0;
+  for (std::size_t i = 0; i < count_; ++i)
+    if (now >= recoveries_ms_[i] && now - recoveries_ms_[i] < kEncoderRecoveryWindowMs) ++recent;
+  return recent < kMaximumEncoderRecoveriesPerWindow;
+}
+void ScreenEncoderRecoveryBudget::consume(std::uint64_t now) noexcept {
+  // Keep the newest entries: the oldest one leaves the window first.
+  if (count_ == recoveries_ms_.size()) {
+    for (std::size_t i = 1; i < count_; ++i) recoveries_ms_[i - 1] = recoveries_ms_[i];
+    --count_;
+  }
+  recoveries_ms_[count_++] = now;
+}
 void ScreenKeyframeControl::progress(std::uint64_t generation,
     std::uint64_t sequence, bool keyframe) noexcept {
   if (generation != generation_ || !keyframe) return;

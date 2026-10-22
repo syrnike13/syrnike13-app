@@ -7,7 +7,9 @@
 
 namespace syrnike::windows_media::screen {
 
-// Exact user presets; automatic control only changes bitrate within the range.
+// Exact user presets; adaptive control only changes bitrate within the range.
+// The load governor may additionally halve a preset's frame rate; nothing
+// automatic ever changes its resolution.
 struct AdaptiveScreenProfile {
   const char* name;
   std::uint32_t width, height, fps, target_bitrate, max_bitrate;
@@ -75,6 +77,10 @@ struct AdaptiveDecision {
   std::uint32_t frame_rate = 0;
   // Bitrate the network allows now, before local pressure; 0 when unknown.
   std::uint32_t network_target = 0;
+  // Local (GPU, encoder, frame age) load of this sample, independent of the
+  // network verdict. Unset when the sample had no fresh local measurement.
+  bool local_measured = false;
+  AdaptiveReason local_pressure = AdaptiveReason::healthy;
   AdaptivePolicyState next;
 };
 

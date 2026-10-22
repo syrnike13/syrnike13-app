@@ -22,6 +22,8 @@
 #include "screen/local_screen_preview.hpp"
 #include "screen/adaptive_screen_policy.hpp"
 #include "screen/screen_keyframe_control.hpp"
+#include "screen/screen_load_governor.hpp"
+#include "screen/screen_scheduling_boost.hpp"
 
 namespace syrnike::windows_media::screen {
 
@@ -46,6 +48,7 @@ struct ProductionScreenPipelineStats {
   std::uint64_t capture_frames = 0;
   std::uint64_t frame_rate_drops = 0;
   std::uint64_t output_resizes = 0;
+  std::uint64_t encoder_recoveries = 0;
   std::uint64_t network_backpressure_drops = 0;
   std::uint64_t missing_gpu_frames = 0;
   std::uint64_t conversion_drops = 0;
@@ -83,6 +86,8 @@ struct ProductionScreenPipelineStats {
   std::uint32_t admitted_fps = 0;
   std::uint64_t bitrate_updates = 0;
   bool quality_warning = false;
+  ScreenLoadLevel load_level = ScreenLoadLevel::normal;
+  ScreenSchedulingBoostStats scheduling;
 };
 
 // Capture admission interval for the policy's frame rate (0: the preset's).
@@ -135,6 +140,9 @@ class ProductionScreenPipeline final {
   void handleEvent(ScreenPublicationEvent event) noexcept;
   void runAdaptiveControl();
   void requestStartBitrate();
+  void applyLoadLevel(ScreenLoadLevel level);
+  // The preset interval, doubled while the load governor halves the rate.
+  [[nodiscard]] std::int64_t frameIntervalUs() const noexcept;
   void reconfigure(std::size_t target_profile, std::uint64_t desired_revision);
   [[nodiscard]] ScreenCommandResult drainGeneration(std::chrono::steady_clock::time_point deadline,
                                                     bool capture_stopped) noexcept;
@@ -142,6 +150,10 @@ class ProductionScreenPipeline final {
   [[nodiscard]] ScreenStartResult startGeneration(std::chrono::milliseconds deadline);
   void followSourceSize(std::uint32_t width, std::uint32_t height);
   [[nodiscard]] bool resizeOutput(ScreenVideoProfile output);
+  [[nodiscard]] bool replaceEncoder(ScreenVideoProfile output);
+  // Keyframes stopped reaching viewers: restart the encoder on the same
+  // publication, a bounded number of times, before failing the share.
+  [[nodiscard]] bool recoverEncoderInPlace(std::uint64_t now_ms);
   void keepForRepeat(const capture::D3d11FrameView& frame, const capture::FrameMetadata& metadata);
   void repeatLastFrame();
 
@@ -179,6 +191,11 @@ class ProductionScreenPipeline final {
   std::uint64_t last_policy_ms_ = 0;
   std::uint64_t retired_publication_consumed_ = 0;
   std::uint64_t attempt_revision_ = 0;
+  // Worker-thread only, like the policy state above.
+  ScreenLoadGovernor load_governor_;
+  std::unique_ptr<ScreenSchedulingBoost> scheduling_boost_;
+  bool frame_rate_reduced_ = false;
+  ScreenEncoderRecoveryBudget encoder_recoveries_;
   std::chrono::steady_clock::time_point profile_deadline_{};
   mutable std::mutex mutex_;
   ProductionScreenPipelineState state_ = ProductionScreenPipelineState::idle;

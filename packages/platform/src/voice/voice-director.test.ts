@@ -18,6 +18,7 @@ import type {
   VoiceLease,
   VoiceMediaDesiredState,
   VoiceMediaKind,
+  VoiceMediaSnapshot,
   VoiceRemoteAudioSettings,
 } from './voice-types'
 
@@ -213,7 +214,11 @@ class FakeEngine implements RtcEngineAdapter {
   }
 }
 
-function createHarness(options?: { recoveryDelaysMs?: readonly number[] }) {
+function createHarness(options?: {
+  recoveryDelaysMs?: readonly number[]
+  delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>
+  now?: () => number
+}) {
   const authority = new FakeAuthority()
   const engine = new FakeEngine()
   let operation = 0
@@ -227,7 +232,8 @@ function createHarness(options?: { recoveryDelaysMs?: readonly number[] }) {
     createConnectionEpoch: () => `epoch-${++epoch}`,
     commitTimeoutMs: 2_000,
     recoveryDelaysMs: options?.recoveryDelaysMs ?? [0, 0, 0],
-    delay: async () => {},
+    delay: options?.delay ?? (async () => {}),
+    now: options?.now,
   })
   return { authority, director, engine }
 }
@@ -1055,6 +1061,71 @@ describe('VoiceDirector', () => {
 
     harness.authority.commit(harness.engine.connected.at(-1)!)
     await harness.director.waitForIdle()
+  })
+
+  it('restarts a share that failed under load, a bounded number of times', async () => {
+    let now = 0
+    const delays: number[] = []
+    const harness = createHarness({
+      now: () => now,
+      delay: async (milliseconds) => { delays.push(milliseconds) },
+    })
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a' })
+    const screen = (media: VoiceMediaSnapshot) => harness.engine.emit({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media,
+    })
+    const failed: VoiceMediaSnapshot = {
+      state: 'failed',
+      error: { code: 'screen_keyframe_progress_deadline', message: 'no progress', retryable: true },
+    }
+
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      screen({ state: 'running' })
+      now += 20_000
+      screen(failed)
+      await waitUntil(() => harness.engine.retriedMedia.length >= Math.min(attempt, 3))
+    }
+    await harness.director.waitForIdle()
+    expect(harness.engine.retriedMedia).toEqual(['screen', 'screen', 'screen'])
+    expect(delays).toEqual([1_000, 3_000, 10_000])
+
+    // A restart that held for a minute starts the budget over.
+    screen({ state: 'running' })
+    now += 60_000
+    screen(failed)
+    await waitUntil(() => harness.engine.retriedMedia.length === 4)
+    expect(delays.at(-1)).toBe(1_000)
+  })
+
+  it('does not restart a share the user stopped or that cannot be retried', async () => {
+    let release: (() => void) | null = null
+    const harness = createHarness({
+      delay: () => new Promise<void>((resolve) => { release = resolve }),
+    })
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a' })
+    const screen = (media: VoiceMediaSnapshot) => harness.engine.emit({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media,
+    })
+
+    screen({ state: 'failed', error: { code: 'screen_d3d11_device_lost', message: 'lost', retryable: false } })
+    expect(release).toBeNull()
+
+    screen({ state: 'failed', error: { code: 'screen_keyframe_progress_deadline', message: 'no progress', retryable: true } })
+    await waitUntil(() => release !== null)
+    harness.director.dispatch({ type: 'setScreen', enabled: false })
+    release!()
+    await harness.director.waitForIdle()
+    expect(harness.engine.retriedMedia).toEqual([])
   })
 
   it('ends the share when the shared window is closed', async () => {
