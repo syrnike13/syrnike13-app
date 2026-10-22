@@ -41,6 +41,7 @@ fi
 reverse_proxy="${SYRNIKE_REVERSE_PROXY:-false}"
 video_enabled="${SYRNIKE_VIDEO_ENABLED:-true}"
 edge_network="${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
+app_domain="${SYRNIKE_APP_DOMAIN:-app.${SYRNIKE_DOMAIN}}"
 admin_domain="${SYRNIKE_ADMIN_DOMAIN:-admin.${SYRNIKE_DOMAIN}}"
 
 if ! docker network inspect "$edge_network" >/dev/null 2>&1; then
@@ -78,7 +79,8 @@ else
   echo "Existing syrnike13 config found; keeping server-local secrets and generated config."
 fi
 
-CADDY_ADMIN_HOSTNAME="$admin_domain" \
+CADDY_APP_HOSTNAME="$app_domain" \
+  CADDY_ADMIN_HOSTNAME="$admin_domain" \
   ./scripts/reload-caddy.sh "${CADDYFILE_CANDIDATE:-Caddyfile}"
 
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then

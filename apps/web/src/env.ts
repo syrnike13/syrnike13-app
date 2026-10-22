@@ -40,6 +40,8 @@ export const env = createEnv({
       'stable',
     ),
     VITE_API_URL: url('https://syrnike13.ru/api'),
+    VITE_PUBLIC_APP_URL: url('https://app.syrnike13.ru'),
+    VITE_PUBLIC_SITE_URL: url('https://syrnike13.ru'),
     VITE_WS_URL: withDefault(Schema.String, 'wss://syrnike13.ru/ws'),
     VITE_MEDIA_URL: url('https://syrnike13.ru/autumn'),
     VITE_PROXY_URL: url('https://syrnike13.ru/january'),

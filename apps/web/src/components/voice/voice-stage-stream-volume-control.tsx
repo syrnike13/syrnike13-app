@@ -1,8 +1,8 @@
 import { Volume2Icon, VolumeXIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { Slider } from '#/components/ui/slider'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import {
-  formatUserVolumeLabel,
   useVoiceListenerStore,
   voiceListenerStore,
   VOICE_USER_VOLUME_MAX,
@@ -18,6 +18,7 @@ export function VoiceStageStreamVolumeControl({
   userId,
   className,
 }: VoiceStageStreamVolumeControlProps) {
+  const t = useTranslations('voice')
   const muted = useVoiceListenerStore((s) => s.getStreamMuted(userId))
   const volume = useVoiceListenerStore((s) => s.getStreamVolume(userId))
   const showMutedIcon = muted || volume === 0
@@ -37,33 +38,35 @@ export function VoiceStageStreamVolumeControl({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="rounded-lg border border-white/10 bg-card px-2.5 py-3 shadow-lg">
+        <div className="rounded-lg border border-border bg-card px-2.5 py-3 shadow-lg">
           <Slider
             orientation="vertical"
             className="h-28"
             min={0}
             max={VOICE_USER_VOLUME_MAX}
             step={0.1}
-            tooltipContent={formatUserVolumeLabel}
-            tooltipSide="right"
             value={[muted ? 0 : volume]}
-            onValueChange={([next]) => {
+            onValueChange={(value) => {
+              const next = typeof value === 'number' ? value : value[0]
+              if (next == null) return
               if (muted && next > 0) {
                 voiceListenerStore.setStreamMuted(userId, false)
               }
               voiceListenerStore.setStreamVolume(userId, next)
             }}
-            aria-label="Громкость стрима"
+            aria-label={t('actions.streamVolume')}
           />
         </div>
       </div>
 
       <button
         type="button"
-        title={muted ? 'Включить звук стрима' : 'Выключить звук стрима'}
+        title={
+          muted ? t('actions.enableStreamSound') : t('actions.disableStreamSound')
+        }
         aria-pressed={muted}
         onClick={toggleMute}
-        className="flex size-9 shrink-0 items-center justify-center text-white/60 transition-colors hover:text-white"
+        className="flex size-9 shrink-0 items-center justify-center text-on-media/60 transition-colors hover:text-on-media"
       >
         {showMutedIcon ? (
           <VolumeXIcon className="size-5" />

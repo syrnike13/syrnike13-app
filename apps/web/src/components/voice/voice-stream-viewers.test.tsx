@@ -2,13 +2,17 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import {
   VoiceStreamViewers,
   streamViewerCountLabel,
   streamViewersSummary,
   type StreamViewer,
 } from '#/components/voice/voice-stream-viewers'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 function viewers(count: number): StreamViewer[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -23,19 +27,19 @@ describe('VoiceStreamViewers', () => {
   })
 
   it('declines the viewer count in Russian', () => {
-    expect(streamViewerCountLabel(1)).toBe('1 зритель')
-    expect(streamViewerCountLabel(3)).toBe('3 зрителя')
-    expect(streamViewerCountLabel(5)).toBe('5 зрителей')
-    expect(streamViewerCountLabel(11)).toBe('11 зрителей')
-    expect(streamViewerCountLabel(22)).toBe('22 зрителя')
+    expect(streamViewerCountLabel(1, t)).toBe('1 зритель')
+    expect(streamViewerCountLabel(3, t)).toBe('3 зрителя')
+    expect(streamViewerCountLabel(5, t)).toBe('5 зрителей')
+    expect(streamViewerCountLabel(11, t)).toBe('11 зрителей')
+    expect(streamViewerCountLabel(22, t)).toBe('22 зрителя')
   })
 
   it('names one or two viewers and counts larger audiences', () => {
-    expect(streamViewersSummary(viewers(1))).toBe('Смотрит Зритель 0')
-    expect(streamViewersSummary(viewers(2))).toBe(
+    expect(streamViewersSummary(viewers(1), t)).toBe('Смотрит Зритель 0')
+    expect(streamViewersSummary(viewers(2), t)).toBe(
       'Смотрят Зритель 0 и Зритель 1',
     )
-    expect(streamViewersSummary(viewers(4))).toBe('Смотрят 4 зрителя')
+    expect(streamViewersSummary(viewers(4), t)).toBe('Смотрят 4 зрителя')
   })
 
   it('renders nothing without viewers', () => {

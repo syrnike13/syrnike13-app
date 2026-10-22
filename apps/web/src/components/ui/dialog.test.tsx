@@ -7,14 +7,14 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
 
 describe('DialogContent', () => {
   afterEach(() => {
     cleanup()
   })
 
-  it('uses the solid themed surface by default', () => {
+  it('renders the shadcn dialog content slot', () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -24,25 +24,7 @@ describe('DialogContent', () => {
     )
 
     expect(
-      document
-        .querySelector('[data-slot="dialog-content"]')
-        ?.classList.contains('gradient-surface-solid'),
-    ).toBe(true)
-  })
-
-  it('allows transparent lightboxes to opt out', () => {
-    render(
-      <Dialog open>
-        <DialogContent themedSurface={false}>
-          <DialogTitle>Просмотр изображения</DialogTitle>
-        </DialogContent>
-      </Dialog>,
-    )
-
-    expect(
-      document
-        .querySelector('[data-slot="dialog-content"]')
-        ?.classList.contains('gradient-surface-solid'),
-    ).toBe(false)
+      document.querySelector('[data-slot="dialog-content"]'),
+    ).toBeInTheDocument()
   })
 })

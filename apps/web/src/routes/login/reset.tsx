@@ -1,35 +1,43 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
-import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
-import { Button } from '#/components/ui/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { cn } from '#/lib/utils'
 import {
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#/components/ui/card'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/card'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { sendPasswordResetEffect } from '#/features/api/account-api'
 import { resetEmailSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/reset')({
   beforeLoad: () => {
     if (loadSession()) {
-      throw redirect({ to: '/app', search: { tab: 'online' } })
+      throw redirect({ to: '/', search: { tab: 'online' } })
     }
   },
   component: ResetRequestPage,
 })
 
 function ResetRequestPage() {
+  const t = useTranslations('auth')
+  const tValidation = useTranslations('validation')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
 
@@ -38,7 +46,7 @@ function ResetRequestPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.issues[0]?.message ?? 'Проверьте email')
+        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 
@@ -48,13 +56,13 @@ function ResetRequestPage() {
           Effect.tap(() =>
             Effect.sync(() => {
               setSent(true)
-              toast.success('Если аккаунт существует, письмо отправлено')
+              toast.success(t('reset.sent'))
             }),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : 'Не удалось отправить',
+                apiErrorMessage(error, t('reset.error')),
               )
             }),
           ),
@@ -68,18 +76,18 @@ function ResetRequestPage() {
     <AuthLayout>
       <AuthCard>
         <CardHeader>
-          <CardTitle>{sent ? 'Письмо отправлено' : 'Вернуть доступ'}</CardTitle>
+          <CardTitle>
+            {sent ? t('reset.sentTitle') : t('reset.title')}
+          </CardTitle>
           <CardDescription>
-            {sent
-              ? 'Если такой аккаунт существует, ссылка для нового пароля уже в почте.'
-              : 'Укажите email — отправим ссылку для нового пароля.'}
+            {sent ? t('reset.sentDescription') : t('reset.description')}
           </CardDescription>
         </CardHeader>
         {sent ? (
           <CardFooter>
-            <Button className="w-full" asChild>
-              <Link to="/login">Ко входу</Link>
-            </Button>
+            <Link to="/login" className={cn(buttonVariants(), 'w-full')}>
+              {t('toLogin')}
+            </Link>
           </CardFooter>
         ) : (
           <form
@@ -92,7 +100,7 @@ function ResetRequestPage() {
               <form.Field name="email">
                 {(field) => (
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="reset-email">Email</Label>
+                    <Label htmlFor="reset-email">{t('email')}</Label>
                     <Input
                       className="auth-input"
                       id="reset-email"
@@ -110,12 +118,13 @@ function ResetRequestPage() {
             <CardFooter className="flex flex-col gap-2">
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? (
-                  <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                  <Spinner data-icon="inline-start" />
                 ) : null}
-                Отправить ссылку
+                {t('reset.submit')}
               </Button>
               <p className="auth-secondary-action">
-                Вспомнили пароль? <Link to="/login">Вернуться ко входу</Link>
+                {t('reset.remembered')}{' '}
+                <Link to="/login">{t('backToLogin')}</Link>
               </p>
             </CardFooter>
           </form>

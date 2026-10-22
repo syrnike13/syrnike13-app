@@ -11,6 +11,7 @@ import { Option, Schema } from 'effect'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   FEEDBACK_AREAS,
@@ -21,7 +22,6 @@ import {
 import { FeedbackCreateDialog } from '#/components/feedback/feedback-create-dialog'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
-  CheckIcon,
   ChevronLeftIcon,
   FilterIcon,
   LightbulbIcon,
@@ -29,14 +29,28 @@ import {
   RotateCcwIcon,
   SearchIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@syrnike13/ui/primitives/empty'
+import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/popover'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   Select,
   SelectContent,
@@ -44,7 +58,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
+} from '@syrnike13/ui/primitives/select'
+import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchFeedbackSuggestions,
@@ -58,9 +73,9 @@ const PAGE_SIZE = 20
 
 export type FeedbackViewMode = 'all' | 'mine'
 
-const MODE_TABS: { id: FeedbackViewMode; label: string }[] = [
-  { id: 'all', label: 'Все обращения' },
-  { id: 'mine', label: 'Мои обращения' },
+const MODE_TABS: { id: FeedbackViewMode; labelKey: string }[] = [
+  { id: 'all', labelKey: 'modeAll' },
+  { id: 'mine', labelKey: 'modeMine' },
 ]
 
 function getFeedbackNextPageParam(lastPage: FeedbackSuggestionPage) {
@@ -79,6 +94,9 @@ export function FeedbackView({
   onCreateClose?: () => void
   onCreated?: () => void
 }) {
+  const t = useTranslations('feedback.view')
+  const tm = useTranslations('feedback.meta')
+  const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
@@ -195,15 +213,21 @@ export function FeedbackView({
       <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           {prefix === '/m' ? (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
-              <Link to="/m" search={{ tab: 'online' }} aria-label="На главную">
-                <ChevronLeftIcon className="size-5" />
-              </Link>
-            </Button>
+            <Link
+              to="/m"
+              search={{ tab: 'online' }}
+              aria-label={t('backHomeAria')}
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon' }),
+                'size-8 shrink-0',
+              )}
+            >
+              <ChevronLeftIcon className="size-5" />
+            </Link>
           ) : null}
           <div className="flex shrink-0 items-center gap-2">
             <LightbulbIcon className="size-5 shrink-0 text-primary" aria-hidden />
-            <h1 className="text-sm font-semibold sm:text-base">Идеи</h1>
+            <h1 className="text-sm font-semibold sm:text-base">{t('title')}</h1>
           </div>
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {MODE_TABS.map((item) => (
@@ -212,10 +236,10 @@ export function FeedbackView({
                 type="button"
                 variant={mode === item.id ? 'secondary' : 'ghost'}
                 size="sm"
-                className={cn('shrink-0 rounded-md', mode === item.id && 'bg-muted')}
+                className="shrink-0"
                 onClick={() => setMode(item.id)}
               >
-                {item.label}
+                {t(item.labelKey)}
               </Button>
             ))}
           </nav>
@@ -225,8 +249,8 @@ export function FeedbackView({
             onClick={() => handleCreateOpenChange(true)}
           >
             <PlusIcon className="size-4" data-icon="inline-start" />
-            <span className="hidden sm:inline">Добавить обращение</span>
-            <span className="sm:hidden">Добавить</span>
+            <span className="hidden sm:inline">{t('create')}</span>
+            <span className="sm:hidden">{t('createShort')}</span>
           </Button>
         </div>
 
@@ -237,8 +261,8 @@ export function FeedbackView({
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Найти обращение"
-                className="h-9 bg-muted/30 pl-9"
+                placeholder={t('search')}
+                className="pl-9"
               />
             </label>
 
@@ -251,76 +275,82 @@ export function FeedbackView({
                 if (Option.isSome(decoded)) setSort(decoded.value)
               }}
             >
-              <SelectTrigger aria-label="Сортировка" size="sm" className="w-32 sm:w-36">
+              <SelectTrigger aria-label={t('sortAria')} size="sm" className="w-32 sm:w-36">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={4}>
+              <SelectContent side="bottom" align="start" sideOffset={4}>
                 <SelectGroup>
-                  <SelectItem value="popular">Популярные</SelectItem>
-                  <SelectItem value="new">Новые</SelectItem>
+                  <SelectItem value="popular">{t('sortPopular')}</SelectItem>
+                  <SelectItem value="new">{t('sortNew')}</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
 
             <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-              <PopoverTrigger asChild>
-                <Button
+              <PopoverTrigger render={<Button
                   type="button"
-                  variant="outline"
+                  variant={filtersOpen ? 'secondary' : 'outline'}
                   size="sm"
-                  className={cn(
-                    'h-9 shrink-0',
-                    filtersOpen && 'bg-accent text-accent-foreground',
-                  )}
-                >
+                  className="h-9 shrink-0" />}>
                   <FilterIcon className="size-4" data-icon="inline-start" />
-                  Фильтры
+                  {t('filters')}
                   {activeFilterCount > 0 ? (
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                       {activeFilterCount}
                     </span>
                   ) : null}
-                </Button>
-              </PopoverTrigger>
+                </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="flex max-h-[70vh] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0"
+                className="flex max-h-feedback w-104 max-w-viewport-inset flex-col gap-0 overflow-hidden p-0"
               >
                 <ScrollArea className="min-h-0 flex-1">
                   <div className="grid gap-4 p-3 sm:grid-cols-2">
                     <FeedbackFilterGroup
-                      label="Тип обращения"
+                      label={t('filterType')}
                       value={category}
                       options={[
-                        { value: 'all', label: 'Все типы' },
-                        ...FEEDBACK_CATEGORIES,
+                        { value: 'all', label: t('allTypes') },
+                        ...FEEDBACK_CATEGORIES.map((item) => ({
+                          value: item.value,
+                          label: tm(item.labelKey),
+                        })),
                       ]}
                       onChange={setCategory}
                     />
                     <FeedbackFilterGroup
-                      label="Статус"
+                      label={t('filterStatus')}
                       value={status}
                       options={[
-                        { value: 'all', label: 'Все статусы' },
-                        ...FEEDBACK_PRODUCT_STATUSES,
+                        { value: 'all', label: t('allStatuses') },
+                        ...FEEDBACK_PRODUCT_STATUSES.map((item) => ({
+                          value: item.value,
+                          label: tm(item.labelKey),
+                        })),
                       ]}
                       onChange={setStatus}
                     />
                     <FeedbackFilterGroup
-                      label="Область"
+                      label={t('filterArea')}
                       value={area}
                       options={[
-                        { value: 'all', label: 'Все области' },
-                        ...FEEDBACK_AREAS,
+                        { value: 'all', label: t('allAreas') },
+                        ...FEEDBACK_AREAS.map((item) => ({
+                          value: item.value,
+                          label: tm(item.labelKey),
+                        })),
                       ]}
                       onChange={setArea}
                     />
                     <FeedbackFilterGroup
-                      label="Платформа"
+                      label={t('filterPlatform')}
                       value={platform}
                       options={[
-                        { value: 'all', label: 'Все платформы' },
-                        ...FEEDBACK_PLATFORMS,
+                        { value: 'all', label: t('allPlatforms') },
+                        ...FEEDBACK_PLATFORMS.map((item) => ({
+                          value: item.value,
+                          label: tm(item.labelKey),
+                        })),
                       ]}
                       onChange={setPlatform}
                     />
@@ -336,7 +366,7 @@ export function FeedbackView({
                       onClick={resetFilters}
                     >
                       <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
-                      Сбросить фильтры
+                      {t('resetFilters')}
                     </Button>
                   </div>
                 ) : null}
@@ -348,24 +378,33 @@ export function FeedbackView({
 
       <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-3 pb-2 sm:px-6">
         <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {mode === 'all' ? 'Все обращения' : 'Мои обращения'}
-          {typeof total === 'number' ? ` — ${total.toLocaleString('ru-RU')}` : ''}
+          {mode === 'all' ? t('modeAll') : t('modeMine')}
+          {typeof total === 'number' ? ` — ${total.toLocaleString(locale)}` : ''}
         </p>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          Голоса показывают интерес сообщества, но не являются обещанием реализации
+          {t('votesNote')}
         </p>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-[80rem] px-3 pb-3 sm:px-5">
+        <div className="mx-auto w-full max-w-320 px-3 pb-3 sm:px-5">
           {activeQuery.isLoading ? (
             <FeedbackListSkeleton />
           ) : activeQuery.isError ? (
-            <FeedbackEmpty title="Не удалось загрузить обращения" description="Проверьте соединение и повторите позже." />
+            <FeedbackEmpty
+              title={t('loadErrorTitle')}
+              description={t('loadErrorDescription')}
+            />
           ) : suggestions.length === 0 ? (
             <FeedbackEmpty
-              title={mode === 'mine' ? 'У вас пока нет обращений' : 'Ничего не нашлось'}
-              description={mode === 'mine' ? 'Добавьте обращение — после модерации оно появится в общем списке.' : 'Измените поиск или фильтры.'}
+              title={
+                mode === 'mine' ? t('emptyMineTitle') : t('emptyAllTitle')
+              }
+              description={
+                mode === 'mine'
+                  ? t('emptyMineDescription')
+                  : t('emptyAllDescription')
+              }
             />
           ) : (
             <div className="space-y-2">
@@ -387,7 +426,7 @@ export function FeedbackView({
                 disabled={activeQuery.isFetchingNextPage}
                 onClick={() => void activeQuery.fetchNextPage()}
               >
-                {activeQuery.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}
+                {activeQuery.isFetchingNextPage ? t('loadingMore') : t('showMore')}
               </Button>
             </div>
           ) : null}
@@ -415,43 +454,52 @@ function FeedbackFilterGroup<Value extends string>({
   onChange: (value: Value) => void
 }) {
   return (
-    <div role="group" aria-label={label}>
-      <p className="px-2 pb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+    <div>
+      <p className="px-2 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </p>
-      <div className="space-y-0.5">
+      <RadioGroup
+        aria-label={label}
+        value={value}
+        onValueChange={(next) => onChange(next as Value)}
+        className="gap-0.5"
+      >
         {options.map((option) => {
           const selected = option.value === value
           return (
-            <button
+            <label
               key={option.value}
-              type="button"
-              aria-pressed={selected}
               className={cn(
-                'flex h-7 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                'flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                 selected && 'bg-accent/60 text-foreground',
               )}
-              onClick={() => onChange(option.value)}
             >
-              <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
-              {selected ? (
-                <CheckIcon className="size-3.5 shrink-0 text-primary" aria-hidden />
-              ) : null}
-            </button>
+              <RadioGroupItem
+                value={option.value}
+                aria-label={option.label}
+              />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {option.label}
+              </span>
+            </label>
           )
         })}
-      </div>
+      </RadioGroup>
     </div>
   )
 }
 
 function FeedbackEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
-      <LightbulbIcon className="size-9 text-muted-foreground/60" aria-hidden />
-      <h2 className="mt-3 text-base font-semibold">{title}</h2>
-      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
+    <Empty className="min-h-64">
+      <EmptyMedia variant="icon">
+        <LightbulbIcon aria-hidden />
+      </EmptyMedia>
+      <EmptyHeader>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   )
 }
 
@@ -464,16 +512,16 @@ function FeedbackListSkeleton() {
           className="space-y-2.5 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5"
         >
           <div className="flex items-center gap-1.5">
-            <div className="h-6 w-14 animate-pulse rounded-md bg-muted" />
-            <div className="h-6 w-24 animate-pulse rounded-md bg-muted" />
-            <div className="h-6 w-20 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-6 w-14" />
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-20" />
           </div>
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1 space-y-1.5">
-              <div className="h-3.5 w-2/5 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3.5 w-2/5" />
+              <Skeleton className="h-3 w-3/4" />
             </div>
-            <div className="h-9 w-20 shrink-0 animate-pulse rounded-lg bg-muted" />
+            <Skeleton className="h-9 w-20 shrink-0" />
           </div>
         </div>
       ))}

@@ -1,4 +1,5 @@
 import type { UserBadge } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 
@@ -10,7 +11,25 @@ import {
 
 const AUTOPLAY_STORAGE_KEY = 'syrnike.debug.achievements.autoplay'
 
+export type DebugAchievementCopy = {
+  testName: string
+  testDescription: string
+  secondName: string
+  longName: string
+  longDescription: string
+}
+
 let debugSequence = 0
+
+export function debugAchievementCopy(t: Translator): DebugAchievementCopy {
+  return {
+    testName: t('copy.testName'),
+    testDescription: t('copy.testDescription'),
+    secondName: t('copy.secondName'),
+    longName: t('copy.longName'),
+    longDescription: t('copy.longDescription'),
+  }
+}
 
 function debugUnlock(
   name: string,
@@ -27,20 +46,23 @@ function debugUnlock(
   }
 }
 
-export function demoAchievement() {
-  return debugUnlock(
-    'Тестовое достижение',
-    'Так выглядит получение нового бейджа.',
-  )
+export function demoAchievement(copy: DebugAchievementCopy) {
+  return debugUnlock(copy.testName, copy.testDescription)
 }
 
 /** Показывает тестовое уведомление без запроса к серверу. */
-export function showDebugAchievement(unlock: AchievementUnlock = demoAchievement()) {
+export function showDebugAchievement(
+  copy: DebugAchievementCopy,
+  unlock: AchievementUnlock = demoAchievement(copy),
+) {
   achievementQueue.enqueue([unlock])
 }
 
 /** Показывает очередь из бейджей пользователя (или тестовых, если их нет). */
-export function showDebugAchievementQueue(badges: readonly UserBadge[] = []) {
+export function showDebugAchievementQueue(
+  copy: DebugAchievementCopy,
+  badges: readonly UserBadge[] = [],
+) {
   const fromBadges = badges.map((badge) => ({
     ...achievementFromBadge(badge),
     id: `debug:${badge._id}:${++debugSequence}`,
@@ -50,12 +72,9 @@ export function showDebugAchievementQueue(badges: readonly UserBadge[] = []) {
     fromBadges.length > 0
       ? fromBadges
       : [
-          demoAchievement(),
-          debugUnlock('Второе достижение', null),
-          debugUnlock(
-            'Очень длинное название достижения, которое не помещается',
-            'Длинное описание проверяет перенос строк и обрезку текста в уведомлении.',
-          ),
+          demoAchievement(copy),
+          debugUnlock(copy.secondName, null),
+          debugUnlock(copy.longName, copy.longDescription),
         ],
   )
 }

@@ -1,3 +1,4 @@
+import type { Translator } from '@syrnike13/ui/i18n'
 import { config } from '#/lib/config'
 import { Effect, Option, Schema } from 'effect'
 
@@ -14,6 +15,7 @@ export const uploadMediaFileEffect = Effect.fn('admin.media.uploadFile')(
     token: string,
     tag: MediaUploadTag,
     file: File,
+    t: Translator,
     onProgress?: UploadProgressHandler,
   ) {
     return yield* Effect.callback<string, Error>((resume) => {
@@ -46,10 +48,10 @@ export const uploadMediaFileEffect = Effect.fn('admin.media.uploadFile')(
             return
           }
         }
-        settle(Effect.fail(new Error('Не удалось загрузить файл')))
+        settle(Effect.fail(new Error(t('uploadFailed'))))
       }
       const handleNetworkError = () =>
-        settle(Effect.fail(new Error('Ошибка сети при загрузке')))
+        settle(Effect.fail(new Error(t('networkError'))))
 
       xhr.upload.addEventListener('progress', handleProgress)
       xhr.addEventListener('loadend', handleLoadEnd)
@@ -70,11 +72,12 @@ export function uploadMediaFile(
   token: string,
   tag: MediaUploadTag,
   file: File,
+  t: Translator,
   onProgress?: UploadProgressHandler,
   signal?: AbortSignal,
 ): Promise<string> {
   return Effect.runPromise(
-    uploadMediaFileEffect(token, tag, file, onProgress),
+    uploadMediaFileEffect(token, tag, file, t, onProgress),
     { signal },
   )
 }

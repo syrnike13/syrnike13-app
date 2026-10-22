@@ -23,6 +23,10 @@ function unlock(id: string, badgeId: string | null = id) {
   return { id, badgeId, name: `Badge ${id}`, description: null, iconUrl: null }
 }
 
+function toastFor(name: string) {
+  return screen.getByText(name).closest<HTMLElement>('.achievement-toast')!
+}
+
 describe('AchievementToastHost', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -43,24 +47,28 @@ describe('AchievementToastHost', () => {
     expect(mocks.acknowledge).toHaveBeenCalledWith('token', 'a')
 
     act(() => vi.advanceTimersByTime(6000))
-    expect(screen.getByRole('status').dataset.phase).toBe('exiting')
+    expect(toastFor('Badge a').dataset.phase).toBe('exiting')
 
     act(() => vi.advanceTimersByTime(400))
     expect(screen.getByText('Badge b')).toBeTruthy()
 
     act(() => vi.advanceTimersByTime(6000))
     act(() => vi.advanceTimersByTime(400))
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByText('Badge b')).toBeNull()
   })
 
   it('closes on click and skips acknowledging debug notifications', () => {
     render(<AchievementToastHost />)
     act(() => achievementQueue.enqueue([unlock('debug', null)]))
 
-    act(() => screen.getByRole('status').click())
+    act(() =>
+      screen
+        .getByRole('button', { name: /Badge debug/ })
+        .click(),
+    )
     act(() => vi.advanceTimersByTime(400))
 
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByText('Badge debug')).toBeNull()
     expect(mocks.acknowledge).not.toHaveBeenCalled()
   })
 })

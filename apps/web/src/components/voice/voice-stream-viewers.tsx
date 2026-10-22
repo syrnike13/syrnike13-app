@@ -1,18 +1,19 @@
 import type { User } from '@syrnike13/api-types'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { EyeIcon } from '#/components/icons'
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
-} from '#/components/ui/popover'
+  PopoverTrigger,
+} from '@syrnike13/ui/primitives/popover'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { cn } from '#/lib/utils'
 
@@ -35,26 +36,30 @@ const POPOVER_CLOSE_DELAY_MS = 150
 const viewerChipClass =
   'flex items-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm'
 
-export function streamViewerCountLabel(count: number) {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return `${count} зритель`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} зрителя`
-  }
-  return `${count} зрителей`
+export function streamViewerCountLabel(count: number, t: Translator) {
+  return t('viewers.count', { count })
 }
 
 /** Names for one or two viewers, otherwise the count. */
-export function streamViewersSummary(viewers: readonly StreamViewer[]) {
-  if (viewers.length === 1) return `Смотрит ${viewers[0].displayName}`
-  if (viewers.length === 2) {
-    return `Смотрят ${viewers[0].displayName} и ${viewers[1].displayName}`
+export function streamViewersSummary(
+  viewers: readonly StreamViewer[],
+  t: Translator,
+) {
+  if (viewers.length === 1) {
+    return t('viewers.one', { name: viewers[0]!.displayName })
   }
-  return `Смотрят ${streamViewerCountLabel(viewers.length)}`
+  if (viewers.length === 2) {
+    return t('viewers.two', {
+      first: viewers[0]!.displayName,
+      second: viewers[1]!.displayName,
+    })
+  }
+  return t('viewers.many', {
+    count: streamViewerCountLabel(viewers.length, t),
+  })
 }
 
-/** Who watches a screen share, shown on its tile as in Discord. */
+/** Who watches a screen share, shown on its tile. */
 export function VoiceStreamViewers({
   viewers,
   variant,
@@ -75,22 +80,30 @@ function StreamViewerCount({
   viewers: readonly StreamViewer[]
   className?: string
 }) {
+  const t = useTranslations('voice')
+
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            className={cn(viewerChipClass, 'gap-1 px-1.5 py-0.5 text-xs', className)}
-            aria-label={streamViewersSummary(viewers)}
-          >
-            <EyeIcon className="size-3 shrink-0" aria-hidden />
-            <span className="tabular-nums" aria-hidden>
-              {viewers.length}
-            </span>
-          </div>
+        <TooltipTrigger
+          render={
+            <div
+              className={cn(
+                viewerChipClass,
+                'gap-1 px-1.5 py-0.5 text-xs',
+                className,
+              )}
+              aria-label={streamViewersSummary(viewers, t)}
+            />
+          }
+        >
+          <EyeIcon className="size-3 shrink-0" aria-hidden />
+          <span className="tabular-nums" aria-hidden>
+            {viewers.length}
+          </span>
         </TooltipTrigger>
-        <TooltipContent side="top" className="z-[420]">
-          {streamViewersSummary(viewers)}
+        <TooltipContent side="top" className="z-420">
+          {streamViewersSummary(viewers, t)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -104,6 +117,7 @@ function StreamViewerAvatars({
   viewers: readonly StreamViewer[]
   className?: string
 }) {
+  const t = useTranslations('voice')
   const [open, setOpen] = useState(false)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -125,7 +139,7 @@ function StreamViewerAvatars({
   }
   useEffect(() => cancelClose, [])
 
-  // With overflow the last avatar slot becomes "+N", as in Discord.
+  // With overflow the last avatar slot becomes "+N".
   const overflow = viewers.length > MAX_VISIBLE_VIEWERS
   const visible = viewers.slice(
     0,
@@ -135,51 +149,54 @@ function StreamViewerAvatars({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <button
-          type="button"
-          className={cn(viewerChipClass, 'p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
-          aria-label={streamViewersSummary(viewers)}
-          onMouseEnter={show}
-          onMouseLeave={scheduleClose}
-          onFocus={show}
-          onBlur={scheduleClose}
-          onClick={(event) => {
-            event.stopPropagation()
-            setOpen((value) => !value)
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <span className="flex -space-x-1.5">
-            {visible.map((viewer) => (
-              <UserAvatar
-                key={viewer.id}
-                user={viewer.user}
-                className="size-6 ring-2 ring-background"
-                fallbackClassName="size-6 text-[10px]"
-                showPresence={false}
-                animated="never"
-              />
-            ))}
-            {hiddenCount > 0 ? (
-              <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
-                {`+${hiddenCount}`}
-              </span>
-            ) : null}
-          </span>
-        </button>
-      </PopoverAnchor>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              viewerChipClass,
+              'p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              className,
+            )}
+            aria-label={streamViewersSummary(viewers, t)}
+            onMouseEnter={show}
+            onMouseLeave={scheduleClose}
+            onFocus={show}
+            onBlur={scheduleClose}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          />
+        }
+      >
+        <span className="flex -space-x-1.5">
+          {visible.map((viewer) => (
+            <UserAvatar
+              key={viewer.id}
+              user={viewer.user}
+              className="size-6 ring-2 ring-background"
+              fallbackClassName="size-6 text-xs"
+              showPresence={false}
+              animated="never"
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="z-10 flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground ring-2 ring-background tabular-nums">
+              {`+${hiddenCount}`}
+            </span>
+          ) : null}
+        </span>
+      </PopoverTrigger>
       <PopoverContent
         side="top"
         align="end"
-        className="z-[420] w-56 p-2"
+        className="z-420 w-56 p-2"
         onMouseEnter={show}
         onMouseLeave={scheduleClose}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        initialFocus={false}
         onClick={(event) => event.stopPropagation()}
       >
         <p className="px-1 pb-1.5 text-xs font-semibold uppercase text-muted-foreground">
-          {streamViewerCountLabel(viewers.length)}
+          {streamViewerCountLabel(viewers.length, t)}
         </p>
         <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
           {viewers.map((viewer) => (
@@ -190,7 +207,7 @@ function StreamViewerAvatars({
               <UserAvatar
                 user={viewer.user}
                 className="size-6"
-                fallbackClassName="size-6 text-[10px]"
+                fallbackClassName="size-6 text-xs"
                 showPresence={false}
                 animated="never"
               />

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -8,7 +8,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -26,7 +26,7 @@ describe('ContextMenuContent', () => {
     cleanup()
   })
 
-  it('uses the solid themed surface on the root content', () => {
+  it('renders the shadcn context menu content slot', async () => {
     render(
       <ContextMenu>
         <ContextMenuTrigger>Триггер</ContextMenuTrigger>
@@ -36,10 +36,13 @@ describe('ContextMenuContent', () => {
       </ContextMenu>,
     )
 
-    fireEvent.contextMenu(document.querySelector('[data-slot="context-menu-trigger"]')!)
+    fireEvent.contextMenu(
+      document.querySelector('[data-slot="context-menu-trigger"]')!,
+    )
 
-    const content = document.querySelector('[data-slot="context-menu-content"]')
-    expect(content?.classList.contains('gradient-surface-solid')).toBe(true)
-    expect(content?.classList.contains('gradient-surface-floating')).toBe(false)
+    expect(await screen.findByText('Действие')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="context-menu-content"]'),
+    ).toBeInTheDocument()
   })
 })

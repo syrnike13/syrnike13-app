@@ -1,7 +1,11 @@
 import type { User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
 
+import ru from '#/messages/ru.json'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 const REMOTE_USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6ZZ'
@@ -21,36 +25,47 @@ describe('voiceParticipantDisplayName', () => {
           username: 'tiredisa',
           display_name: 'Isa',
         }),
+        t,
       ),
     ).toBe('Isa')
   })
 
   it('falls back to Участник for unknown remote users', () => {
-    expect(voiceParticipantDisplayName(REMOTE_USER_ID, {})).toBe(
+    expect(voiceParticipantDisplayName(REMOTE_USER_ID, {}, undefined, t)).toBe(
       'Участник',
     )
   })
 
   it('uses display_name for known remote users', () => {
     expect(
-      voiceParticipantDisplayName(REMOTE_USER_ID, {
-        [REMOTE_USER_ID]: testUser({
-          _id: REMOTE_USER_ID,
-          username: 'remote_user',
-          display_name: 'Remote User',
-        }),
-      }),
+      voiceParticipantDisplayName(
+        REMOTE_USER_ID,
+        {
+          [REMOTE_USER_ID]: testUser({
+            _id: REMOTE_USER_ID,
+            username: 'remote_user',
+            display_name: 'Remote User',
+          }),
+        },
+        undefined,
+        t,
+      ),
     ).toBe('Remote User')
   })
 
   it('falls back to username for known remote users without display_name', () => {
     expect(
-      voiceParticipantDisplayName(REMOTE_USER_ID, {
-        [REMOTE_USER_ID]: testUser({
-          _id: REMOTE_USER_ID,
-          username: 'remote_user',
-        }),
-      }),
+      voiceParticipantDisplayName(
+        REMOTE_USER_ID,
+        {
+          [REMOTE_USER_ID]: testUser({
+            _id: REMOTE_USER_ID,
+            username: 'remote_user',
+          }),
+        },
+        undefined,
+        t,
+      ),
     ).toBe('remote_user')
   })
 })

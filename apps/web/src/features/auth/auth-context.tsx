@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 import { toast } from 'sonner'
 
@@ -85,6 +86,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
+  const t = useTranslations('auth')
   const [session, setSession] = useState<StoredSession | null>(null)
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null)
   const [profileLoadError, setProfileLoadError] = useState<Error | null>(null)
@@ -193,23 +195,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'type' in data &&
         data.type === 'InvalidSession'
       ) {
-        invalidateSession('Сессия недействительна. Войдите снова.')
+        invalidateSession(t('session.invalid'))
       }
     })
     return () => {
       unsubscribe()
     }
-  }, [invalidateSession])
+  }, [invalidateSession, t])
 
   useEffect(() => {
     if (!session?.token || !onboardingQuery.isError) return
     if (!isSessionInvalidatingError(onboardingQuery.error)) return
-    invalidateSession('Сессия недействительна. Войдите снова.')
+    invalidateSession(t('session.invalid'))
   }, [
     invalidateSession,
     onboardingQuery.error,
     onboardingQuery.isError,
     session?.token,
+    t,
   ])
 
   const syncOnboardingStatus = useCallback(
@@ -224,12 +227,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Effect.tapError((error) =>
           isSessionInvalidatingError(error)
             ? Effect.sync(() => {
-                invalidateSession('Сессия недействительна. Войдите снова.')
+                invalidateSession(t('session.invalid'))
               })
             : Effect.void,
         ),
       ),
-    [invalidateSession, queryClient],
+    [invalidateSession, queryClient, t],
   )
 
   const applySuccessSession = useCallback(
@@ -264,7 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isLoginSuccess(response)) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
-          yield* Effect.sync(() => toast.success('Вы вошли в аккаунт'))
+          yield* Effect.sync(() => toast.success(t('toast.loggedIn')))
           return { needsOnboarding: needsOnboard }
         }
 
@@ -274,14 +277,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.message('Нужна двухфакторная аутентификация')
+            toast.message(t('toast.mfaRequired'))
           })
           return
         }
 
-        yield* Effect.sync(() => toast.error('Аккаунт отключён'))
+        yield* Effect.sync(() => toast.error(t('toast.accountDisabled')))
       }),
-    [applySuccessSession, syncOnboardingStatus],
+    [applySuccessSession, syncOnboardingStatus, t],
   )
 
   const submitMfaPassword = useCallback(
@@ -299,7 +302,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isLoginSuccess(response)) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
-          yield* Effect.sync(() => toast.success('Вы вошли в аккаунт'))
+          yield* Effect.sync(() => toast.success(t('toast.loggedIn')))
           return { needsOnboarding: needsOnboard }
         }
 
@@ -309,14 +312,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.error('MFA не пройдена, попробуйте снова')
+            toast.error(t('toast.mfaFailed'))
           })
           return
         }
 
-        yield* Effect.sync(() => toast.error('Аккаунт отключён'))
+        yield* Effect.sync(() => toast.error(t('toast.accountDisabled')))
       }),
-    [applySuccessSession, mfaChallenge, syncOnboardingStatus],
+    [applySuccessSession, mfaChallenge, syncOnboardingStatus, t],
   )
 
   const cancelMfa = useCallback(() => {
@@ -349,10 +352,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           queryClient.setQueryData(queryKeys.auth.onboarding(token), {
             onboarding: false,
           })
-          toast.success('Ник установлен')
+          toast.success(t('toast.usernameSet'))
         })
       }),
-    [queryClient, session?.token],
+    [queryClient, session?.token, t],
   )
 
   const completeEmailVerification = useCallback(
@@ -364,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
           yield* Effect.sync(() =>
-            toast.success('Email подтверждён, вы вошли в аккаунт'),
+            toast.success(t('toast.emailVerified')),
           )
           return { needsOnboarding: needsOnboard }
         }
@@ -375,16 +378,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.message('Подтвердите вход паролем (MFA)')
+            toast.message(t('toast.mfaPassword'))
           })
           return
         }
 
         yield* Effect.sync(() =>
-          toast.error('Не удалось войти после подтверждения email'),
+          toast.error(t('toast.verifyLoginFailed')),
         )
       }),
-    [applySuccessSession, syncOnboardingStatus],
+    [applySuccessSession, syncOnboardingStatus, t],
   )
 
   const logout = useCallback(
@@ -397,10 +400,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         yield* clearSessionEffect().pipe(Effect.ignore)
         yield* Effect.sync(() => {
           resetSessionState()
-          toast.success('Вы вышли из аккаунта')
+          toast.success(t('toast.loggedOut'))
         })
       }),
-    [resetSessionState, session?.token],
+    [resetSessionState, session?.token, t],
   )
 
   useEffect(() => {
@@ -411,13 +414,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session?.token || !userQuery.isError || userQuery.isFetching) return
     if (isTransientAuthLoadError(userQuery.error)) return
     if (isSessionInvalidatingError(userQuery.error)) {
-      invalidateSession('Сессия недействительна. Войдите снова.')
+      invalidateSession(t('session.invalid'))
       return
     }
     setProfileLoadError(
       userQuery.error instanceof Error
         ? userQuery.error
-        : new Error('Не удалось загрузить профиль'),
+        : new Error(t('toast.profileLoadError')),
     )
   }, [
     invalidateSession,
@@ -425,6 +428,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userQuery.error,
     userQuery.isError,
     userQuery.isFetching,
+    t,
   ])
 
   const retryProfileLoad = useCallback(

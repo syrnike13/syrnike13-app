@@ -2,6 +2,8 @@ import type { Message, User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 
 import { searchChannelMessagesEffect } from '#/features/api/messages-api'
+import type { Translator } from '@syrnike13/ui/i18n'
+
 import { channelLabelForMessage } from '#/features/command-palette/build-command-items'
 import { listServerTextChannelIds } from '#/features/sync/selectors'
 import type { SyncState } from '#/features/sync/types'
@@ -25,6 +27,7 @@ export const searchServerMessages = Effect.fn('messages.searchServer')(
     query: string,
     currentUserId: string | undefined,
     options: SearchServerMessagesOptions,
+    t: Translator,
   ) {
     const limitPerChannel = options.limitPerChannel ?? 8
     const maxChannels = options.maxChannels ?? 24
@@ -48,8 +51,8 @@ export const searchServerMessages = Effect.fn('messages.searchServer')(
           Effect.map(({ messages, users }) => {
             const channel = state.channels[channelId]
             const channelLabel = channel
-              ? channelLabelForMessage(channel, state, currentUserId)
-              : 'Канал'
+              ? channelLabelForMessage(channel, state, currentUserId, t)
+              : t('channelFallback')
 
             return {
               users,

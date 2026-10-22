@@ -1,8 +1,12 @@
 import type { Channel } from '@syrnike13/api-types'
+import { createTranslator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
+import ru from '#/messages/ru.json'
 import { openDirectMessageChannel } from './dm-actions'
+
+const t = createTranslator(ru, 'ru', 'users')
 
 describe('dm actions', () => {
   it('opens a direct message channel, stores it, selects DM context, and navigates', async () => {
@@ -27,6 +31,7 @@ describe('dm actions', () => {
           'token-1',
           'target-user',
           navigateToChannel,
+          t,
           deps,
         ),
       ),

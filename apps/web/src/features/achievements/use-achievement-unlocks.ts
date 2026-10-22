@@ -1,10 +1,15 @@
 import { Effect } from 'effect'
 import { useEffect } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 
-import { readAchievementAutoplay, showDebugAchievement } from './achievement-debug'
+import {
+  debugAchievementCopy,
+  readAchievementAutoplay,
+  showDebugAchievement,
+} from './achievement-debug'
 import { achievementFromBadge, achievementQueue } from './achievement-queue'
 import { acknowledgeBadgesEffect, fetchUnseenBadgesEffect } from './achievements-api'
 
@@ -16,6 +21,7 @@ const AUTOPLAY_DELAY_MS = 1500
  */
 export function useAchievementUnlocks() {
   const token = useAuth().session?.token
+  const t = useTranslations('achievements.debug')
 
   useEffect(() => {
     if (!token) return
@@ -48,9 +54,12 @@ export function useAchievementUnlocks() {
 
   useEffect(() => {
     if (!readAchievementAutoplay()) return
-    const timer = window.setTimeout(() => showDebugAchievement(), AUTOPLAY_DELAY_MS)
+    const timer = window.setTimeout(
+      () => showDebugAchievement(debugAchievementCopy(t)),
+      AUTOPLAY_DELAY_MS,
+    )
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [t])
 }
 
 /** Отмечает бейдж показанным, чтобы уведомление не повторилось. */

@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import type { Badge } from '@syrnike13/api-types'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import { MetaFlag } from '#/components/meta-flag'
@@ -10,9 +11,14 @@ import {
   AdminPage,
   AdminSection,
 } from '#/components/layout/page'
-import { PlusIcon } from '#/components/icons'
-import { SearchField } from '#/components/search-field'
-import { Button } from '#/components/ui/button'
+import { PlusIcon, SearchIcon } from '#/components/icons'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -20,14 +26,15 @@ import { cn } from '#/lib/utils'
 
 type BadgeFilter = 'all' | 'visible' | 'hidden' | 'premium'
 
-const FILTERS: Array<{ value: BadgeFilter; label: string }> = [
-  { value: 'all', label: 'Все' },
-  { value: 'visible', label: 'Видимые' },
-  { value: 'hidden', label: 'Скрытые' },
-  { value: 'premium', label: 'Premium' },
+const FILTERS: Array<{ value: BadgeFilter; labelKey: string }> = [
+  { value: 'all', labelKey: 'filters.all' },
+  { value: 'visible', labelKey: 'filters.visible' },
+  { value: 'hidden', labelKey: 'filters.hidden' },
+  { value: 'premium', labelKey: 'filters.premium' },
 ]
 
 export function BadgesCatalogPage() {
+  const t = useTranslations('badges.catalog')
   const auth = useAuth()
   const token = auth.session?.token
   const [query, setQuery] = useState('')
@@ -59,23 +66,28 @@ export function BadgesCatalogPage() {
 
   return (
     <AdminPage
-      title="Бейджи"
+      title={t('title')}
       actions={
-        <Button asChild size="sm">
-          <Link to="/badges/new">
-            <PlusIcon className="size-4" aria-hidden />
-            Создать
-          </Link>
-        </Button>
+        <Link
+          to="/badges/new"
+          className={cn(buttonVariants({ size: 'sm' }))}
+        >
+          <PlusIcon className="size-4" aria-hidden />
+          {t('create')}
+        </Link>
       }
     >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <SearchField
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск"
-          className="sm:max-w-xs"
-        />
+        <InputGroup className="sm:max-w-xs">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+          />
+        </InputGroup>
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((item) => (
             <button
@@ -83,13 +95,13 @@ export function BadgesCatalogPage() {
               type="button"
               onClick={() => setFilter(item.value)}
               className={cn(
-                'h-8 rounded-md px-2.5 text-[12px] transition-colors',
+                'h-8 rounded-md px-2.5 text-xs transition-colors',
                 filter === item.value
                   ? 'bg-accent font-medium text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </div>
@@ -98,18 +110,18 @@ export function BadgesCatalogPage() {
       {badgesQuery.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="h-12 animate-pulse rounded-md bg-card/50" />
+            <Skeleton key={i} className="h-12" />
           ))}
         </div>
       ) : badges.length === 0 ? (
         <AdminEmpty>
           {filtered ? (
-            'Ничего не найдено'
+            t('emptyFiltered')
           ) : (
             <span>
-              Каталог пуст.{' '}
+              {t('emptyCatalog')}{' '}
               <Link to="/badges/new" className="text-primary hover:underline">
-                Создать бейдж
+                {t('createBadge')}
               </Link>
             </span>
           )}
@@ -128,8 +140,9 @@ export function BadgesCatalogPage() {
 }
 
 function BadgeRow({ badge }: { badge: Badge }) {
+  const t = useTranslations('badges.catalog')
   return (
-    <li className="border-b border-border/50 last:border-0">
+    <li className="border-b border-border last:border-0">
       <Link
         to="/badges/$badgeId"
         params={{ badgeId: badge._id }}
@@ -137,17 +150,19 @@ function BadgeRow({ badge }: { badge: Badge }) {
       >
         <BadgeIcon badge={badge} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium">{badge.name}</div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
+          <div className="truncate text-sm font-medium">{badge.name}</div>
+          <div className="truncate font-mono text-xs text-muted-foreground">
             {badge.slug}
           </div>
         </div>
         <div className="hidden items-center gap-3 sm:flex">
           <MetaFlag tone={badge.visible ? 'ok' : 'muted'}>
-            {badge.visible ? 'видимый' : 'скрытый'}
+            {badge.visible ? t('visible') : t('hidden')}
           </MetaFlag>
-          {badge.premium ? <MetaFlag tone="accent">premium</MetaFlag> : null}
-          <span className="w-8 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+          {badge.premium ? (
+            <MetaFlag tone="accent">{t('premium')}</MetaFlag>
+          ) : null}
+          <span className="w-8 text-right font-mono text-xs tabular-nums text-muted-foreground">
             {badge.display_order}
           </span>
         </div>

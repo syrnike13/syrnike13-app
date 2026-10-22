@@ -86,7 +86,7 @@ describe('voicePreferenceStore', () => {
     ).toBe(false)
   })
 
-  it('defaults to discord-like mic processing settings', () => {
+  it('defaults to the standard mic processing settings', () => {
     expect(voicePreferenceStore.getState()).toMatchObject({
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,

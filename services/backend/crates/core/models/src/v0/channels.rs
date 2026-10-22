@@ -365,7 +365,7 @@ mod tests {
     use super::{DataEditChannel, VoiceInformation};
 
     #[test]
-    fn voice_audio_bitrate_accepts_discord_like_range() {
+    fn voice_audio_bitrate_accepts_supported_range() {
         assert!(VoiceInformation {
             max_users: None,
             audio_bitrate_kbps: Some(8),

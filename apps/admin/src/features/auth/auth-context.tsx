@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -53,6 +54,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations('auth')
   const queryClient = useQueryClient()
   const [session, setSession] = useState<StoredSession | null>(null)
   const [hydrated, setHydrated] = useState(false)
@@ -103,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               user_id: response.user_id,
             }).pipe(
               Effect.tap(() =>
-                Effect.sync(() => toast.success('Вы вошли в админку')),
+                Effect.sync(() => toast.success(t('loggedIn'))),
               ),
             )
           }
@@ -114,14 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ticket: response.ticket,
                 allowedMethods: response.allowed_methods,
               })
-              toast.message('Нужна двухфакторная аутентификация')
+              toast.message(t('mfaRequired'))
             })
           }
 
-          return Effect.sync(() => toast.error('Аккаунт отключён'))
+          return Effect.sync(() => toast.error(t('accountDisabled')))
         }),
       ),
-    [applySession],
+    [applySession, t],
   )
 
   const submitMfaPassword = useCallback(
@@ -135,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Effect.flatMap((response) => {
           if (!isLoginSuccess(response)) {
             return Effect.sync(() =>
-              toast.error('Не удалось подтвердить вход'),
+              toast.error(t('mfaError')),
             )
           }
 
@@ -145,13 +147,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user_id: response.user_id,
           }).pipe(
             Effect.tap(() =>
-              Effect.sync(() => toast.success('Вы вошли в админку')),
+              Effect.sync(() => toast.success(t('loggedIn'))),
             ),
           )
         }),
       )
     },
-    [applySession, mfaChallenge],
+    [applySession, mfaChallenge, t],
   )
 
   const logout = useCallback(() => {
@@ -167,14 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? logoutSessionEffect(token).pipe(
               Effect.catch(() =>
                 Effect.sync(() =>
-                  toast.error('Сессия очищена локально, сервер не ответил'),
+                  toast.error(t('sessionClearedLocally')),
                 ),
               ),
             )
           : Effect.void,
       ),
     )
-  }, [queryClient, session?.token])
+  }, [queryClient, session?.token, t])
 
   const refreshUser = useCallback(
     () =>

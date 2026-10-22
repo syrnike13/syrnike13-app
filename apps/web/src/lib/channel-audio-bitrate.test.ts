@@ -38,7 +38,7 @@ describe('voice channel audio bitrate', () => {
     )
   })
 
-  it('clamps channel audio bitrate to the Discord-like 8-96 kbps range', () => {
+  it('clamps channel audio bitrate to the supported 8-96 kbps range', () => {
     expect(clampVoiceChannelAudioBitrateKbps(4)).toBe(8)
     expect(clampVoiceChannelAudioBitrateKbps(48)).toBe(48)
     expect(clampVoiceChannelAudioBitrateKbps(128)).toBe(96)

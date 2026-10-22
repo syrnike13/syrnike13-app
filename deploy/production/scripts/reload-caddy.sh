@@ -60,18 +60,24 @@ upsert_env() {
   fi
 }
 
-if [[ -n "${CADDY_ADMIN_HOSTNAME:-}${CADDY_NIGHTLY_HOSTNAME:-}${CADDY_NIGHTLY_ADMIN_HOSTNAME:-}" ]]; then
+if [[ -n "${CADDY_APP_HOSTNAME:-}${CADDY_ADMIN_HOSTNAME:-}${CADDY_NIGHTLY_HOSTNAME:-}${CADDY_NIGHTLY_APP_HOSTNAME:-}${CADDY_NIGHTLY_ADMIN_HOSTNAME:-}" ]]; then
   env_backup_path="$(mktemp /tmp/syrnike13-env-web.XXXXXX)"
   if [[ -f .env.web ]]; then
     cp -- .env.web "$env_backup_path"
     env_file_existed=true
   fi
 
+  if [[ -n "${CADDY_APP_HOSTNAME:-}" ]]; then
+    upsert_env .env.web APP_HOSTNAME "$CADDY_APP_HOSTNAME"
+  fi
   if [[ -n "${CADDY_ADMIN_HOSTNAME:-}" ]]; then
     upsert_env .env.web ADMIN_HOSTNAME "$CADDY_ADMIN_HOSTNAME"
   fi
   if [[ -n "${CADDY_NIGHTLY_HOSTNAME:-}" ]]; then
     upsert_env .env.web NIGHTLY_HOSTNAME "$CADDY_NIGHTLY_HOSTNAME"
+  fi
+  if [[ -n "${CADDY_NIGHTLY_APP_HOSTNAME:-}" ]]; then
+    upsert_env .env.web NIGHTLY_APP_HOSTNAME "$CADDY_NIGHTLY_APP_HOSTNAME"
   fi
   if [[ -n "${CADDY_NIGHTLY_ADMIN_HOSTNAME:-}" ]]; then
     upsert_env .env.web NIGHTLY_ADMIN_HOSTNAME "$CADDY_NIGHTLY_ADMIN_HOSTNAME"
@@ -137,7 +143,7 @@ fi
 
 caddy_env_args=()
 if [[ -f .env.web ]]; then
-  for key in HOSTNAME ADMIN_HOSTNAME NIGHTLY_HOSTNAME NIGHTLY_ADMIN_HOSTNAME; do
+  for key in HOSTNAME APP_HOSTNAME ADMIN_HOSTNAME NIGHTLY_HOSTNAME NIGHTLY_APP_HOSTNAME NIGHTLY_ADMIN_HOSTNAME; do
     value="$(sed -n "s/^${key}=//p" .env.web | tail -n 1)"
     if [[ -n "$value" ]]; then
       caddy_env_args+=(--env "${key}=${value}")

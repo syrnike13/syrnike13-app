@@ -1,18 +1,11 @@
 import { HeadphoneOffIcon, HeadphonesIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { VoiceSoundSettingsMenuContent } from '#/components/voice/voice-stage-mic-settings-menu'
 import {
   VoiceSplitControl,
   type VoiceSplitControlSurface,
 } from '#/components/voice/voice-split-control'
-
-function soundControlTitle({
-  soundOff,
-}: {
-  soundOff: boolean
-}) {
-  return soundOff ? 'Включить звук' : 'Выключить звук'
-}
 
 export function VoiceSoundSplitControl({
   surface,
@@ -26,13 +19,17 @@ export function VoiceSoundSplitControl({
   soundOff: boolean
   onToggleDeafen: () => void
 }) {
+  const t = useTranslations('voice')
+
   return (
     <VoiceSplitControl
       surface={surface}
       danger={soundOff}
       disabled={connecting}
-      mainTitle={soundControlTitle({ soundOff })}
-      chevronTitle="Параметры звука"
+      mainTitle={
+        soundOff ? t('actions.enableSound') : t('actions.disableSound')
+      }
+      chevronTitle={t('actions.soundSettings')}
       onMainClick={onToggleDeafen}
       popoverContent={<VoiceSoundSettingsMenuContent />}
     >

@@ -22,7 +22,7 @@ describe('apiRequest', () => {
     )
     await expect(apiBlobRequest('/preview')).rejects.toMatchObject({
       name: 'ApiNetworkError',
-      message: 'Не удалось прочитать ответ API',
+      message: 'Could not read the API response',
       cause,
     })
   })
@@ -148,7 +148,7 @@ describe('apiRequest', () => {
     ).rejects.toMatchObject({
       name: 'ApiError',
       status: 200,
-      message: 'API вернул ответ, не соответствующий контракту',
+      message: 'The API response does not match the contract',
     })
   })
 

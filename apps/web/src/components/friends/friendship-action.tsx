@@ -1,17 +1,18 @@
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
 import {
-  Loader2Icon,
   ShieldOffIcon,
   UserCheckIcon,
   UserMinusIcon,
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
-import { ContextMenuItem } from '#/components/ui/context-menu'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { ContextMenuItem } from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   acceptIncomingFriendRequest,
@@ -41,6 +42,7 @@ function shouldHideFriendshipAction(
 }
 
 export function FriendshipAction({ user, className }: FriendshipActionProps) {
+  const t = useTranslations('friends')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
@@ -61,7 +63,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
 
   const disabled = busy || !token
   const pendingIcon = busy ? (
-    <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+    <Spinner className="size-4" data-icon="inline-start" />
   ) : null
 
   if (user.relationship === 'Incoming') {
@@ -73,11 +75,11 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           disabled={disabled}
           className="min-w-0 flex-1"
           onClick={() =>
-            void run(() => acceptIncomingFriendRequest(token!, user._id))
+            void run(() => acceptIncomingFriendRequest(token!, user._id, t))
           }
         >
           {pendingIcon ?? <UserCheckIcon data-icon="inline-start" />}
-          <span className="truncate">Принять</span>
+          <span className="truncate">{t('accept')}</span>
         </Button>
         <Button
           type="button"
@@ -86,11 +88,11 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           disabled={disabled}
           className="min-w-0 flex-1"
           onClick={() =>
-            void run(() => declineIncomingFriendRequest(token!, user._id))
+            void run(() => declineIncomingFriendRequest(token!, user._id, t))
           }
         >
           <XIcon data-icon="inline-start" />
-          <span className="truncate">Отклонить</span>
+          <span className="truncate">{t('decline')}</span>
         </Button>
       </div>
     )
@@ -104,10 +106,10 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           size="sm"
           disabled={disabled}
           className="min-w-0 flex-1"
-          onClick={() => void run(() => sendFriendRequestToUser(token!, user))}
+          onClick={() => void run(() => sendFriendRequestToUser(token!, user, t))}
         >
           {pendingIcon ?? <UserPlusIcon data-icon="inline-start" />}
-          <span className="truncate">Добавить в друзья</span>
+          <span className="truncate">{t('add')}</span>
         </Button>
       </div>
     )
@@ -123,11 +125,11 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           disabled={disabled}
           className="min-w-0 flex-1"
           onClick={() =>
-            void run(() => cancelOutgoingFriendRequest(token!, user._id))
+            void run(() => cancelOutgoingFriendRequest(token!, user._id, t))
           }
         >
           {pendingIcon ?? <XIcon data-icon="inline-start" />}
-          <span className="truncate">Отменить заявку</span>
+          <span className="truncate">{t('cancelRequest')}</span>
         </Button>
       </div>
     )
@@ -142,10 +144,10 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           size="sm"
           disabled={disabled}
           className="min-w-0 flex-1"
-          onClick={() => void run(() => removeFriend(token!, user._id))}
+          onClick={() => void run(() => removeFriend(token!, user._id, t))}
         >
           {pendingIcon ?? <UserMinusIcon data-icon="inline-start" />}
-          <span className="truncate">Удалить из друзей</span>
+          <span className="truncate">{t('remove')}</span>
         </Button>
       </div>
     )
@@ -160,10 +162,10 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
           size="sm"
           disabled={disabled}
           className="min-w-0 flex-1"
-          onClick={() => void run(() => unblockBlockedUser(token!, user._id))}
+          onClick={() => void run(() => unblockBlockedUser(token!, user._id, t))}
         >
           {pendingIcon ?? <ShieldOffIcon data-icon="inline-start" />}
-          <span className="truncate">Разблокировать</span>
+          <span className="truncate">{t('unblock')}</span>
         </Button>
       </div>
     )
@@ -173,6 +175,7 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
 }
 
 export function FriendshipContextMenuItems({ user }: { user: User }) {
+  const t = useTranslations('friends')
   const auth = useAuth()
   const token = auth.session?.token
   const [busy, setBusy] = useState(false)
@@ -198,21 +201,21 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
       <>
         <ContextMenuItem
           disabled={disabled}
-          onSelect={() =>
-            void run(() => acceptIncomingFriendRequest(token!, user._id))
+          onClick={() =>
+            void run(() => acceptIncomingFriendRequest(token!, user._id, t))
           }
         >
           <UserCheckIcon />
-          Принять заявку
+          {t('acceptRequest')}
         </ContextMenuItem>
         <ContextMenuItem
           disabled={disabled}
-          onSelect={() =>
-            void run(() => declineIncomingFriendRequest(token!, user._id))
+          onClick={() =>
+            void run(() => declineIncomingFriendRequest(token!, user._id, t))
           }
         >
           <XIcon />
-          Отклонить заявку
+          {t('declineRequest')}
         </ContextMenuItem>
       </>
     )
@@ -222,10 +225,10 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() => void run(() => sendFriendRequestToUser(token!, user))}
+        onClick={() => void run(() => sendFriendRequestToUser(token!, user, t))}
       >
         <UserPlusIcon />
-        Добавить в друзья
+        {t('add')}
       </ContextMenuItem>
     )
   }
@@ -234,12 +237,12 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() =>
-          void run(() => cancelOutgoingFriendRequest(token!, user._id))
+        onClick={() =>
+          void run(() => cancelOutgoingFriendRequest(token!, user._id, t))
         }
       >
         <XIcon />
-        Отменить заявку
+        {t('cancelRequest')}
       </ContextMenuItem>
     )
   }
@@ -249,10 +252,10 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
       <ContextMenuItem
         disabled={disabled}
         variant="destructive"
-        onSelect={() => void run(() => removeFriend(token!, user._id))}
+        onClick={() => void run(() => removeFriend(token!, user._id, t))}
       >
         <UserMinusIcon />
-        Удалить из друзей
+        {t('remove')}
       </ContextMenuItem>
     )
   }
@@ -261,10 +264,10 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
     return (
       <ContextMenuItem
         disabled={disabled}
-        onSelect={() => void run(() => unblockBlockedUser(token!, user._id))}
+        onClick={() => void run(() => unblockBlockedUser(token!, user._id, t))}
       >
         <ShieldOffIcon />
-        Разблокировать
+        {t('unblock')}
       </ContextMenuItem>
     )
   }

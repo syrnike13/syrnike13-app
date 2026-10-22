@@ -4,8 +4,14 @@ import type { Invite } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { CopyIcon, PlusIcon } from '#/components/icons'
 import { toast } from 'sonner'
+import {
+  useLocale,
+  useTranslations,
+  type AppLocale,
+  type Translator,
+} from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
@@ -13,9 +19,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerInvitesEffect } from '#/features/api/servers-api'
@@ -27,14 +34,15 @@ import {
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
   serverId: string
 }
 
-function formatInviteTimestamp(timestamp: number) {
-  return new Intl.DateTimeFormat('ru-RU', {
+function formatInviteTimestamp(timestamp: number, locale: AppLocale) {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -43,9 +51,13 @@ function formatInviteTimestamp(timestamp: number) {
   }).format(new Date(timestamp))
 }
 
-function formatInviteDate(timestamp?: number | null) {
-  if (timestamp == null) return 'Без срока'
-  return formatInviteTimestamp(timestamp)
+function formatInviteDate(
+  timestamp: number | null | undefined,
+  locale: AppLocale,
+  t: Translator,
+) {
+  if (timestamp == null) return t('noExpiry')
+  return formatInviteTimestamp(timestamp, locale)
 }
 
 function formatInviteUses(invite: Invite) {
@@ -53,15 +65,17 @@ function formatInviteUses(invite: Invite) {
   return `${invite.uses} / ${maxUses}`
 }
 
-const INACTIVE_INVITE_LABELS: Record<InviteInactiveReason, string> = {
-  revoked: 'Отозвано',
-  expired: 'Истекло',
-  exhausted: 'Использовано',
+const INACTIVE_INVITE_KEYS: Record<InviteInactiveReason, string> = {
+  revoked: 'inactive.revoked',
+  expired: 'inactive.expired',
+  exhausted: 'inactive.exhausted',
 }
 
 export function ServerSettingsInvitesPanel({
   serverId,
 }: ServerSettingsInvitesPanelProps) {
+  const t = useTranslations('servers.invites')
+  const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
   const channels = useSyncStore((s) =>
@@ -81,7 +95,7 @@ export function ServerSettingsInvitesPanel({
       Effect.runPromise(
         token
           ? fetchServerInvitesEffect(token, serverId)
-          : Effect.fail(new Error('Нет сессии')),
+          : Effect.fail(new Error(t('noSession'))),
         { signal },
       ),
   })
@@ -113,9 +127,7 @@ export function ServerSettingsInvitesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось отозвать приглашение',
+              apiErrorMessage(error, t('revokeError')),
             )
           }),
         ),
@@ -131,13 +143,11 @@ export function ServerSettingsInvitesPanel({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось скопировать приглашение',
+                apiErrorMessage(error, t('copyError')),
               )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success('Скопировано')),
+            Effect.sync(() => toast.success(t('copied'))),
         }),
       ),
     )
@@ -145,11 +155,11 @@ export function ServerSettingsInvitesPanel({
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-3 border-b border-border/60 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-base font-semibold">Приглашения</h3>
+          <h3 className="text-base font-semibold">{t('title')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Управляйте активными ссылками сервера.
+            {t('description')}
           </p>
         </div>
         <Button
@@ -158,24 +168,24 @@ export function ServerSettingsInvitesPanel({
           onClick={() => setInviteDialogOpen(true)}
         >
           <PlusIcon className="size-4" />
-          Создать приглашение
+          {t('create')}
         </Button>
       </section>
 
       {invitesQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Загрузка...</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       ) : invitesQuery.error ? (
-        <p className="text-sm text-destructive">
-          Не удалось загрузить приглашения.
-        </p>
+        <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : invites.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Приглашений пока нет</p>
+        <Empty className="py-8">
+          <EmptyDescription>{t('empty')}</EmptyDescription>
+        </Empty>
       ) : (
         <ul className="space-y-2">
           {invites.map((invite) => {
             const inactiveReason = getInviteInactiveReason(invite)
             const inactiveLabel = inactiveReason
-              ? INACTIVE_INVITE_LABELS[inactiveReason]
+              ? t(INACTIVE_INVITE_KEYS[inactiveReason])
               : null
             const revoked = inactiveReason === 'revoked'
             const inactive = inactiveReason !== null
@@ -192,7 +202,7 @@ export function ServerSettingsInvitesPanel({
               revoker?.display_name ||
               revoker?.username ||
               invite.revoked_by ||
-              'Неизвестно'
+              t('unknown')
 
             return (
               <li
@@ -211,17 +221,23 @@ export function ServerSettingsInvitesPanel({
                     ) : null}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {channelLabel} · Использования: {formatInviteUses(invite)} · Истекает:{' '}
-                    {formatInviteDate(invite.expires_at)}
+                    {channelLabel} · {t('uses', { value: formatInviteUses(invite) })} ·{' '}
+                    {t('expires', {
+                      date: formatInviteDate(invite.expires_at, locale, t),
+                    })}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Создал: {creatorLabel} · Создано:{' '}
-                    {formatInviteTimestamp(invite.created_at)}
+                    {t('createdBy', {
+                      name: creatorLabel,
+                      date: formatInviteTimestamp(invite.created_at, locale),
+                    })}
                   </p>
                   {invite.revoked_at ? (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Отозвал: {revokerLabel} · Отозвано:{' '}
-                      {formatInviteTimestamp(invite.revoked_at)}
+                      {t('revokedBy', {
+                        name: revokerLabel,
+                        date: formatInviteTimestamp(invite.revoked_at, locale),
+                      })}
                     </p>
                   ) : null}
                 </div>
@@ -230,12 +246,12 @@ export function ServerSettingsInvitesPanel({
                     type="button"
                     variant="outline"
                     size="sm"
-                    aria-label={`Копировать ${invite._id}`}
+                    aria-label={t('copyAria', { code: invite._id })}
                     disabled={inactive}
                     onClick={() => void copyInvite(invite._id)}
                   >
                     <CopyIcon className="size-3.5" />
-                    Копировать
+                    {t('copy')}
                   </Button>
                   <Button
                     type="button"
@@ -244,7 +260,7 @@ export function ServerSettingsInvitesPanel({
                     disabled={revoked || revokingCode === invite._id}
                     onClick={() => setInvitePendingRevocation(invite._id)}
                   >
-                    Отозвать
+                    {t('revoke')}
                   </Button>
                 </div>
               </li>
@@ -265,14 +281,12 @@ export function ServerSettingsInvitesPanel({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Отозвать приглашение {invitePendingRevocation}?
+              {t('revokeTitle', { code: invitePendingRevocation ?? '' })}
             </DialogTitle>
-            <DialogDescription>
-              Ссылка перестанет принимать новых участников.
-            </DialogDescription>
+            <DialogDescription>{t('revokeDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5 py-2">
-            <Label htmlFor="invite-revoke-reason">Причина отзыва</Label>
+            <Label htmlFor="invite-revoke-reason">{t('revokeReasonLabel')}</Label>
             <Input
               id="invite-revoke-reason"
               value={revokeReason}
@@ -291,7 +305,7 @@ export function ServerSettingsInvitesPanel({
                 setRevokeReason('')
               }}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -299,7 +313,7 @@ export function ServerSettingsInvitesPanel({
               disabled={revokingCode !== null}
               onClick={() => void revokeInvite()}
             >
-              Отозвать приглашение
+              {t('revokeConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

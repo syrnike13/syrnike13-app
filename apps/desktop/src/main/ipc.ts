@@ -212,7 +212,7 @@ export function registerDesktopIpc(
       input,
     )
     lastActivity = details
-    // TODO: Discord RPC / macOS Now Playing — подключить нативный модуль.
+    // TODO: Rich presence / macOS Now Playing — подключить нативный модуль.
     if (details) {
       console.info('[desktop] activity set', details)
     } else {

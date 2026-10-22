@@ -15,10 +15,37 @@ describe('routeFromDeepLink', () => {
 
   it('maps public invite urls to the web invite route', () => {
     expect(routeFromDeepLinkForMetadata(
+      'https://app.syrnike13.ru/invite/abc-123',
+      desktopReleaseMetadata('stable'),
+    )).toBe(
+      '/invite/abc-123',
+    )
+  })
+
+  it('keeps legacy invite urls on the main domain working', () => {
+    expect(routeFromDeepLinkForMetadata(
       'https://syrnike13.ru/invite/abc-123',
       desktopReleaseMetadata('stable'),
     )).toBe(
       '/invite/abc-123',
+    )
+  })
+
+  it('accepts app routes on the app host', () => {
+    expect(routeFromDeepLinkForMetadata(
+      'https://app.syrnike13.ru/c/channel-1?m=message-1',
+      desktopReleaseMetadata('stable'),
+    )).toBe(
+      '/c/channel-1?m=message-1',
+    )
+  })
+
+  it('rewrites legacy /app urls to the new root routes', () => {
+    expect(routeFromDeepLinkForMetadata(
+      'https://syrnike13.ru/app/c/channel-1',
+      desktopReleaseMetadata('stable'),
+    )).toBe(
+      '/c/channel-1',
     )
   })
 
@@ -32,6 +59,7 @@ describe('routeFromDeepLink', () => {
       autoUpdateEnabled: false,
       displayName: 'syrnike13 Nightly',
       protocolScheme: 'syrnike13-nightly',
+      appHost: 'app.beta.syrnike13.ru',
       publicHost: 'beta.syrnike13.ru',
     }
 
@@ -43,7 +71,7 @@ describe('routeFromDeepLink', () => {
     ).toBe('/invite/abc-123')
     expect(
       routeFromDeepLinkForMetadata(
-        'https://beta.syrnike13.ru/invite/abc-123',
+        'https://app.beta.syrnike13.ru/invite/abc-123',
         nightly,
       ),
     ).toBe('/invite/abc-123')
@@ -52,7 +80,7 @@ describe('routeFromDeepLink', () => {
     ).toBeNull()
     expect(
       routeFromDeepLinkForMetadata(
-        'https://syrnike13.ru/invite/abc-123',
+        'https://app.syrnike13.ru/invite/abc-123',
         nightly,
       ),
     ).toBeNull()

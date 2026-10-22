@@ -3,15 +3,18 @@ import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { SearchIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { Input } from '@syrnike13/ui/primitives/input'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { canAssignRole } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -47,6 +50,7 @@ export function RoleMembersPanel({
   role,
   className,
 }: RoleMembersPanelProps) {
+  const t = useTranslations('servers.roleMembers')
   const auth = useAuth()
   const actorMember = useSyncStore((state) =>
     auth.user?._id
@@ -128,9 +132,7 @@ export function RoleMembersPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось обновить участника',
+              apiErrorMessage(error, t('updateError')),
             )
           }),
         ),
@@ -174,7 +176,7 @@ export function RoleMembersPanel({
             size="icon"
             className="size-8 shrink-0 rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             disabled={disabled}
-            title="Убрать роль"
+            title={t('removeRole')}
             onClick={() => void removeMember(member)}
           >
             <XIcon className="size-4" />
@@ -192,18 +194,18 @@ export function RoleMembersPanel({
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
-              placeholder="Поиск участников"
-              className="bg-muted/40 pl-9"
+              placeholder={t('search')}
+              className="pl-9"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
           {canAddMembers ? (
             <Button
               type="button"
-              className="shrink-0 sm:min-w-[11rem]"
+              className="shrink-0 sm:min-w-44"
               onClick={() => setAddDialogOpen(true)}
             >
-              Добавить участников
+              {t('addMembers')}
             </Button>
           ) : null}
         </div>
@@ -213,11 +215,11 @@ export function RoleMembersPanel({
         </ul>
 
         {withRole.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            {query.trim()
-              ? 'Участники не найдены.'
-              : 'У этой роли пока нет участников.'}
-          </p>
+          <Empty className="py-8">
+            <EmptyDescription>
+              {query.trim() ? t('noResults') : t('noMembers')}
+            </EmptyDescription>
+          </Empty>
         ) : null}
       </div>
 

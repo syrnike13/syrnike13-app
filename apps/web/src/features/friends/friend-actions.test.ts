@@ -1,7 +1,9 @@
 import type { User } from '@syrnike13/api-types'
+import { createTranslator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
+import ru from '#/messages/ru.json'
 import {
   acceptIncomingFriendRequest,
   blockIncomingFriendRequest,
@@ -13,6 +15,8 @@ import {
   sendFriendRequestToUser,
   unblockBlockedUser,
 } from './friend-actions'
+
+const t = createTranslator(ru, 'ru', 'friends')
 
 describe('friend actions', () => {
   function createDeps(overrides = {}) {
@@ -42,7 +46,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        acceptIncomingFriendRequest('token-1', 'user-1', deps),
+        acceptIncomingFriendRequest('token-1', 'user-1', t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -68,7 +72,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        declineIncomingFriendRequest('token-1', 'user-1', deps),
+        declineIncomingFriendRequest('token-1', 'user-1', t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -94,7 +98,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        blockIncomingFriendRequest('token-1', 'user-1', deps),
+        blockIncomingFriendRequest('token-1', 'user-1', t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -119,7 +123,7 @@ describe('friend actions', () => {
     })
 
     await expect(
-      Effect.runPromise(blockUserRelationship('token-1', 'user-1', deps)),
+      Effect.runPromise(blockUserRelationship('token-1', 'user-1', t, deps)),
     ).resolves.toBe(updatedUser)
 
     expect(deps.blockUser).toHaveBeenCalledWith(
@@ -149,7 +153,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        sendFriendRequestToUser('token-1', targetUser, deps),
+        sendFriendRequestToUser('token-1', targetUser, t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -175,7 +179,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        sendFriendRequestByUsername('token-1', 'alice#1234', deps),
+        sendFriendRequestByUsername('token-1', 'alice#1234', t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -201,7 +205,7 @@ describe('friend actions', () => {
 
     await expect(
       Effect.runPromise(
-        cancelOutgoingFriendRequest('token-1', 'user-1', deps),
+        cancelOutgoingFriendRequest('token-1', 'user-1', t, deps),
       ),
     ).resolves.toBe(updatedUser)
 
@@ -226,7 +230,7 @@ describe('friend actions', () => {
     })
 
     await expect(
-      Effect.runPromise(removeFriend('token-1', 'user-1', deps)),
+      Effect.runPromise(removeFriend('token-1', 'user-1', t, deps)),
     ).resolves.toBe(updatedUser)
 
     expect(deps.removeFriendOrRequest).toHaveBeenCalledWith(
@@ -252,7 +256,7 @@ describe('friend actions', () => {
     })
 
     await expect(
-      Effect.runPromise(unblockBlockedUser('token-1', 'user-1', deps)),
+      Effect.runPromise(unblockBlockedUser('token-1', 'user-1', t, deps)),
     ).resolves.toBe(updatedUser)
 
     expect(deps.unblockUser).toHaveBeenCalledWith(

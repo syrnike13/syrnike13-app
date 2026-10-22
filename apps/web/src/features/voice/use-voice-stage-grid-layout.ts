@@ -7,7 +7,7 @@ import {
 } from '#/features/voice/voice-stage-grid-layout'
 
 /**
- * Измеряет область сетки и возвращает раскладку плиток (Discord-like).
+ * Измеряет область сетки и возвращает раскладку плиток.
  * Пересчитывается при ресайзе контейнера и изменении числа плиток.
  */
 export function useVoiceStageGridLayout(

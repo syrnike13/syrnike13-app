@@ -1,13 +1,14 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   PERMISSION_TRI_STATE_ORDER,
   type PermissionTriState,
 } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 
-const STATE_LABELS: Record<PermissionTriState, string> = {
-  neutral: 'Наследуется',
-  allow: 'Разрешено',
-  deny: 'Запрещено',
+const STATE_KEYS: Record<PermissionTriState, string> = {
+  neutral: 'permissionInherited',
+  allow: 'permissionAllowed',
+  deny: 'permissionDenied',
 }
 
 export function PermissionStateButton({
@@ -23,6 +24,7 @@ export function PermissionStateButton({
   allowedStates?: PermissionTriState[]
   onChange: (next: PermissionTriState) => void
 }) {
+  const t = useTranslations('servers.roles')
   const stateOrder = PERMISSION_TRI_STATE_ORDER
   const allowed = allowedStates ?? stateOrder
   const hasNextState = stateOrder.some(
@@ -43,7 +45,7 @@ export function PermissionStateButton({
     }
   }
 
-  const stateLabel = STATE_LABELS[state]
+  const stateLabel = t(STATE_KEYS[state])
 
   return (
     <button

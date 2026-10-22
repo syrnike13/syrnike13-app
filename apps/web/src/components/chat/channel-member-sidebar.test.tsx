@@ -9,7 +9,7 @@ import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 
-vi.mock('#/components/ui/scroll-area', () => ({
+vi.mock('@syrnike13/ui/primitives/scroll-area', () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 

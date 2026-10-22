@@ -6,7 +6,7 @@ import { cn } from '#/lib/utils'
 
 /** Оверлей панели управления: тот же bottom-2, что у UserPanel. */
 export const voiceStageControlsChromeClass = cn(
-  'absolute inset-x-0 z-50 grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 px-2',
+  'absolute inset-x-0 z-50 grid controls-grid items-stretch gap-2 px-2',
   FLOATING_BAR_BOTTOM_CLASS,
 )
 
@@ -19,7 +19,7 @@ export const voiceStageControlsChromeTrailingClass =
   'flex items-stretch justify-end' as const
 
 /** Отступ контента: bottom-2 (8px) + высота панели (56px) + зазор 8px. */
-export const voiceStageContentBottomPadClass = 'pb-[72px]' as const
+export const voiceStageContentBottomPadClass = 'pb-18' as const
 
 /**
  * Вертикальные отступы контента стейджа под оверлей шапки и панели управления.

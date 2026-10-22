@@ -54,6 +54,6 @@ describe('FeedbackSuggestionRow', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Проголосовать' })).toBeNull()
-    expect(screen.getByLabelText('3 голосов')).toBeTruthy()
+    expect(screen.getByLabelText('3 голоса')).toBeTruthy()
   })
 })

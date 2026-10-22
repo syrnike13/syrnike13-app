@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 
-vi.mock('#/components/ui/avatar', () => ({
+vi.mock('@syrnike13/ui/primitives/avatar', () => ({
   Avatar: ({
     children,
     className,
@@ -190,9 +190,9 @@ describe('UserAvatar notification badge', () => {
       />,
     )
 
-    const badge = screen.getByLabelText('3 уведомлений')
+    const badge = screen.getByLabelText('3 уведомления')
     expect(badge.textContent).toBe('3')
-    expect(badge.style.backgroundColor).toBe('var(--destructive-contrast)')
+    expect(badge.className).toContain('bg-destructive-contrast')
   })
 
   it('hides presence when a notification badge is shown', () => {
@@ -203,7 +203,7 @@ describe('UserAvatar notification badge', () => {
       />,
     )
 
-    expect(screen.getByLabelText('1 уведомлений')).toBeTruthy()
+    expect(screen.getByLabelText('1 уведомление')).toBeTruthy()
     expect(screen.queryByTitle('В сети')).toBeNull()
   })
 })

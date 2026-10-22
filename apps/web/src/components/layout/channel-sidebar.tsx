@@ -1,15 +1,22 @@
+import { useEffect, useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { ServerChannelList } from '#/components/channels/server-channel-list'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   listVisibleDmRailChannels,
 } from '#/features/sync/selectors'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
+  GUILD_BANNER_FADE_DISTANCE_PX,
+  GUILD_BANNER_HEIGHT_CLASS,
+  GUILD_BANNER_MAX_SHIFT_PX,
   shellColumnHeaderClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { serverBannerUrl } from '#/lib/media'
 import { useMediaQuery } from '#/hooks/use-media-query'
@@ -32,6 +39,7 @@ export function ChannelSidebar({
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const users = useSyncStore((s) => s.users)
   const unreads = useSyncStore((s) => s.unreads)
+  const t = useTranslations('layout.channel')
   const servers = useSyncStore((s) => s.servers)
   const prefersReducedMotion = useMediaQuery(
     '(prefers-reduced-motion: reduce)',
@@ -46,42 +54,97 @@ export function ChannelSidebar({
   const selectedServer = selectedServerId
     ? servers[selectedServerId]
     : undefined
-  const serverName = selectedServer?.name ?? 'Личные сообщения'
+  const serverName = selectedServer?.name ?? t('directMessages')
   const bannerUrl = serverBannerUrl(selectedServer?.banner, {
     animated: !prefersReducedMotion,
   })
+  const sidebarRef = useRef<HTMLElement>(null)
+  const bannerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const root = sidebarRef.current
+    const banner = bannerRef.current
+    if (!root || !banner || !bannerUrl) return
+
+    const viewport = root.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    if (!viewport) return
+
+    let frame = 0
+    const apply = () => {
+      frame = 0
+      const progress = Math.min(
+        viewport.scrollTop / GUILD_BANNER_FADE_DISTANCE_PX,
+        1,
+      )
+      banner.style.setProperty('--banner-opacity', String(1 - progress))
+      banner.style.setProperty(
+        '--banner-shift',
+        `${-progress * GUILD_BANNER_MAX_SHIFT_PX}px`,
+      )
+    }
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(apply)
+    }
+
+    apply()
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      viewport.removeEventListener('scroll', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [bannerUrl, selectedServerId])
 
   return (
     <aside
-      className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
+      ref={sidebarRef}
+      className={cn(
+        'relative flex h-full min-h-0 w-full flex-col',
+        shellNavSurface,
+        reserveUserPanelSpace && 'pb-(--sidebar-bottom-reserve)',
+      )}
       style={
         reserveUserPanelSpace
-          ? { paddingBottom: userPanelReservePx }
+          ? ({
+              '--sidebar-bottom-reserve': `${userPanelReservePx}px`,
+            } as CSSVars)
           : undefined
       }
     >
+      {bannerUrl ? (
+        <div
+          ref={bannerRef}
+          aria-hidden="true"
+          data-server-banner=""
+          className={cn(
+            'banner-scroll pointer-events-none absolute inset-x-0 top-0 z-0 overflow-hidden',
+            GUILD_BANNER_HEIGHT_CLASS,
+          )}
+          style={
+            {
+              '--banner-opacity': 1,
+              '--banner-shift': '0px',
+            } as CSSVars
+          }
+        >
+          <img
+            src={bannerUrl}
+            alt=""
+            draggable={false}
+            className="size-full object-cover"
+          />
+          <span className="absolute inset-0 bg-linear-to-b from-background/85 via-background/35 to-transparent" />
+        </div>
+      ) : null}
       <header
         className={cn(
           shellColumnHeaderClass,
-          'relative overflow-hidden px-3',
-          bannerUrl ? 'h-32 items-start py-3' : 'bg-transparent',
+          'relative z-10 overflow-hidden px-2',
+          bannerUrl ? 'border-b-0' : 'bg-transparent',
         )}
       >
-        {bannerUrl ? (
-          <>
-            <img
-              src={bannerUrl}
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-              className="pointer-events-none absolute inset-0 size-full object-cover"
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-linear-to-b from-background/85 via-background/35 to-transparent"
-            />
-          </>
-        ) : null}
         {selectedServerId ? (
           <div className="relative z-10 flex w-full">
             <ServerHeaderMenu
@@ -91,13 +154,13 @@ export function ChannelSidebar({
             />
           </div>
         ) : (
-          <h2 className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
+          <h2 className="min-w-0 flex-1 truncate px-1 text-base font-semibold tracking-tight">
             {serverName}
           </h2>
         )}
       </header>
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="relative z-10 min-h-0 flex-1">
         {selectedServerId ? (
           <ServerChannelList
             serverId={selectedServerId}
@@ -105,9 +168,10 @@ export function ChannelSidebar({
             users={users}
             currentUserId={auth.user?._id}
             unreads={unreads}
+            bannerOffset={Boolean(bannerUrl)}
           />
         ) : (
-          <div className="min-h-[var(--radix-scroll-area-viewport-height,100%)] p-2">
+          <div className="min-h-full p-2">
             {dmChannels.length === 0 ? (
               <p className="px-2 py-4 text-xs text-muted-foreground">
                 Нет доступных каналов

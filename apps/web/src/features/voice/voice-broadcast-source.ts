@@ -5,6 +5,7 @@ import {
   VideoIcon,
   type AppIcon,
 } from '#/components/icons'
+import type { Translator } from '@syrnike13/ui/i18n'
 import type { DesktopDisplayMediaSource } from '@syrnike13/platform'
 
 export type ScreenShareSurface = 'monitor' | 'window' | 'browser'
@@ -26,14 +27,17 @@ export function parseScreenShareSurface(
   return 'window'
 }
 
-export function screenShareSurfaceFallbackLabel(surface: ScreenShareSurface) {
+export function screenShareSurfaceFallbackLabel(
+  surface: ScreenShareSurface,
+  t: Translator,
+) {
   switch (surface) {
     case 'monitor':
-      return 'Экран'
+      return t('broadcast.screen')
     case 'browser':
-      return 'Вкладка браузера'
+      return t('broadcast.browserTab')
     case 'window':
-      return 'Окно'
+      return t('broadcast.window')
   }
 }
 
@@ -47,8 +51,7 @@ export function readScreenShareBroadcastSource(
   const surface = parseScreenShareSurface(
     typeof displaySurface === 'string' ? displaySurface : undefined,
   )
-  const label = friendlyScreenShareLabel(track?.label, surface)
-  return { label, surface }
+  return { label: track?.label?.trim() ?? '', surface }
 }
 
 export function rememberDesktopScreenShareBroadcastSource(
@@ -58,7 +61,7 @@ export function rememberDesktopScreenShareBroadcastSource(
   const surface: ScreenShareSurface =
     source.type === 'screen' ? 'monitor' : 'window'
   desktopScreenShareSource = {
-    label: desktopScreenShareSourceLabel(source),
+    label: source.name,
     surface,
     ...(source.appIconDataUrl
       ? { appIconDataUrl: source.appIconDataUrl }
@@ -68,34 +71,39 @@ export function rememberDesktopScreenShareBroadcastSource(
 
 export function desktopScreenShareSourceLabel(
   source: Pick<DesktopDisplayMediaSource, 'name' | 'type'>,
+  t: Translator,
 ) {
-  return friendlyScreenShareLabel(
+  return screenShareBroadcastLabel(
     source.name,
     source.type === 'screen' ? 'monitor' : 'window',
+    t,
   )
 }
 
-function friendlyScreenShareLabel(
-  value: string | undefined,
+export function screenShareBroadcastLabel(
+  value: string | null | undefined,
   surface: ScreenShareSurface,
+  t: Translator,
 ) {
   const label = value?.trim()
-  if (!label) return screenShareSurfaceFallbackLabel(surface)
+  if (!label) return screenShareSurfaceFallbackLabel(surface, t)
 
   const internalScreen = /^screen:(\d+)(?::\d+)*$/i.exec(label)
   if (internalScreen) {
-    return `Экран ${Number(internalScreen[1]) + 1}`
+    return t('broadcast.screenNumbered', {
+      number: Number(internalScreen[1]) + 1,
+    })
   }
 
   const numberedScreen = /^(?:screen|экран)\s+(\d+)(?:\s+\([^)]*\))?$/i.exec(
     label,
   )
   if (numberedScreen) {
-    return `Экран ${numberedScreen[1]}`
+    return t('broadcast.screenNumbered', { number: numberedScreen[1] })
   }
 
   if (/^(?:window|web-contents):\d+(?::\d+)*$/i.test(label)) {
-    return 'Окно'
+    return t('broadcast.window')
   }
 
   return label
@@ -120,8 +128,9 @@ export function screenShareBroadcastIcon(
 
 export function readCameraBroadcastLabel(
   track: MediaStreamTrack | null | undefined,
+  t: Translator,
 ) {
-  return track?.label?.trim() || 'Камера'
+  return track?.label?.trim() || t('broadcast.camera')
 }
 
 export function cameraBroadcastIcon(): AppIcon {

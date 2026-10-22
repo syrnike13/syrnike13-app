@@ -1,4 +1,5 @@
 import type { Channel } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 import type { CommandItem } from '#/features/command-palette/types'
 import { getChannelLabel, isTextChannel } from '#/features/sync/channel-label'
@@ -24,6 +25,8 @@ type BuildCommandItemsOptions = {
   }) => void | Promise<void>
   setSelectedServerId: (id: string | null) => void
   openSettings?: () => void
+  t: Translator
+  tChat: Translator
 }
 
 function itemScore(label: string, subtitle: string | undefined, keywords: string, query: string) {
@@ -53,24 +56,27 @@ export function buildCommandItems({
   navigate,
   setSelectedServerId,
   openSettings,
+  t,
+  tChat,
 }: BuildCommandItemsOptions): CommandItem[] {
   const items: CommandItem[] = []
   const q = query.trim()
 
   const navEntries = [
-    { id: 'nav-home', label: 'Главная', to: '/app', search: { tab: 'online' } },
-    { id: 'nav-friends', label: 'Друзья', to: '/app', search: { tab: 'all' } },
-    { id: 'nav-settings', label: 'Настройки' },
+    { id: 'nav-home', labelKey: 'nav.home', to: '/', search: { tab: 'online' } },
+    { id: 'nav-friends', labelKey: 'nav.friends', to: '/', search: { tab: 'all' } },
+    { id: 'nav-settings', labelKey: 'nav.settings' },
   ] as const
 
   for (const entry of navEntries) {
+    const label = t(entry.labelKey)
     pushItem(
       items,
       {
         id: entry.id,
-        group: 'Навигация',
-        label: entry.label,
-        keywords: entry.label,
+        group: 'navigation',
+        label,
+        keywords: label,
         run: () => {
           if (entry.id === 'nav-settings') {
             openSettings?.()
@@ -97,10 +103,10 @@ export function buildCommandItems({
       items,
       {
         id: 'debug-achievements',
-        group: 'Отладка',
-        label: 'Отладка достижений',
-        keywords: 'отладка достижения бейджи debug achievements badges',
-        run: () => void navigate({ to: '/app/achievements-debug' }),
+        group: 'debug',
+        label: t('achievementsDebug'),
+        keywords: t('achievementsDebugKeywords'),
+        run: () => void navigate({ to: '/achievements-debug' }),
       },
       q,
     )
@@ -112,9 +118,9 @@ export function buildCommandItems({
       items,
       {
         id: `server-${server._id}`,
-        group: 'Серверы',
+        group: 'servers',
         label: server.name,
-        subtitle: 'Сервер',
+        subtitle: t('server'),
         keywords: `${server.name} server`,
         run: () => {
           setSelectedServerId(server._id)
@@ -123,11 +129,11 @@ export function buildCommandItems({
           )
           if (first) {
             void navigate({
-              to: '/app/c/$channelId',
+              to: '/c/$channelId',
               params: { channelId: first._id },
             })
           } else {
-            void navigate({ to: '/app' })
+            void navigate({ to: '/' })
           }
         },
       },
@@ -137,26 +143,24 @@ export function buildCommandItems({
 
   const channels = Object.values(state.channels).filter(isTextChannel)
   for (const channel of channels) {
-    const label = getChannelLabel(channel, state.users, currentUserId)
+    const label = getChannelLabel(channel, state.users, currentUserId, tChat)
     const server =
       channel.channel_type === 'TextChannel'
         ? state.servers[channel.server]
         : undefined
     const subtitle =
       channel.channel_type === 'DirectMessage'
-        ? 'Личные сообщения'
+        ? t('groups.dms')
         : channel.channel_type === 'TextChannel'
-          ? (server?.name ?? 'Канал')
-          : 'Группа'
+          ? (server?.name ?? t('channel'))
+          : t('group')
 
     pushItem(
       items,
       {
         id: `channel-${channel._id}`,
         group:
-          channel.channel_type === 'DirectMessage'
-            ? 'Личные сообщения'
-            : 'Каналы',
+          channel.channel_type === 'DirectMessage' ? 'dms' : 'channels',
         label:
           channel.channel_type === 'TextChannel' ? `# ${label}` : label,
         subtitle,
@@ -172,7 +176,7 @@ export function buildCommandItems({
             setSelectedServerId(null)
           }
           void navigate({
-            to: '/app/c/$channelId',
+            to: '/c/$channelId',
             params: { channelId: channel._id },
           })
         },
@@ -190,7 +194,7 @@ export function buildCommandItems({
       items,
       {
         id: `friend-${user._id}`,
-        group: 'Друзья',
+        group: 'friends',
         label,
         subtitle: `@${user.username}`,
         keywords: `${label} ${user.username} friend`,
@@ -203,11 +207,11 @@ export function buildCommandItems({
           )
           if (dm) {
             void navigate({
-              to: '/app/c/$channelId',
+              to: '/c/$channelId',
               params: { channelId: dm._id },
             })
           } else {
-            void navigate({ to: '/app', search: { tab: 'all' } })
+            void navigate({ to: '/', search: { tab: 'all' } })
           }
         },
       },
@@ -248,7 +252,8 @@ export function messageSearchChannelIds(
 export function channelLabelForMessage(
   channel: Channel,
   state: SyncState,
-  currentUserId?: string,
+  currentUserId: string | undefined,
+  tChat: Translator,
 ) {
-  return getChannelLabel(channel, state.users, currentUserId)
+  return getChannelLabel(channel, state.users, currentUserId, tChat)
 }

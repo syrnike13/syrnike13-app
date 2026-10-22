@@ -1,4 +1,6 @@
+// design-allow-file restyle-shared: channel settings navigation owns its active/hover surface.
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   LayoutTemplateIcon,
   LinkIcon,
@@ -16,8 +18,8 @@ import {
   channelSettingsSearch,
   clearChannelSettingsSearch,
 } from '#/lib/channel-settings-navigation'
-import { Button } from '#/components/ui/button'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { useAuth } from '#/features/auth/auth-context'
@@ -41,9 +43,6 @@ type ChannelSettingsPageProps = {
   highlightMessageId?: string
 }
 
-const SETTINGS_SHELL_MAX = '64rem'
-const SETTINGS_NAV_WIDTH = '218px'
-const SETTINGS_GRID_COLUMNS = `calc((100vw - min(100vw, ${SETTINGS_SHELL_MAX})) / 2 + ${SETTINGS_NAV_WIDTH}) minmax(0, calc(${SETTINGS_SHELL_MAX} - ${SETTINGS_NAV_WIDTH})) calc((100vw - min(100vw, ${SETTINGS_SHELL_MAX})) / 2)`
 
 function settingsNavItemClass(active: boolean) {
   return cn(
@@ -64,7 +63,7 @@ function NavSection({
   return (
     <div className="flex flex-col gap-0.5">
       {title ? (
-        <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {title}
         </p>
       ) : null}
@@ -114,6 +113,7 @@ export function ChannelSettingsPage({
   tab,
   highlightMessageId,
 }: ChannelSettingsPageProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -170,7 +170,7 @@ export function ChannelSettingsPage({
     if (!settingsChannel) return
 
     if (!isServerSettingsChannel) {
-      void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
+      void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
       return
     }
 
@@ -252,17 +252,11 @@ export function ChannelSettingsPage({
   const channelLabel = `#${settingsChannel.name}`
 
   return (
-    <div
-      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-background"
-      style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
-    >
-      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-muted/40">
-        <div
-          className="ml-auto flex h-full min-w-0 flex-col"
-          style={{ width: SETTINGS_NAV_WIDTH }}
-        >
-          <div className="border-b border-border/60 px-3 py-4">
-            <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+    <div className="gradient-surface-content settings-page-grid relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground">
+      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
+        <div className="ml-auto flex h-full w-54.5 min-w-0 flex-col">
+          <div className="border-b border-border px-3 py-4">
+            <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               {channelLabel}
             </p>
           </div>
@@ -278,13 +272,13 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<LayoutTemplateIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.overview}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.overview}`)}
                   />
                 </NavSection>
               ) : null}
 
               {canManagePermissions ? (
-                <NavSection title="Доступ">
+                <NavSection title={t('nav.access')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
@@ -292,13 +286,13 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<ShieldFillIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.permissions}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.permissions}`)}
                   />
                 </NavSection>
               ) : null}
 
               {canManageWebhooks ? (
-                <NavSection title="Инструменты">
+                <NavSection title={t('nav.tools')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
@@ -306,7 +300,7 @@ export function ChannelSettingsPage({
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
                     icon={<LinkIcon className="size-4 shrink-0" />}
-                    label={CHANNEL_SETTINGS_TAB_LABELS.webhooks}
+                    label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.webhooks}`)}
                   />
                 </NavSection>
               ) : null}
@@ -327,7 +321,7 @@ export function ChannelSettingsPage({
                   />
                 </div>
               </div>
-              <UnsavedChangesBar saveLabel="Сохранить" />
+              <UnsavedChangesBar saveLabel={t('save')} />
             </div>
           ) : (
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -339,7 +333,7 @@ export function ChannelSettingsPage({
                   />
                 </div>
               </ScrollArea>
-              <UnsavedChangesBar saveLabel="Сохранить" />
+              <UnsavedChangesBar saveLabel={t('save')} />
             </div>
           )}
         </DraftProvider>
@@ -350,15 +344,15 @@ export function ChannelSettingsPage({
       <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 sm:right-6 lg:right-8">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon"
-          className="size-9 rounded-full border border-border/60 bg-background/80 shadow-sm backdrop-blur-sm"
+          className="size-9 rounded-full"
           onClick={closeSettings}
         >
           <XIcon className="size-4" />
-          <span className="sr-only">Закрыть</span>
+          <span className="sr-only">{t('close')}</span>
         </Button>
-        <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           esc
         </span>
       </div>

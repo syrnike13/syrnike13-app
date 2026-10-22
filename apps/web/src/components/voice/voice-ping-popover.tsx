@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Effect, Fiber } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
-import { Button } from '#/components/ui/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { VoicePingChart } from '#/components/voice/voice-ping-chart'
 import {
   PopoverContent,
   PopoverHeader,
   PopoverTitle,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import {
@@ -28,6 +29,7 @@ type VoicePingPopoverContentProps = {
 export function VoicePingPopoverContent({
   className,
 }: VoicePingPopoverContentProps) {
+  const t = useTranslations('voice')
   const voiceTelemetry = useVoiceTelemetry()
   const [nodeName, setNodeName] = useState<string | null>(null)
 
@@ -59,11 +61,11 @@ export function VoicePingPopoverContent({
       side="top"
       align="start"
       sideOffset={8}
-      className={cn('w-[min(20rem,calc(100vw-2rem))] p-0', className)}
+      className={cn('w-voice-ping-popover p-0', className)}
     >
       <PopoverHeader className="gap-0 border-b px-3 py-2.5">
         <PopoverTitle className="text-sm font-semibold text-primary">
-          Подключение
+          {t('ping.connection')}
         </PopoverTitle>
         <div className="mt-2 h-0.5 w-full rounded-full bg-border">
           <div className="h-full w-1/3 rounded-full bg-primary" />
@@ -83,9 +85,11 @@ export function VoicePingPopoverContent({
 
         <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
           <div>
-            <p className="text-xs text-muted-foreground">Качество соединения</p>
+            <p className="text-xs text-muted-foreground">
+              {t('ping.quality')}
+            </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground">
-              {qualityLabel(quality)}
+              {qualityLabel(quality, t)}
             </p>
           </div>
           <span
@@ -102,39 +106,44 @@ export function VoicePingPopoverContent({
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <PingStatRow
-            label="Средний пинг"
-            value={formatPingMs(averageMs)}
+            label={t('ping.average')}
+            value={formatPingMs(averageMs, t)}
           />
           <PingStatRow
-            label="Последний пинг"
-            value={formatPingMs(lastDisplay)}
+            label={t('ping.last')}
+            value={formatPingMs(lastDisplay, t)}
           />
           <PingStatRow
-            label="Потери пакетов"
+            label={t('ping.packetLoss')}
             value={formatRtcPercent(rates?.quality.packetLossPercent)}
           />
           <PingStatRow
-            label="Джиттер"
+            label={t('ping.jitter')}
             value={formatRtcMs(rates?.quality.jitterMs)}
           />
           <PingStatRow
-            label="Входящий поток"
+            label={t('ping.incoming')}
             value={formatRtcBitrate(rates?.transport.inboundBitrate)}
           />
           <PingStatRow
-            label="Исходящий поток"
+            label={t('ping.outgoing')}
             value={formatRtcBitrate(rates?.transport.outboundBitrate)}
           />
         </dl>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Потери, джиттер и скрытые аудиосэмплы рассчитываются по изменению
-          WebRTC-счётчиков между замерами.
+          {t('ping.footnote')}
         </p>
 
-        <Button asChild variant="secondary" size="sm" className="w-full">
-          <Link to="/app/voice-debug">Отладка RTC</Link>
-        </Button>
+        <Link
+          to="/voice-debug"
+          className={cn(
+            buttonVariants({ variant: 'secondary', size: 'sm' }),
+            'w-full',
+          )}
+        >
+          {t('ping.debug')}
+        </Link>
       </div>
     </PopoverContent>
   )
@@ -151,14 +160,14 @@ function PingStatRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function formatPingMs(ms: number | null) {
+function formatPingMs(ms: number | null, t: Translator) {
   if (ms == null) return '—'
-  return `${ms} мс`
+  return t('ping.ms', { ms })
 }
 
-function qualityLabel(quality: RtcConnectionQuality) {
-  if (quality === 'good') return 'Хорошее'
-  if (quality === 'fair') return 'Нестабильное'
-  if (quality === 'poor') return 'Плохое'
-  return 'Собираем данные'
+function qualityLabel(quality: RtcConnectionQuality, t: Translator) {
+  if (quality === 'good') return t('ping.good')
+  if (quality === 'fair') return t('ping.fair')
+  if (quality === 'poor') return t('ping.poor')
+  return t('ping.collecting')
 }
