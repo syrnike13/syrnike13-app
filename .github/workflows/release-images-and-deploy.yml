@@ -180,8 +180,16 @@ jobs:
             services="$services $backend_services"
           fi
 
-          if printf '%s\n' "$changed_files" | grep -Eq '^(services/livekit-server/|deploy/production/|\.github/workflows/release-images-and-deploy\.yml)'; then
+          # The LiveKit image is addressed by its source tree, so publishing it
+          # moves :latest only when services/livekit-server actually changed.
+          # Compose recreates the container only when its image or definition
+          # changed, so reconciling livekit after deploy changes is a no-op for
+          # running rooms otherwise.
+          if printf '%s\n' "$changed_files" | grep -Eq '^(services/livekit-server/|\.github/workflows/release-images-and-deploy\.yml)'; then
             livekit=true
+          fi
+
+          if [ "$livekit" = true ] || printf '%s\n' "$changed_files" | grep -Eq '^deploy/production/'; then
             services="$services livekit"
           fi
 
@@ -396,16 +404,53 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      # A LiveKit restart drops every room on the node, so an image for an
+      # already published source tree is reused instead of rebuilt.
+      - id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse HEAD:services/livekit-server)"
+          tree_ref="$IMAGE:tree-$tree"
+          echo "tree_ref=$tree_ref" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$tree_ref" >/dev/null 2>&1; then
+            echo "Reusing $tree_ref; services/livekit-server is unchanged."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image for tree $tree; building LiveKit."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: ${{ steps.image.outputs.build == 'true' }}
+        uses: docker/build-push-action@v7
         with:
           context: services/livekit-server
           file: services/livekit-server/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
+            ${{ steps.image.outputs.tree_ref }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:latest
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.sha_tag }}
+      - if: ${{ steps.image.outputs.build != 'true' }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+          TREE_REF: ${{ steps.image.outputs.tree_ref }}
+          VERSION_TAG: ${{ needs.version.outputs.version }}
+          SHA_TAG: ${{ needs.version.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          digest() {
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$1" | jq -r .digest
+          }
+          docker buildx imagetools create -t "$IMAGE:$VERSION_TAG" -t "$IMAGE:$SHA_TAG" "$TREE_REF"
+          # Touch :latest only when it points elsewhere (e.g. a rollback), so
+          # the server keeps the same image and compose leaves livekit running.
+          if [ "$(digest "$IMAGE:latest" 2>/dev/null || true)" != "$(digest "$TREE_REF")" ]; then
+            echo "Moving $IMAGE:latest to $TREE_REF."
+            docker buildx imagetools create -t "$IMAGE:latest" "$TREE_REF"
+          fi
 
   native-windows:
     name: Build Windows native runtime

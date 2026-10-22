@@ -227,6 +227,9 @@ pub enum EventV1 {
     Authenticated,
     /// Logged out
     Logout,
+    /// This gateway process is shutting down; open a new connection and
+    /// close this one once the new connection is Ready
+    Reconnect,
     /// Basic data to cache
     Ready {
         #[serde(skip_serializing_if = "Option::is_none")]

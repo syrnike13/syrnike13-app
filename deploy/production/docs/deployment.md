@@ -101,25 +101,94 @@ That workflow runs:
 DEPLOY_SERVICES="api events autumn january gifbox crond pushd voice-ingress" ./scripts/deploy-on-server.sh
 ```
 
-The server then runs:
+The server pulls the listed images and updates them through
+`scripts/rollout.sh`:
 
-```bash
-docker compose pull api events autumn january gifbox crond pushd voice-ingress
-docker compose up -d --no-deps api events autumn january gifbox crond pushd voice-ingress
-docker compose ps api events autumn january gifbox crond pushd voice-ingress
-```
+- User-facing services (`api`, `events`, `autumn`, `january`, `gifbox`,
+  `voice-ingress`, `landing`, `web`, `admin`) are rolled out. When the image or compose
+  definition changed, a second container starts next to the running one; once
+  it accepts connections on its port the old container is stopped. Caddy
+  reaches these services through network aliases (`syrnike13-<service>`) that
+  both containers share and retries requests that hit a stopping container, so
+  clients see no errors. A service whose image and definition are unchanged is
+  left running.
+- `events` hands its gateway clients over while it stops: it stops accepting
+  connections, asks each client to reconnect (spread over 10 seconds), and
+  exits once the clients moved, within its 45 second `stop_grace_period`.
+  Clients open the new connection before closing the old one, so no events are
+  lost. Each gateway process keeps its own presence region and only clears the
+  regions of processes that are gone, starting 60 seconds after boot.
+- Other services (`crond`, `pushd`, `livekit`, infrastructure) are recreated
+  by `docker compose up -d --no-deps` only when they changed.
+
+Rolled services must not set `container_name` or publish host ports, because
+two containers run side by side during an update. They must also open their
+port only once they can serve requests: readiness is checked by connecting to
+that port. Every rolled service does so today (each binds after connecting to
+its database and broker, web and admin after archiving their assets); a
+service that binds earlier needs a readiness check before it is rolled. A new container that exits
+or does not accept connections within `ROLLOUT_READY_TIMEOUT` (180 seconds)
+is removed and the deploy fails with the old container still serving.
+
+A manual `docker compose up -d <service>` still recreates the container in
+place and causes a short interruption; use the deploy script instead.
 
 ## Updating The Full Stack
 
-Run `.github/workflows/deploy-production.yml` manually with `full_stack=true` when production infrastructure files changed and the entire stack should be reconciled.
+Run the production workflow manually with an empty `services` input when
+production infrastructure files changed and the entire stack should be
+reconciled.
 
-Without `DEPLOY_SERVICES`, the server runs:
+Without `DEPLOY_SERVICES`, the server pulls every image, creates missing
+services and removes orphans without touching running containers
+(`docker compose up -d --no-recreate --remove-orphans`), then updates every
+service the same way as above.
 
-```bash
-docker compose pull
-docker compose up -d --remove-orphans
-docker compose ps
-```
+## Updating LiveKit
+
+A LiveKit restart drops every room on the node. The LiveKit image is tagged
+with the git tree of `services/livekit-server` (`tree-<hash>`); a release
+reuses the existing image when that tree is unchanged, so `:latest` keeps its
+digest and the container is not recreated. Only a change under
+`services/livekit-server` publishes a new image and restarts LiveKit, so
+schedule such releases for a quiet time, or run two LiveKit nodes.
+
+### Two LiveKit nodes
+
+With the `livekit-b` compose profile a second LiveKit node runs next to
+`livekit`. Both share Redis, keys and webhooks; any node accepts signalling
+and routes a participant to the node of its room. A LiveKit update then drains
+one node at a time: SIGTERM makes the node take no new rooms while its rooms
+stay up until they empty. After `LIVEKIT_DRAIN_TIMEOUT` (default 900 seconds)
+a second SIGTERM closes the rooms still open and unregisters the node, so
+their clients reconnect to the other node right away. Voice channels that are never empty therefore
+see one reconnect per node update; all other rooms see none.
+
+The second node needs its own host ports. Defaults:
+
+| | TCP (ICE) | TURN UDP | TURN relay UDP | RTC UDP |
+| --- | --- | --- | --- | --- |
+| production `livekit-b` | 7883 | 3480 | 30201-30300 | 50201-50300 |
+| nightly `livekit-b` | 7884 | 3481 | 30301-30400 | 50301-50400 |
+
+To enable it:
+
+1. Open these ports in the host and provider firewalls. Calls whose room lands
+   on a node with blocked ports fail to connect media.
+2. Add `COMPOSE_PROFILES=livekit-b` to the server-local `.env`. Override any
+   port there with `LIVEKIT_B_TCP_PORT`, `LIVEKIT_B_TURN_UDP_PORT`,
+   `LIVEKIT_B_TURN_RELAY_RANGE_START`/`_END` or
+   `LIVEKIT_B_RTC_PORT_RANGE_START`/`_END`.
+3. Run a full-stack deploy. The deploy script writes `livekit-b.yml` from
+   `livekit.yml` with the second node's ports on every run, so edit only
+   `livekit.yml`. It refuses to write it when `livekit.yml` sets
+   `rtc.udp_port`, since both nodes would then share that port.
+4. Check that both nodes are registered (`redis-cli HLEN nodes` in the
+   project's Redis) and join a call on each node.
+
+The first node keeps its compose definition, so enabling the profile does not
+restart it. Each node uses roughly as much CPU and memory as its rooms need;
+see `server-sizing.md`.
 
 ## Updating The Shared Edge
 

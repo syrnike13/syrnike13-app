@@ -3,52 +3,73 @@
 # this file never touch them.
 import /etc/caddy/sites/*.caddyfile
 
+# Services are updated by starting a replacement container next to the running
+# one, so upstreams are network aliases shared by both. Requests that hit a
+# container while it stops are retried on the other one. The production
+# container names after the alias only cover the first deploy that adds the
+# aliases; remove them once every production service has been rolled out.
+(rolling_upstream) {
+	lb_policy first
+	lb_try_duration 10s
+	lb_try_interval 250ms
+	fail_duration 2s
+}
+
 {$HOSTNAME} {
 	route /api* {
 		uri strip_prefix /api
-		reverse_proxy http://syrnike13-api-1:14702 {
+		reverse_proxy http://syrnike13-api:14702 http://syrnike13-api-1:14702 {
+			import rolling_upstream
 			header_down Location "^/" "/api/"
 		}
 	}
 
 	route /ws {
 		uri strip_prefix /ws
-		reverse_proxy http://syrnike13-events-1:14703 {
+		reverse_proxy http://syrnike13-events:14703 http://syrnike13-events-1:14703 {
+			import rolling_upstream
 			header_down Location "^/" "/ws/"
 		}
 	}
 
 	route /autumn* {
 		uri strip_prefix /autumn
-		reverse_proxy http://syrnike13-autumn-1:14704 {
+		reverse_proxy http://syrnike13-autumn:14704 http://syrnike13-autumn-1:14704 {
+			import rolling_upstream
 			header_down Location "^/" "/autumn/"
 		}
 	}
 
 	route /january* {
 		uri strip_prefix /january
-		reverse_proxy http://syrnike13-january-1:14705 {
+		reverse_proxy http://syrnike13-january:14705 http://syrnike13-january-1:14705 {
+			import rolling_upstream
 			header_down Location "^/" "/january/"
 		}
 	}
 
 	route /gifbox* {
 		uri strip_prefix /gifbox
-		reverse_proxy http://syrnike13-gifbox-1:14706 {
+		reverse_proxy http://syrnike13-gifbox:14706 http://syrnike13-gifbox-1:14706 {
+			import rolling_upstream
 			header_down Location "^/" "/gifbox/"
 		}
 	}
 
 	route /livekit* {
 		uri strip_prefix /livekit
-		reverse_proxy http://syrnike13-livekit-1:7880 {
+		# The second node (livekit-b profile) takes signalling while the first one
+		# is replaced; any node routes a participant to the node of its room.
+		reverse_proxy http://syrnike13-livekit-1:7880 http://syrnike13-livekit:7880 {
+			import rolling_upstream
 			header_down Location "^/" "/livekit/"
 		}
 	}
 
 	route /ingress* {
 		uri strip_prefix /ingress
-		reverse_proxy http://syrnike13-voice-ingress-1:8500 {
+		reverse_proxy http://syrnike13-voice-ingress:8500 http://syrnike13-voice-ingress-1:8500 {
+			import rolling_upstream
 			header_down Location "^/" "/ingress/"
 		}
 	}
@@ -78,7 +99,9 @@ import /etc/caddy/sites/*.caddyfile
 	@legacy_worker path /serviceWorker.js /app/serviceWorker.js
 	route @legacy_worker {
 		rewrite * /sw.js
-		reverse_proxy http://syrnike13-landing:5000
+		reverse_proxy http://syrnike13-landing:5000 http://syrnike13-landing-1:5000 {
+			import rolling_upstream
+		}
 	}
 
 	# Сначала меняем путь, затем редиректим весь URI вместе с query.
@@ -91,21 +114,28 @@ import /etc/caddy/sites/*.caddyfile
 	@legacy_app_paths path /m /m/* /login /login/* /invite /invite/* /verify/* /desktop/* /dev/* /admin /admin/*
 	redir @legacy_app_paths https://{$APP_HOSTNAME:app.syrnike13.ru}{uri} 308
 
-	reverse_proxy http://syrnike13-landing:5000
+	reverse_proxy http://syrnike13-landing:5000 http://syrnike13-landing-1:5000 {
+		import rolling_upstream
+	}
 }
 
 {$APP_HOSTNAME:app.syrnike13.ru} {
-	reverse_proxy http://syrnike13-web-1:5000
+	reverse_proxy http://syrnike13-web:5000 http://syrnike13-web-1:5000 {
+		import rolling_upstream
+	}
 }
 
 {$ADMIN_HOSTNAME:admin.syrnike13.ru} {
-	reverse_proxy http://syrnike13-admin-1:5000
+	reverse_proxy http://syrnike13-admin:5000 http://syrnike13-admin-1:5000 {
+		import rolling_upstream
+	}
 }
 
 {$NIGHTLY_HOSTNAME:beta.syrnike13.ru} {
 	route /api* {
 		uri strip_prefix /api
 		reverse_proxy http://syrnike13-nightly-api:14702 {
+			import rolling_upstream
 			header_down Location "^/" "/api/"
 		}
 	}
@@ -113,6 +143,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /ws {
 		uri strip_prefix /ws
 		reverse_proxy http://syrnike13-nightly-events:14703 {
+			import rolling_upstream
 			header_down Location "^/" "/ws/"
 		}
 	}
@@ -120,6 +151,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /autumn* {
 		uri strip_prefix /autumn
 		reverse_proxy http://syrnike13-nightly-autumn:14704 {
+			import rolling_upstream
 			header_down Location "^/" "/autumn/"
 		}
 	}
@@ -127,6 +159,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /january* {
 		uri strip_prefix /january
 		reverse_proxy http://syrnike13-nightly-january:14705 {
+			import rolling_upstream
 			header_down Location "^/" "/january/"
 		}
 	}
@@ -134,6 +167,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /gifbox* {
 		uri strip_prefix /gifbox
 		reverse_proxy http://syrnike13-nightly-gifbox:14706 {
+			import rolling_upstream
 			header_down Location "^/" "/gifbox/"
 		}
 	}
@@ -141,6 +175,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /livekit* {
 		uri strip_prefix /livekit
 		reverse_proxy http://syrnike13-nightly-livekit:7880 {
+			import rolling_upstream
 			header_down Location "^/" "/livekit/"
 		}
 	}
@@ -148,6 +183,7 @@ import /etc/caddy/sites/*.caddyfile
 	route /ingress* {
 		uri strip_prefix /ingress
 		reverse_proxy http://syrnike13-nightly-voice-ingress:8500 {
+			import rolling_upstream
 			header_down Location "^/" "/ingress/"
 		}
 	}
@@ -155,7 +191,9 @@ import /etc/caddy/sites/*.caddyfile
 	@legacy_worker path /serviceWorker.js /app/serviceWorker.js
 	route @legacy_worker {
 		rewrite * /sw.js
-		reverse_proxy http://syrnike13-nightly-landing:5000
+		reverse_proxy http://syrnike13-nightly-landing:5000 {
+			import rolling_upstream
+		}
 	}
 
 	@legacy_app path /app /app/*
@@ -167,13 +205,19 @@ import /etc/caddy/sites/*.caddyfile
 	@legacy_app_paths path /m /m/* /login /login/* /invite /invite/* /verify/* /desktop/* /dev/* /admin /admin/*
 	redir @legacy_app_paths https://{$NIGHTLY_APP_HOSTNAME:app.beta.syrnike13.ru}{uri} 308
 
-	reverse_proxy http://syrnike13-nightly-landing:5000
+	reverse_proxy http://syrnike13-nightly-landing:5000 {
+		import rolling_upstream
+	}
 }
 
 {$NIGHTLY_APP_HOSTNAME:app.beta.syrnike13.ru} {
-	reverse_proxy http://syrnike13-nightly-web:5000
+	reverse_proxy http://syrnike13-nightly-web:5000 {
+		import rolling_upstream
+	}
 }
 
 {$NIGHTLY_ADMIN_HOSTNAME:admin.beta.syrnike13.ru} {
-	reverse_proxy http://syrnike13-nightly-admin:5000
+	reverse_proxy http://syrnike13-nightly-admin:5000 {
+		import rolling_upstream
+	}
 }

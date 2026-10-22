@@ -44,6 +44,16 @@ vi.mock('#/platform/use-platform', () => ({
   }),
 }))
 
+// Iconify schedules a load timer that can outlive jsdom and crash the runner
+// after this test file's window is torn down.
+vi.mock('@iconify/react', async () => {
+  const React = await import('react')
+  return {
+    Icon: ({ icon }: { icon?: string }) =>
+      React.createElement('svg', { 'data-icon': icon }),
+  }
+})
+
 import { createTranslator } from '@syrnike13/ui/i18n'
 
 import ru from '#/messages/ru.json'

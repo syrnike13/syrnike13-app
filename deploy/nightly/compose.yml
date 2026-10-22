@@ -51,6 +51,9 @@ services:
 
   api:
     image: ghcr.io/syrnike13/app-api:nightly
+    # Rust binaries run as PID 1 without signal handlers; the init process
+    # forwards SIGTERM so restarts do not wait out the 10s stop timeout.
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -74,6 +77,9 @@ services:
 
   events:
     image: ghcr.io/syrnike13/app-events:nightly
+    # Covers the gateway handing its clients over to a replacement process.
+    stop_grace_period: 45s
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -94,6 +100,7 @@ services:
 
   autumn:
     image: ghcr.io/syrnike13/app-file-server:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -112,6 +119,7 @@ services:
 
   january:
     image: ghcr.io/syrnike13/app-proxy:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -127,6 +135,7 @@ services:
 
   gifbox:
     image: ghcr.io/syrnike13/app-gifbox:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
@@ -142,6 +151,7 @@ services:
 
   crond:
     image: ghcr.io/syrnike13/app-crond:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -158,6 +168,7 @@ services:
 
   pushd:
     image: ghcr.io/syrnike13/app-pushd:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -176,6 +187,7 @@ services:
 
   voice-ingress:
     image: ghcr.io/syrnike13/app-voice-ingress:nightly
+    init: true
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -218,6 +230,35 @@ services:
           - syrnike13-nightly-livekit
     restart: always
 
+  # Second LiveKit node, so a LiveKit update drains one node while the other
+  # takes new rooms. Enable with COMPOSE_PROFILES=livekit-b in the server-local
+  # .env after opening its ports (docs/deployment.md, "Two LiveKit nodes").
+  livekit-b:
+    image: ghcr.io/syrnike13/app-livekit-server:nightly
+    profiles: ["livekit-b"]
+    logging: *json-log-rotation
+    depends_on:
+      redis:
+        condition: service_started
+    command: --config /etc/livekit.yml
+    ports:
+      - "${LIVEKIT_B_TCP_PORT:-7884}:${LIVEKIT_B_TCP_PORT:-7884}"
+      - "${LIVEKIT_B_TURN_UDP_PORT:-3481}:${LIVEKIT_B_TURN_UDP_PORT:-3481}/udp"
+      - "${LIVEKIT_B_TURN_RELAY_RANGE_START:-30301}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30400}:${LIVEKIT_B_TURN_RELAY_RANGE_START:-30301}-${LIVEKIT_B_TURN_RELAY_RANGE_END:-30400}/udp"
+      - "${LIVEKIT_B_RTC_PORT_RANGE_START:-50301}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50400}:${LIVEKIT_B_RTC_PORT_RANGE_START:-50301}-${LIVEKIT_B_RTC_PORT_RANGE_END:-50400}/udp"
+    volumes:
+      - type: bind
+        source: ./livekit-b.yml
+        target: /etc/livekit.yml
+    networks:
+      default:
+        aliases:
+          - livekit
+      edge:
+        aliases:
+          - syrnike13-nightly-livekit
+    restart: always
+
   # Landing site
   landing:
     image: ghcr.io/syrnike13/app-landing:nightly
@@ -231,6 +272,11 @@ services:
 
   web:
     image: ghcr.io/syrnike13/app-web:nightly
+    # Keeps hashed assets of previous builds for tabs opened before a deploy.
+    environment:
+      ASSET_ARCHIVE_DIR: /asset-archive
+    volumes:
+      - ./data/web-assets:/asset-archive
     logging: *json-log-rotation
     env_file: .env.web
     networks:
@@ -242,6 +288,10 @@ services:
 
   admin:
     image: ghcr.io/syrnike13/app-admin:nightly
+    environment:
+      ASSET_ARCHIVE_DIR: /asset-archive
+    volumes:
+      - ./data/admin-assets:/asset-archive
     logging: *json-log-rotation
     env_file: .env.web
     networks:
