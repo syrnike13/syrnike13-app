@@ -43,6 +43,9 @@ const DESTRUCTIVE_CONTRAST = {
   dark: 'oklch(63.7% 0.237 25.331)',
 } as const
 
+/** Fixed bronze role for badge unlock celebrations. */
+const ACHIEVEMENT = 'oklch(0.8100 0.1150 80.0000)'
+
 /** Data-visualisation palette; charts keep distinct hues in every theme. */
 const CHART_COLORS = [
   'oklch(0.8092 0.1122 345.1956)',
@@ -269,5 +272,6 @@ export function generatePrismTokens(
     '--chart-3': CHART_COLORS[2],
     '--chart-4': CHART_COLORS[3],
     '--chart-5': CHART_COLORS[4],
+    '--achievement': ACHIEVEMENT,
   }
 }

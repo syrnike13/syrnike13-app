@@ -11,6 +11,7 @@ import {
   listServerChannels,
 } from '#/features/sync/selectors'
 import { matchScore } from '#/lib/fuzzy-match'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 
 type BuildCommandItemsOptions = {
   state: SyncState
@@ -92,6 +93,20 @@ export function buildCommandItems({
             setSelectedServerId(null)
           }
         },
+      },
+      q,
+    )
+  }
+
+  if (uiFeatureFlags.achievementDebug) {
+    pushItem(
+      items,
+      {
+        id: 'debug-achievements',
+        group: 'debug',
+        label: t('achievementsDebug'),
+        keywords: t('achievementsDebugKeywords'),
+        run: () => void navigate({ to: '/achievements-debug' }),
       },
       q,
     )

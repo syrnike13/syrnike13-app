@@ -1,5 +1,6 @@
 import { useMatch, useNavigate } from '@tanstack/react-router'
 import {
+  BugIcon,
   HashIcon,
   HomeIcon,
   MessageSquareIcon,
@@ -51,6 +52,8 @@ function groupIcon(group: string) {
       return MessageSquareIcon
     case 'settings':
       return SettingsIcon
+    case 'debug':
+      return BugIcon
     default:
       return UserIcon
   }

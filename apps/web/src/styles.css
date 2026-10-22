@@ -78,6 +78,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-achievement: var(--achievement);
   --color-success: var(--success);
   --color-success-strong: var(--success-strong);
   --color-warning: var(--warning);
@@ -836,6 +837,153 @@ html {
   .profile-unsaved-bar {
     opacity: 0;
     transform: translateY(calc(100% + 2rem));
+  }
+}
+
+.achievement-toast {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    transform 420ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 260ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform, opacity;
+}
+
+.achievement-toast[data-phase='exiting'] {
+  opacity: 0;
+  transform: translateY(calc(100% + 1rem));
+  transition-duration: 340ms, 240ms;
+}
+
+@starting-style {
+  .achievement-toast {
+    opacity: 0;
+    transform: translateY(calc(100% + 1rem));
+  }
+}
+
+.achievement-wallpaper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 480px;
+  height: 240px;
+  animation: achievement-wallpaper-pan 14s linear infinite;
+}
+
+.achievement-wallpaper-icon {
+  left: var(--wallpaper-x);
+  top: var(--wallpaper-y);
+  width: var(--wallpaper-size);
+  height: var(--wallpaper-size);
+  rotate: var(--wallpaper-angle);
+}
+
+.achievement-icon-pixelated {
+  image-rendering: pixelated;
+}
+
+@keyframes achievement-wallpaper-pan {
+  to {
+    transform: translate(-120px, -80px);
+  }
+}
+
+.achievement-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  animation: achievement-spin 40s linear infinite;
+}
+
+.achievement-ray {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotate(var(--ray-angle)) translateY(1.75rem);
+  transform-origin: 0 0;
+}
+
+.achievement-ray > span {
+  display: block;
+  width: var(--ray-width);
+  height: var(--ray-height);
+  margin-left: calc(var(--ray-width) / -2);
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--achievement) 90%, transparent) 45%,
+    transparent
+  );
+  transform-origin: 50% 0;
+  animation: achievement-ray-morph var(--ray-duration) ease-in-out
+    var(--ray-delay) infinite alternate;
+}
+
+@keyframes achievement-ray-morph {
+  0% {
+    transform: scale(var(--ray-x1), var(--ray-y1));
+  }
+  50% {
+    transform: scale(var(--ray-x2), var(--ray-y2));
+  }
+  100% {
+    transform: scale(var(--ray-x3), var(--ray-y3));
+  }
+}
+
+.achievement-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: 3px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--achievement) 45%, black);
+}
+
+.achievement-frame::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(
+    color-mix(in oklab, var(--achievement) 30%, black),
+    color-mix(in oklab, var(--achievement) 78%, black),
+    color-mix(in oklab, var(--achievement) 70%, white),
+    color-mix(in oklab, var(--achievement) 58%, black),
+    color-mix(in oklab, var(--achievement) 30%, black),
+    color-mix(in oklab, var(--achievement) 78%, black),
+    color-mix(in oklab, var(--achievement) 70%, white),
+    color-mix(in oklab, var(--achievement) 58%, black),
+    color-mix(in oklab, var(--achievement) 30%, black)
+  );
+  animation: achievement-spin 8s linear infinite;
+}
+
+@keyframes achievement-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .achievement-toast,
+  .achievement-toast[data-phase='exiting'] {
+    transform: none;
+    transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .achievement-toast {
+      opacity: 0;
+      transform: none;
+    }
+  }
+
+  .achievement-wallpaper,
+  .achievement-rays,
+  .achievement-ray > span,
+  .achievement-frame::before {
+    animation: none;
   }
 }
 

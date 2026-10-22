@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { AchievementToastHost } from '#/components/achievements/achievement-toast-host'
 import { CommandPalette } from '#/components/command-palette/command-palette'
 import { SettingsModal } from '#/components/settings/settings-modal'
 import { DesktopShell } from '#/components/layout/desktop-shell'
@@ -43,6 +44,7 @@ function DesktopLayout() {
           <VoiceStagePopoutHost />
           <CommandPalette />
           <SettingsModal />
+          <AchievementToastHost />
         </DesktopHotkeyProvider>
       </CommandPaletteProvider>
     </AuthedGate>

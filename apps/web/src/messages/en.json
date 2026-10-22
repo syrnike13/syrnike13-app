@@ -1167,7 +1167,8 @@
       "dms": "Direct messages",
       "friends": "Friends",
       "messages": "Messages",
-      "settings": "Settings"
+      "settings": "Settings",
+      "debug": "Debug"
     },
     "nav": {
       "home": "Home",
@@ -1177,7 +1178,9 @@
     "server": "Server",
     "channel": "Channel",
     "group": "Group",
-    "attachment": "Attachment"
+    "attachment": "Attachment",
+    "achievementsDebug": "Achievement debug",
+    "achievementsDebugKeywords": "debug achievements badges"
   },
   "audit": {
     "title": "Audit log",
@@ -2293,6 +2296,27 @@
       "screenShareViewerLeave": "Viewer left the stream",
       "cameraStarted": "Camera turned on",
       "cameraStopped": "Camera turned off"
+    }
+  },
+  "achievements": {
+    "toast": {
+      "defaultDescription": "New badge in your profile."
+    },
+    "debug": {
+      "title": "Achievement debug",
+      "description": "Notifications here are shown locally only and do not change anything on the server. To test a real grant, award yourself a badge in the admin panel: the notification will arrive through the server.",
+      "showTest": "Show test achievement",
+      "showMine": "Show my badges ({count})",
+      "showQueue": "Show a queue of three",
+      "autoplay": "Show on startup",
+      "autoplayHint": "The test achievement appears a couple of seconds after every app launch on this device.",
+      "copy": {
+        "testName": "Test achievement",
+        "testDescription": "This is what a new badge unlock looks like.",
+        "secondName": "Second achievement",
+        "longName": "A very long achievement name that does not fit",
+        "longDescription": "A long description checks wrapping and truncation in the notification."
+      }
     }
   },
   "holidays": {

@@ -323,6 +323,10 @@ const GatewayEventItemSchema = Schema.Union([
     user: Api.User,
   }),
   Schema.Struct({
+    type: Schema.Literal('UserBadgeUnlock'),
+    badge: Api.UserBadge,
+  }),
+  Schema.Struct({
     type: Schema.Literal('UserPresence'),
     id: Schema.String,
     online: Schema.Boolean,

@@ -19,6 +19,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#382d19",
       "accent-foreground": "#ffe1a8",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#120b02",
       "border": "#3a2f1b",
       "card": "#231a0a",
@@ -81,6 +82,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#d2c9b6",
       "accent-foreground": "#251802",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#fff7e6",
       "border": "#d2c9b6",
       "card": "#ebe2d1",
@@ -143,6 +145,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#3d3734",
       "accent-foreground": "#f4ede7",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#1a1512",
       "border": "#3b3532",
       "card": "#282320",
@@ -205,6 +208,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#cfc9c4",
       "accent-foreground": "#241a14",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#faf6f1",
       "border": "#cfc9c4",
       "card": "#e7e2dd",
@@ -267,6 +271,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#1d2c21",
       "accent-foreground": "#c9ffd6",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#020603",
       "border": "#1f2f24",
       "card": "#0c170f",
@@ -329,6 +334,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#c1d1c3",
       "accent-foreground": "#08240f",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#f2fff4",
       "border": "#c1d1c3",
       "card": "#dceade",
@@ -391,6 +397,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#2d2d2f",
       "accent-foreground": "#fafafa",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#09090b",
       "border": "#2f3031",
       "card": "#19191b",
@@ -453,6 +460,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#cccccd",
       "accent-foreground": "#09090b",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#ffffff",
       "border": "#cccccd",
       "card": "#e8e8e8",
@@ -515,6 +523,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#233740",
       "accent-foreground": "#d7f7ff",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#04141c",
       "border": "#243740",
       "card": "#11232b",
@@ -577,6 +586,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#becdd4",
       "accent-foreground": "#032430",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#f0fbff",
       "border": "#c1d0d6",
       "card": "#dbe8ec",
@@ -639,6 +649,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#3e3037",
       "accent-foreground": "#ffe6f0",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#1a0f15",
       "border": "#3e3037",
       "card": "#291d23",
@@ -701,6 +712,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#d5c6cb",
       "accent-foreground": "#2b0d1a",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#fff5f8",
       "border": "#d5c6cb",
       "card": "#ece0e4",
@@ -763,6 +775,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#392f49",
       "accent-foreground": "#f6e9ff",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#150b24",
       "border": "#392f49",
       "card": "#241b34",
@@ -825,6 +838,7 @@ exports[`token and surface derivation is stable for every theme variant 1`] = `
     "tokens": {
       "accent": "#d5c2d0",
       "accent-foreground": "#2b0a24",
+      "achievement": "oklch(0.8100 0.1150 80.0000)",
       "background": "#fff1fb",
       "border": "#d5c2d0",
       "card": "#ecdce8",
