@@ -27,14 +27,17 @@ export function ShellNavColumn({
 }: ShellNavColumnProps) {
   return (
     <div className="relative flex h-full min-h-0 shrink-0 flex-col">
-      <div className="flex min-h-0 flex-1">
+      {/* Навигационная поверхность под рельсом и колонкой: без неё сквозь
+          скругление `rounded-tl-shell` просвечивает самый нижний слой и в углу
+          остаётся тёмный клин. */}
+      <div className={cn('flex min-h-0 flex-1', shellNavSurface)}>
         <ServerRail
           variant="desktop"
           userPanelReservePx={userPanelReservePx}
         />
         <div
           className={cn(
-            'flex min-h-0 flex-col overflow-hidden rounded-tl-xl border-l border-t shadow-sm',
+            'flex min-h-0 flex-col overflow-hidden rounded-tl-shell border-l border-t shadow-sm',
             CHANNEL_SIDEBAR_WIDTH_CLASS,
             shellDivider,
             shellNavSurface,

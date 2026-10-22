@@ -1,8 +1,10 @@
+import type { Translator } from '@syrnike13/ui/i18n'
+
 export type StageMediaKind = 'screen' | 'camera' | 'avatar'
 
-export function stageMediaKindLabel(kind: StageMediaKind) {
-  if (kind === 'screen') return 'Экран'
-  if (kind === 'camera') return 'Камера'
+export function stageMediaKindLabel(kind: StageMediaKind, t: Translator) {
+  if (kind === 'screen') return t('broadcast.screen')
+  if (kind === 'camera') return t('broadcast.camera')
   return null
 }
 

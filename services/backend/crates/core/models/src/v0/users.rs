@@ -259,9 +259,9 @@ auto_derived_partial!(
     pub struct UserVoiceState {
         pub id: String,
         pub joined_at: Timestamp,
-        /// Client-declared microphone mute (Discord `self_mute`)
+        /// Client-declared microphone mute (`self_mute`)
         pub self_mute: bool,
-        /// Client-declared deafen (Discord `self_deaf`)
+        /// Client-declared deafen (`self_deaf`)
         pub self_deaf: bool,
         pub server_muted: bool,
         pub server_deafened: bool,

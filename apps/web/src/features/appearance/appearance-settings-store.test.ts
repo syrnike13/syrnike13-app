@@ -28,17 +28,27 @@ describe('appearance settings store', () => {
   })
 
   it('persists theme changes to localStorage on web', () => {
-    appearanceSettingsStore.setThemeId('lug')
-    expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain('lug')
-    expect(appearanceSettingsStore.getState().themeId).toBe('lug')
+    appearanceSettingsStore.setThemeId('glina')
+    expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain('glina')
+    expect(appearanceSettingsStore.getState().themeId).toBe('glina')
+  })
+
+  it('falls back to monolit for a removed theme id', () => {
+    localStorage.setItem(
+      APPEARANCE_STORAGE_KEY,
+      JSON.stringify({ themeId: 'lug', colorMode: 'dark', gradient: null }),
+    )
+
+    expect(readStoredAppearanceSettings().themeId).toBe('monolit')
   })
 
   it('migrates legacy next-themes storage key', () => {
     localStorage.clear()
     localStorage.setItem('theme', 'light')
     expect(readStoredAppearanceSettings()).toEqual({
-      themeId: 'syrnike',
+      themeId: 'monolit',
       colorMode: 'light',
+      scale: 100,
       gradient: null,
     })
     expect(localStorage.getItem('theme')).toBeNull()
@@ -81,8 +91,26 @@ describe('appearance settings store', () => {
     })
   })
 
-  it('defaults to syrnike dark when storage is empty', () => {
+  it('defaults to monolit dark when storage is empty', () => {
     expect(readStoredAppearanceSettings()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
+  })
+
+  it('persists the interface scale and applies it to the root font size', () => {
+    appearanceSettingsStore.setScale(125)
+
+    expect(appearanceSettingsStore.getState().scale).toBe(125)
+    expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain(
+      '"scale":125',
+    )
+    expect(document.documentElement.style.fontSize).toBe('125%')
+  })
+
+  it('clamps the interface scale to the supported range', () => {
+    appearanceSettingsStore.setScale(500)
+    expect(appearanceSettingsStore.getState().scale).toBe(150)
+
+    appearanceSettingsStore.setScale(10)
+    expect(appearanceSettingsStore.getState().scale).toBe(80)
   })
 
   it('notifies subscribers on change', () => {

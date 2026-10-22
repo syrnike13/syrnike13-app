@@ -28,27 +28,27 @@ export function validateForm<
 const emailSchema = Schema.String.check(
   Schema.makeFilter(
     (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-    { message: 'Введите корректный email' },
+    { message: 'email' },
   ),
 )
 
 const requiredPasswordSchema = Schema.String.check(
-  Schema.isMinLength(1).annotate({ message: 'Введите пароль' }),
+  Schema.isMinLength(1).annotate({ message: 'passwordRequired' }),
 )
 
 const passwordSchema = Schema.String.check(
-  Schema.isMinLength(8).annotate({ message: 'Минимум 8 символов' }),
+  Schema.isMinLength(8).annotate({ message: 'passwordMin' }),
 )
 
 const passwordConfirmationSchema = Schema.String.check(
-  Schema.isMinLength(1).annotate({ message: 'Повторите пароль' }),
+  Schema.isMinLength(1).annotate({ message: 'passwordConfirm' }),
 )
 
 const matchingPasswords = Schema.makeFilter(
   (data: { readonly password: string; readonly confirm: string }) =>
     data.password === data.confirm
       ? undefined
-      : { path: ['confirm'], issue: 'Пароли не совпадают' },
+      : { path: ['confirm'], issue: 'passwordsMismatch' },
 )
 
 export const loginSchema = Schema.Struct({
@@ -61,10 +61,10 @@ export const mfaPasswordSchema = Schema.Struct({
 })
 
 export const usernameSchema = Schema.Trim.check(
-  Schema.isMinLength(2).annotate({ message: 'Минимум 2 символа' }),
-  Schema.isMaxLength(32).annotate({ message: 'Максимум 32 символа' }),
+  Schema.isMinLength(2).annotate({ message: 'usernameMin' }),
+  Schema.isMaxLength(32).annotate({ message: 'usernameMax' }),
   Schema.isPattern(/^[a-z0-9_]+$/i).annotate({
-    message: 'Только латиница, цифры и подчёркивание',
+    message: 'usernamePattern',
   }),
 )
 
@@ -81,7 +81,7 @@ export function createRegisterSchema(options: { requireInvite?: boolean }) {
         Schema.makeFilter((data) =>
           data.invite?.trim()
             ? undefined
-            : { path: ['invite'], issue: 'Нужен код приглашения' },
+            : { path: ['invite'], issue: 'inviteRequired' },
         ),
       )
     : registerSchema
@@ -98,12 +98,12 @@ export const resetPasswordSchema = Schema.Struct({
 
 export const profileSchema = Schema.Struct({
   display_name: Schema.String.check(
-    Schema.isMaxLength(32).annotate({ message: 'Максимум 32 символа' }),
+    Schema.isMaxLength(32).annotate({ message: 'displayNameMax' }),
   ),
   status_text: Schema.String.check(
-    Schema.isMaxLength(128).annotate({ message: 'Максимум 128 символов' }),
+    Schema.isMaxLength(128).annotate({ message: 'statusMax' }),
   ),
   bio: Schema.String.check(
-    Schema.isMaxLength(2000).annotate({ message: 'Максимум 2000 символов' }),
+    Schema.isMaxLength(2000).annotate({ message: 'bioMax' }),
   ),
 })

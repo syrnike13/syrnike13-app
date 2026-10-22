@@ -2,6 +2,9 @@ import type { ReactNode } from 'react'
 
 import { Link } from '@tanstack/react-router'
 
+import { Card } from '@syrnike13/ui/primitives/card'
+import { Empty } from '@syrnike13/ui/primitives/empty'
+
 import { ArrowLeftIcon } from '#/components/icons'
 import { cn } from '#/lib/utils'
 
@@ -22,7 +25,7 @@ export function AdminPage({
 }) {
   return (
     <div className={cn('admin-enter flex min-h-full flex-col', className)}>
-      <header className="shrink-0 border-b border-border/60">
+      <header className="shrink-0 border-b border-border">
         <div
           className={cn(
             'admin-page-inner flex h-14 items-center justify-between gap-4',
@@ -33,13 +36,13 @@ export function AdminPage({
             {back ? (
               <Link
                 to={back.to}
-                className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 <ArrowLeftIcon className="size-3.5" aria-hidden />
                 <span className="hidden sm:inline">{back.label}</span>
               </Link>
             ) : null}
-            <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+            <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
@@ -59,14 +62,9 @@ export function AdminSection({
   className?: string
 }) {
   return (
-    <section
-      className={cn(
-        'overflow-hidden rounded-md border border-border/70 bg-card',
-        className,
-      )}
-    >
+    <Card className={cn('gap-0 py-0', className)}>
       {children}
-    </section>
+    </Card>
   )
 }
 
@@ -80,7 +78,7 @@ export function AdminSectionHeader({
   return (
     <div
       className={cn(
-        'border-b border-border/60 px-4 py-2.5 text-[12px] font-medium text-muted-foreground',
+        'border-b border-border px-4 py-2.5 text-xs font-medium text-muted-foreground',
         className,
       )}
     >
@@ -97,14 +95,14 @@ export function AdminEmpty({
   className?: string
 }) {
   return (
-    <div
+    <Empty
       className={cn(
-        'rounded-md border border-dashed border-border/70 px-4 py-10 text-center text-[13px] text-muted-foreground',
+        'border border-dashed px-4 py-10 text-sm text-muted-foreground',
         className,
       )}
     >
       {children}
-    </div>
+    </Empty>
   )
 }
 
@@ -118,7 +116,7 @@ export function AdminStickyFooter({
   if (!visible) return null
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-[var(--page-padding-x)] mt-5 border-t border-border/60 bg-surface/95 px-[var(--page-padding-x)] py-3 backdrop-blur-sm">
+    <div className="sticky bottom-0 z-10 -mx-(--page-padding-x) mt-5 border-t border-border bg-background/95 px-(--page-padding-x) py-3 backdrop-blur-sm">
       <div className="flex w-full flex-wrap items-center justify-between gap-2">{children}</div>
     </div>
   )

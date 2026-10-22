@@ -10,7 +10,8 @@ use syrnike_models::v0::{
     FieldsChannel, FieldsMember, FieldsMessage, FieldsRole, FieldsServer, FieldsUser,
     FieldsWebhook, Member, MemberCompositeKey, Message, PartialChannel, PartialEmoji,
     PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser, PartialWebhook,
-    PolicyChange, RemovalIntention, Report, Server, User, UserSettings, UserVoiceState, Webhook,
+    PolicyChange, RemovalIntention, Report, Server, User, UserBadge, UserSettings, UserVoiceState,
+    Webhook,
 };
 
 use crate::Database;
@@ -401,6 +402,10 @@ pub enum EventV1 {
     UserSettingsUpdate {
         id: String,
         update: UserSettings,
+    },
+    /// Current user unlocked a badge
+    UserBadgeUnlock {
+        badge: UserBadge,
     },
 
     /// User has been platform banned or deleted their account

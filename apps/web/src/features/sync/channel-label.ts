@@ -1,24 +1,32 @@
 import type { Channel, User } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
+
+/** Sorting callers do not render fallback labels, so they can skip localization. */
+const EMPTY_LABELS = Object.assign((_key: string) => '', {
+  has: () => false,
+  raw: () => undefined,
+}) as Translator
 
 export function getChannelLabel(
   channel: Channel,
   users: Record<string, User>,
-  currentUserId?: string,
+  currentUserId: string | undefined,
+  t: Translator = EMPTY_LABELS,
 ): string {
   switch (channel.channel_type) {
     case 'SavedMessages':
-      return 'Сохранённые'
+      return t('savedMessages')
     case 'DirectMessage': {
       const otherId = channel.recipients.find((id) => id !== currentUserId)
       const other = otherId ? users[otherId] : undefined
-      return other?.display_name ?? other?.username ?? 'Личные сообщения'
+      return other?.display_name ?? other?.username ?? t('directMessages')
     }
     case 'Group':
       return channel.name
     case 'TextChannel':
       return channel.name
     default:
-      return 'Канал'
+      return t('channelFallback')
   }
 }
 

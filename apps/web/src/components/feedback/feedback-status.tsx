@@ -3,9 +3,10 @@ import type {
   FeedbackModerationStatus,
   FeedbackProductStatus,
 } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
-  FEEDBACK_MODERATION_LABELS,
+  FEEDBACK_MODERATION_KEYS,
   feedbackCategoryClass,
   feedbackCategoryLabel,
   feedbackModerationClass,
@@ -15,14 +16,15 @@ import {
 import { cn } from '#/lib/utils'
 
 const statusBaseClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold'
+  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-xs font-semibold'
 
 export function FeedbackProductStatus({
   status,
 }: {
   status: FeedbackProductStatus
 }) {
-  const label = feedbackProductStatusLabel(status)
+  const t = useTranslations('feedback.meta')
+  const label = feedbackProductStatusLabel(status, t)
   if (!label) return null
 
   return (
@@ -34,9 +36,10 @@ export function FeedbackProductStatus({
 }
 
 export function FeedbackCategoryBadge({ category }: { category: FeedbackCategory }) {
+  const t = useTranslations('feedback.meta')
   return (
     <span className={cn(statusBaseClass, feedbackCategoryClass(category))}>
-      {feedbackCategoryLabel(category)}
+      {feedbackCategoryLabel(category, t)}
     </span>
   )
 }
@@ -46,10 +49,11 @@ export function FeedbackModerationStatus({
 }: {
   status: FeedbackModerationStatus
 }) {
+  const t = useTranslations('feedback.meta')
   return (
     <span className={cn(statusBaseClass, feedbackModerationClass(status))}>
       <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      {FEEDBACK_MODERATION_LABELS[status]}
+      {t(FEEDBACK_MODERATION_KEYS[status])}
     </span>
   )
 }

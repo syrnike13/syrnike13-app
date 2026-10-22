@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Option, Schema } from 'effect'
 import type { FormEvent } from 'react'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   AdminEmpty,
@@ -10,8 +11,13 @@ import {
   AdminSection,
   AdminSectionHeader,
 } from '#/components/layout/page'
-import { Loader2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { fetchAdminDiagnosticReports } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -32,6 +38,9 @@ export const Route = createFileRoute('/_admin/diagnostics/')({
 })
 
 function DiagnosticsPage() {
+  const t = useTranslations('diagnostics.list')
+  const tStatus = useTranslations('diagnostics.status')
+  const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
   const filters = Route.useSearch()
@@ -46,10 +55,10 @@ function DiagnosticsPage() {
     reports.data?.length === 100 ? reports.data.at(-1)?.id : undefined
 
   return (
-    <AdminPage title="Диагностика">
+    <AdminPage title={t('title')}>
       <form
         key={diagnosticFiltersKey(filters)}
-        className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem_auto]"
+        className="mb-4 grid gap-2 diagnostics-row-grid"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
           const data = new FormData(event.currentTarget)
@@ -68,68 +77,78 @@ function DiagnosticsPage() {
           })
         }}
       >
-        <input
+        <Input
           name="user_id"
           defaultValue={filters.user_id}
-          placeholder="ID пользователя"
-          className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+          placeholder={t('userPlaceholder')}
         />
-        <input
+        <Input
           name="area"
           defaultValue={filters.area}
-          placeholder="Область"
-          className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+          placeholder={t('areaPlaceholder')}
         />
-        <select
+        <NativeSelect
           name="status"
           defaultValue={filters.status ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+          className="w-full"
         >
-          <option value="">Все статусы</option>
-          <option value="new">Новые</option>
-          <option value="investigating">В работе</option>
-          <option value="resolved">Решённые</option>
-        </select>
-        <select
+          <NativeSelectOption value="">{t('allStatuses')}</NativeSelectOption>
+          <NativeSelectOption value="new">
+            {t('statusNewPlural')}
+          </NativeSelectOption>
+          <NativeSelectOption value="investigating">
+            {tStatus('investigating')}
+          </NativeSelectOption>
+          <NativeSelectOption value="resolved">
+            {t('statusResolvedPlural')}
+          </NativeSelectOption>
+        </NativeSelect>
+        <NativeSelect
           name="release_channel"
           defaultValue={filters.release_channel ?? ''}
-          className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+          className="w-full"
         >
-          <option value="">Все каналы</option>
-          <option value="stable">Stable</option>
-          <option value="nightly">Nightly</option>
-          <option value="development">Development</option>
-        </select>
-        <Button type="submit" size="sm">Фильтр</Button>
+          <NativeSelectOption value="">{t('allChannels')}</NativeSelectOption>
+          <NativeSelectOption value="stable">
+            {t('channels.stable')}
+          </NativeSelectOption>
+          <NativeSelectOption value="nightly">
+            {t('channels.nightly')}
+          </NativeSelectOption>
+          <NativeSelectOption value="development">
+            {t('channels.development')}
+          </NativeSelectOption>
+        </NativeSelect>
+        <Button type="submit" size="sm">{t('filter')}</Button>
       </form>
       <AdminSection>
         <AdminSectionHeader>
-          Отчёты · {reports.data?.length ?? 0}
+          {t('reports', { count: reports.data?.length ?? 0 })}
         </AdminSectionHeader>
         {reports.isLoading ? (
-          <div className="flex h-24 items-center justify-center text-[13px] text-muted-foreground">
-            <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
-            Загрузка
+          <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
+            <Spinner className="mr-2 size-4" aria-hidden />
+            {t('loading')}
           </div>
         ) : reports.isError ? (
-          <AdminEmpty>Не удалось загрузить диагностические отчёты</AdminEmpty>
+          <AdminEmpty>{t('loadError')}</AdminEmpty>
         ) : reports.data?.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[48rem] text-left text-[12px]">
-              <thead className="border-b border-border/60 text-muted-foreground">
+            <table className="w-full min-w-192 text-left text-xs">
+              <thead className="border-b border-border text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Время</th>
-                  <th className="px-4 py-2 font-medium">Событие</th>
-                  <th className="px-4 py-2 font-medium">Клиент</th>
-                  <th className="px-4 py-2 font-medium">Пользователь</th>
-                  <th className="px-4 py-2 font-medium">Статус</th>
+                  <th className="px-4 py-2 font-medium">{t('columnTime')}</th>
+                  <th className="px-4 py-2 font-medium">{t('columnEvent')}</th>
+                  <th className="px-4 py-2 font-medium">{t('columnClient')}</th>
+                  <th className="px-4 py-2 font-medium">{t('columnUser')}</th>
+                  <th className="px-4 py-2 font-medium">{t('columnStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {reports.data.map((report) => (
-                  <tr key={report.id} className="border-b border-border/50 last:border-0">
+                  <tr key={report.id} className="border-b border-border last:border-0">
                     <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                      {new Date(report.created_at * 1_000).toLocaleString('ru-RU')}
+                      {new Date(report.created_at * 1_000).toLocaleString(locale)}
                     </td>
                     <td className="px-4 py-2.5">
                       <Link
@@ -147,14 +166,14 @@ function DiagnosticsPage() {
                     <td className="max-w-48 truncate px-4 py-2.5 font-mono text-muted-foreground">
                       {report.user_id}
                     </td>
-                    <td className="px-4 py-2.5">{statusLabel(report.status)}</td>
+                    <td className="px-4 py-2.5">{tStatus(report.status)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <AdminEmpty>Диагностических отчётов пока нет</AdminEmpty>
+          <AdminEmpty>{t('empty')}</AdminEmpty>
         )}
       </AdminSection>
       {nextBefore ? (
@@ -169,18 +188,12 @@ function DiagnosticsPage() {
               })
             }
           >
-            Более ранние
+            {t('earlier')}
           </Button>
         </div>
       ) : null}
     </AdminPage>
   )
-}
-
-function statusLabel(status: 'new' | 'investigating' | 'resolved') {
-  if (status === 'new') return 'Новый'
-  if (status === 'investigating') return 'В работе'
-  return 'Решён'
 }
 
 function diagnosticFiltersKey(filters: {

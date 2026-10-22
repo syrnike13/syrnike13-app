@@ -41,26 +41,23 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.editServerMember(...args),
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
+vi.mock('@syrnike13/ui/primitives/context-menu', () => ({
   ContextMenuCheckboxItem: ({
     children,
     checked,
     disabled,
     onCheckedChange,
-    onSelect,
   }: {
     children: ReactNode
     checked?: boolean
     disabled?: boolean
     onCheckedChange?: (checked: boolean) => void
-    onSelect?: (event: { preventDefault: () => void }) => void
   }) => (
     <button
       type="button"
       aria-pressed={checked === true}
       disabled={disabled}
       onClick={() => {
-        onSelect?.({ preventDefault: vi.fn() })
         onCheckedChange?.(!(checked === true))
       }}
     >
@@ -70,15 +67,18 @@ vi.mock('#/components/ui/context-menu', () => ({
   ContextMenuItem: ({
     children,
     disabled,
-    onSelect,
+    onClick,
   }: {
     children: ReactNode
     disabled?: boolean
-    onSelect?: () => void
+    onClick?: () => void
   }) => (
-    <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
+    <button type="button" disabled={disabled} onClick={() => onClick?.()}>
       {children}
     </button>
+  ),
+  ContextMenuGroup: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
   ),
   ContextMenuLabel: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -103,7 +103,7 @@ vi.mock('#/components/ui/context-menu', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/slider', () => ({
+vi.mock('@syrnike13/ui/primitives/slider', () => ({
   Slider: () => <input aria-label="voice volume" readOnly />,
 }))
 

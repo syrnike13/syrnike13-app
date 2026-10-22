@@ -1,3 +1,4 @@
+// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
 import { useState } from 'react'
 import type {
   Channel,
@@ -7,6 +8,8 @@ import type {
 } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   HeadphonesIcon,
@@ -16,14 +19,15 @@ import {
 } from '#/components/icons'
 import {
   ContextMenuCheckboxItem,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
-} from '#/components/ui/context-menu'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/context-menu'
+import { Slider } from '@syrnike13/ui/primitives/slider'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import {
@@ -33,6 +37,7 @@ import {
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
 import { runtimeChannelName } from '#/lib/channel-voice'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   canDeafenServerMember,
   canMoveServerMember,
@@ -53,7 +58,7 @@ type UserContextMenuVoiceControlsProps = {
 type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect' | 'move'
 
 const voiceActionClassName =
-  'grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2'
+  'grid icon-text-grid items-center gap-x-2'
 const destructiveVoiceActionClassName = `${voiceActionClassName} text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20 [&_svg]:text-destructive`
 
 function isServerVoiceMoveTarget(channel: Channel): boolean {
@@ -74,6 +79,7 @@ export function UserContextMenuVoiceControls({
   voiceChannelId,
   moveVoiceChannels = [],
 }: UserContextMenuVoiceControlsProps) {
+  const t = useTranslations('users.voice')
   const isSelf = actorUserId === userId
   const volume = useVoiceListenerStore((s) => s.getUserVolume(userId))
   const muted = useVoiceListenerStore((s) => s.getUserMuted(userId))
@@ -179,9 +185,7 @@ export function UserContextMenuVoiceControls({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось изменить голос',
+              apiErrorMessage(error, t('updateError')),
             )
           }),
         ),
@@ -199,9 +203,11 @@ export function UserContextMenuVoiceControls({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
-              Громкость голоса
-            </ContextMenuLabel>
+            <ContextMenuGroup>
+              <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
+                {t('volume')}
+              </ContextMenuLabel>
+            </ContextMenuGroup>
             <div className="flex items-center gap-2">
               <Slider
                 className="flex-1"
@@ -209,7 +215,9 @@ export function UserContextMenuVoiceControls({
                 max={VOICE_USER_VOLUME_MAX}
                 step={0.1}
                 value={[volume]}
-                onValueChange={([next]) => {
+                onValueChange={(value) => {
+                  const next = typeof value === 'number' ? value : value[0]
+                  if (next == null) return
                   voiceListenerStore.setUserVolume(userId, next)
                 }}
               />
@@ -219,14 +227,13 @@ export function UserContextMenuVoiceControls({
             </div>
           </div>
           <ContextMenuCheckboxItem
-            indicatorPosition="end"
             checked={muted}
-            onSelect={(event) => event.preventDefault()}
+            closeOnClick={false}
             onCheckedChange={(checked) => {
               voiceListenerStore.setUserMuted(userId, checked === true)
             }}
           >
-            Заглушить голос
+            {t('muteVoice')}
           </ContextMenuCheckboxItem>
         </>
       ) : null}
@@ -236,67 +243,61 @@ export function UserContextMenuVoiceControls({
           {canServerMute ? (
             <ContextMenuCheckboxItem
               className={destructiveVoiceActionClassName}
-              indicatorPosition="end"
               checked={serverMuted}
               disabled={pendingAction !== null}
-              onSelect={(event) => event.preventDefault()}
+              closeOnClick={false}
               onCheckedChange={(checked) => {
                 void editTargetMember(
                   'mute',
                   { can_publish: checked !== true },
-                  checked === true
-                    ? 'Микрофон участника отключён'
-                    : 'Микрофон участника включён',
+                  checked === true ? t('micOff') : t('micOn'),
                 )
               }}
             >
               <MicOffIcon />
-              Отключить микрофон
+              {t('muteMic')}
             </ContextMenuCheckboxItem>
           ) : null}
           {canServerDeafen ? (
             <ContextMenuCheckboxItem
               className={destructiveVoiceActionClassName}
-              indicatorPosition="end"
               checked={serverDeafened}
               disabled={pendingAction !== null}
-              onSelect={(event) => event.preventDefault()}
+              closeOnClick={false}
               onCheckedChange={(checked) => {
                 void editTargetMember(
                   'deafen',
                   { can_receive: checked !== true },
-                  checked === true
-                    ? 'Звук участника отключён'
-                    : 'Звук участника включён',
+                  checked === true ? t('soundOff') : t('soundOn'),
                 )
               }}
             >
               <HeadphoneOffIcon />
-              Отключить звук
+              {t('muteSound')}
             </ContextMenuCheckboxItem>
           ) : null}
           {canServerMove && moveTargets.length > 0 ? (
             <ContextMenuSub>
               <ContextMenuSubTrigger
-                className="grid grid-cols-[1rem_minmax(0,1fr)_1rem] items-center gap-x-2"
+                className="grid icon-text-icon-grid items-center gap-x-2"
                 disabled={pendingAction !== null}
               >
                 <HeadphonesIcon />
-                Переместить в
+                {t('moveTo')}
               </ContextMenuSubTrigger>
               <ContextMenuSubContent>
                 {moveTargets.map((channel) => {
                   const channelName =
-                    runtimeChannelName(channel) ?? 'Голосовой канал'
+                    runtimeChannelName(channel) ?? t('channelFallback')
                   return (
                     <ContextMenuItem
                       key={channel._id}
                       disabled={pendingAction !== null}
-                      onSelect={() => {
+                      onClick={() => {
                         void editTargetMember(
                           'move',
                           { voice_channel: channel._id },
-                          `Участник перемещён в ${channelName}`,
+                          t('moved', { channel: channelName }),
                         )
                       }}
                     >
@@ -312,16 +313,16 @@ export function UserContextMenuVoiceControls({
               className={voiceActionClassName}
               variant="destructive"
               disabled={pendingAction !== null}
-              onSelect={() => {
+              onClick={() => {
                 void editTargetMember(
                   'disconnect',
                   { remove: ['VoiceChannel'] },
-                  'Участник отключён от голосового канала',
+                  t('disconnected'),
                 )
               }}
             >
               <PhoneOffIcon />
-              Отключить от голосового канала
+              {t('disconnectAction')}
             </ContextMenuItem>
           ) : null}
         </>

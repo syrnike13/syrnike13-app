@@ -15,7 +15,7 @@ import { soundRuntimeConfigStore } from './sound-runtime-config'
 
 function activeChannelIdFromPath() {
   if (typeof window === 'undefined') return null
-  const match = window.location.pathname.match(/\/app\/c\/([^/]+)/)
+  const match = window.location.pathname.match(/\/c\/([^/]+)/)
   return match?.[1] ?? null
 }
 

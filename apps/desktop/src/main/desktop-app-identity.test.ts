@@ -29,6 +29,7 @@ describe('desktop app identity', () => {
       autoUpdateEnabled: true,
       displayName: 'syrnike13',
       protocolScheme: 'syrnike13',
+      appHost: 'app.syrnike13.ru',
       publicHost: 'syrnike13.ru',
     })
   })
@@ -39,6 +40,7 @@ describe('desktop app identity', () => {
       autoUpdateEnabled: false,
       displayName: 'syrnike13 Nightly',
       protocolScheme: 'syrnike13-nightly',
+      appHost: 'app.beta.syrnike13.ru',
       publicHost: 'beta.syrnike13.ru',
     })
   })

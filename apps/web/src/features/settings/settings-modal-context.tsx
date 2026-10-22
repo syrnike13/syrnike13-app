@@ -14,6 +14,7 @@ export type SettingsSection =
   | 'sessions'
   | 'notifications'
   | 'appearance'
+  | 'language'
   | 'hotkeys'
   | 'overlay'
   | 'desktop'

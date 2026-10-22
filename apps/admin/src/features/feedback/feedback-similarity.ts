@@ -1,12 +1,13 @@
+// design-allow-file hardcoded-string: Russian stemming stopwords and suffixes are language data, not UI copy.
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 
 export const FEEDBACK_SIMILARITY_THRESHOLD = 0.32
 
 export type FeedbackSimilarityReason =
-  | 'похожее название'
-  | 'та же область'
-  | 'та же платформа'
-  | 'тот же тип'
+  | 'similarTitle'
+  | 'sameArea'
+  | 'samePlatform'
+  | 'sameType'
 
 export type FeedbackSimilarity = {
   score: number
@@ -240,10 +241,10 @@ export function getFeedbackSimilarity(
   }
 
   const reasons: FeedbackSimilarityReason[] = []
-  if (titleScore >= 0.16) reasons.push('похожее название')
-  if (sameArea) reasons.push('та же область')
-  if (samePlatform) reasons.push('та же платформа')
-  if (sameCategory) reasons.push('тот же тип')
+  if (titleScore >= 0.16) reasons.push('similarTitle')
+  if (sameArea) reasons.push('sameArea')
+  if (samePlatform) reasons.push('samePlatform')
+  if (sameCategory) reasons.push('sameType')
 
   return { score, reasons }
 }

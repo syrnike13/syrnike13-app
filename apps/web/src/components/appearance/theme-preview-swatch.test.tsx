@@ -4,8 +4,8 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemePreviewSwatch } from '#/components/appearance/theme-preview-swatch'
-import { TooltipProvider } from '#/components/ui/tooltip'
-import { getThemeById } from '#/features/appearance/theme-registry'
+import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
+import { getThemeById } from '@syrnike13/ui/tokens'
 
 afterEach(cleanup)
 
@@ -16,7 +16,7 @@ describe('ThemePreviewSwatch', () => {
     render(
       <TooltipProvider>
         <ThemePreviewSwatch
-          theme={getThemeById('syrnike')}
+          theme={getThemeById('monolit')}
           active
           settings={DEFAULT_APPEARANCE_SETTINGS}
           prefersDark
@@ -25,18 +25,18 @@ describe('ThemePreviewSwatch', () => {
       </TooltipProvider>,
     )
 
-    const swatch = screen.getByRole('button', { name: 'Тема «Сырники»' })
+    const swatch = screen.getByRole('button', { name: 'Тема «Монолит»' })
     expect(swatch.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(swatch)
     expect(onSelect).toHaveBeenCalledOnce()
   })
 
-  it('renders a configured gradient inside a compact swatch', () => {
+  it('renders a Prism palette preview inside a compact swatch', () => {
     render(
       <TooltipProvider>
         <ThemePreviewSwatch
-          theme={getThemeById('gradient-twilight')}
+          theme={getThemeById('glina')}
           active={false}
           settings={DEFAULT_APPEARANCE_SETTINGS}
           prefersDark
@@ -45,10 +45,13 @@ describe('ThemePreviewSwatch', () => {
       </TooltipProvider>,
     )
 
-    const swatch = screen.getByRole('button', { name: 'Тема «Сумерки»' })
+    const swatch = screen.getByRole('button', { name: 'Тема «Глина»' })
     const preview = swatch.firstElementChild as HTMLElement
 
     expect(swatch.getAttribute('aria-pressed')).toBe('false')
-    expect(preview.style.backgroundImage).toContain('linear-gradient')
+    expect(preview.className).toContain('bg-(image:--preview-image)')
+    expect(preview.style.getPropertyValue('--preview-image')).toContain(
+      'linear-gradient',
+    )
   })
 })

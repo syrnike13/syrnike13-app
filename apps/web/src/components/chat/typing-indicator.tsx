@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { useAuth } from '#/features/auth/auth-context'
 import { EMPTY_TYPING_USERS } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
@@ -13,6 +15,7 @@ export function TypingIndicator({
   channelId,
   floating = false,
 }: TypingIndicatorProps) {
+  const t = useTranslations('chat.typing')
   const auth = useAuth()
   const users = useSyncStore((s) => s.users)
   const typingUserIds = useSyncStore(
@@ -24,16 +27,16 @@ export function TypingIndicator({
 
   const labels = others.map((userId) => {
     const user = users[userId]
-    return user?.display_name ?? user?.username ?? 'Кто-то'
+    return user?.display_name ?? user?.username ?? t('someone')
   })
 
   let text: string
   if (labels.length === 1) {
-    text = `${labels[0]} печатает…`
+    text = t('one', { name: labels[0] })
   } else if (labels.length === 2) {
-    text = `${labels[0]} и ${labels[1]} печатают…`
+    text = t('two', { first: labels[0], second: labels[1] })
   } else {
-    text = 'Несколько человек печатают…'
+    text = t('many')
   }
 
   return (

@@ -2,10 +2,14 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Effect } from 'effect'
+import { createTranslator } from '@syrnike13/ui/i18n'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import ru from '#/messages/ru.json'
 import { VoiceRtcDebugView } from '#/components/voice/voice-rtc-debug-view'
 import type { RtcDebugSnapshot } from '#/features/voice/voice-rtc-debug'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 const setRtcDebugEnabled = vi.fn()
 let voiceState: Record<string, unknown>
@@ -145,24 +149,24 @@ describe('VoiceRtcDebugView', () => {
 
     render(<VoiceRtcDebugView />)
 
-    expect(screen.getByText('Нет активного голосового подключения')).toBeTruthy()
+    expect(screen.getByText(t('debug.noVoiceTitle'))).toBeTruthy()
     expect(setRtcDebugEnabled).toHaveBeenCalledWith(true)
   })
 
-  it('renders Discord-like debug sections from a snapshot', () => {
+  it('renders debug sections from a snapshot', () => {
     render(<VoiceRtcDebugView />)
 
-    expect(screen.getByText('Selected ICE Candidate')).toBeTruthy()
+    expect(screen.getByText(t('debug.selectedIceCandidate'))).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Передача данных' }))
-    expect(screen.getByText('Available Outgoing Bitrate')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: t('debug.transport') }))
+    expect(screen.getByText(t('debug.availableOutgoingBitrate'))).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Исходящие' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Video' }))
-    expect(screen.getByText('Quality Limitation Reason')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: t('debug.outgoing') }))
+    fireEvent.click(screen.getByRole('button', { name: t('debug.video') }))
+    expect(screen.getByText(t('debug.qualityLimitationReason'))).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Демонстрация экрана' }))
-    expect(screen.getByText('Hybrid DXGI Frames')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: t('debug.screenShare') }))
+    expect(screen.getByText(t('debug.hybridDxgiFrames'))).toBeTruthy()
     expect(screen.getByText('TR_screen')).toBeTruthy()
   })
 })

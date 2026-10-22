@@ -215,6 +215,17 @@ services:
         source: ./livekit.yml
         target: /etc/livekit.yml
 
+  # Landing site
+  landing:
+    image: ghcr.io/syrnike13/app-landing:latest
+    logging: *json-log-rotation
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-landing
+    restart: always
+
   # Web App
   web:
     image: ghcr.io/syrnike13/app-web:latest

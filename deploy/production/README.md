@@ -23,7 +23,8 @@ The active deploy workflow is:
 
 The compose file expects these GHCR images:
 
-- `ghcr.io/syrnike13/for-web`
+- `ghcr.io/syrnike13/app-landing`
+- `ghcr.io/syrnike13/app-web`
 - `ghcr.io/syrnike13/api`
 - `ghcr.io/syrnike13/events`
 - `ghcr.io/syrnike13/file-server`

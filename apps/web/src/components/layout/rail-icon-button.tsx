@@ -1,25 +1,25 @@
+// design-allow-file restyle-shared: rail control owns its product hover/active surface.
 import {
   useLinkProps,
   type LinkComponentProps,
   type RegisteredRouter,
   type UseLinkPropsOptions,
 } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ReactNode } from 'react'
 
 import {
-  railIconButtonClass,
-  railIconIdleClass,
   railIconItemRowClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { Button } from '#/components/ui/button'
-import { Squircle } from '#/components/ui/squircle'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { cn } from '#/lib/utils'
 
 /**
@@ -32,11 +32,12 @@ const railIndicatorBaseClass =
 
 /** Статичная полоска непрочитанного без hover/active-поведения. */
 export function RailUnreadIndicator({ className }: { className?: string }) {
+  const t = useTranslations('layout.rail')
   return (
     <span
       data-slot="rail-indicator"
       data-unread=""
-      aria-label="Есть непрочитанные сообщения"
+      aria-label={t('unread')}
       className={cn(railIndicatorBaseClass, 'h-2 opacity-100', className)}
     />
   )
@@ -48,27 +49,26 @@ type RailActiveIndicatorProps = {
   unread?: boolean
 }
 
-/** Discord-style полоска слева у пункта рельса. */
+/** Полоска активности слева у пункта рельса. */
 export function RailActiveIndicator({
   active,
   unread = false,
 }: RailActiveIndicatorProps) {
+  const t = useTranslations('layout.rail')
   return (
     <span
       data-slot="rail-indicator"
       data-active={active ? '' : undefined}
       data-unread={!active && unread ? '' : undefined}
       aria-hidden={active || unread ? undefined : true}
-      aria-label={
-        !active && unread ? 'Есть непрочитанные сообщения' : undefined
-      }
+      aria-label={!active && unread ? t('unread') : undefined}
       className={cn(
         railIndicatorBaseClass,
         active
-          ? 'h-9 opacity-100 transition-[height] duration-150'
+          ? 'h-9 opacity-100 motion-height duration-150'
           : unread
-            ? 'h-2 opacity-100 transition-[height] duration-150 group-hover:h-5.5'
-            : 'h-2 opacity-0 transition-[height,opacity] duration-150 group-hover:h-5.5 group-hover:opacity-100',
+            ? 'h-2 opacity-100 motion-height duration-150 group-hover:h-5.5'
+            : 'h-2 opacity-0 motion-height transition-opacity duration-150 group-hover:h-5.5 group-hover:opacity-100',
       )}
     />
   )
@@ -101,7 +101,7 @@ export function RailIconButton<TTo extends string>(
   } as UseLinkPropsOptions<RegisteredRouter, string, TTo, string, ''>)
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delay={0}>
       <Tooltip>
         <div className={railIconItemRowClass}>
           {/* key сбрасывает DOM: иначе idle opacity-0 + transition «съедает» unread */}
@@ -111,16 +111,25 @@ export function RailIconButton<TTo extends string>(
             unread={unread}
           />
           <Squircle asChild {...railIconSquircleProps}>
-            <Button
-              size="icon"
-              variant={active ? 'default' : 'ghost'}
-              className={cn(railIconButtonClass, !active && railIconIdleClass)}
-              asChild
+            <TooltipTrigger
+              render={
+                <a
+                  {...anchorProps}
+                  className={cn(
+                    // eslint-disable-next-line shadcn/require-static-classes -- buttonVariants output is static per variant
+                    buttonVariants({
+                      variant: active ? 'default' : 'ghost',
+                      size: 'icon',
+                    }),
+                    'size-10',
+                    !active &&
+                      'bg-card text-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                />
+              }
             >
-              <TooltipTrigger asChild>
-                <a {...anchorProps}>{children}</a>
-              </TooltipTrigger>
-            </Button>
+              {children}
+            </TooltipTrigger>
           </Squircle>
         </div>
         <TooltipContent side="right" sideOffset={8} className="font-black">

@@ -1,8 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 const adminRedirectUrls: Record<string, string> = {
+  'app.syrnike13.ru': 'https://admin.syrnike13.ru',
   'syrnike13.ru': 'https://admin.syrnike13.ru',
   'www.syrnike13.ru': 'https://admin.syrnike13.ru',
+  'app.beta.syrnike13.ru': 'https://admin.beta.syrnike13.ru',
   'beta.syrnike13.ru': 'https://admin.beta.syrnike13.ru',
 }
 

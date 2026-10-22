@@ -9,6 +9,7 @@ export const queryKeys = {
   users: {
     detail: (userId: string) => ['users', userId] as const,
     profile: (userId: string) => ['users', userId, 'profile'] as const,
+    mutual: (userId: string) => ['users', userId, 'mutual'] as const,
   },
   feedback: {
     all: ['feedback'] as const,

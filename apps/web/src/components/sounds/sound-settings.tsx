@@ -1,15 +1,17 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/select'
 import {
   authorSoundPackOptions,
   isSoundAuthorPackId,
@@ -28,18 +30,21 @@ function sliderToVolume(value: number) {
   return Number((value / 100).toFixed(2))
 }
 
+const VOLUME_STOPS = [{ value: 0 }, { value: 100 }] as const
+
+function formatVolume(value: number) {
+  return `${value}%`
+}
+
 export function SoundSettings() {
+  const t = useTranslations('sounds')
   const preferences = useSoundPreferences()
   const authorPacks = authorSoundPackOptions()
   const soundEvents = soundEventVolumeOptions(preferences.authorPackId)
 
   return (
-    <SettingsBlock
-      title="Звуки уведомлений"
-    >
-      <SettingsRow
-        label="Выбор паков звуков уведомлений"
-      >
+    <SettingsBlock title={t('title')}>
+      <SettingsRow label={t('packLabel')}>
         <Select
           value={preferences.authorPackId}
           onValueChange={(authorPackId) => {
@@ -49,13 +54,13 @@ export function SoundSettings() {
           }}
           disabled={!preferences.enabled}
         >
-          <SelectTrigger className="w-[220px] max-w-full">
+          <SelectTrigger className="w-55 max-w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {authorPacks.map((pack) => (
               <SelectItem key={pack.id} value={pack.id}>
-                {pack.label}
+                {t(pack.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -63,21 +68,23 @@ export function SoundSettings() {
       </SettingsRow>
 
       <SettingsRow
-        label="Громкость UI-звуков"
+        label={t('volume')}
         value={`${volumeToSlider(preferences.volume)}%`}
         stacked
       >
-        <Slider
-          className="w-full"
-          value={[volumeToSlider(preferences.volume)]}
-          min={0}
-          max={100}
+        <PresetSlider
+          stops={VOLUME_STOPS}
+          value={volumeToSlider(preferences.volume)}
+          mode="continuous"
           step={1}
+          showLabels={false}
+          showMarks={false}
           disabled={!preferences.enabled}
-          onValueChange={([next]) => {
-            if (next == null) return
+          onValueChange={(next) =>
             soundPreferenceStore.setVolume(sliderToVolume(next))
-          }}
+          }
+          formatValue={formatVolume}
+          aria-label={t('volume')}
         />
       </SettingsRow>
 
@@ -86,24 +93,26 @@ export function SoundSettings() {
         return (
           <SettingsRow
             key={event.id}
-            label={event.label}
+            label={t(event.labelKey)}
             value={`${volumeToSlider(eventVolume)}%`}
             stacked
           >
-            <Slider
-              className="w-full"
-              value={[volumeToSlider(eventVolume)]}
-              min={0}
-              max={100}
+            <PresetSlider
+              stops={VOLUME_STOPS}
+              value={volumeToSlider(eventVolume)}
+              mode="continuous"
               step={1}
+              showLabels={false}
+              showMarks={false}
               disabled={!preferences.enabled}
-              onValueChange={([next]) => {
-                if (next == null) return
+              onValueChange={(next) =>
                 soundPreferenceStore.setEventVolume(
                   event.id,
                   sliderToVolume(next),
                 )
-              }}
+              }
+              formatValue={formatVolume}
+              aria-label={t(event.labelKey)}
             />
           </SettingsRow>
         )

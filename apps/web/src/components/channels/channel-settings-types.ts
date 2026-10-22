@@ -14,8 +14,9 @@ export function parseChannelSettingsTab(value: unknown): ChannelSettingsTab {
   )
 }
 
+/** Translation keys under the `channels.tabs` namespace. */
 export const CHANNEL_SETTINGS_TAB_LABELS: Record<ChannelSettingsTab, string> = {
-  overview: 'Обзор',
-  permissions: 'Права доступа',
-  webhooks: 'Вебхуки',
+  overview: 'overview',
+  permissions: 'permissions',
+  webhooks: 'webhooks',
 }

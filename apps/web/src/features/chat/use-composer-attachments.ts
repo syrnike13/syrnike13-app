@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Cause, Effect, Exit } from 'effect'
 
 import { uploadAttachmentEffect } from '#/features/api/media-api'
@@ -8,8 +9,10 @@ import {
   revokePendingFiles,
   type PendingComposerFile,
 } from '#/lib/composer-files'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function useComposerAttachments(channelId?: string) {
+  const t = useTranslations('media')
   const [files, setFiles] = useState<PendingComposerFile[]>([])
   const filesRef = useRef(files)
   const controllersRef = useRef(new Map<string, AbortController>())
@@ -89,6 +92,7 @@ export function useComposerAttachments(channelId?: string) {
               fileForUpload(pending),
               {
                 signal: controller.signal,
+                t,
                 onProgress: (progress) => {
                   setFiles((current) =>
                     current.map((file) =>
@@ -102,10 +106,8 @@ export function useComposerAttachments(channelId?: string) {
                 Effect.sync(() => {
                   const message =
                     error instanceof DOMException && error.name === 'AbortError'
-                      ? 'Загрузка отменена'
-                      : error instanceof Error
-                        ? error.message
-                        : 'Не удалось загрузить файл'
+                      ? t('uploadCancelled')
+                      : apiErrorMessage(error, t('uploadFailed'))
                   setFiles((current) =>
                     current.map((file) =>
                       file.id === pending.id

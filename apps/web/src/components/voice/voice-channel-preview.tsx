@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
@@ -20,6 +22,7 @@ type VoiceChannelPreviewProps = {
 }
 
 export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
+  const t = useTranslations('voice')
   const auth = useAuth()
   const voice = useVoiceSession()
   const users = useSyncStore((s) => s.users)
@@ -69,6 +72,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
               participant.id,
               users,
               auth.user,
+              t,
             )}
             dimmed={connecting && isSelf}
             voiceElsewhere={voiceElsewhere}
