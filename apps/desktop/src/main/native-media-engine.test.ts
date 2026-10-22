@@ -60,13 +60,14 @@ describe('native media product boundary', () => {
     let windowCreated = false
     const getWindow = () => windowCreated ? window : null
 
-    runtime.registerNativeMediaRuntimeIpc(getWindow)
+    const rendererGone = vi.fn()
+    runtime.registerNativeMediaRuntimeIpc(getWindow, rendererGone)
     expect(callbacks.size).toBe(0)
     windowCreated = true
 
     const event = { sender: webContents, senderFrame: webContents.mainFrame }
     const invoke = (channel: string, ...args: unknown[]) => electron.handlers.get(channel)?.(event, ...args)
-    return { runtime, callbacks, invoke, webContents,
+    return { runtime, callbacks, invoke, webContents, rendererGone,
       destroyWindow: () => { destroyed = true },
       clearWindow: () => { windowCreated = false },
     }
@@ -174,7 +175,7 @@ describe('native media product boundary', () => {
   })
 
   it('reattaches a listening renderer after account rotation and revokes it on reload', async () => {
-    const { runtime, callbacks, invoke } = await setup()
+    const { runtime, callbacks, invoke, rendererGone } = await setup()
     const first = runtime.createNativeRtcEngineAdapter()
     invoke(IPC.mediaReplayRemoteVideoPublications)
     expect(electron.rendererReady).toHaveBeenCalledOnce()
@@ -183,6 +184,7 @@ describe('native media product boundary', () => {
     expect(electron.rendererReady).toHaveBeenCalledTimes(2)
     callbacks.get('did-start-navigation')?.({ isMainFrame: true, isSameDocument: false })
     expect(electron.rendererGone).toHaveBeenCalledOnce()
+    expect(rendererGone).toHaveBeenCalledOnce()
     await second.dispose()
     const third = runtime.createNativeRtcEngineAdapter()
     expect(electron.rendererReady).toHaveBeenCalledTimes(2)
@@ -212,13 +214,14 @@ describe('native media product boundary', () => {
   })
 
   it('ignores teardown from a window that no longer owns the runtime', async () => {
-    const { runtime, callbacks, invoke, clearWindow, destroyWindow } = await setup()
+    const { runtime, callbacks, invoke, clearWindow, destroyWindow, rendererGone } = await setup()
     const adapter = runtime.createNativeRtcEngineAdapter()
     invoke(IPC.mediaReplayRemoteVideoPublications)
     clearWindow()
     destroyWindow()
     expect(() => callbacks.get('destroyed')?.()).not.toThrow()
     expect(electron.rendererGone).not.toHaveBeenCalled()
+    expect(rendererGone).not.toHaveBeenCalled()
     await adapter.dispose()
   })
 })

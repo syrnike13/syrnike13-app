@@ -114,8 +114,14 @@ void concurrentMediaOwners() {
   });
   require(!failed.get(), "Failed catalog resolved stale endpoint on media owner");
 }
+void protocolDeviceIds() {
+  require(parseAudioDeviceId("17") == AudioDeviceId{17}, "Decimal device ID was rejected");
+  for (const char* invalid : {"", "0", "-1", "17a", " 17", "18446744073709551616"})
+    require(!parseAudioDeviceId(invalid), "Malformed device ID was accepted");
+}
 }  // namespace
 int main() try {
+  protocolDeviceIds();
   identityAndDefaults();
   boundsAndRollback();
   concurrentMediaOwners();

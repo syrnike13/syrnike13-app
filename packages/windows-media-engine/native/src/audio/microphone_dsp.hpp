@@ -62,7 +62,11 @@ class MicrophoneDsp final {
  public:
   explicit MicrophoneDsp(std::unique_ptr<MicrophoneEnhancement>);
   bool configure(std::uint64_t revision, const MicrophoneDspConfig&) noexcept;
-  void process(MicrophoneFrame&, std::int64_t now_100ns, EchoReferencePort*) noexcept;
+  // A non-null monitor receives the self-monitoring frame: the same processed
+  // signal behind the gate, but independent of mute and push-to-talk, so a
+  // muted user still hears what the call would hear.
+  void process(MicrophoneFrame&, std::int64_t now_100ns, EchoReferencePort*,
+               std::array<std::int16_t, kMicrophoneFrameSamples>* monitor = nullptr) noexcept;
   MicrophoneDspStats stats() const noexcept { return stats_; }
  private:
   std::unique_ptr<MicrophoneEnhancement> enhancement_;
@@ -72,6 +76,7 @@ class MicrophoneDsp final {
   static constexpr std::uint32_t kGateHoldFrames = 30;
   float noise_floor_ = 0.001f;
   float gate_gain_ = 0.0f;
+  float monitor_gate_gain_ = 0.0f;
   std::uint32_t gate_hold_frames_ = 0;
   std::uint64_t reference_sequence_ = 0;
   bool echo_reset_failed_ = false;

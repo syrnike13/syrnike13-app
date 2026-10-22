@@ -257,9 +257,11 @@ export type {
 } from './voice/voice-types'
 export {
   areVoiceMediaDesiredStatesEqual,
+  computeEffectiveDeafened,
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
+  deafenToggleCommand,
   isVoiceCommand,
   isVoiceRemoteAudioSettings,
   isVoiceSnapshot,

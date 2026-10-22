@@ -189,14 +189,24 @@ add_library(media_microphone_pipeline STATIC src/audio/microphone_pipeline.cpp)
 windows_media_target(media_microphone_pipeline)
 target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp PRIVATE avrt)
 
+add_library(media_audio_render STATIC src/audio/shared_render_client.cpp)
+windows_media_target(media_audio_render)
+target_include_directories(media_audio_render PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_audio_render PRIVATE ole32)
+
+add_library(media_microphone_monitor STATIC src/audio/microphone_monitor.cpp)
+windows_media_target(media_microphone_monitor)
+target_link_libraries(media_microphone_monitor PUBLIC media_audio_render media_microphone_capture PRIVATE avrt ole32)
+
 add_library(media_microphone_livekit STATIC src/audio/microphone_sender.cpp src/audio/livekit_microphone_dsp.cpp
   src/audio/microphone_owner.cpp)
 windows_media_target(media_microphone_livekit)
-target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_livekit PRIVATE avrt)
+target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_microphone_monitor media_livekit
+  PRIVATE avrt)
 
 add_library(media_remote_audio STATIC src/audio/remote_audio_playout.cpp)
 windows_media_target(media_remote_audio)
-target_link_libraries(media_remote_audio PUBLIC media_audio_devices media_livekit PRIVATE avrt ole32)
+target_link_libraries(media_remote_audio PUBLIC media_audio_devices media_audio_render media_livekit PRIVATE avrt ole32)
 
 add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
 windows_media_target(media_screen_audio_livekit)
@@ -288,6 +298,12 @@ windows_media_target(microphone_pcm_tests)
 target_link_libraries(microphone_pcm_tests PRIVATE media_microphone_capture)
 add_test(NAME microphone-pcm COMMAND microphone_pcm_tests)
 set_tests_properties(microphone-pcm PROPERTIES TIMEOUT 20)
+
+add_executable(microphone_monitor_tests tests/microphone_monitor_test.cpp)
+windows_media_target(microphone_monitor_tests)
+target_link_libraries(microphone_monitor_tests PRIVATE media_microphone_monitor ole32)
+add_test(NAME microphone-monitor COMMAND microphone_monitor_tests)
+set_tests_properties(microphone-monitor PROPERTIES TIMEOUT 20)
 
 add_executable(microphone_dsp_tests tests/microphone_dsp_test.cpp)
 windows_media_target(microphone_dsp_tests)

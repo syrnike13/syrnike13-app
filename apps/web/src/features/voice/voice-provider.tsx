@@ -17,7 +17,9 @@ import {
 } from 'livekit-client'
 import {
   VoiceDirector,
+  computeEffectiveDeafened,
   createInactiveMediaSnapshot,
+  deafenToggleCommand,
   type VoiceCommand,
   type VoiceMediaState,
   type VoiceSnapshot,
@@ -162,9 +164,10 @@ const INITIAL_SNAPSHOT: VoiceSnapshot = {
   serverMuted: false,
   serverDeafened: false,
   systemPrivacyMuted: false,
-  monitoringMuted: false,
+  selfMonitoringActive: false,
   inputMode: 'voice_activity',
   pushToTalkHeld: false,
+  pushToMuteHeld: false,
   effectiveMuted: true,
   speakingUserIds: [],
 }
@@ -776,10 +779,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [dispatchVoice, snapshot.userDeafened, snapshot.userMuted])
 
   const toggleDeafen = useCallback(() => {
-    const deafened = !snapshot.userDeafened
-    voicePreferenceStore.setDeafened(deafened)
-    void dispatchVoice({ type: 'setUserDeafened', deafened })
-  }, [dispatchVoice, snapshot.userDeafened])
+    const command = deafenToggleCommand(snapshot)
+    if (command.type === 'setUserDeafened') {
+      voicePreferenceStore.setDeafened(command.deafened)
+    }
+    void dispatchVoice(command)
+  }, [dispatchVoice, snapshot])
 
   // The default camera is the first enumerated device, which may be a virtual
   // or busy one. A device failure asks the user to pick a camera explicitly.
@@ -1425,7 +1430,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       localVoiceReady: snapshot.connection === 'connected',
       micEnabled: !snapshot.userMuted,
       micPublishing: snapshot.microphone.state === 'running',
-      deafened: snapshot.userDeafened || snapshot.serverDeafened,
+      deafened: computeEffectiveDeafened(snapshot),
       participantCount: participants.length,
       speakingUserIds,
       join,
@@ -1460,6 +1465,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       selectCameraDevice,
       toggleScreenShare,
       changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
+      selfMonitoringActive: snapshot.selfMonitoringActive,
       setSelfMonitoringActive,
       getNativeMicrophonePreviewTrack: () => null,
     }),
@@ -1469,6 +1475,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       mediaAvailability,
       micIssue,
       setSelfMonitoringActive,
+      snapshot.selfMonitoringActive,
       cameraMedia.live,
       cameraDeviceFailed,
       cameraDevicePickerRequest,

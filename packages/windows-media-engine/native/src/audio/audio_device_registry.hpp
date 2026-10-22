@@ -1,10 +1,12 @@
 #pragma once
 
+#include <charconv>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -39,6 +41,13 @@ struct AudioDeviceIntent {
   // An absent ID means follow the multimedia default, never communications.
   std::optional<AudioDeviceId> explicit_id;
 };
+// Product device IDs cross the protocol as decimal strings; zero is never one.
+inline std::optional<AudioDeviceId> parseAudioDeviceId(std::string_view text) noexcept {
+  AudioDeviceId id = 0;
+  const auto parsed = std::from_chars(text.data(), text.data() + text.size(), id);
+  if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || id == 0) return {};
+  return id;
+}
 
 // Native-only value passed to the capture/render owner. Endpoint strings never
 // cross the public protocol; no COM pointer crosses this boundary.

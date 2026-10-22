@@ -30,6 +30,7 @@ export const NATIVE_MEDIA_UNAVAILABLE_STATE: NativeMediaRuntimeState = {
 
 let registered = false
 let windowGetter: () => BrowserWindow | null = () => null
+let rendererGoneListener: () => void = () => {}
 let rendererListening = false
 const observedRenderers = new WeakSet<WebContents>()
 let diagnosticLog: NativeDiagnosticLog | null = null
@@ -89,6 +90,7 @@ function observeRenderer(contents: WebContents) {
     active?.frames.rendererGone()
     active?.picker.cancel()
     void active?.adapter.setMicrophonePreview(false).catch(() => logNativeVoiceDiagnostic('microphone_preview_stop_failed'))
+    rendererGoneListener()
   }
   contents.on('did-start-navigation', details => {
     if (details.isMainFrame && !details.isSameDocument) rendererGone()
@@ -261,10 +263,14 @@ export const flushNativeMediaDiagnosticsEffect = Effect.fn(
 
 export function registerNativeMediaRuntimeIpc(
   getWindow: () => BrowserWindow | null,
+  // Renderer-owned voice state, such as a self-monitoring check, cannot be
+  // released by a page that reloaded or crashed; main releases it here.
+  onRendererGone: () => void = () => {},
 ) {
   if (registered) return
   registered = true
   windowGetter = getWindow
+  rendererGoneListener = onRendererGone
 
   ipcMain.handle(IPC.mediaGetRuntimeState, (event) => {
     assertTrustedSender(event, getWindow)

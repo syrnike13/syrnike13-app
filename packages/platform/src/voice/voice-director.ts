@@ -16,6 +16,7 @@ import {
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
+  reportedSelfVoiceFlags,
   type AuthoritativeVoiceSnapshot,
   type VoiceCommand,
   type VoiceFailure,
@@ -139,9 +140,10 @@ export class VoiceDirector {
     serverMuted: this.desiredMedia.serverMuted,
     serverDeafened: this.desiredMedia.serverDeafened,
     systemPrivacyMuted: this.desiredMedia.systemPrivacyMuted,
-    monitoringMuted: this.desiredMedia.monitoringMuted,
+    selfMonitoringActive: this.desiredMedia.selfMonitoringActive,
     inputMode: this.desiredMedia.inputMode,
     pushToTalkHeld: this.desiredMedia.pushToTalkHeld,
+    pushToMuteHeld: this.desiredMedia.pushToMuteHeld,
     effectiveMuted: this.desiredMedia.effectiveMuted,
     speakingUserIds: [],
   }
@@ -212,7 +214,10 @@ export class VoiceDirector {
         this.updateDesiredMedia({ systemPrivacyMuted: command.muted })
         return
       case 'setSelfMonitoringActive':
-        this.updateDesiredMedia({ monitoringMuted: command.active })
+        this.updateDesiredMedia({ selfMonitoringActive: command.active })
+        return
+      case 'setPushToMuteHeld':
+        this.updateDesiredMedia({ pushToMuteHeld: command.held })
         return
       case 'configureMicrophone':
         this.updateDesiredMedia({
@@ -975,8 +980,7 @@ export class VoiceDirector {
   private updateDesiredMedia(
     patch: Partial<VoiceMediaDesiredState>,
   ): boolean {
-    const previousUserMuted = this.desiredMedia.userMuted
-    const previousUserDeafened = this.desiredMedia.userDeafened
+    const previousReported = reportedSelfVoiceFlags(this.desiredMedia)
     const nextBase = { ...this.desiredMedia, ...patch }
     const nextDesired = {
       ...nextBase,
@@ -991,14 +995,16 @@ export class VoiceDirector {
       serverMuted: this.desiredMedia.serverMuted,
       serverDeafened: this.desiredMedia.serverDeafened,
       systemPrivacyMuted: this.desiredMedia.systemPrivacyMuted,
-      monitoringMuted: this.desiredMedia.monitoringMuted,
+      selfMonitoringActive: this.desiredMedia.selfMonitoringActive,
       inputMode: this.desiredMedia.inputMode,
       pushToTalkHeld: this.desiredMedia.pushToTalkHeld,
+      pushToMuteHeld: this.desiredMedia.pushToMuteHeld,
       effectiveMuted: this.desiredMedia.effectiveMuted,
     })
+    const reported = reportedSelfVoiceFlags(this.desiredMedia)
     if (
-      previousUserMuted !== this.desiredMedia.userMuted ||
-      previousUserDeafened !== this.desiredMedia.userDeafened
+      previousReported.userMuted !== reported.userMuted ||
+      previousReported.userDeafened !== reported.userDeafened
     ) {
       this.requestSelfStateSync()
     }
@@ -1053,7 +1059,7 @@ export class VoiceDirector {
       ) {
         handledRevision = self.selfStateRevision
         const lease = self.activeLease
-        const desired = self.desiredMedia
+        const reported = reportedSelfVoiceFlags(self.desiredMedia)
         yield* Effect.tryPromise({
           try: () =>
             self.authority.updateSelfState({
@@ -1062,8 +1068,8 @@ export class VoiceDirector {
               clientInstanceId: lease.clientInstanceId,
               operationId: lease.operationId,
               connectionEpoch: lease.connectionEpoch,
-              userMuted: desired.userMuted,
-              userDeafened: desired.userDeafened,
+              userMuted: reported.userMuted,
+              userDeafened: reported.userDeafened,
             }),
           catch: (error) => error,
         }).pipe(Effect.ignore)

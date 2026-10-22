@@ -7,11 +7,12 @@ import type {
   VoiceReservationRequest,
   VoiceSelfStateUpdate,
 } from './voice-authority'
-import type {
-  AuthoritativeVoiceSnapshot,
-  VoiceLease,
-  VoiceMembership,
-  VoiceRtcEngine,
+import {
+  reportedSelfVoiceFlags,
+  type AuthoritativeVoiceSnapshot,
+  type VoiceLease,
+  type VoiceMembership,
+  type VoiceRtcEngine,
 } from './voice-types'
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
@@ -401,13 +402,14 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
       this.pendingLeases.set(request.operationId, pending)
       try {
         const nonce = this.createNonce()
+        const reported = reportedSelfVoiceFlags(request.media)
         this.options.transport.sendReliable(
           voiceStateUpdateMessage({
             nonce,
             request: authorityClaim('join', request),
             channelId: request.channelId,
-            userMuted: request.media.userMuted || request.media.userDeafened,
-            userDeafened: request.media.userDeafened,
+            userMuted: reported.userMuted || reported.userDeafened,
+            userDeafened: reported.userDeafened,
             node: metadata?.node,
             recipients: metadata?.recipients ?? request.recipients,
             suppressCallNotifications:

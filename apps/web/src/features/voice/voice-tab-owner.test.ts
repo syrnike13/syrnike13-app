@@ -203,7 +203,8 @@ describe('VoiceTabOwner', () => {
     ['server mute', { serverMuted: true }],
     ['server deafen', { serverDeafened: true }],
     ['system privacy mute', { systemPrivacyMuted: true }],
-    ['monitoring mute', { monitoringMuted: true }],
+    ['self-monitoring check', { selfMonitoringActive: true }],
+    ['held push-to-mute key', { pushToMuteHeld: true }],
     [
       'released push-to-talk key',
       { inputMode: 'push_to_talk' as const, pushToTalkHeld: false },
@@ -337,9 +338,10 @@ function initialSnapshot(): VoiceSnapshot {
     serverMuted: false,
     serverDeafened: false,
     systemPrivacyMuted: false,
-    monitoringMuted: false,
+    selfMonitoringActive: false,
     inputMode: 'voice_activity',
     pushToTalkHeld: false,
+    pushToMuteHeld: false,
     effectiveMuted: true,
     speakingUserIds: [],
   }
