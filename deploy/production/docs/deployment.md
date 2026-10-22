@@ -84,18 +84,20 @@ Back up `secrets.env` after the first successful deploy. Losing it can make exis
 
 ## Updating Backend Services
 
-Pushing to `main` runs `.github/workflows/docker.yaml`. When Docker image publishing succeeds, `.github/workflows/deploy-production.yml` uploads `deploy/production` and deploys backend-owned services:
+Production images and deploys come from a manual run of
+`.github/workflows/release-images-and-deploy.yml` on `main`. Nothing runs on
+push: choose the workflow in the Actions tab, press **Run workflow**, type the
+release version (for example `0.8.0`), and leave `services` empty for all app
+services. The form also controls whether the deploy step runs and whether the
+stable desktop release is published.
 
-- `api`
-- `events`
-- `autumn`
-- `january`
-- `gifbox`
-- `crond`
-- `pushd`
-- `voice-ingress`
+The typed version is used for the image tags, the application version baked into
+the web and admin builds, the backend `VERSION` file, and the desktop release.
+The repository `VERSION` file is not read by this workflow, so no commit is
+needed to release.
 
-That workflow runs:
+Selecting the backend services only (for example
+`services: api events autumn january gifbox crond pushd voice-ingress`) runs:
 
 ```bash
 DEPLOY_SERVICES="api events autumn january gifbox crond pushd voice-ingress" ./scripts/deploy-on-server.sh
@@ -228,7 +230,7 @@ Caddy serves that directory read-only from `data/desktop`. The directory is serv
 
 Publishing flow:
 
-1. Push a `VERSION` change on `main` to run `.github/workflows/desktop-release.yml`.
+1. Run `.github/workflows/release-images-and-deploy.yml` on `main` with the release version typed into the form and `desktop` enabled.
 2. GitHub Actions builds Windows, macOS, and Linux packages.
 3. The workflow uploads installers, `latest*.yml`, and `*.blockmap` files to `data/desktop/` on the production server.
 4. Packaged desktop clients check `https://syrnike13.ru/downloads/desktop/` for updates.
@@ -267,7 +269,12 @@ curl -fsSI "https://app.syrnike13.ru/" | head -5
 
 ## Nightly Channel
 
-The `develop` branch publishes and deploys the independent nightly environment.
+The `develop` branch publishes and deploys the independent nightly environment
+from a manual run of `.github/workflows/nightly-release-and-deploy.yml`. A push
+to `develop` starts nothing; run the workflow from `develop` when you want a
+nightly build. The nightly version is the UTC build date plus the commit SHA
+(`<YYYY.M.D>-nightly.<sha>`) and does not read the `VERSION` file. The `deploy`
+input controls whether the run deploys after publishing images.
 
 - Landing URL: `https://beta.syrnike13.ru`
 - Application URL: `https://app.beta.syrnike13.ru`

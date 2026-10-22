@@ -23,7 +23,7 @@
 - `services/livekit-server` — project LiveKit server fork.
 - `deploy/production`, `deploy/nightly` — deployment sources of truth.
 
-Root release version source: `VERSION`.
+The root `VERSION` file is the base version for local builds. Production takes its release version from the manual dispatch form, and nightly builds derive `<YYYY.M.D>-nightly.<sha>` without reading the file.
 
 ## Common commands
 
@@ -48,7 +48,7 @@ On Windows, missing OpenSSL/vcpkg/Docker for backend checks is an environment bl
 - Issue branches should include the issue number when applicable.
 - Open completed PRs ready for review unless there is a concrete reason to use draft.
 - Always distinguish local, committed, pushed, built, and deployed state.
-- A `VERSION` change on `main` triggers release workflows.
+- `VERSION` changes and pushes to `main`/`develop` no longer start release workflows; production and nightly releases are manual `workflow_dispatch` runs.
 
 ## Client UI
 
