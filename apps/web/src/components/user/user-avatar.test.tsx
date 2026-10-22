@@ -150,12 +150,33 @@ describe('UserAvatar animation modes', () => {
       'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
     )
     expect(animatedOverlay(container)?.className).toContain('opacity-100')
+    // `Avatar` не клипует содержимое, поэтому круглую форму задаёт сам оверлей.
+    expect(animatedOverlay(container)?.className).toContain('rounded-full')
 
     fireEvent.pointerLeave(container.firstElementChild!)
 
     expect(avatarImage().src).toBe(
       'https://syrnike13.ru/autumn/avatars/avatar-1',
     )
+    expect(animatedOverlay(container)?.className).toContain('opacity-0')
+  })
+
+  it('drives the animation from the row hover when hoverScope is parent', () => {
+    const { container } = render(
+      <div data-avatar-hover-scope="">
+        <UserAvatar user={user()} hoverScope="parent" />
+      </div>,
+    )
+    const row = container.firstElementChild as HTMLElement
+
+    expect(animatedOverlay(container)).toBeNull()
+
+    fireEvent.pointerEnter(row)
+
+    expect(animatedOverlay(container)?.className).toContain('opacity-100')
+
+    fireEvent.pointerLeave(row)
+
     expect(animatedOverlay(container)?.className).toContain('opacity-0')
   })
 

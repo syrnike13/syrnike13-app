@@ -164,6 +164,7 @@ export function UserPanel({
               render={
                 <button
                   type="button"
+                  data-avatar-hover-scope=""
                   className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-accent/60"
                 />
               }
@@ -172,6 +173,7 @@ export function UserPanel({
                 user={user}
                 className="size-8 shrink-0"
                 fallbackClassName="size-8"
+                hoverScope="parent"
                 showPresence
               />
               <div className="min-w-0 flex-1 overflow-hidden">

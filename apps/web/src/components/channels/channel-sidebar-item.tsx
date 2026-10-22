@@ -444,6 +444,7 @@ export function ChannelSidebarItem({
       onDrop={(event) => void handleVoiceDrop(event)}
     >
       <div
+        data-avatar-hover-scope=""
         className={cn(
           'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-medium tracking-tight transition-colors',
           active
@@ -474,6 +475,7 @@ export function ChannelSidebarItem({
               user={dmUser}
               className="size-6"
               fallbackClassName="size-6 text-xs"
+              hoverScope="parent"
             />
           ) : channel.channel_type === 'Group' ? (
             channel.icon ? (

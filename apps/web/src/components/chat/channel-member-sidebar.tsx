@@ -76,12 +76,18 @@ function MemberSidebarRow({
       >
         <button
           type="button"
+          data-avatar-hover-scope=""
           className={cn(
             'flex min-h-10.5 w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[popup-open]:bg-accent',
             dimmed && 'opacity-60',
           )}
         >
-          <UserAvatar user={user} className="size-8" showPresence />
+          <UserAvatar
+            user={user}
+            className="size-8"
+            hoverScope="parent"
+            showPresence
+          />
           <div className="min-w-0 flex-1">
             <p
               className={cn(

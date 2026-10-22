@@ -1,5 +1,5 @@
 import type { User } from '@syrnike13/api-types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -92,6 +92,12 @@ type UserAvatarProps = {
   showPresence?: boolean
   notificationBadge?: NotificationBadgeState
   animated?: UserAvatarAnimationMode
+  /**
+   * Где ловить наведение для `animated="hover"`. `self` (по умолчанию) — сам
+   * аватар. `parent` — ближайший родитель с `data-avatar-hover-scope`: так
+   * анимируются аватары в строках списков, где hover подсвечивает всю строку.
+   */
+  hoverScope?: 'self' | 'parent'
   speaking?: boolean
   /** Кольцо вокруг точки статуса (фон под аватаром) */
   presenceRingClassName?: string
@@ -111,12 +117,14 @@ export function UserAvatar({
   showPresence = true,
   notificationBadge,
   animated = 'hover',
+  hoverScope = 'self',
   speaking = false,
   presenceRingClassName = 'border-card',
   notificationRingClassName = 'border-card',
   onImageLoadingChange,
 }: UserAvatarProps) {
   const t = useTranslations('chat')
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
@@ -126,6 +134,10 @@ export function UserAvatar({
   const showDot =
     showPresence && user && user.relationship !== 'Blocked' && !hasNotificationBadge
   const useImageSrcOverride = imageSrc != null
+  const hoverFollowsSelf =
+    animated === 'hover' && hoverScope === 'self' && !useImageSrcOverride
+  const hoverFollowsScope =
+    animated === 'hover' && hoverScope === 'parent' && !useImageSrcOverride
 
   const staticAvatarSrc = useImageSrcOverride
     ? imageSrc
@@ -174,32 +186,40 @@ export function UserAvatar({
     setHoverAnimationRequested(true)
   }
 
+  useEffect(() => {
+    if (!hoverFollowsScope || !container) return
+
+    const scope = container.closest('[data-avatar-hover-scope]')
+    if (!scope) return
+
+    const start = () => startHoverAnimation()
+    const stop = () => setHovered(false)
+
+    scope.addEventListener('pointerenter', start)
+    scope.addEventListener('pointerleave', stop)
+    scope.addEventListener('focusin', start)
+    scope.addEventListener('focusout', stop)
+
+    return () => {
+      scope.removeEventListener('pointerenter', start)
+      scope.removeEventListener('pointerleave', stop)
+      scope.removeEventListener('focusin', start)
+      scope.removeEventListener('focusout', stop)
+      setHovered(false)
+    }
+  }, [container, hoverFollowsScope])
+
   return (
     <div
+      ref={setContainer}
       className={cn(
         'relative shrink-0',
         hasNotificationBadge && 'overflow-visible',
       )}
-      onPointerEnter={
-        animated === 'hover' && !useImageSrcOverride
-          ? startHoverAnimation
-          : undefined
-      }
-      onPointerLeave={
-        animated === 'hover' && !useImageSrcOverride
-          ? () => setHovered(false)
-          : undefined
-      }
-      onFocus={
-        animated === 'hover' && !useImageSrcOverride
-          ? startHoverAnimation
-          : undefined
-      }
-      onBlur={
-        animated === 'hover' && !useImageSrcOverride
-          ? () => setHovered(false)
-          : undefined
-      }
+      onPointerEnter={hoverFollowsSelf ? startHoverAnimation : undefined}
+      onPointerLeave={hoverFollowsSelf ? () => setHovered(false) : undefined}
+      onFocus={hoverFollowsSelf ? startHoverAnimation : undefined}
+      onBlur={hoverFollowsSelf ? () => setHovered(false) : undefined}
     >
       {/* eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing */}
       <Avatar className={cn(className, fallbackClassName)}>
@@ -214,6 +234,8 @@ export function UserAvatar({
             )}
           />
         ) : null}
+        {/* Форму задаёт сам оверлей: `Avatar` не клипует содержимое, поэтому без
+            `rounded-full` GIF на hover/speaking выходил квадратом. */}
         {mountAnimatedOverlay && animatedAvatarSrc && !animatedRetry.failed ? (
           <img
             key={animatedRetry.attempt}
@@ -222,7 +244,7 @@ export function UserAvatar({
             alt=""
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-0 z-1 size-full object-cover transition-opacity duration-150',
+              'pointer-events-none absolute inset-0 size-full rounded-full object-cover transition-opacity duration-150',
               showAnimatedOverlay ? 'opacity-100' : 'opacity-0',
             )}
             loading="lazy"

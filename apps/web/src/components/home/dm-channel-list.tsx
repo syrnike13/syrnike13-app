@@ -83,6 +83,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
             to={`${prefix}/c/$channelId`}
             params={{ channelId: channel._id }}
             search={{ m: undefined }}
+            data-avatar-hover-scope=""
             className={cn(
               buttonVariants({
                 variant: active ? 'secondary' : 'ghost',
@@ -95,6 +96,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   user={dmUser}
                   className="size-8"
                   fallbackClassName="size-8 text-xs"
+                  hoverScope="parent"
                 />
               ) : channel.channel_type === 'Group' ? (
                 channel.icon ? (
