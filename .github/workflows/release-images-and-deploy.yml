@@ -576,8 +576,9 @@ jobs:
     needs:
       - changes
       - version
-      - desktop
-    if: ${{ needs.changes.outputs.desktop == 'true' && needs.desktop.result == 'success' }}
+      - desktop-github-release
+    if: ${{ needs.changes.outputs.desktop == 'true' && needs.desktop-github-release.result == 'success' }}
+    timeout-minutes: 30
     environment: production
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -585,25 +586,11 @@ jobs:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
       DESKTOP_RELEASE_KEEP_VERSIONS: ${{ vars.DESKTOP_RELEASE_KEEP_VERSIONS || '5' }}
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Download Windows desktop artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: desktop-windows
-          path: desktop-artifacts/desktop-windows
-      - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: desktop-macos
-          path: desktop-artifacts/desktop-macos
-      - name: Download Linux desktop artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: desktop-linux
-          path: desktop-artifacts/desktop-linux
       - name: Validate configuration
         run: |
           set -euo pipefail
@@ -621,37 +608,25 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-      - name: Prune old production desktop artifacts
+      - name: Pull and verify desktop release on production
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/data/desktop'"
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -s '$DEPLOY_PATH/data/desktop' '$DESKTOP_RELEASE_KEEP_VERSIONS'" \
-            < tooling/scripts/prune-desktop-artifacts.sh
-      - name: Upload desktop update feed
-        run: |
-          set -euo pipefail
-          STAGING="$(mktemp -d)"
-          find desktop-artifacts -type f \( \
-            -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o \
-            -name '*.zip' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.7z' \
-          \) -exec cp {} "$STAGING/" \;
-          if [ -z "$(ls -A "$STAGING")" ]; then
-            echo "No desktop release artifacts found to upload."
-            exit 1
-          fi
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/data/desktop'"
-          rsync -av \
-            --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
-            -e "ssh -i ~/.ssh/deploy_key" \
-            "$STAGING/" \
-            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/data/desktop/"
-      - name: Update stable download aliases
-        run: |
-          set -euo pipefail
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -s '$DEPLOY_PATH/data/desktop'" \
-            < tooling/scripts/update-download-aliases.sh
+          REMOTE_SCRIPT="/tmp/syrnike13-desktop-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.py"
+          SSH_OPTIONS=(-i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          cleanup() {
+            # The run-specific path is expanded locally.
+            # shellcheck disable=SC2029
+            ssh "${SSH_OPTIONS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "rm -f '$REMOTE_SCRIPT'" || true
+          }
+          trap cleanup EXIT
+          scp "${SSH_OPTIONS[@]}" tooling/scripts/publish-desktop-release.py "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_SCRIPT"
+          # Deployment paths and version are expanded locally.
+          # shellcheck disable=SC2029
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" | \
+            ssh "${SSH_OPTIONS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "python3 '$REMOTE_SCRIPT' '$DEPLOY_PATH/data/desktop' '$RELEASE_VERSION'"
       - name: Prune uploaded desktop release history
         run: |
           set -euo pipefail
@@ -664,11 +639,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$RELEASE_VERSION"
-          mapfile -t FEED_FILES < <(find desktop-artifacts -type f -name 'latest*.yml' -printf '%f\n' | sort -u)
-          if [ "${#FEED_FILES[@]}" -eq 0 ]; then
-            echo "No desktop update manifests found to verify."
-            exit 1
-          fi
+          FEED_FILES=(latest.yml latest-mac.yml latest-linux.yml)
           for FEED_FILE in "${FEED_FILES[@]}"; do
             FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/${FEED_FILE}")"
             FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
