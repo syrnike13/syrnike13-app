@@ -16,6 +16,7 @@ import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -225,8 +226,8 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               </Button>
             </form>
 
-            <div className="-mx-6 -mb-6 mt-2 flex flex-col gap-3 border-t border-border bg-muted/40 px-6 py-4">
-              <p className="text-center text-sm text-secondary-foreground">
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              <p className="text-center text-sm text-muted-foreground">
                 {t('invited')}
               </p>
               <Button
@@ -237,7 +238,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               >
                 {t('joinServer')}
               </Button>
-            </div>
+            </DialogFooter>
           </>
         ) : (
           <>
