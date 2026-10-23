@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 
 import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
 
+import { useNativeContextMenuGuard } from '#/components/native-context-menu-guard'
+
 type VoiceStagePopoutProps = {
   childWindow: Window
   title: string
@@ -114,6 +116,8 @@ export function VoiceStagePopout({
 }: VoiceStagePopoutProps) {
   const onCloseRef = useRef(onClose)
   const [container, setContainer] = useState<HTMLElement | null>(null)
+
+  useNativeContextMenuGuard(childWindow.document)
 
   useEffect(() => {
     onCloseRef.current = onClose

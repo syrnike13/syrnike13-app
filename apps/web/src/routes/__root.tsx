@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 
+import { NativeContextMenuGuard } from '#/components/native-context-menu-guard'
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
@@ -155,6 +156,7 @@ function RootComponent() {
           <AuthProvider>
             <DiagnosticErrorReporter />
             <SyncProvider>
+              <NativeContextMenuGuard />
               <NativeScrollbarEnhancer />
               <Outlet />
               <Toaster richColors closeButton />
