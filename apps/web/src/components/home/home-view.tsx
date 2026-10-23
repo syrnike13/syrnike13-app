@@ -182,7 +182,7 @@ function HomeFriendRow({
                       )
                     }}
                   >
-                    <XIcon className="size-3.5" />
+                    <XIcon />
                     {t('declineRequest')}
                   </DropdownMenuItem>
                 ) : null}
@@ -196,7 +196,7 @@ function HomeFriendRow({
                       )
                     }}
                   >
-                    <XIcon className="size-3.5" />
+                    <XIcon />
                     {t('cancelRequest')}
                   </DropdownMenuItem>
                 ) : null}
@@ -208,12 +208,12 @@ function HomeFriendRow({
                       )
                     }}
                   >
-                    <UserMinusIcon className="size-3.5" />
+                    <UserMinusIcon />
                     {t('removeFriend')}
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem onClick={() => void copyUserId()}>
-                  <CopyIcon className="size-3.5" />
+                  <CopyIcon />
                   {t('copyId')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -222,7 +222,7 @@ function HomeFriendRow({
                     setBlockDialogOpen(true)
                   }}
                 >
-                  <BanIcon className="size-3.5" />
+                  <BanIcon />
                   {t('block')}
                 </DropdownMenuItem>
               </DropdownMenuContent>

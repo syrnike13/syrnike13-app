@@ -217,7 +217,7 @@ export function UserGlobalProfileSidebar({
                         )
                       }
                     >
-                      <XIcon className="size-3.5" />
+                      <XIcon />
                       {t('declineRequest')}
                     </DropdownMenuItem>
                   ) : null}
@@ -229,23 +229,23 @@ export function UserGlobalProfileSidebar({
                         )
                       }
                     >
-                      <XIcon className="size-3.5" />
+                      <XIcon />
                       {t('cancelRequest')}
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem onClick={onCopyId}>
-                    <CopyIcon className="size-3.5" />
+                    <CopyIcon />
                     {t('copyId')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {user.relationship === 'Blocked' ? (
                     <DropdownMenuItem onClick={onUnblock}>
-                      <BanIcon className="size-3.5" />
+                      <BanIcon />
                       {t('unblock')}
                     </DropdownMenuItem>
                   ) : (
                     <DropdownMenuItem variant="destructive" onClick={onBlock}>
-                      <BanIcon className="size-3.5" />
+                      <BanIcon />
                       {t('block')}
                     </DropdownMenuItem>
                   )}

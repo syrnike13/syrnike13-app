@@ -460,34 +460,34 @@ function UserProfileCardBannerMenu({
       >
         {canViewProfile ? (
           <DropdownMenuItem onClick={onViewProfile}>
-            <UserIcon className="size-3.5" />
+            <UserIcon />
             {t('viewProfile')}
           </DropdownMenuItem>
         ) : null}
         {canAddFriend ? (
           <DropdownMenuItem onClick={onAddFriend}>
-            <UserPlusIcon className="size-3.5" />
+            <UserPlusIcon />
             {t('addFriend')}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onCopyUsername}>
-          <CopyIcon className="size-3.5" />
+          <CopyIcon />
           {t('copyUsername')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onCopyUserId}>
-          <CopyIcon className="size-3.5" />
+          <CopyIcon />
           {t('copyUserId')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {isBlocked ? (
           <DropdownMenuItem onClick={onUnblock}>
-            <UserCheckIcon className="size-3.5" />
+            <UserCheckIcon />
             {t('unblock')}
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem variant="destructive" onClick={onBlock}>
-            <BanIcon className="size-3.5" />
+            <BanIcon />
             {t('block')}
           </DropdownMenuItem>
         )}

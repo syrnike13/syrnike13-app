@@ -225,7 +225,7 @@ function SortableRoleListItem({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2Icon className="size-4" />
+              <Trash2Icon />
               {t('deleteRole')}
             </DropdownMenuItem>
           </DropdownMenuContent>

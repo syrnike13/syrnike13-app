@@ -85,11 +85,11 @@ export function ChannelCategoryHeader({
           <ContextMenuTrigger render={header} />
           <ContextMenuContent className="w-52">
             <ContextMenuItem onClick={() => setCreateChannelOpen(true)}>
-              <PlusIcon className="size-3.5" />
+              <PlusIcon />
               {t('createChannel')}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => setSettingsOpen(true)}>
-              <SettingsIcon className="size-3.5" />
+              <SettingsIcon />
               {t('categorySettings')}
             </ContextMenuItem>
           </ContextMenuContent>

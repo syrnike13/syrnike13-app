@@ -555,16 +555,16 @@ export function ChannelSidebarItem({
   const menuItems = (
     <>
       <ContextMenuItem onClick={() => void markRead()}>
-        <CheckCheckIcon className="size-3.5" />
+        <CheckCheckIcon />
         {t('markRead')}
       </ContextMenuItem>
       <ContextMenuItem onClick={() => void copyLink()}>
-        <LinkIcon className="size-3.5" />
+        <LinkIcon />
         {t('copyLink')}
       </ContextMenuItem>
       {channel.channel_type === 'TextChannel' && canInvite ? (
         <ContextMenuItem onClick={() => void createInvite()}>
-          <LinkIcon className="size-3.5" />
+          <LinkIcon />
           {t('invite')}
         </ContextMenuItem>
       ) : null}
@@ -572,7 +572,7 @@ export function ChannelSidebarItem({
         <>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={openChannelSettings}>
-            <SettingsIcon className="size-3.5" />
+            <SettingsIcon />
             {t('channelSettings')}
           </ContextMenuItem>
         </>
@@ -584,7 +584,7 @@ export function ChannelSidebarItem({
             variant="destructive"
             onClick={() => setDeleteDialogOpen(true)}
           >
-            <Trash2Icon className="size-3.5" />
+            <Trash2Icon />
             {t('deleteChannel')}
           </ContextMenuItem>
         </>

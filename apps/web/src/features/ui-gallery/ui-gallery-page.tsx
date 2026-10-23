@@ -127,6 +127,7 @@ import {
 } from '@syrnike13/ui/primitives/command'
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuGroup,
   ContextMenuItem,
@@ -1459,6 +1460,10 @@ function OverlayGallery() {
           <DropdownMenuContent>
             <DropdownMenuGroup>
               <DropdownMenuLabel>Channel</DropdownMenuLabel>
+              <DropdownMenuItem description="Default">
+                <MicIcon />
+                Microphone
+              </DropdownMenuItem>
               <DropdownMenuItem>
                 Mark as read <DropdownMenuShortcut>⇧R</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -1483,12 +1488,22 @@ function OverlayGallery() {
           <ContextMenuContent>
             <ContextMenuGroup>
               <ContextMenuLabel>Message</ContextMenuLabel>
+              <ContextMenuItem description="Only @mentions">
+                Notification settings
+              </ContextMenuItem>
               <ContextMenuItem>
                 <ChevronRightIcon /> Reply
               </ContextMenuItem>
               <ContextMenuItem>
                 <CopyIcon /> Copy text
               </ContextMenuItem>
+              <ContextMenuCheckboxItem
+                checked={false}
+                closeOnClick={false}
+                description="Until 23:00"
+              >
+                Mute notifications
+              </ContextMenuCheckboxItem>
             </ContextMenuGroup>
             <ContextMenuSeparator />
             <ContextMenuItem variant="destructive">

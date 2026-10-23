@@ -423,7 +423,7 @@ function AuditActionFilter({
               onChange('')
             }}
           >
-            <SettingsIcon className="size-4 text-muted-foreground" />
+            <SettingsIcon />
             {t('filters.allActions')}
           </DropdownMenuItem>
           {AUDIT_ACTIONS.map((action) => {
@@ -511,7 +511,7 @@ function AuditUserFilter({
               setQuery('')
             }}
           >
-            <UsersIcon className="size-4 text-muted-foreground" />
+            <UsersIcon />
             {t('filters.allUsers')}
           </DropdownMenuItem>
           {visibleUsers.map((user) => (

@@ -55,7 +55,7 @@ function DropdownMenuContent({
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
           className={cn(
-            "cn-menu-target cn-menu-translucent z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none data-closed:overflow-hidden",
+            "cn-menu-target cn-menu-translucent z-50 max-h-(--available-height) min-w-32 overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-2 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none data-closed:overflow-hidden",
             className
           )}
           {...props}
@@ -89,14 +89,48 @@ function DropdownMenuLabel({
   )
 }
 
+/**
+ * Item content with a secondary line. The base-nova source has no description
+ * slot, so this is a deliberate extension. Icons stay in the title row and the
+ * item-level focus rules brighten them through `data-slot$="-item-content"`.
+ */
+function DropdownMenuItemContent({
+  children,
+  description,
+}: {
+  children: React.ReactNode
+  description: React.ReactNode
+}) {
+  return (
+    <span
+      data-slot="dropdown-menu-item-content"
+      className="flex min-w-0 flex-1 flex-col"
+    >
+      <span className="flex min-w-0 items-center gap-1.5 [&_svg]:opacity-70">
+        {children}
+      </span>
+      <span
+        data-slot="dropdown-menu-item-description"
+        className="mt-0.5 block min-w-0 truncate text-xs font-normal text-muted-foreground"
+      >
+        {description}
+      </span>
+    </span>
+  )
+}
+
 function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  description,
+  children,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean
   variant?: "default" | "destructive"
+  /** Вторая строка под подписью пункта. */
+  description?: React.ReactNode
 }) {
   return (
     <MenuPrimitive.Item
@@ -104,11 +138,20 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-2 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        description != null && "py-1.5",
         className
       )}
       {...props}
-    />
+    >
+      {description != null ? (
+        <DropdownMenuItemContent description={description}>
+          {children}
+        </DropdownMenuItemContent>
+      ) : (
+        children
+      )}
+    </MenuPrimitive.Item>
   )
 }
 
@@ -119,22 +162,32 @@ function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
 function DropdownMenuSubTrigger({
   className,
   inset,
+  description,
   children,
   ...props
 }: MenuPrimitive.SubmenuTrigger.Props & {
   inset?: boolean
+  /** Вторая строка под подписью пункта. */
+  description?: React.ReactNode
 }) {
   return (
     <MenuPrimitive.SubmenuTrigger
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-2 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        description != null && "py-1.5",
         className
       )}
       {...props}
     >
-      {children}
+      {description != null ? (
+        <DropdownMenuItemContent description={description}>
+          {children}
+        </DropdownMenuItemContent>
+      ) : (
+        children
+      )}
       <IconPlaceholder
         lucide="ChevronRightIcon"
         tabler="IconChevronRight"
@@ -159,7 +212,7 @@ function DropdownMenuSubContent({
     <DropdownMenuContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
-        "cn-menu-target cn-menu-translucent w-auto min-w-[96px] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10",
+        "cn-menu-target cn-menu-translucent w-auto min-w-[96px] rounded-lg bg-popover p-2 text-popover-foreground shadow-lg ring-1 ring-foreground/10",
         className
       )}
       align={align}
@@ -176,16 +229,20 @@ function DropdownMenuCheckboxItem({
   children,
   checked,
   inset,
+  description,
   ...props
 }: MenuPrimitive.CheckboxItem.Props & {
   inset?: boolean
+  /** Вторая строка под подписью пункта. */
+  description?: React.ReactNode
 }) {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-md py-2 pr-8 pl-1.5 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        description != null && "py-1.5",
         className
       )}
       checked={checked}
@@ -205,7 +262,13 @@ function DropdownMenuCheckboxItem({
           />
         </MenuPrimitive.CheckboxItemIndicator>
       </span>
-      {children}
+      {description != null ? (
+        <DropdownMenuItemContent description={description}>
+          {children}
+        </DropdownMenuItemContent>
+      ) : (
+        children
+      )}
     </MenuPrimitive.CheckboxItem>
   )
 }
@@ -223,16 +286,20 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  description,
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   inset?: boolean
+  /** Вторая строка под подписью пункта. */
+  description?: React.ReactNode
 }) {
   return (
     <MenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-md py-2 pr-8 pl-1.5 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        description != null && "py-1.5",
         className
       )}
       {...props}
@@ -251,7 +318,13 @@ function DropdownMenuRadioItem({
           />
         </MenuPrimitive.RadioItemIndicator>
       </span>
-      {children}
+      {description != null ? (
+        <DropdownMenuItemContent description={description}>
+          {children}
+        </DropdownMenuItemContent>
+      ) : (
+        children
+      )}
     </MenuPrimitive.RadioItem>
   )
 }
@@ -263,7 +336,7 @@ function DropdownMenuSeparator({
   return (
     <MenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-border", className)}
+      className={cn("-mx-2 my-2 h-px bg-border", className)}
       {...props}
     />
   )

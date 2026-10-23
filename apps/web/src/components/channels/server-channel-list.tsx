@@ -135,11 +135,11 @@ function ServerChannelListFrame({
             />
             <ContextMenuContent>
               <ContextMenuItem onClick={() => setCreateChannelOpen(true)}>
-                <PlusCircleIcon className="size-3.5" />
+                <PlusCircleIcon />
                 {t('createChannel')}
               </ContextMenuItem>
               <ContextMenuItem onClick={() => setCreateCategoryOpen(true)}>
-                <FolderPlusIcon className="size-3.5" />
+                <FolderPlusIcon />
                 {t('createCategory.title')}
               </ContextMenuItem>
             </ContextMenuContent>
