@@ -9,8 +9,8 @@
    inset the slider thumb uses, so ticks and thumb centres agree. */
 @utility slider-mark-position {
   left: calc(
-    var(--slider-thumb-size, 1.125rem) / 2 +
-      (100% - var(--slider-thumb-size, 1.125rem)) * var(--slider-mark-progress, 0)
+    var(--slider-thumb-size, 1.25rem) / 2 +
+      (100% - var(--slider-thumb-size, 1.25rem)) * var(--slider-mark-progress, 0)
   );
 }
 

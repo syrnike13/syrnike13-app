@@ -47,7 +47,7 @@ function Slider({
 
   return (
     <SliderPrimitive.Root
-      className={cn("data-horizontal:w-full data-vertical:h-full", className)}
+      className={cn("data-horizontal:w-full", className)}
       data-slot="slider"
       defaultValue={defaultValue}
       value={value}
@@ -59,7 +59,7 @@ function Slider({
     >
       <SliderPrimitive.Control
         className={cn(
-          "relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
+          "relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
           hasMarks && "data-horizontal:h-11",
         )}
       >
@@ -93,7 +93,7 @@ function Slider({
         ) : null}
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative grow overflow-hidden rounded-full bg-muted select-none data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+          className="relative grow overflow-hidden rounded-full bg-muted select-none data-horizontal:h-1.5 data-horizontal:w-full data-vertical:h-full data-vertical:w-1.5"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-range"
@@ -106,9 +106,9 @@ function Slider({
             key={index}
             getAriaValueText={getAriaValueText}
             className={cn(
-              "relative block shrink-0 rounded-full border border-ring bg-primary-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 has-focus-visible:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
-              // `size-4.5` must match --slider-thumb-size in slider-mark-position.
-              hasMarks ? "size-4.5" : "size-3",
+              "relative block shrink-0 rounded-full border border-ring bg-primary-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-3 hover:ring-3 has-focus-visible:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
+              // `size-5` must match --slider-thumb-size in slider-mark-position.
+              hasMarks ? "size-5" : "size-4",
             )}
           />
         ))}

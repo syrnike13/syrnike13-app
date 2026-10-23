@@ -31,7 +31,10 @@ import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   formatUserVolumeLabel,
+  streamVolumeFromPercent,
+  streamVolumeToPercent,
   VOICE_USER_VOLUME_MAX,
+  VOICE_VOLUME_PERCENT_MAX,
   voiceListenerStore,
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
@@ -522,14 +525,17 @@ export function StageMediaTile({
             <Slider
               className="flex-1"
               min={0}
-              max={VOICE_USER_VOLUME_MAX}
-              step={0.1}
-              value={[volume]}
+              max={isScreen ? VOICE_VOLUME_PERCENT_MAX : VOICE_USER_VOLUME_MAX}
+              step={isScreen ? 1 : 0.1}
+              value={[isScreen ? streamVolumeToPercent(volume) : volume]}
               onValueChange={(value) => {
                 const next = typeof value === 'number' ? value : value[0]
                 if (next == null) return
                 if (isScreen) {
-                  voiceListenerStore.setStreamVolume(item.userId, next)
+                  voiceListenerStore.setStreamVolume(
+                    item.userId,
+                    streamVolumeFromPercent(next),
+                  )
                 } else {
                   voiceListenerStore.setUserVolume(item.userId, next)
                 }

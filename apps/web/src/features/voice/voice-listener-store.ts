@@ -20,6 +20,10 @@ const PERSIST_DELAY_MS = 300
 const DEFAULT_USER_VOLUME = 1
 /** 0–3 (до 300% в UI, в браузере cap 100%). */
 export const VOICE_USER_VOLUME_MAX = 3
+/** Громкость стрима — 0–1: 1 = 100%, буста выше исходного уровня нет. */
+export const VOICE_STREAM_VOLUME_MAX = 1
+/** Шкала слайдеров громкости в процентах. */
+export const VOICE_VOLUME_PERCENT_MAX = 100
 const UnknownVoiceListenerJsonSchema = Schema.String.pipe(
   Schema.decodeTo(Schema.Unknown, SchemaTransformation.fromJsonString()),
 )
@@ -127,6 +131,24 @@ export function formatUserVolumeLabel(userVolume: number) {
   return `${Math.round(userVolume * 100)}%`
 }
 
+/** 0–1 → целые проценты для шкалы слайдера. */
+export function streamVolumeToPercent(volume: number) {
+  return Math.round(
+    Math.min(VOICE_STREAM_VOLUME_MAX, Math.max(0, volume)) *
+      VOICE_VOLUME_PERCENT_MAX,
+  )
+}
+
+/** Целые проценты шкалы → 0–1 для store. */
+export function streamVolumeFromPercent(percent: number) {
+  return Number(
+    (
+      Math.min(VOICE_VOLUME_PERCENT_MAX, Math.max(0, percent)) /
+      VOICE_VOLUME_PERCENT_MAX
+    ).toFixed(2),
+  )
+}
+
 export const voiceListenerStore = {
   subscribe(listener: () => void) {
     listeners.add(listener)
@@ -145,7 +167,10 @@ export const voiceListenerStore = {
       ),
       userMutes: boundedMap(state.userMutes, (value) => typeof value === 'boolean'),
       streamVolumes: boundedMap(state.streamVolumes, (value) =>
-        typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 3,
+        typeof value === 'number' &&
+        Number.isFinite(value) &&
+        value >= 0 &&
+        value <= VOICE_STREAM_VOLUME_MAX,
       ),
       streamMutes: boundedMap(state.streamMutes, (value) => typeof value === 'boolean'),
     }
@@ -183,12 +208,15 @@ export const voiceListenerStore = {
   },
 
   getStreamVolume(userId: string) {
-    return state.streamVolumes[userId] ?? DEFAULT_USER_VOLUME
+    return Math.min(
+      VOICE_STREAM_VOLUME_MAX,
+      Math.max(0, state.streamVolumes[userId] ?? DEFAULT_USER_VOLUME),
+    )
   },
 
   setStreamVolume(userId: string, volume: number) {
     const next = Math.min(
-      VOICE_USER_VOLUME_MAX,
+      VOICE_STREAM_VOLUME_MAX,
       Math.max(0, Number(volume.toFixed(2))),
     )
     if (state.streamVolumes[userId] === next) return

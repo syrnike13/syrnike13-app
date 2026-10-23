@@ -39,9 +39,11 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import {
   formatUserVolumeLabel,
-  useVoiceListenerStore,
+  streamVolumeFromPercent,
+  streamVolumeToPercent,
+  VOICE_VOLUME_PERCENT_MAX,
   voiceListenerStore,
-  VOICE_USER_VOLUME_MAX,
+  useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
 import { useSpringCornerDrag } from '#/hooks/use-spring-corner-drag'
 import {
@@ -121,16 +123,19 @@ function MiniStreamVolumeSection({ userId }: { userId: string }) {
           <Slider
             className="flex-1"
             min={0}
-            max={VOICE_USER_VOLUME_MAX}
-            step={0.1}
-            value={[muted ? 0 : volume]}
+            max={VOICE_VOLUME_PERCENT_MAX}
+            step={1}
+            value={[muted ? 0 : streamVolumeToPercent(volume)]}
             onValueChange={(value) => {
               const next = typeof value === 'number' ? value : value[0]
               if (next == null) return
               if (muted && next > 0) {
                 voiceListenerStore.setStreamMuted(userId, false)
               }
-              voiceListenerStore.setStreamVolume(userId, next)
+              voiceListenerStore.setStreamVolume(
+                userId,
+                streamVolumeFromPercent(next),
+              )
             }}
             aria-label={t('actions.streamVolume')}
           />

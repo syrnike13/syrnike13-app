@@ -44,4 +44,18 @@ describe('VoiceStageStreamVolumeControl', () => {
 
     expect(screen.getByLabelText('Громкость стрима')).toBeTruthy()
   })
+
+  it('exposes the stream volume as a 0–100 percent scale', () => {
+    voiceListenerStore.setStreamVolume('stream-user', 0.35)
+
+    const { container } = render(
+      <VoiceStageStreamVolumeControl userId="stream-user" />,
+    )
+
+    const thumb = container.querySelector('[data-slot="slider-thumb"]')
+    const input = thumb?.querySelector<HTMLInputElement>('input[type="range"]')
+    expect(input?.min).toBe('0')
+    expect(input?.max).toBe('100')
+    expect(input?.value).toBe('35')
+  })
 })

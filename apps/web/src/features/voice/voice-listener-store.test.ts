@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { voiceListenerStore } from '#/features/voice/voice-listener-store'
+import {
+  streamVolumeFromPercent,
+  streamVolumeToPercent,
+  voiceListenerStore,
+} from '#/features/voice/voice-listener-store'
 
 describe('voiceListenerStore mic vs stream channels', () => {
   afterEach(() => {
@@ -46,14 +50,32 @@ describe('voiceListenerStore mic vs stream channels', () => {
     vi.useFakeTimers()
     vi.advanceTimersByTime(1_000)
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
-    for (let step = 1; step <= 20; step += 1) {
+    for (let step = 1; step <= 10; step += 1) {
       voiceListenerStore.setStreamVolume('user-a', step / 10)
     }
-    expect(voiceListenerStore.getStreamVolume('user-a')).toBe(2)
+    expect(voiceListenerStore.getStreamVolume('user-a')).toBe(1)
     expect(setItem).not.toHaveBeenCalled()
     vi.advanceTimersByTime(300)
     expect(setItem).toHaveBeenCalledOnce()
-    expect(setItem.mock.calls[0]?.[1]).toContain('"user-a":2')
+    expect(setItem.mock.calls[0]?.[1]).toContain('"user-a":1')
+  })
+
+  it('caps stream volume at 100% and keeps mic boost', () => {
+    voiceListenerStore.setStreamVolume('user-a', 2)
+    voiceListenerStore.setUserVolume('user-a', 2)
+
+    expect(voiceListenerStore.getStreamVolume('user-a')).toBe(1)
+    expect(voiceListenerStore.getUserVolume('user-a')).toBe(2)
+    expect(voiceListenerStore.snapshot(1).streamVolumes['user-a']).toBe(1)
+  })
+
+  it('round-trips stream volume through slider percents', () => {
+    expect(streamVolumeToPercent(1)).toBe(100)
+    expect(streamVolumeToPercent(0.35)).toBe(35)
+    expect(streamVolumeToPercent(4)).toBe(100)
+    expect(streamVolumeFromPercent(35)).toBe(0.35)
+    expect(streamVolumeFromPercent(100)).toBe(1)
+    expect(streamVolumeFromPercent(140)).toBe(1)
   })
 
   it('defaults stream volume to 1 and stream mute to false', () => {
