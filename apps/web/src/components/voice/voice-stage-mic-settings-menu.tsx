@@ -180,6 +180,8 @@ export function VoicePanelMicSettingsMenuContent() {
         preferredAudioInputDevice={prefs.preferredAudioInputDevice}
       />
 
+      <MicSettingsSeparator />
+
       <button
         type="button"
         className={cn(
@@ -317,6 +319,8 @@ export function VoiceSoundSettingsMenuContent() {
         }}
       />
 
+      <MicSettingsSeparator />
+
       <section className="space-y-2 px-0.5">
         <p className={voiceStagePopoverSectionTitleClass}>
           {t('devices.inputVolume')}
@@ -333,6 +337,8 @@ export function VoiceSoundSettingsMenuContent() {
           }}
         />
       </section>
+
+      <MicSettingsSeparator />
 
       <button
         type="button"
