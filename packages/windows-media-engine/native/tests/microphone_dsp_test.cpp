@@ -232,9 +232,36 @@ void gainFailurePreservesFrameAndEcho() {
   require(frame.samples == signal(2000).samples, "Failed gain discarded the pre-gain frame");
   require(dsp.stats().echo == EchoAvailability::unavailable, "Gain failure mislabeled echo availability");
 }
+void monitorIgnoresMuteButKeepsGate() {
+  MicrophoneDsp dsp(std::make_unique<Enhancement>());
+  MicrophoneDspConfig config;
+  config.gate_threshold_db = -40;
+  config.automatic_gain = false;
+  config.muted = true;
+  config.push_to_talk = true;
+  require(dsp.configure(1, config), "Monitor config rejected");
+  std::array<std::int16_t, 480> monitor{};
+  auto frame = signal(2000);
+  dsp.process(frame, 1'000'000, nullptr, &monitor);
+  require(frame.samples == std::array<std::int16_t, 480>{}, "Monitoring unmuted the published frame");
+  require(monitor[1] > 0 && monitor[0] < 0, "Muted speech was not monitored");
+  config.muted = false;
+  config.push_to_talk = false;
+  require(dsp.configure(2, config), "Unmuted monitor config rejected");
+  frame = signal(2000);
+  dsp.process(frame, 1'000'000, nullptr, &monitor);
+  require(frame.samples == monitor, "Monitor differs from the published frame while unmuted");
+  // The gate hangover lasts 300 ms; the monitor then fades and stays silent.
+  for (int index = 0; index < 40; ++index) {
+    frame = signal(1);
+    dsp.process(frame, 1'000'000, nullptr, &monitor);
+  }
+  require(monitor == std::array<std::int16_t, 480>{}, "Closed gate leaked into the monitor");
+}
 }  // namespace
 int main() try {
   silenceAndControls();
+  monitorIgnoresMuteButKeepsGate();
   productControlRange();
   gateMeasuresBeforeGain();
   gainFailurePreservesFrameAndEcho();

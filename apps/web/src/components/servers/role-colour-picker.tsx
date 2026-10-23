@@ -1,11 +1,13 @@
 import { useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { CheckIcon, PencilIcon } from '#/components/icons'
 
-import { Label } from '#/components/ui/label'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
-/** Палитра пресетов в духе Discord (18 цветов). */
+/** Палитра пресетов ролей (18 цветов). */
 export const ROLE_COLOUR_PRESETS = [
   '#1abc9c',
   '#2ecc71',
@@ -27,10 +29,10 @@ export const ROLE_COLOUR_PRESETS = [
   '#992d22',
 ] as const
 
-const DEFAULT_SWATCH = '#4e5058'
+const DEFAULT_SWATCH_CLASS = 'bg-role-default'
 
 /** Квадрат высотой в два ряда пресетов (size-8 + gap-2 + size-8). */
-const TWIN_ROW_SWATCH_CLASS = 'size-[calc(2*2rem+0.5rem)]'
+const TWIN_ROW_SWATCH_CLASS = 'size-18'
 
 const PRESET_SWATCH_CLASS = 'size-8'
 
@@ -51,6 +53,7 @@ export function RoleColourPicker({
   disabled,
   className,
 }: RoleColourPickerProps) {
+  const t = useTranslations('servers.roles')
   const colourInputRef = useRef<HTMLInputElement>(null)
   const trimmed = value.trim()
   const hasColour = Boolean(trimmed)
@@ -66,10 +69,8 @@ export function RoleColourPicker({
   return (
     <div className={cn('space-y-3', className)}>
       <div className="space-y-1">
-        <Label>Цвет</Label>
-        <p className="text-sm text-muted-foreground">
-          Цвет ника участника задаётся самой высокой ролью в списке ролей.
-        </p>
+        <Label>{t('colour')}</Label>
+        <p className="text-sm text-muted-foreground">{t('colourHint')}</p>
       </div>
 
       <div className="flex items-start gap-2">
@@ -77,35 +78,35 @@ export function RoleColourPicker({
           <button
             type="button"
             disabled={disabled}
-            title="Без цвета"
+            title={t('noColour')}
             className={cn(
               'relative m-0 box-border shrink-0 appearance-none rounded-lg border-2 p-0',
+              DEFAULT_SWATCH_CLASS,
               TWIN_ROW_SWATCH_CLASS,
               isDefault
                 ? 'border-primary ring-2 ring-primary/30'
                 : 'border-transparent',
               disabled && 'cursor-not-allowed opacity-50',
             )}
-            style={{ backgroundColor: DEFAULT_SWATCH }}
             onClick={() => onChange('')}
           />
 
           <button
             type="button"
             disabled={disabled}
-            title="Свой цвет"
+            title={t('customColour')}
             className={cn(
-              'relative m-0 box-border shrink-0 appearance-none overflow-hidden rounded-lg border-2 p-0',
+              'relative m-0 box-border shrink-0 appearance-none overflow-hidden rounded-lg border-2 bg-(--swatch-color) p-0',
               TWIN_ROW_SWATCH_CLASS,
               isCustom
                 ? 'border-primary ring-2 ring-primary/30'
                 : 'border-transparent',
               disabled && 'cursor-not-allowed opacity-50',
             )}
-            style={{ backgroundColor: customDisplayColour }}
+            style={{ '--swatch-color': customDisplayColour } as CSSVars}
             onClick={() => colourInputRef.current?.click()}
           >
-            <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-black/45 text-white">
+            <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-scrim text-on-scrim">
               <PencilIcon className="size-3" />
             </span>
             <input
@@ -131,19 +132,19 @@ export function RoleColourPicker({
                   disabled={disabled}
                   title={preset}
                   className={cn(
-                    'relative m-0 box-border shrink-0 appearance-none rounded-md border-2 p-0',
+                    'relative m-0 box-border shrink-0 appearance-none rounded-md border-2 bg-(--swatch-color) p-0',
                     PRESET_SWATCH_CLASS,
                     selected
                       ? 'border-primary ring-2 ring-primary/30'
                       : 'border-transparent',
                     disabled && 'cursor-not-allowed opacity-50',
                   )}
-                  style={{ backgroundColor: preset }}
+                  style={{ '--swatch-color': preset } as CSSVars}
                   onClick={() => onChange(preset)}
                 >
                   {selected ? (
                     <CheckIcon
-                      className="absolute inset-0 m-auto size-4 text-white drop-shadow-sm"
+                      className="absolute inset-0 m-auto size-4 text-on-scrim drop-shadow-sm"
                       strokeWidth={3}
                       aria-hidden
                     />

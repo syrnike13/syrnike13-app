@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
+import { createTranslator } from '@syrnike13/ui/i18n'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import ru from '#/messages/ru.json'
 import { uploadMediaFile } from './media-api'
+
+const t = createTranslator(ru, 'ru', 'media')
 
 vi.mock('#/lib/config', () => ({
   config: { mediaUrl: 'https://media.example.test' },
@@ -41,6 +45,7 @@ describe('uploadMediaFile', () => {
       'session-token',
       'avatars',
       new File(['data'], 'avatar.png'),
+      t,
     )
     const xhr = MockXMLHttpRequest.latest
     xhr.readyState = 4
@@ -65,6 +70,7 @@ describe('uploadMediaFile', () => {
       'session-token',
       'badges',
       new File(['data'], 'badge.png'),
+      t,
     )
     const xhr = MockXMLHttpRequest.latest
     xhr.readyState = 4
@@ -80,6 +86,7 @@ describe('uploadMediaFile', () => {
       'session-token',
       'backgrounds',
       new File(['data'], 'background.png'),
+      t,
     )
 
     MockXMLHttpRequest.latest.dispatchEvent(new Event('error'))
@@ -93,6 +100,7 @@ describe('uploadMediaFile', () => {
       'session-token',
       'avatars',
       new File(['data'], 'avatar.png'),
+      t,
       onProgress,
     )
 

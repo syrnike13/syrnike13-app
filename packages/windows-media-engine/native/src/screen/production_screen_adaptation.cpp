@@ -73,11 +73,15 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   (void)keyframes_.requestThrough(profile_generation, keyframe_intents_->load());
   const auto keyframe_action = keyframes_.poll(now, encoder_->stats().submitted);
   if (keyframe_action == KeyframeAction::exhausted) {
+    // A lost device is not load: run() reports it so the utility is retired.
+    if (deviceLost()) throw std::runtime_error("Screen GPU device was lost");
+    if (recoverEncoderInPlace(now)) return;
     std::scoped_lock lock(mutex_);
+    // Sustained load, not a broken device: starting the share again can work.
     failure_ = ScreenPublicationFailure{
         "screen_keyframe_progress_deadline",
         "Three bounded keyframe requests produced no confirmed publication progress",
-        "screen_keyframe"};
+        "screen_keyframe", true};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
     return;
@@ -103,6 +107,15 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       update.outcome != BitrateUpdateOutcome::pending) {
     bitrate_completed_ = bitrate_command_;
     std::scoped_lock lock(mutex_);
+    // A frame rate takes effect with its confirmed command; a rejected command
+    // keeps both, so the stream never pairs fewer frames with an old budget.
+    if (pending_fps_ && pending_fps_->revision == update.revision) {
+      if (update.outcome == BitrateUpdateOutcome::applied) {
+        admitted_fps_ = pending_fps_->frame_rate;
+        stats_.admitted_fps = admitted_fps_;
+      }
+      pending_fps_.reset();
+    }
     if (!stop_requested_ && revision == stats_.desired_revision) {
       stats_.bitrate = update;
       if (update.outcome != BitrateUpdateOutcome::applied) stats_.quality_warning = true;
@@ -115,15 +128,14 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   m.interval_ms = last_policy_ms_ ? now - last_policy_ms_ : 500;
   m.selected_preset = current.current_profile;
   m.applied_bitrate = update.applied_bitrate;
+  m.frame_rate = admitted_fps_;
   m.live_update_available = update.available;
   m.update_pending = bitrate_command_ != bitrate_completed_;
+  m.paused = paused_.load();
   m.available_outgoing_bitrate = current.network.available_outgoing_bitrate;
-  // The sender allocation can be tighter than the available link (audio,
-  // retransmission and congestion-window budgets). It is a current control
-  // value, while the independently sampled link must still be fresh below.
-  if (m.available_outgoing_bitrate && current.network.sender_bitrate_allocation)
-    m.available_outgoing_bitrate = (std::min)(*m.available_outgoing_bitrate,
-                                            *current.network.sender_bitrate_allocation);
+  // A current control value; the independently sampled link must still be
+  // fresh below.
+  m.sender_bitrate_allocation = current.network.sender_bitrate_allocation;
   m.network_measurement_fresh = current.network.measured_at_ms > 0 &&
                                 current.network.measured_at_ms <= now &&
                                 now - current.network.measured_at_ms <= 2000;
@@ -133,7 +145,7 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       (std::min)(current.converter.gpu_duration_last_us / 1000, 60'000ULL));
   m.publish_age_ms =
       static_cast<std::uint32_t>((std::min)(current.publish_age_last_us / 1000, 60'000ULL));
-  const auto frame_interval = 1'000'000ULL / kAdaptiveScreenProfiles[current.current_profile].fps;
+  const auto frame_interval = static_cast<std::uint64_t>(frameIntervalUs());
   m.publication_gpu_pressure_permille = static_cast<std::uint32_t>(
       (std::min)(current.converter.gpu_duration_last_us * 1000 / frame_interval, 1000ULL));
   if (previous_policy_stats_) {
@@ -153,8 +165,10 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       m.publication_gpu_pressure_permille = 0;
     }
     if (current.encoder.encoded == previous.encoder.encoded) m.publish_age_ms = 0;
+    // Captures dropped for a full pacer queue are a network symptom: the
+    // sender budget already lowers the target for it. Counting them here would
+    // also set a local cap that outlives the congestion by minutes.
     const auto dropped =
-        delta(current.network_backpressure_drops, previous.network_backpressure_drops) +
         delta(current.conversion_drops, previous.conversion_drops) +
         delta(current.encoder_rejections, previous.encoder_rejections) +
         delta(current.stale_encoded_drops, previous.stale_encoded_drops) +
@@ -169,22 +183,73 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   last_policy_ms_ = now;
   const auto decision = evaluateAdaptiveScreenPolicy(m, policy_state_);
   policy_state_ = decision.next;
+  applyLoadLevel(load_governor_.observe(now, decision.local_measured,
+      decision.local_pressure != AdaptiveReason::healthy, profile_.frames_per_second >= 60));
   {
     std::scoped_lock lock(mutex_);
     stats_.decision_reason = decision.reason;
+    stats_.network_target_bitrate = decision.network_target;
+    stats_.local_ceiling_bitrate = decision.next.local_ceiling.value_or(0);
     // Re-read revision before applying a decision from the immutable sample.
     if (revision != stats_.desired_revision || stop_requested_) return;
     stats_.quality_warning = decision.next.warning || !update.available ||
         update.outcome == BitrateUpdateOutcome::rejected;
-    if (decision.action == AdaptiveAction::keep) return;
+    if (decision.action == AdaptiveAction::keep) {
+      // Without live encoder control, admission alone follows the budget.
+      if (!update.available && decision.frame_rate) {
+        admitted_fps_ = decision.frame_rate;
+        stats_.admitted_fps = admitted_fps_;
+      }
+      return;
+    }
     const auto command = bitrate_command_ + 1;
     if (encoder_->requestBitrate(command, decision.target_bitrate)) {
       bitrate_command_ = command;
+      pending_fps_ = PendingFrameRate{command, decision.frame_rate};
       ++stats_.bitrate_updates;
       stats_.target_bitrate = decision.target_bitrate;
       policy_state_ = recordAdaptiveBitrateAttempt(policy_state_, now);
     }
   }
+}
+
+bool ProductionScreenPipeline::recoverEncoderInPlace(std::uint64_t now) {
+  if (!encoder_recoveries_.available(now)) return false;
+  try {
+    if (!replaceEncoder(output_)) return false;
+  } catch (const EncoderReplacementRefused&) {
+    if (deviceLost()) throw;
+    return false;
+  }
+  encoder_recoveries_.consume(now);
+  std::scoped_lock lock(mutex_);
+  ++stats_.encoder_recoveries;
+  return true;
+}
+
+std::int64_t ProductionScreenPipeline::frameIntervalUs() const noexcept {
+  return static_cast<std::int64_t>(1'000'000 / output_.frames_per_second);
+}
+
+void ProductionScreenPipeline::applyLoadLevel(ScreenLoadLevel level) {
+  if (scheduling_boost_) scheduling_boost_->set(level != ScreenLoadLevel::normal);
+  const bool reduced = level == ScreenLoadLevel::reduced_frame_rate;
+  if (reduced != frame_rate_reduced_) {
+    // The encoder itself runs at the new rate: CBR budgets bits per
+    // configured frame, so only skipping input would also halve the bitrate.
+    auto output = output_;
+    output.frames_per_second = reduced ? profile_.frames_per_second / 2 : profile_.frames_per_second;
+    // Retried on the next sample while borrowed frames are still in flight;
+    // a failed replacement keeps the current encoder and rate.
+    try {
+      if (replaceEncoder(output)) frame_rate_reduced_ = reduced;
+    } catch (const EncoderReplacementRefused&) {
+      if (deviceLost()) throw;
+    }
+  }
+  std::scoped_lock lock(mutex_);
+  stats_.load_level = level;
+  if (scheduling_boost_) stats_.scheduling = scheduling_boost_->stats();
 }
 
 void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t revision) {
@@ -253,5 +318,29 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
   bitrate_command_ = bitrate_completed_ = 0;
   previous_policy_stats_.reset();
   last_policy_ms_ = 0;
+  admitted_fps_ = 0;
+  pending_fps_.reset();
+  {
+    std::scoped_lock lock(mutex_);
+    stats_.admitted_fps = 0;
+  }
+  requestStartBitrate();
+}
+
+void ProductionScreenPipeline::requestStartBitrate() {
+  std::uint32_t start;
+  {
+    std::scoped_lock lock(mutex_);
+    if (!stats_.adaptive_enabled) return;
+    start = adaptiveStartBitrate(kAdaptiveScreenProfiles[stats_.current_profile]);
+  }
+  // The encoder takes the command before its first input, so the opening
+  // keyframe is already inside the budget WebRTC starts with.
+  if (start >= output_.bitrate || !encoder_->requestBitrate(bitrate_command_ + 1, start)) return;
+  ++bitrate_command_;
+  policy_state_ = recordAdaptiveBitrateAttempt(policy_state_, monotonicMs());
+  std::scoped_lock lock(mutex_);
+  stats_.target_bitrate = start;
+  ++stats_.bitrate_updates;
 }
 }  // namespace syrnike::windows_media::screen

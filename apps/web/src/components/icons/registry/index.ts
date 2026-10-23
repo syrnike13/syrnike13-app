@@ -1,4 +1,5 @@
 export * from '#/components/icons/registry/actions'
+export * from '#/components/icons/registry/achievements'
 export * from '#/components/icons/registry/chat'
 export * from '#/components/icons/registry/chrome'
 export * from '#/components/icons/registry/feedback'

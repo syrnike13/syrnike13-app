@@ -8,7 +8,8 @@ struct MicrophoneDemand {
   bool warm = false;
   bool publication = false;
   bool meter = false;
-  bool needed() const noexcept { return warm || publication || meter; }
+  bool monitor = false;
+  bool needed() const noexcept { return warm || publication || meter || monitor; }
 };
 enum class MicrophonePipelineFailure {
   none, invalid_state, input_unavailable, capture_failed, command_timeout, stop_timeout, cancelled,
@@ -54,6 +55,9 @@ class MicrophonePipeline final {
   // Retain this pipeline until that consumer has stopped using both handles.
   std::shared_ptr<MicrophonePcmPort> output() const noexcept;
   void* outputEvent() const noexcept;
+  // Self-monitoring frames, filled only while demand.monitor is set. One
+  // consumer polls it on its own device clock.
+  std::shared_ptr<MicrophonePcmPort> monitorOutput() const noexcept;
  private:
   struct State;
   static void run(const std::shared_ptr<State>&, EnhancementFactory) noexcept;

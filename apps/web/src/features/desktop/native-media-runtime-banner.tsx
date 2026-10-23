@@ -1,26 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import type { NativeMediaRuntimeState, VoiceMediaKind } from '@syrnike13/platform'
 
 import { TriangleAlertIcon } from '#/components/icons'
 import { usePlatform } from '#/platform/use-platform'
 
-const pathLabels: ReadonlyArray<readonly [keyof NativeMediaRuntimeState['paths'], string]> = [
-  ['microphone', 'Микрофон'], ['camera', 'Камера'], ['screen', 'Демонстрация экрана'],
-  ['output', 'Воспроизведение звука'], ['screen_audio', 'Звук демонстрации'],
-  ['screen_preview', 'Предпросмотр демонстрации'], ['camera_preview', 'Предпросмотр камеры'],
-  ['remote_video', 'Входящее видео'],
+const pathLabelKeys: ReadonlyArray<
+  readonly [keyof NativeMediaRuntimeState['paths'], string]
+> = [
+  ['microphone', 'paths.microphone'],
+  ['camera', 'paths.camera'],
+  ['screen', 'paths.screen'],
+  ['output', 'paths.output'],
+  ['screen_audio', 'paths.screenAudio'],
+  ['screen_preview', 'paths.screenPreview'],
+  ['camera_preview', 'paths.cameraPreview'],
+  ['remote_video', 'paths.remoteVideo'],
 ]
 const retryablePaths: ReadonlyArray<readonly [VoiceMediaKind, string]> = [
-  ['microphone', 'Повторить запуск микрофона'],
-  ['output', 'Повторить запуск звука'],
-  ['camera', 'Повторить запуск камеры'],
-  ['screen', 'Повторить демонстрацию'],
-  ['screen_audio', 'Повторить запуск звука демонстрации'],
+  ['microphone', 'retry.microphone'],
+  ['output', 'retry.output'],
+  ['camera', 'retry.camera'],
+  ['screen', 'retry.screen'],
+  ['screen_audio', 'retry.screenAudio'],
 ]
 
 export function NativeMediaRuntimeBanner() {
+  const t = useTranslations('nativeMedia')
   const { desktop } = usePlatform()
   const [state, setState] = useState<NativeMediaRuntimeState | null>(null)
   const pushedStateRevision = useRef(0)
@@ -55,23 +63,23 @@ export function NativeMediaRuntimeBanner() {
   if (!desktop || !state) return null
 
   const messages: string[] = []
-  if (state.status === 'unavailable') messages.push('Нативные медиа недоступны на этом устройстве.')
-  else if (state.status === 'recovering') messages.push('Восстанавливаем медиа…')
-  else if (state.status === 'failed') messages.push('Не удалось запустить медиа.')
+  if (state.status === 'unavailable') messages.push(t('unavailable'))
+  else if (state.status === 'recovering') messages.push(t('recovering'))
+  else if (state.status === 'failed') messages.push(t('failed'))
   else if (state.status === 'ready') {
-    for (const [key, label] of pathLabels) {
+    for (const [key, labelKey] of pathLabelKeys) {
       if (state.paths[key].state !== 'failed') continue
       if (key === 'camera' && state.paths.camera.failure?.code === 'camera_profile_not_permitted') {
-        messages.push('Выбранное качество камеры недоступно для этого аккаунта или канала. Измените качество в настройках.')
+        messages.push(t('cameraProfileNotPermitted'))
       } else if (key === 'screen' && state.paths.screen.failure?.code === 'screen_source_unavailable') {
-        messages.push('Источник демонстрации недоступен. Выберите экран или приложение заново.')
+        messages.push(t('screenSourceUnavailable'))
       } else if (key === 'screen_audio' && state.paths.screen_audio.failure?.code === 'screen_source_unavailable' &&
           state.paths.screen.failure?.code === 'screen_source_unavailable') {
         continue
-      } else messages.push(`${label}: недоступно.`)
+      } else messages.push(t('pathUnavailable', { label: t(labelKey) }))
     }
     if (state.paths.camera.warning && state.paths.camera.state === 'running') {
-      messages.push('Не удалось применить настройки камеры. Продолжаем использовать предыдущие настройки.')
+      messages.push(t('cameraSettingsNotApplied'))
     }
   }
   if (messages.length === 0) return null
@@ -108,12 +116,12 @@ export function NativeMediaRuntimeBanner() {
       <TriangleAlertIcon className="size-3.5" aria-hidden />
       <span>{messages.join(' ')}</span>
       {canRetry ? <button type="button" className="shrink-0 underline" disabled={retrying} onClick={retry}>
-        {retrying ? 'Запускаем…' : 'Повторить запуск'}
+        {retrying ? t('retrying') : t('retryAction')}
       </button> : null}
-      {state.status === 'ready' && state.available ? retryablePaths.map(([kind, label]) =>
+      {state.status === 'ready' && state.available ? retryablePaths.map(([kind, labelKey]) =>
         state.paths[kind].state === 'failed' && state.paths[kind].failure?.retryable ? (
           <button key={kind} type="button" className="shrink-0 underline" disabled={retrying}
-            onClick={() => retryPath(kind)}>{label}</button>
+            onClick={() => retryPath(kind)}>{t(labelKey)}</button>
         ) : null,
       ) : null}
     </div>

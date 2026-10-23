@@ -249,9 +249,10 @@ function desired(
     serverMuted: false,
     serverDeafened: false,
     systemPrivacyMuted: false,
-    monitoringMuted: false,
+    selfMonitoringActive: false,
     inputMode: 'voice_activity',
     pushToTalkHeld: false,
+    pushToMuteHeld: false,
     effectiveMuted: false,
     bypassSystemAudioInputProcessing: true,
     automaticGainControl: false,
@@ -649,6 +650,33 @@ describe('BrowserRtcEngineAdapter', () => {
       events.some((event) => (event as { type?: string }).type === 'terminalFailure'),
     ).toBe(false)
     await adapter.dispose()
+  })
+
+  it('reports a busy camera as a device failure and a denied one as unavailable', async () => {
+    const cameraFailure = async (error: Error) => {
+      const adapter = new BrowserRtcEngineAdapter()
+      const events: unknown[] = []
+      adapter.subscribe((event) => events.push(event))
+      await adapter.connect(lease, desired(), new AbortController().signal)
+      livekit.rooms.at(-1)!.localParticipant.setCameraEnabled.mockRejectedValueOnce(error)
+      adapter.updateDesiredMedia(desired({ cameraEnabled: true }))
+      const failed = () =>
+        events.find(
+          (event) =>
+            (event as { type?: string }).type === 'mediaState' &&
+            (event as { kind?: string }).kind === 'camera' &&
+            (event as { media?: { state?: string } }).media?.state === 'failed',
+        ) as { media: { error: unknown } } | undefined
+      await waitUntil(() => Boolean(failed()))
+      await adapter.dispose()
+      return failed()!.media.error
+    }
+
+    expect(await cameraFailure(new DOMException('busy', 'NotReadableError')))
+      .toMatchObject({ code: 'camera_input_failed', stage: 'camera' })
+    const denied = await cameraFailure(new DOMException('denied', 'NotAllowedError'))
+    expect(denied).toMatchObject({ code: 'camera_unavailable' })
+    expect(denied).not.toHaveProperty('stage')
   })
 
   it('turns an unexpected Room disconnect into one terminal voice failure', async () => {

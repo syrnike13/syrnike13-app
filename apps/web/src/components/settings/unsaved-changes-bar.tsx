@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
+import { CheckIcon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { cn } from '#/lib/utils'
 
 type ExitKind = 'save' | 'reset'
@@ -19,10 +21,12 @@ type UnsavedChangesBarProps = {
 }
 
 export function UnsavedChangesBar({
-  saveLabel = 'Сохранить',
+  saveLabel,
   className,
   placement = 'overlay',
 }: UnsavedChangesBarProps) {
+  const t = useTranslations('settings.unsaved')
+  const saveText = saveLabel ?? t('save')
   const ctx = useDraftContext()
   const controller = ctx?.controller
 
@@ -125,7 +129,7 @@ export function UnsavedChangesBar({
     >
       <div
         className={cn(
-          'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border/80 bg-popover px-4 py-3 text-popover-foreground shadow-lg',
+          'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border bg-popover px-4 py-3 text-popover-foreground shadow-lg',
           (showSaveAck || showResetAck) && 'justify-center',
         )}
       >
@@ -134,19 +138,19 @@ export function UnsavedChangesBar({
             <span className="flex size-6 items-center justify-center rounded-full bg-chart-3/15">
               <CheckIcon className="size-4 text-chart-3" />
             </span>
-            Изменения сохранены
+            {t('saved')}
           </div>
         ) : showResetAck ? (
           <div className="profile-unsaved-feedback flex items-center gap-2 text-sm font-medium">
             <span className="flex size-6 items-center justify-center rounded-full bg-accent">
               <Undo2Icon className="size-4 text-accent-foreground" />
             </span>
-            Изменения отменены
+            {t('reverted')}
           </div>
         ) : (
           <>
             <p className="min-w-0 flex-1 text-sm font-medium leading-snug">
-              Есть несохранённые изменения
+              {t('dirty')}
             </p>
             <div className="flex shrink-0 items-center gap-2">
               <Button
@@ -157,22 +161,22 @@ export function UnsavedChangesBar({
                 className="text-muted-foreground transition-colors hover:text-foreground"
                 onClick={handleReset}
               >
-                Сбросить
+                {t('reset')}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 disabled={saving}
-                className="min-w-[7.5rem] transition-colors"
+                className="min-w-30 transition-colors"
                 onClick={() => void handleSave()}
               >
                 {saving ? (
                   <>
-                    <Loader2Icon className="size-4 animate-spin" />
-                    Сохранение…
+                    <Spinner className="size-4" />
+                    {t('saving')}
                   </>
                 ) : (
-                  saveLabel
+                  saveText
                 )}
               </Button>
             </div>

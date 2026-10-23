@@ -35,7 +35,7 @@ describe('desktop media permissions', () => {
       shouldGrantDesktopMediaPermission(
         appUrl,
         'media',
-        'https://syrnike13.ru/app',
+        'https://app.syrnike13.ru/',
       ),
     ).toBe(false)
     expect(

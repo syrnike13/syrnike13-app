@@ -1,15 +1,12 @@
 name: Production Release And Deploy
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - VERSION
-      - deploy/production/**
-      - .github/workflows/release-images-and-deploy.yml
   workflow_dispatch:
     inputs:
+      version:
+        description: Release version to publish (semver, for example 0.8.0). Required.
+        required: true
+        type: string
       deploy:
         description: Deploy production after publishing images.
         required: false
@@ -35,18 +32,29 @@ concurrency:
 
 jobs:
   version:
-    name: Read release version
+    name: Resolve release version
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha_tag: ${{ steps.version.outputs.sha_tag }}
     steps:
-      - uses: actions/checkout@v4
-      - id: version
+      - name: Validate dispatch branch
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '[:space:]' < VERSION)"
-          test -n "$VERSION"
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Release production from main, not ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+      - id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$REQUESTED_VERSION"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::version must be a semver string such as 0.8.0, got '${VERSION}'."
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha_tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
@@ -55,130 +63,68 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       web: ${{ steps.changes.outputs.web }}
+      landing: ${{ steps.changes.outputs.landing }}
       admin: ${{ steps.changes.outputs.admin }}
       backend: ${{ steps.changes.outputs.backend }}
       livekit: ${{ steps.changes.outputs.livekit }}
       desktop: ${{ steps.changes.outputs.desktop }}
       services: ${{ steps.changes.outputs.services }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
       - id: changes
         env:
-          BEFORE_SHA: ${{ github.event.before }}
           REQUESTED_SERVICES: ${{ inputs.services || '' }}
           RELEASE_DESKTOP: ${{ inputs.desktop || false }}
         run: |
           set -euo pipefail
 
           backend_services="api events autumn january gifbox crond pushd voice-ingress"
-          frontend_services="web admin"
+          frontend_services="web landing admin"
           all_services="$frontend_services $backend_services livekit"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            desktop="$RELEASE_DESKTOP"
-            if [ -n "$REQUESTED_SERVICES" ]; then
-              services="$REQUESTED_SERVICES"
-              web=false
-              admin=false
-              backend=false
-              livekit=false
+          desktop="$RELEASE_DESKTOP"
 
-              if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' web '; then
-                web=true
-              fi
+          if [ -z "$REQUESTED_SERVICES" ]; then
+            services="$all_services"
+            web=true
+            landing=true
+            admin=true
+            backend=true
+            livekit=true
+          else
+            services="$REQUESTED_SERVICES"
+            web=false
+            landing=false
+            admin=false
+            backend=false
+            livekit=false
 
-              if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' admin '; then
-                admin=true
-              fi
-
-              for service in $backend_services; do
-                case " $REQUESTED_SERVICES " in
-                  *" $service "*) backend=true ;;
-                esac
-              done
-
-              if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' livekit '; then
-                livekit=true
-              fi
-            else
-              services="$all_services"
+            if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' web '; then
               web=true
+            fi
+
+            if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' landing '; then
+              landing=true
+            fi
+
+            if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' admin '; then
               admin=true
-              backend=true
+            fi
+
+            for service in $backend_services; do
+              case " $REQUESTED_SERVICES " in
+                *" $service "*) backend=true ;;
+              esac
+            done
+
+            if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' livekit '; then
               livekit=true
             fi
-            {
-              echo "web=$web"
-              echo "admin=$admin"
-              echo "backend=$backend"
-              echo "livekit=$livekit"
-              echo "desktop=$desktop"
-              echo "services=$services"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          publish_all=false
-          changed_files=""
-
-          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
-              git fetch --no-tags --depth=1 origin "$BEFORE_SHA" || true
-            fi
-
-            if git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
-              changed_files="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
-            else
-              echo "::warning::Previous push commit $BEFORE_SHA is unavailable; publishing all images."
-              publish_all=true
-            fi
-          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-            changed_files="$(git diff --name-only HEAD^ HEAD)"
-          else
-            echo "::warning::No previous commit is available; publishing all images."
-            publish_all=true
-          fi
-
-          if [ "$publish_all" = true ]; then
-            {
-              echo "web=true"
-              echo "admin=true"
-              echo "backend=true"
-              echo "livekit=true"
-              echo "desktop=true"
-              echo "services=$all_services"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          backend=false
-          livekit=false
-          desktop=false
-          services="$frontend_services"
-
-          if printf '%s\n' "$changed_files" | grep -Eq '^deploy/production/compose\.yml$'; then
-            services="$services database"
-          fi
-
-          if printf '%s\n' "$changed_files" | grep -Eq '^VERSION$'; then
-            desktop=true
-          fi
-
-          if printf '%s\n' "$changed_files" | grep -Eq '^(services/backend/|deploy/production/|\.github/workflows/release-images-and-deploy\.yml)'; then
-            backend=true
-            services="$services $backend_services"
-          fi
-
-          if printf '%s\n' "$changed_files" | grep -Eq '^(services/livekit-server/|deploy/production/|\.github/workflows/release-images-and-deploy\.yml)'; then
-            livekit=true
-            services="$services livekit"
           fi
 
           {
-            echo "web=true"
-            echo "admin=true"
+            echo "web=$web"
+            echo "landing=$landing"
+            echo "admin=$admin"
             echo "backend=$backend"
             echo "livekit=$livekit"
             echo "desktop=$desktop"
@@ -194,6 +140,10 @@ jobs:
     if: ${{ needs.changes.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -211,6 +161,8 @@ jobs:
             VITE_APP_TITLE=syrnike13
             VITE_RELEASE_CHANNEL=stable
             VITE_API_URL=https://syrnike13.ru/api
+            VITE_PUBLIC_APP_URL=https://app.syrnike13.ru
+            VITE_PUBLIC_SITE_URL=https://syrnike13.ru
             VITE_WS_URL=wss://syrnike13.ru/ws
             VITE_MEDIA_URL=https://syrnike13.ru/autumn
             VITE_PROXY_URL=https://syrnike13.ru/january
@@ -221,6 +173,40 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.sha_tag }}
 
+  landing:
+    name: Publish landing image
+    runs-on: ubuntu-24.04
+    needs:
+      - version
+      - changes
+    if: ${{ needs.changes.outputs.landing == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/landing/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13
+            VITE_APP_URL=https://app.syrnike13.ru
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-landing:latest
+            ghcr.io/${{ github.repository_owner }}/app-landing:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/app-landing:${{ needs.version.outputs.sha_tag }}
+
   admin:
     name: Publish admin image
     runs-on: ubuntu-24.04
@@ -230,6 +216,10 @@ jobs:
     if: ${{ needs.changes.outputs.admin == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -263,6 +253,10 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -313,6 +307,10 @@ jobs:
             dockerfile: crates/daemons/voice-ingress/Dockerfile
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -354,16 +352,53 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      # A LiveKit restart drops every room on the node, so an image for an
+      # already published source tree is reused instead of rebuilt.
+      - id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse HEAD:services/livekit-server)"
+          tree_ref="$IMAGE:tree-$tree"
+          echo "tree_ref=$tree_ref" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$tree_ref" >/dev/null 2>&1; then
+            echo "Reusing $tree_ref; services/livekit-server is unchanged."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image for tree $tree; building LiveKit."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: ${{ steps.image.outputs.build == 'true' }}
+        uses: docker/build-push-action@v7
         with:
           context: services/livekit-server
           file: services/livekit-server/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
+            ${{ steps.image.outputs.tree_ref }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:latest
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.sha_tag }}
+      - if: ${{ steps.image.outputs.build != 'true' }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+          TREE_REF: ${{ steps.image.outputs.tree_ref }}
+          VERSION_TAG: ${{ needs.version.outputs.version }}
+          SHA_TAG: ${{ needs.version.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          digest() {
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$1" | jq -r .digest
+          }
+          docker buildx imagetools create -t "$IMAGE:$VERSION_TAG" -t "$IMAGE:$SHA_TAG" "$TREE_REF"
+          # Touch :latest only when it points elsewhere (e.g. a rollback), so
+          # the server keeps the same image and compose leaves livekit running.
+          if [ "$(digest "$IMAGE:latest" 2>/dev/null || true)" != "$(digest "$TREE_REF")" ]; then
+            echo "Moving $IMAGE:latest to $TREE_REF."
+            docker buildx imagetools create -t "$IMAGE:latest" "$TREE_REF"
+          fi
 
   native-windows:
     name: Build Windows native runtime
@@ -396,8 +431,18 @@ jobs:
           - os: ubuntu-24.04
             artifact: desktop-linux
     runs-on: ${{ matrix.os }}
+    env:
+      SYRNIKE_DESKTOP_BUILD_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        # This matrix also runs on windows-2022, where the default shell is
+        # pwsh: `printf` there receives an empty "$RELEASE_VERSION" because
+        # PowerShell needs "$env:RELEASE_VERSION" for environment variables.
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -589,9 +634,11 @@ jobs:
             "bash -s '$DEPLOY_PATH/data/desktop' '$DESKTOP_RELEASE_KEEP_VERSIONS'" \
             < tooling/scripts/prune-desktop-artifacts.sh
       - name: Verify desktop update feed
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '[:space:]' < VERSION)"
+          VERSION="$RELEASE_VERSION"
           FEED_FILES=(latest.yml latest-mac.yml latest-linux.yml)
           for FEED_FILE in "${FEED_FILES[@]}"; do
             FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/${FEED_FILE}")"
@@ -621,6 +668,7 @@ jobs:
       - changes
       - version
       - web
+      - landing
       - admin
       - backend-services
       - livekit
@@ -630,12 +678,13 @@ jobs:
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.admin.result != 'failure' && needs.admin.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (needs.changes.outputs.desktop != 'true' || (needs.desktop-github-release.result == 'success' && needs.desktop-upload-production.result == 'success')) && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.landing.result != 'failure' && needs.landing.result != 'cancelled' && needs.admin.result != 'failure' && needs.admin.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (needs.changes.outputs.desktop != 'true' || (needs.desktop-github-release.result == 'success' && needs.desktop-upload-production.result == 'success')) && inputs.deploy == true }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      SYRNIKE_APP_DOMAIN: ${{ vars.SYRNIKE_APP_DOMAIN || 'app.syrnike13.ru' }}
       SYRNIKE_ADMIN_DOMAIN: ${{ vars.SYRNIKE_ADMIN_DOMAIN || 'admin.syrnike13.ru' }}
       SYRNIKE_REVERSE_PROXY: ${{ vars.SYRNIKE_REVERSE_PROXY || 'false' }}
       SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
@@ -651,6 +700,7 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_APP_DOMAIN"
           test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
@@ -699,9 +749,11 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' CADDYFILE_CANDIDATE='$CADDYFILE_CANDIDATE' && ./scripts/deploy-on-server.sh && rm -f '$CADDYFILE_CANDIDATE'"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_APP_DOMAIN='$SYRNIKE_APP_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' CADDYFILE_CANDIDATE='$CADDYFILE_CANDIDATE' && ./scripts/deploy-on-server.sh && rm -f '$CADDYFILE_CANDIDATE'"
       - name: Verify API
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_DOMAIN}/" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_APP_DOMAIN}/" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null

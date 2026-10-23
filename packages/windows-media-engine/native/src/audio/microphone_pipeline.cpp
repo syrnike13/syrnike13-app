@@ -43,6 +43,8 @@ struct MicrophonePipeline::State {
   std::atomic<std::uint64_t> posted{0}, applied{0};
   std::atomic<bool> initialized{false}, command_ok{false}, failed{false};
   std::shared_ptr<MicrophonePcmPort> output = std::make_shared<MicrophonePcmPort>();
+  std::shared_ptr<MicrophonePcmPort> monitor_output = std::make_shared<MicrophonePcmPort>();
+  std::atomic<bool> monitor{false};
   std::atomic<std::uint64_t> output_frames{0}, stale_frames{0};
   // Meter has the same triple-buffer ownership protocol as PCM, at 10 Hz.
   std::array<MicrophoneDspStats, 3> meters{};
@@ -164,6 +166,7 @@ MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand,
     }
     active_.reset();
   }
+  state_->monitor.store(demand.monitor, std::memory_order_relaxed);
   stats_.demand = demand;
   return MicrophonePipelineFailure::none;
 }
@@ -233,6 +236,7 @@ bool MicrophonePipeline::stop(Clock::time_point deadline) noexcept {
 }
 std::shared_ptr<MicrophonePcmPort> MicrophonePipeline::output() const noexcept { return state_->output; }
 void* MicrophonePipeline::outputEvent() const noexcept { return state_->output_event.value; }
+std::shared_ptr<MicrophonePcmPort> MicrophonePipeline::monitorOutput() const noexcept { return state_->monitor_output; }
 
 void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFactory factory) noexcept {
   try {
@@ -243,6 +247,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
     HANDLE frame_event = nullptr;
     std::uint64_t generation = 0;
     auto next_meter = Clock::now();
+    MicrophoneFrame monitor_frame;
     state->initialized.store(true);
     SetEvent(state->ready.value);
     for (;;) {
@@ -274,7 +279,15 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
           state->stale_frames.fetch_add(1, std::memory_order_relaxed);
           continue;
         }
-        dsp.process(*frame, now, echo_reference);
+        const bool monitor = state->monitor.load(std::memory_order_relaxed);
+        dsp.process(*frame, now, echo_reference, monitor ? &monitor_frame.samples : nullptr);
+        if (monitor) {
+          monitor_frame.generation = frame->generation;
+          monitor_frame.sequence = frame->sequence;
+          monitor_frame.timestamp_100ns = frame->timestamp_100ns;
+          monitor_frame.discontinuity = frame->discontinuity;
+          state->monitor_output->publish(monitor_frame);
+        }
         state->output->publish(*frame);
         state->output_frames.fetch_add(1, std::memory_order_relaxed);
         SetEvent(state->output_event.value);

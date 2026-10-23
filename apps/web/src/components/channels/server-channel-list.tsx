@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   useCallback,
   useEffect,
@@ -5,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
   type ReactNode,
 } from 'react'
 import type { User } from '@syrnike13/api-types'
@@ -24,14 +24,17 @@ import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import {
-  FloatingMenu,
-  FloatingMenuItem,
-} from '#/components/ui/floating-menu'
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ChannelUnreadState } from '#/features/sync/types'
+import { GUILD_BANNER_CONTENT_OFFSET_CLASS } from '#/components/layout/shell-chrome'
 import {
   applyChannelDragResult,
   afterCategoryDroppableId,
@@ -46,6 +49,7 @@ import {
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -54,6 +58,8 @@ type ServerChannelListProps = {
   users: Record<string, User>
   currentUserId?: string
   unreads: Record<string, ChannelUnreadState | undefined>
+  /** Оставляет место под видимую часть баннера сервера. */
+  bannerOffset?: boolean
 }
 
 function collapsedStorageKey(serverId: string, categoryId: string) {
@@ -82,17 +88,17 @@ function writeCollapsed(serverId: string, categoryId: string, collapsed: boolean
 function ServerChannelListFrame({
   serverId,
   canManage,
+  bannerOffset = false,
   children,
 }: {
   serverId: string
   canManage: boolean
+  bannerOffset?: boolean
   children: ReactNode
 }) {
+  const t = useTranslations('channels')
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
-  const [emptyMenu, setEmptyMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  )
   const rootRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
@@ -112,50 +118,34 @@ function ServerChannelListFrame({
     return () => observer.disconnect()
   }, [])
 
-  function handleEmptyContextMenu(event: MouseEvent<HTMLDivElement>) {
-    if (!canManage) return
-    event.preventDefault()
-    setEmptyMenu({ x: event.clientX, y: event.clientY })
-  }
-
   return (
     <>
-      <div ref={rootRef} className="flex min-h-full flex-col p-2">
-        <div className="shrink-0">{children}</div>
-        {canManage ? (
+      <div ref={rootRef} className="flex min-h-full flex-col px-2 pt-3 pb-4">
+        {bannerOffset ? (
           <div
-            className="min-h-8 flex-1"
-            aria-hidden
-            onContextMenu={handleEmptyContextMenu}
+            aria-hidden="true"
+            className={cn('shrink-0', GUILD_BANNER_CONTENT_OFFSET_CLASS)}
           />
         ) : null}
+        <div className="shrink-0">{children}</div>
+        {canManage ? (
+          <ContextMenu>
+            <ContextMenuTrigger
+              render={<div className="min-h-8 flex-1" aria-hidden />}
+            />
+            <ContextMenuContent>
+              <ContextMenuItem onClick={() => setCreateChannelOpen(true)}>
+                <PlusCircleIcon />
+                {t('createChannel')}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => setCreateCategoryOpen(true)}>
+                <FolderPlusIcon />
+                {t('createCategory.title')}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : null}
       </div>
-
-      <FloatingMenu
-        open={emptyMenu !== null}
-        x={emptyMenu?.x ?? 0}
-        y={emptyMenu?.y ?? 0}
-        onClose={() => setEmptyMenu(null)}
-      >
-        <FloatingMenuItem
-          onClick={() => {
-            setEmptyMenu(null)
-            setCreateChannelOpen(true)
-          }}
-        >
-          <PlusCircleIcon className="size-3.5" />
-          Создать канал
-        </FloatingMenuItem>
-        <FloatingMenuItem
-          onClick={() => {
-            setEmptyMenu(null)
-            setCreateCategoryOpen(true)
-          }}
-        >
-          <FolderPlusIcon className="size-3.5" />
-          Создать категорию
-        </FloatingMenuItem>
-      </FloatingMenu>
 
       {canManage ? (
         <>
@@ -256,7 +246,6 @@ function ChannelDroppableList({
                     }
                   }}
                   {...dragProvided.draggableProps}
-                  style={dragProvided.draggableProps.style}
                   className={cn(
                     'touch-none',
                     dragSnapshot.isDragging && 'z-50',
@@ -364,7 +353,7 @@ function ChannelSectionList({
               {header}
               {!collapsed ? (
                 <div
-                  className="h-9 shrink-0"
+                  className="h-8 shrink-0"
                   aria-hidden
                   data-empty-category-slot=""
                 />
@@ -423,7 +412,9 @@ export function ServerChannelList({
   users,
   currentUserId,
   unreads,
+  bannerOffset = false,
 }: ServerChannelListProps) {
+  const t = useTranslations('channels')
   const auth = useAuth()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore(
@@ -570,9 +561,7 @@ export function ServerChannelList({
           Effect.sync(() => {
             setOptimisticSections(null)
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось сохранить порядок',
+              apiErrorMessage(error, t('list.orderError')),
             )
           }),
         ),
@@ -646,9 +635,13 @@ export function ServerChannelList({
 
   if (channels.length === 0) {
     return (
-      <ServerChannelListFrame serverId={serverId} canManage={canManage}>
+      <ServerChannelListFrame
+        serverId={serverId}
+        canManage={canManage}
+        bannerOffset={bannerOffset}
+      >
         <p className="px-2 py-4 text-xs text-muted-foreground">
-          Нет доступных каналов
+          {t('list.empty')}
         </p>
       </ServerChannelListFrame>
     )
@@ -687,14 +680,22 @@ export function ServerChannelList({
 
   if (!canManage) {
     return (
-      <ServerChannelListFrame serverId={serverId} canManage={false}>
+      <ServerChannelListFrame
+        serverId={serverId}
+        canManage={false}
+        bannerOffset={bannerOffset}
+      >
         <nav className="flex flex-col gap-0.5">{list}</nav>
       </ServerChannelListFrame>
     )
   }
 
   return (
-    <ServerChannelListFrame serverId={serverId} canManage>
+    <ServerChannelListFrame
+      serverId={serverId}
+      canManage
+      bannerOffset={bannerOffset}
+    >
       <DragDropContext onDragStart={startPointerTracking} onDragEnd={handleDragEnd}>
         <nav className="flex flex-col gap-0.5">{list}</nav>
       </DragDropContext>

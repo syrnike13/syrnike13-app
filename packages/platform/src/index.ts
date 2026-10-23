@@ -144,6 +144,9 @@ export { IPC, type IpcChannel } from './ipc'
 export {
   APPEARANCE_GRADIENT_MAX_COLORS,
   APPEARANCE_GRADIENT_MIN_COLORS,
+  APPEARANCE_SCALE_MAX,
+  APPEARANCE_SCALE_MIN,
+  APPEARANCE_SCALE_STEP,
   AppearanceColorModeSchema,
   AppearanceGradientSettingsSchema,
   AppearanceSettingsSchema,
@@ -174,6 +177,7 @@ export {
   DesktopVoiceSettingsSchema,
   normalizeAppearanceColorMode,
   normalizeAppearanceGradientSettings,
+  normalizeAppearanceScale,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
   normalizeDesktopLocalSettings,
@@ -253,9 +257,11 @@ export type {
 } from './voice/voice-types'
 export {
   areVoiceMediaDesiredStatesEqual,
+  computeEffectiveDeafened,
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
+  deafenToggleCommand,
   isVoiceCommand,
   isVoiceRemoteAudioSettings,
   isVoiceSnapshot,

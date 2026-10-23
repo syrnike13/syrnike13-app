@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { ChevronDownIcon, PlusIcon, SettingsIcon } from '#/components/icons'
 import { useState } from 'react'
 
@@ -8,7 +9,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import { cn } from '#/lib/utils'
 
 type ChannelCategoryHeaderProps = {
@@ -28,36 +29,37 @@ export function ChannelCategoryHeader({
   canManage,
   onToggleCollapsed,
 }: ChannelCategoryHeaderProps) {
+  const t = useTranslations('channels')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
 
   const header = (
     <div
-      className="group/category flex items-center gap-0.5 px-1 pt-3 pb-0.5"
+      className="group/category flex h-10 items-center gap-1 px-2 pt-4"
       data-channel-category=""
     >
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-0.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1 text-left"
         onClick={onToggleCollapsed}
       >
+        <span className="truncate text-sm font-medium leading-4.5 tracking-tight text-muted-foreground">
+          {title}
+        </span>
         <ChevronDownIcon
           className={cn(
             'size-3 shrink-0 text-muted-foreground transition-transform',
             collapsed && '-rotate-90',
           )}
         />
-        <span className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-          {title}
-        </span>
       </button>
       {canManage ? (
         <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/category:opacity-100">
           <button
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Создать канал"
-            aria-label="Создать канал"
+            title={t('createChannel')}
+            aria-label={t('createChannel')}
             onClick={() => setCreateChannelOpen(true)}
           >
             <PlusIcon className="size-3.5" />
@@ -65,8 +67,8 @@ export function ChannelCategoryHeader({
           <button
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Настройки категории"
-            aria-label="Настройки категории"
+            title={t('categorySettings')}
+            aria-label={t('categorySettings')}
             onClick={() => setSettingsOpen(true)}
           >
             <SettingsIcon className="size-3.5" />
@@ -80,15 +82,15 @@ export function ChannelCategoryHeader({
     <>
       {canManage ? (
         <ContextMenu>
-          <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
+          <ContextMenuTrigger render={header} />
           <ContextMenuContent className="w-52">
-            <ContextMenuItem onSelect={() => setCreateChannelOpen(true)}>
-              <PlusIcon className="size-3.5" />
-              Создать канал
+            <ContextMenuItem onClick={() => setCreateChannelOpen(true)}>
+              <PlusIcon />
+              {t('createChannel')}
             </ContextMenuItem>
-            <ContextMenuItem onSelect={() => setSettingsOpen(true)}>
-              <SettingsIcon className="size-3.5" />
-              Настройки категории
+            <ContextMenuItem onClick={() => setSettingsOpen(true)}>
+              <SettingsIcon />
+              {t('categorySettings')}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>

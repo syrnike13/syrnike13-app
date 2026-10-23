@@ -181,7 +181,39 @@ void WindowsMediaRuntime::run() noexcept {
             {"encoder_rejections", static_cast<double>(pipeline.encoder_rejections)},
             {"sender_superseded", static_cast<double>(pipeline.sender.superseded)},
         }};
-      } else snapshot_.screen_video_metrics.reset();
+        // Bitrate control: confirmed and commanded encoder rate, what WebRTC
+        // allows, the local-pressure cap (0: none), pacer queueing and the
+        // capture rate admitted below the preset floor.
+        const auto preset_fps = pipeline.current_profile < screen::kAdaptiveScreenProfiles.size()
+            ? screen::kAdaptiveScreenProfiles[pipeline.current_profile].fps : 0U;
+        snapshot_.screen_bitrate_metrics = std::array<DiagnosticMetric, 8>{{
+            {"applied_bitrate", static_cast<double>(pipeline.bitrate.applied_bitrate)},
+            {"target_bitrate", static_cast<double>(pipeline.target_bitrate)},
+            {"network_target_bitrate", static_cast<double>(pipeline.network_target_bitrate)},
+            {"local_ceiling_bitrate", static_cast<double>(pipeline.local_ceiling_bitrate)},
+            {"sender_bitrate_allocation", static_cast<double>(
+                pipeline.network.sender_bitrate_allocation.value_or(0))},
+            {"packet_send_delay_us", static_cast<double>(
+                pipeline.network.packet_send_delay_us.value_or(0))},
+            {"bitrate_update_outcome", static_cast<double>(pipeline.bitrate.outcome)},
+            {"admitted_fps", static_cast<double>(
+                pipeline.admitted_fps ? pipeline.admitted_fps : preset_fps)},
+        }};
+        snapshot_.screen_load_metrics = std::array<DiagnosticMetric, 6>{{
+            {"load_level", static_cast<double>(pipeline.load_level)},
+            {"mmcss_registered", pipeline.scheduling.mmcss_registered ? 1.0 : 0.0},
+            // -1: no class applied (not boosted, or refused by Windows).
+            {"gpu_process_priority", pipeline.scheduling.gpu_process_priority
+                ? static_cast<double>(*pipeline.scheduling.gpu_process_priority) : -1.0},
+            {"stale_encoded_drops", static_cast<double>(pipeline.stale_encoded_drops)},
+            {"dependent_encoded_drops", static_cast<double>(pipeline.dependent_encoded_drops)},
+            {"encoder_recoveries", static_cast<double>(pipeline.encoder_recoveries)},
+        }};
+      } else {
+        snapshot_.screen_video_metrics.reset();
+        snapshot_.screen_bitrate_metrics.reset();
+        snapshot_.screen_load_metrics.reset();
+      }
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();
@@ -240,7 +272,7 @@ void WindowsMediaRuntime::run() noexcept {
           audio_path.failure = audioFailure(*audio.failure);
       }
       if (desired_.camera.state == CameraIntentState::on) {
-        snapshot_.camera_metrics = std::array<DiagnosticMetric, 13>{{
+        snapshot_.camera_metrics = std::array<DiagnosticMetric, 15>{{
           {"capture_frames", static_cast<double>(camera.pipeline.capture.frames)},
           {"capture_stale", static_cast<double>(camera.pipeline.capture.stale)},
           {"capture_failure", static_cast<double>(camera.pipeline.capture.failure)},
@@ -254,6 +286,9 @@ void WindowsMediaRuntime::run() noexcept {
           {"preview_failure", static_cast<double>(camera.preview.failure)},
           {"publication_submitted", static_cast<double>(camera.publication.submitted)},
           {"publication_failure", static_cast<double>(camera.publication.failure)},
+          // The failed open is otherwise visible only as camera_input_failed.
+          {"open_failure", static_cast<double>(camera.pipeline.failure)},
+          {"open_platform_error", static_cast<double>(camera.pipeline.open_platform_error)},
         }};
       } else snapshot_.camera_metrics.reset();
       if (desired_.microphone.state != MicrophoneIntentState::off) {

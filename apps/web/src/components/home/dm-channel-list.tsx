@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { Button } from '#/components/ui/button'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -23,6 +24,10 @@ type DmChannelListProps = {
 }
 
 export function DmChannelList({ activeChannelId, className }: DmChannelListProps) {
+  const t = useTranslations('home.dm')
+  const tVoice = useTranslations('layout.voice')
+  const tChannel = useTranslations('channels.channelItem')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
   const syncState = useSyncStore((s) => s)
@@ -33,7 +38,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   if (!ready) {
     return (
       <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        Синхронизация…
+        {t('syncing')}
       </p>
     )
   }
@@ -41,7 +46,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   if (dmChannels.length === 0) {
     return (
       <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        Нет личных сообщений
+        {t('empty')}
       </p>
     )
   }
@@ -49,7 +54,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   return (
     <nav className={cn('flex flex-col gap-0.5', className)}>
       {dmChannels.map((channel) => {
-        const label = getChannelLabel(channel, users, auth.user?._id)
+        const label = getChannelLabel(channel, users, auth.user?._id, tChat)
         const active = channel._id === activeChannelId
         const notificationBadge = selectChannelNotificationBadge(
           syncState,
@@ -67,28 +72,31 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
           isIncomingVoiceCall(voiceCall, auth.user?._id)
         const voiceCallMarkerTitle =
           voiceCall?.phase === 'active'
-            ? 'Идёт звонок'
+            ? tVoice('activeCall')
             : incomingVoiceCall
-              ? 'Входящий звонок'
+              ? tVoice('incomingCall')
               : null
 
         return (
-          <Button
+          <Link
             key={channel._id}
-            variant={active ? 'secondary' : 'ghost'}
-            className="h-11 justify-start gap-2.5 px-2.5 text-base font-normal"
-            asChild
+            to={`${prefix}/c/$channelId`}
+            params={{ channelId: channel._id }}
+            search={{ m: undefined }}
+            data-avatar-hover-scope=""
+            className={cn(
+              buttonVariants({
+                variant: active ? 'secondary' : 'ghost',
+              }),
+              'h-11 justify-start gap-2.5 px-2.5 text-base font-normal',
+            )}
           >
-            <Link
-              to={`${prefix}/c/$channelId`}
-              params={{ channelId: channel._id }}
-              search={{ m: undefined }}
-            >
               {dmUser ? (
                 <UserAvatar
                   user={dmUser}
                   className="size-8"
                   fallbackClassName="size-8 text-xs"
+                  hoverScope="parent"
                 />
               ) : channel.channel_type === 'Group' ? (
                 channel.icon ? (
@@ -99,7 +107,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   />
                 ) : (
                   <span
-                    title="Групповой чат"
+                    title={tChannel('groupChat')}
                     className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
                   >
                     <UsersIcon aria-hidden="true" className="size-5" />
@@ -124,7 +132,6 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                 />
               ) : null}
             </Link>
-          </Button>
         )
       })}
     </nav>

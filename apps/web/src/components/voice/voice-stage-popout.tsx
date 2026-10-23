@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { PortalContainerProvider } from '#/components/ui/portal-container'
+import { PortalContainerProvider } from '@syrnike13/ui/primitives/portal-container'
+
+import { useNativeContextMenuGuard } from '#/components/native-context-menu-guard'
 
 type VoiceStagePopoutProps = {
   childWindow: Window
@@ -82,7 +84,7 @@ function ensurePopoutDocument(childWindow: Window) {
         height: 100%;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: var(--media-backdrop);
       }
       html, body {
         display: flex;
@@ -114,6 +116,8 @@ export function VoiceStagePopout({
 }: VoiceStagePopoutProps) {
   const onCloseRef = useRef(onClose)
   const [container, setContainer] = useState<HTMLElement | null>(null)
+
+  useNativeContextMenuGuard(childWindow.document)
 
   useEffect(() => {
     onCloseRef.current = onClose

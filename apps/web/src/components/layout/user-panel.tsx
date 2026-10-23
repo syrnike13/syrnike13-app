@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { SettingsIcon, TelegramIcon } from '#/components/icons'
 import {
@@ -11,13 +12,15 @@ import { VoiceSoundSplitControl } from '#/components/voice/voice-sound-split-con
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
-import { Button } from '#/components/ui/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -28,16 +31,16 @@ import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { FLOATING_BAR_HEIGHT_CLASS } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
-const gatewayLabels = {
-  idle: 'Не подключён',
-  connecting: 'Подключение…',
-  connected: 'в сети',
-  disconnected: 'Нет связи',
-  reconnecting: 'Переподключение…',
+const gatewayStatusKeys = {
+  idle: 'status.idle',
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  disconnected: 'status.disconnected',
+  reconnecting: 'status.reconnecting',
 } as const
 
 const userPanelControlButtonClass =
-  'size-9 shrink-0 rounded-md bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+  'size-8 shrink-0 text-muted-foreground'
 
 const TELEGRAM_CHANNEL_URL = 'https://t.me/+oF1TAWZ2yyQwMDcy'
 
@@ -53,6 +56,8 @@ export function UserPanel({
   onDismissTelegramPromo,
   onHeightChange,
 }: UserPanelProps) {
+  const t = useTranslations('layout.user')
+  const tc = useTranslations('chat')
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceSession = useVoiceSession()
@@ -101,8 +106,8 @@ export function UserPanel({
   const soundOff = voiceSession.deafened
 
   const statusLabel = gatewayConnected
-    ? userStatusSubtitle(user)
-    : gatewayLabels[auth.gatewayState]
+    ? userStatusSubtitle(user, tc)
+    : t(gatewayStatusKeys[auth.gatewayState])
 
   return (
     <div
@@ -149,92 +154,93 @@ export function UserPanel({
         ) : null}
 
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverAnchor asChild>
-            <div
-              className={cn(
-                'flex w-full items-center gap-2.5 px-2.5',
-                FLOATING_BAR_HEIGHT_CLASS,
-              )}
-            >
-              <PopoverTrigger asChild>
+          <div
+            className={cn(
+              'flex w-full items-center gap-2 px-3',
+              FLOATING_BAR_HEIGHT_CLASS,
+            )}
+          >
+            <PopoverTrigger
+              render={
                 <button
                   type="button"
-                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
-                >
-                  <UserAvatar
-                    user={user}
-                    className="size-9 shrink-0"
-                    fallbackClassName="size-9"
-                    showPresence
-                  />
-                  <div className="min-w-0 flex-1 overflow-hidden">
-                    <p className="truncate text-sm font-semibold leading-4">
-                      {displayName}
-                    </p>
-                    <div className="relative h-4 overflow-hidden">
-                      <p
-                        className={cn(
-                          'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
-                          'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
-                          gatewayConnected
-                            ? 'text-muted-foreground'
-                            : gatewayReconnecting
-                              ? 'text-chart-2/90'
-                              : 'text-destructive/80',
-                        )}
-                      >
-                        {statusLabel}
-                      </p>
-                      <p
-                        className={cn(
-                          'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
-                          'translate-y-full opacity-0 transition-[transform,opacity] duration-200 ease-out',
-                          'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
-                        )}
-                      >
-                        {usernameLabel}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </PopoverTrigger>
-
-              <div className="flex shrink-0 items-center gap-1">
-                <VoiceMicSplitControl
-                  surface="panel"
-                  inVoice={inVoice}
-                  connecting={voiceSession.status === 'connecting'}
-                  micMuted={micMuted}
-                  onToggleMic={voiceSession.toggleMic}
+                  data-avatar-hover-scope=""
+                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-accent/60"
                 />
-
-                <VoiceSoundSplitControl
-                  surface="panel"
-                  inVoice={inVoice}
-                  connecting={voiceSession.status === 'connecting'}
-                  soundOff={soundOff}
-                  onToggleDeafen={voiceSession.toggleDeafen}
-                />
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={userPanelControlButtonClass}
-                  title="Настройки"
-                  onClick={() => openSettings('account')}
-                >
-                  <SettingsIcon className="size-4" />
-                </Button>
+              }
+            >
+              <UserAvatar
+                user={user}
+                className="size-8 shrink-0"
+                fallbackClassName="size-8"
+                hoverScope="parent"
+                showPresence
+              />
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="truncate text-base font-medium leading-4.5">
+                  {displayName}
+                </p>
+                <div className="relative h-3.25 overflow-hidden">
+                  <p
+                    className={cn(
+                      'truncate text-xs font-medium leading-3.25 transition duration-200 ease-out',
+                      'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
+                      gatewayConnected
+                        ? 'text-muted-foreground'
+                        : gatewayReconnecting
+                          ? 'text-chart-2/90'
+                          : 'text-destructive/80',
+                    )}
+                  >
+                    {statusLabel}
+                  </p>
+                  <p
+                    className={cn(
+                      'absolute inset-x-0 top-0 truncate text-xs font-medium leading-3.25 text-muted-foreground',
+                      'translate-y-full opacity-0 transition duration-200 ease-out',
+                      'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
+                    )}
+                  >
+                    {usernameLabel}
+                  </p>
+                </div>
               </div>
+            </PopoverTrigger>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <VoiceMicSplitControl
+                surface="panel"
+                inVoice={inVoice}
+                connecting={voiceSession.status === 'connecting'}
+                micMuted={micMuted}
+                onToggleMic={voiceSession.toggleMic}
+              />
+
+              <VoiceSoundSplitControl
+                surface="panel"
+                inVoice={inVoice}
+                connecting={voiceSession.status === 'connecting'}
+                soundOff={soundOff}
+                onToggleDeafen={voiceSession.toggleDeafen}
+              />
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className={userPanelControlButtonClass}
+                title={t('settings')}
+                onClick={() => openSettings('account')}
+              >
+                <SettingsIcon className="size-4" />
+              </Button>
             </div>
-          </PopoverAnchor>
+          </div>
           <PopoverContent
             side="top"
             align="start"
             sideOffset={8}
-            collisionPadding={16}
-            className="z-[200] w-[min(300px,calc(100vw-1rem))] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
-            onOpenAutoFocus={(event) => event.preventDefault()}
+            className="z-200 w-user-panel-popover overflow-hidden p-0"
+            initialFocus={false}
           >
             <CurrentUserProfileMenu
               user={user}
@@ -258,12 +264,12 @@ export function UserPanel({
         <div
           data-telegram-promo-hover=""
           className={cn(
-            'absolute inset-x-0 bottom-[calc(100%-3.25rem)] z-20 grid overflow-hidden rounded-t-[10px] border-x border-t border-shell-divider',
+            'absolute inset-x-0 bottom-full translate-y-13 z-20 grid overflow-hidden rounded-t-lg border-x border-t border-shell-divider',
             'telegram-promo-surface bg-secondary bg-linear-to-r from-sidebar-ring/25 via-accent/60 to-sidebar-ring/15 text-foreground',
-            'transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
+            'motion-rows duration-200 ease-out-expo',
             telegramPromoOpen
-              ? 'grid-rows-[52px_1fr]'
-              : 'grid-rows-[52px_0fr]',
+              ? 'promo-open-rows'
+              : 'promo-closed-rows',
             'motion-reduce:transition-none',
           )}
         >
@@ -272,7 +278,7 @@ export function UserPanel({
             className="relative h-13 text-left outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             aria-expanded={telegramPromoOpen}
             aria-controls="telegram-promo-details"
-            aria-label="Подпишись на наш Telegram"
+            aria-label={t('telegram.title')}
             onClick={() => setTelegramPromoOpen(true)}
           >
             <span
@@ -286,27 +292,27 @@ export function UserPanel({
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold leading-4">
-                  Подпишись на наш Telegram
+                  {t('telegram.title')}
                 </span>
                 <span
                   className={cn(
-                    'grid transition-[grid-template-rows,opacity] duration-150 ease-out',
+                    'grid motion-rows transition-opacity duration-150 ease-out',
                     telegramPromoOpen
-                      ? 'grid-rows-[0fr] opacity-0'
-                      : 'grid-rows-[1fr] opacity-100',
+                      ? 'collapsed-rows opacity-0'
+                      : 'expanded-rows opacity-100',
                     'motion-reduce:transition-none',
                   )}
                 >
                   <span className="min-h-0 overflow-hidden">
                     <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground">
-                      Новости проекта без лишнего шума
+                      {t('telegram.subtitle')}
                     </span>
                   </span>
                 </span>
               </span>
 
               <span className="telegram-promo-icon relative flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-ring/80 text-primary-foreground ring-1 ring-sidebar-ring/60">
-                <TelegramIcon aria-hidden="true" className="size-[18px]" />
+                <TelegramIcon aria-hidden="true" className="size-4.5" />
               </span>
             </span>
           </button>
@@ -315,17 +321,17 @@ export function UserPanel({
             <div
               id="telegram-promo-details"
               aria-hidden={!telegramPromoOpen}
-              className="relative isolate flex h-[104px] flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
+              className="relative isolate flex h-26 flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
             >
               <img
                 src="/telegram-promo-cat.png"
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain [image-rendering:pixelated]"
+                className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain pixelated"
               />
-              <p className="relative z-10 max-w-[250px] text-sm font-semibold leading-5 text-foreground">
-                Спойлеры, анонсы и.. Сырники!
+              <p className="relative z-10 max-w-62.5 text-sm font-semibold leading-5 text-foreground">
+                {t('telegram.headline')}
               </p>
               <div className="relative z-10 flex items-center gap-2 pl-12">
                 <Button
@@ -336,22 +342,20 @@ export function UserPanel({
                   className="min-w-0 flex-1 px-2 text-xs"
                   onClick={onDismissTelegramPromo}
                 >
-                  Я уже подписан
+                  {t('telegram.dismiss')}
                 </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="min-w-0 flex-1 bg-foreground px-2 text-xs text-background hover:bg-foreground/90"
+                <a
+                  href={TELEGRAM_CHANNEL_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  tabIndex={telegramPromoOpen ? 0 : -1}
+                  className={cn(
+                    buttonVariants({ variant: 'secondary', size: 'sm' }),
+                    'min-w-0 flex-1 px-2 text-xs',
+                  )}
                 >
-                  <a
-                    href={TELEGRAM_CHANNEL_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    tabIndex={telegramPromoOpen ? 0 : -1}
-                  >
-                    В Telegram
-                  </a>
-                </Button>
+                  {t('telegram.open')}
+                </a>
               </div>
             </div>
           </div>

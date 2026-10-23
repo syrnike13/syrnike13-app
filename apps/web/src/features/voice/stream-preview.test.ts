@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createTranslator } from '@syrnike13/ui/i18n'
+
+import ru from '#/messages/ru.json'
 import {
   scheduleStreamPreview,
   captureStreamPreview,
@@ -6,6 +9,8 @@ import {
   streamPreviewWatchLabel,
 } from './stream-preview'
 import { NativeVideoRegistry } from './native-video-registry'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 afterEach(() => {
   vi.useRealTimers()
@@ -213,7 +218,7 @@ it('downscales within 480x270 while preserving the source aspect ratio', () => {
 })
 
 it('prioritizes self and already-watching labels', () => {
-  expect(streamPreviewWatchLabel(true, true)).toBe('Вы стримите!')
-  expect(streamPreviewWatchLabel(false, true)).toBe('Вы смотрите')
-  expect(streamPreviewWatchLabel(false, false)).toBe('Смотреть стрим')
+  expect(streamPreviewWatchLabel(true, true, t)).toBe('Вы стримите!')
+  expect(streamPreviewWatchLabel(false, true, t)).toBe('Вы смотрите')
+  expect(streamPreviewWatchLabel(false, false, t)).toBe('Смотреть стрим')
 })

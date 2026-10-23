@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -19,6 +20,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -38,6 +40,7 @@ export function useChannelChat({
   highlightMessageId,
   enabled = true,
 }: UseChannelChatOptions) {
+  const t = useTranslations('chat')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -158,9 +161,7 @@ export function useChannelChat({
           Effect.sync(() => {
             if (activeChannelIdRef.current === requestChannelId) {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось загрузить сообщения',
+                apiErrorMessage(error, t('messagesLoadError')),
               )
             }
           }),
@@ -174,12 +175,11 @@ export function useChannelChat({
         ),
       ),
     )
-  }, [channelId, enabled, loadingOlder, token])
+  }, [channelId, enabled, loadingOlder, t, token])
 
   const handleDelete = useCallback(
     async (message: Message) => {
       if (!token) return
-      if (!window.confirm('Удалить это сообщение?')) return
 
       syncStore.removeMessage(channelId, message._id)
       await Effect.runPromise(
@@ -198,14 +198,14 @@ export function useChannelChat({
             Effect.sync(() => {
               syncStore.upsertMessage(message)
               toast.error(
-                error instanceof Error ? error.message : 'Не удалось удалить',
+                apiErrorMessage(error, t('deleteMessageError')),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, composerAction, token],
+    [channelId, composerAction, t, token],
   )
 
   const handlePin = useCallback(
@@ -215,7 +215,7 @@ export function useChannelChat({
       await Effect.runPromise(
         pinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success('Сообщение закреплено')),
+            Effect.sync(() => toast.success(t('messagePinned'))),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
@@ -223,16 +223,14 @@ export function useChannelChat({
                 pinned: message.pinned,
               })
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось закрепить',
+                apiErrorMessage(error, t('pinMessageError')),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, token],
+    [channelId, t, token],
   )
 
   const jumpToMessage = useCallback(
@@ -254,7 +252,7 @@ export function useChannelChat({
       await Effect.runPromise(
         unpinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success('Сообщение откреплено')),
+            Effect.sync(() => toast.success(t('messageUnpinned'))),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
@@ -262,16 +260,14 @@ export function useChannelChat({
                 pinned: message.pinned,
               })
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось открепить',
+                apiErrorMessage(error, t('unpinMessageError')),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, token],
+    [channelId, t, token],
   )
 
   const replyTo =

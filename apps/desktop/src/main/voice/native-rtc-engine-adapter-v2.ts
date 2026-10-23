@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from 'effect'
 import {
+  computeEffectiveDeafened,
   createInitialVoiceMediaDesiredState,
   type RtcEngineAdapter,
   type VoiceDisconnectCause,
@@ -89,6 +90,11 @@ function projectDesiredState(
       gateThresholdDb: desired.voiceGateThresholdDb,
       gateAutoThreshold: desired.voiceGateAutoThreshold,
       meterDemand,
+      // A self-monitoring check plays the processed microphone locally, in
+      // or out of a call; the remote mix stays deafened meanwhile.
+      monitor: desired.selfMonitoringActive,
+      monitorDeviceId: desired.outputDeviceId ?? null,
+      monitorVolume: desired.outputVolume,
       bitrate: desired.microphoneBitrate,
       retryRevision: retries.microphone,
     } : { state: 'off' },
@@ -109,7 +115,7 @@ function projectDesiredState(
     } : { state: 'off' },
     output: connected ? {
       state: 'on', deviceId: desired.outputDeviceId ?? null,
-      deafened: desired.userDeafened || desired.serverDeafened,
+      deafened: computeEffectiveDeafened(desired),
       volume: desired.outputVolume,
       users: mixSettings(audio.userVolumes, audio.userMutes),
       streams: mixSettings(audio.streamVolumes, audio.streamMutes),

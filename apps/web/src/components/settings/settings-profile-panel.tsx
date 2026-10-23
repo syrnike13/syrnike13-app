@@ -6,9 +6,10 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
 } from 'react'
 import type { DataEditUser, FieldsUser, User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -17,12 +18,12 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { Textarea } from '#/components/ui/textarea'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
 import {
   fetchUserProfile,
@@ -30,6 +31,7 @@ import {
 } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema, validateForm } from '#/features/auth/schemas'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
@@ -56,6 +58,9 @@ function revokeObjectUrl(url: string | null) {
 }
 
 export function SettingsProfilePanel() {
+  const t = useTranslations('settings.profile')
+  const tValidation = useTranslations('validation')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const queryClient = useQueryClient()
   const user = auth.user
@@ -211,9 +216,7 @@ export function SettingsProfilePanel() {
           Effect.catch((error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось сохранить профиль',
+                apiErrorMessage(error, t('saveError')),
               )
               return false
             }),
@@ -226,7 +229,7 @@ export function SettingsProfilePanel() {
           ),
         )
       }),
-    [auth, queryClient, token, user],
+    [auth, queryClient, t, token, user],
   )
 
   const resetTextFields = useCallback((): boolean => {
@@ -253,13 +256,13 @@ export function SettingsProfilePanel() {
       bio,
     })
     if (!parsed.success) {
-      toast.error('Проверьте поля профиля')
+      toast.error(tValidation(parsed.issues[0]?.message ?? 'profileFields'))
       return false
     }
 
     const trimmedName = parsed.data.display_name.trim()
     if (trimmedName.length > 0 && trimmedName.length < 2) {
-      toast.error('Имя должно быть не короче 2 символов')
+      toast.error(tValidation('profileNameMin'))
       return false
     }
 
@@ -327,7 +330,7 @@ export function SettingsProfilePanel() {
       setAvatarPreviewOverride(preview)
 
       await Effect.runPromise(
-        uploadMediaFileEffect(token, 'avatars', file).pipe(
+        uploadMediaFileEffect(token, 'avatars', file, tm).pipe(
           Effect.flatMap((avatarId) => persistProfile({ avatar: avatarId })),
           Effect.tap((saved) =>
             saved
@@ -338,16 +341,14 @@ export function SettingsProfilePanel() {
             Effect.sync(() => {
               setAvatarPreviewOverride(undefined)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось загрузить аватар',
+                apiErrorMessage(error, t('avatarUploadError')),
               )
             }),
           ),
         ),
       )
     },
-    [persistProfile, token, user],
+    [persistProfile, t, tm, token, user],
   )
 
   const removeAvatar = useCallback(async () => {
@@ -368,7 +369,7 @@ export function SettingsProfilePanel() {
       setBannerPreviewOverride(preview)
 
       await Effect.runPromise(
-        uploadMediaFileEffect(token, 'backgrounds', file).pipe(
+        uploadMediaFileEffect(token, 'backgrounds', file, tm).pipe(
           Effect.flatMap((backgroundId) =>
             persistProfile({
               profile: { background: backgroundId },
@@ -383,16 +384,14 @@ export function SettingsProfilePanel() {
             Effect.sync(() => {
               setBannerPreviewOverride(undefined)
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось загрузить баннер',
+                apiErrorMessage(error, t('bannerUploadError')),
               )
             }),
           ),
         ),
       )
     },
-    [persistProfile, token, user],
+    [persistProfile, t, tm, token, user],
   )
 
   const removeBanner = useCallback(async () => {
@@ -421,7 +420,7 @@ export function SettingsProfilePanel() {
     Boolean(bannerPreview)
 
   return (
-    <div className="grid gap-8 max-lg:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-8 max-lg:grid-cols-1 settings-profile-grid">
       <input
         ref={avatarInputRef}
         type="file"
@@ -454,17 +453,17 @@ export function SettingsProfilePanel() {
       <div className="order-2 space-y-6 lg:order-1">
         <section className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="profile-display-name">Отображаемое имя</Label>
+            <Label htmlFor="profile-display-name">{t('displayName')}</Label>
             <Input
               id="profile-display-name"
               value={displayName}
               maxLength={32}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Как вас видят другие"
+              placeholder={t('displayNamePlaceholder')}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-username">Имя пользователя</Label>
+            <Label htmlFor="profile-username">{t('username')}</Label>
             <Input
               id="profile-username"
               value={`@${username}`}
@@ -473,14 +472,14 @@ export function SettingsProfilePanel() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-bio">О себе</Label>
+            <Label htmlFor="profile-bio">{t('bio')}</Label>
             <Textarea
               id="profile-bio"
               value={bio}
               rows={4}
               maxLength={2000}
               onChange={(event) => setBio(event.target.value)}
-              placeholder="Расскажите о себе…"
+              placeholder={t('bioPlaceholder')}
             />
           </div>
         </section>
@@ -488,7 +487,7 @@ export function SettingsProfilePanel() {
 
       <aside className="order-1 lg:order-2 lg:sticky lg:top-0 lg:self-start">
         <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Предпросмотр
+          {t('preview')}
         </p>
         <ProfilePreviewCard
           displayName={displayName.trim() || username}
@@ -563,11 +562,13 @@ function ProfilePreviewCard({
   onRemoveBanner?: () => void
   onEditStatus: () => void
 }) {
+  const t = useTranslations('settings.profile')
+
   return (
     <div className="gradient-surface-card overflow-visible rounded-xl border border-border bg-card shadow-sm">
       <ProfileMediaContextMenu
-        editLabel="Изменить баннер"
-        removeLabel="Удалить баннер"
+        editLabel={t('editBanner')}
+        removeLabel={t('removeBanner')}
         disabled={mediaBusy}
         onEdit={onEditBanner}
         onRemove={onRemoveBanner}
@@ -587,7 +588,7 @@ function ProfilePreviewCard({
             />
           ) : null}
           <ProfileMediaEditOverlay
-            label={hasBanner ? 'Изменить баннер' : 'Добавить баннер'}
+            label={hasBanner ? t('editBanner') : t('addBanner')}
             disabled={mediaBusy}
             onClick={onEditBanner}
             className="rounded-none"
@@ -597,8 +598,8 @@ function ProfilePreviewCard({
       <div className="relative px-4 pb-4">
         <div className="-mt-8 mb-2 w-fit">
           <ProfileMediaContextMenu
-            editLabel="Изменить аватар"
-            removeLabel="Удалить аватар"
+            editLabel={t('editAvatar')}
+            removeLabel={t('removeAvatar')}
             disabled={mediaBusy}
             onEdit={onEditAvatar}
             onRemove={onRemoveAvatar}
@@ -612,7 +613,7 @@ function ProfilePreviewCard({
                   showPresence={false}
                 />
                 <ProfileMediaEditOverlay
-                  label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
+                  label={hasAvatar ? t('editAvatar') : t('addAvatar')}
                   disabled={mediaBusy}
                   onClick={onEditAvatar}
                   className="rounded-full group-hover/profile-avatar:opacity-100"
@@ -621,7 +622,7 @@ function ProfilePreviewCard({
               <ProfileStatusBubbleTrigger
                 status={statusText}
                 onClick={onEditStatus}
-                className="left-full top-[48%] ml-1.5"
+                className="left-full top-48/100 ml-1.5"
               />
             </div>
           </ProfileMediaContextMenu>
@@ -657,14 +658,14 @@ function ProfileMediaEditOverlay({
         onClick()
       }}
       className={cn(
-        'absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/55 opacity-0 transition-opacity',
+        'absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-scrim opacity-0 transition-opacity',
         'group-hover/banner:opacity-100',
         'focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
         'disabled:pointer-events-none disabled:opacity-0',
         className,
       )}
     >
-      <PencilFillIcon className="size-5 text-white drop-shadow-sm" aria-hidden />
+      <PencilFillIcon className="size-5 text-on-scrim drop-shadow-sm" aria-hidden />
     </button>
   )
 }
@@ -677,22 +678,22 @@ function ProfileMediaContextMenu({
   onEdit,
   onRemove,
 }: {
-  children: ReactNode
+  children: ReactElement
   editLabel: string
   removeLabel: string
   disabled: boolean
   onEdit: () => void
   onRemove?: () => void
 }) {
+  if (disabled) return children
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild disabled={disabled}>
-        {children}
-      </ContextMenuTrigger>
+      <ContextMenuTrigger render={children} />
       <ContextMenuContent>
-        <ContextMenuItem onSelect={onEdit}>{editLabel}</ContextMenuItem>
+        <ContextMenuItem onClick={onEdit}>{editLabel}</ContextMenuItem>
         {onRemove ? (
-          <ContextMenuItem variant="destructive" onSelect={onRemove}>
+          <ContextMenuItem variant="destructive" onClick={onRemove}>
             {removeLabel}
           </ContextMenuItem>
         ) : null}

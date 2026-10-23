@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   AppWindowIcon,
   Gamepad2Icon,
@@ -19,15 +20,19 @@ import { ProfileUnsavedChangesBar } from '#/components/settings/profile-unsaved-
 import { GENERAL_SETTINGS_NAV } from '#/components/settings/settings-nav-config'
 import { SettingsMobileModal } from '#/components/settings/settings-mobile-modal'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   type SettingsSection,
   useSettingsModal,
@@ -36,38 +41,29 @@ import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
-function settingsNavItemClass(active: boolean) {
-  return cn(
-    'flex w-full items-center gap-2 rounded-md text-left text-sm transition-colors',
-    active
-      ? 'bg-accent font-medium text-accent-foreground'
-      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-  )
-}
-
 const DESKTOP_NAV_ITEM: {
   id: SettingsSection
-  label: string
+  labelKey: string
   icon: typeof AppWindowIcon
 } = {
   id: 'desktop',
-  label: 'Приложение',
+  labelKey: 'sections.desktop',
   icon: AppWindowIcon,
 }
 
 const DESKTOP_ONLY_NAV_ITEMS: {
   id: SettingsSection
-  label: string
+  labelKey: string
   icon: typeof AppWindowIcon
 }[] = [
   {
     id: 'hotkeys',
-    label: 'Горячие клавиши',
+    labelKey: 'sections.hotkeys',
     icon: KeyboardIcon,
   },
   {
     id: 'overlay',
-    label: 'Оверлей',
+    labelKey: 'sections.overlay',
     icon: Gamepad2Icon,
   },
   DESKTOP_NAV_ITEM,
@@ -89,6 +85,7 @@ export function SettingsModal() {
 }
 
 function SettingsDesktopModal() {
+  const t = useTranslations('settings')
   const auth = useAuth()
   const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
@@ -125,25 +122,19 @@ function SettingsDesktopModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         showCloseButton={false}
-        className={cn(
-          'flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl',
-        )}
+        className="settings-modal flex max-w-none gap-0 overflow-hidden p-0 max-xl:rounded-none sm:max-w-none"
       >
-        <DialogTitle className="sr-only">Настройки пользователя</DialogTitle>
+        <DialogTitle className="sr-only">{t('userSettingsTitle')}</DialogTitle>
         <DialogDescription className="sr-only">
-          Параметры аккаунта, уведомлений и оформления
+          {t('userSettingsDescription')}
         </DialogDescription>
 
-        <aside className="flex min-h-0 w-[218px] shrink-0 flex-col border-r border-border bg-muted">
-          <div className="border-b border-border/60 p-3">
-            <button
+        <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
+          <div className="p-3">
+            <Button
               type="button"
-              className={cn(
-                'flex w-full items-center gap-2 rounded-lg p-1.5 text-left transition-colors',
-                section === 'profile'
-                  ? 'bg-accent ring-1 ring-border/60'
-                  : 'hover:bg-accent/50',
-              )}
+              variant={section === 'profile' ? 'secondary' : 'ghost'}
+              className="h-auto w-full justify-start gap-2 p-1.5 text-left"
               onClick={() => setSection('profile')}
             >
               <UserAvatar
@@ -157,73 +148,72 @@ function SettingsDesktopModal() {
                   @{user?.username}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Редактировать
+                  {t('edit')}
                 </p>
               </div>
-            </button>
-            <div className="relative mt-3">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
+            </Button>
+            <InputGroup className="mt-3 h-8">
+              <InputGroupAddon>
+                <SearchIcon className="size-4" />
+              </InputGroupAddon>
+              <InputGroupInput
                 disabled
-                placeholder="Поиск — скоро"
-                className="h-8 bg-background/60 pl-8 text-xs"
+                placeholder={t('searchSoon')}
+                className="text-xs"
               />
-            </div>
+            </InputGroup>
           </div>
 
           <ScrollArea className="h-0 min-h-0 flex-1">
             <nav className="flex flex-col gap-0.5 p-2">
-              <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                Настройки пользователя
-              </p>
               {navItems.map((item) => {
                 const Icon = item.icon
                 const active = section === item.id
                 return (
-                  <button
+                  <Button
                     key={item.id}
                     type="button"
-                    className={cn(settingsNavItemClass(active), 'h-9 px-2')}
+                    variant={active ? 'secondary' : 'ghost'}
+                    aria-current={active ? 'page' : undefined}
+                    className="h-9 w-full justify-start gap-2 px-2"
                     onClick={() => setSection(item.id)}
                   >
                     <Icon className="size-4 shrink-0" />
-                    {item.label}
-                  </button>
+                    {t(item.labelKey)}
+                  </Button>
                 )
               })}
-              <div className="mt-2 border-t border-border/60 pt-2">
-                <button
+              <div className="mt-2">
+                <Button
                   type="button"
-                  className={cn(
-                    settingsNavItemClass(false),
-                    'h-9 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive',
-                  )}
+                  variant="ghost"
+                  className="h-9 w-full justify-start gap-2 px-2 text-destructive hover:text-destructive"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}
                 >
                   <LogOutIcon className="size-4 shrink-0" />
-                  {loggingOut ? 'Выход…' : 'Выйти'}
-                </button>
+                  {loggingOut ? t('loggingOut') : t('logout')}
+                </Button>
               </div>
             </nav>
           </ScrollArea>
         </aside>
 
         <ProfileDraftProvider>
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-            <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
-              <h2 className="text-xl font-semibold">
-                {settingsSectionTitle(section)}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
+            <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-2">
+              <h2 className="text-base font-semibold">
+                {settingsSectionTitle(section, t)}
               </h2>
               <Button
                 type="button"
-                variant="ghost"
+                variant="ghost-hover"
                 size="icon"
                 className="size-8"
                 onClick={() => setOpen(false)}
               >
                 <XIcon className="size-4" />
-                <span className="sr-only">Закрыть</span>
+                <span className="sr-only">{t('close')}</span>
               </Button>
             </header>
 

@@ -17,7 +17,11 @@ struct MediaRuntimeSnapshot {
   // Fixed numeric telemetry, without device identities or audio contents.
   std::optional<std::array<DiagnosticMetric, 13>> screen_audio_metrics;
   std::optional<std::array<DiagnosticMetric, 16>> screen_video_metrics;
-  std::optional<std::array<DiagnosticMetric, 13>> camera_metrics;
+  std::optional<std::array<DiagnosticMetric, 8>> screen_bitrate_metrics;
+  // Load governor level, the scheduling help it holds, late-frame drops and
+  // in-place encoder recoveries.
+  std::optional<std::array<DiagnosticMetric, 6>> screen_load_metrics;
+  std::optional<std::array<DiagnosticMetric, 15>> camera_metrics;
   std::optional<std::array<DiagnosticMetric, 15>> microphone_metrics;
   std::optional<std::array<DiagnosticMetric, 14>> remote_audio_ingress_metrics;
   std::optional<std::array<DiagnosticMetric, 7>> remote_audio_output_metrics;

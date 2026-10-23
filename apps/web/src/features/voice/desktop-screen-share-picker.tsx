@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   AppWindowIcon,
   Gamepad2Icon,
-  Loader2Icon,
   MonitorIcon,
   Settings2Icon,
 } from '#/components/icons'
@@ -13,26 +13,34 @@ import type {
   DesktopDisplayMediaSource,
 } from '@syrnike13/platform'
 
-import { Button } from '#/components/ui/button'
+import {
+  Button,
+  buttonVariants,
+} from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from '#/components/ui/dialog'
+} from '@syrnike13/ui/primitives/dialog'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '#/components/ui/tabs'
+} from '@syrnike13/ui/primitives/tabs'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { usePlatform } from '#/platform/use-platform'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import {
   ScreenShareFpsOptions,
   ScreenShareResolutionOptions,
@@ -40,9 +48,7 @@ import {
   useScreenShareQuality,
 } from '#/components/voice/voice-screen-share-quality'
 import {
-  voiceStagePopoverCheckboxClass,
   voiceStagePopoverContentClass,
-  voiceStagePopoverSeparatorClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 import {
@@ -91,23 +97,30 @@ export const loadDisplaySourceVisualsEffect = Effect.fn(
 
 const SOURCE_TABS: Array<{
   value: SourceTab
-  label: string
+  labelKey: string
   icon: typeof MonitorIcon
 }> = [
-  { value: 'screen', label: 'Экран', icon: MonitorIcon },
-  { value: 'applications', label: 'Приложения', icon: AppWindowIcon },
+  { value: 'screen', labelKey: 'sharePicker.screens', icon: MonitorIcon },
+  {
+    value: 'applications',
+    labelKey: 'sharePicker.applications',
+    icon: AppWindowIcon,
+  },
 ]
 
-const EMPTY_TAB_TEXT: Record<SourceTab, string> = {
-  screen: 'Экраны не найдены',
-  applications: 'Приложения не найдены',
+const EMPTY_TAB_TEXT_KEYS: Record<SourceTab, string> = {
+  screen: 'sharePicker.noScreens',
+  applications: 'sharePicker.noApplications',
 }
 
-export function sourceAudioLabel(source: DesktopDisplayMediaSource) {
-  if (source.audioAvailable === false) return 'Звук недоступен'
-  if (source.type === 'screen') return 'Системный звук без приложения'
-  if (source.type === 'game') return 'Звук только игры'
-  return 'Звук только окна'
+export function sourceAudioLabel(
+  source: DesktopDisplayMediaSource,
+  t: Translator,
+) {
+  if (source.audioAvailable === false) return t('sharePicker.soundUnavailable')
+  if (source.type === 'screen') return t('sharePicker.systemSound')
+  if (source.type === 'game') return t('sharePicker.gameSound')
+  return t('sharePicker.windowSound')
 }
 
 export function canRequestSourceAudio(
@@ -116,16 +129,31 @@ export function canRequestSourceAudio(
   return source?.audioAvailable !== false
 }
 
-export function DesktopScreenSharePicker() {
+export type ScreenSharePickerDemo = {
+  request: DesktopDisplayMediaRequest
+  sources: readonly DesktopDisplayMediaSource[]
+  onSelect: (source: DesktopDisplayMediaSource, audioRequested: boolean) => void
+  onCancel: () => void
+}
+
+export function DesktopScreenSharePicker({
+  demo,
+}: {
+  /** Dev-only источник данных: показывает настоящий пикер без desktop-моста. */
+  demo?: ScreenSharePickerDemo
+} = {}) {
+  const t = useTranslations('voice')
   const { desktop } = usePlatform()
   const [request, setRequest] = useState<DesktopDisplayMediaRequest | null>(
-    null,
+    demo?.request ?? null,
   )
   const [sources, setSources] = useState<DesktopDisplayMediaSource[]>([])
   const [loadedPage, setLoadedPage] = useState<LoadedSourcePage | null>(null)
   const loadedVisuals = useRef(new Set<string>())
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
-  const [audioRequested, setAudioRequested] = useState(true)
+  const [audioRequested, setAudioRequested] = useState(
+    demo?.request.audioRequested ?? true,
+  )
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(0)
   const [hasPreviousPage, setHasPreviousPage] = useState(false)
@@ -135,7 +163,7 @@ export function DesktopScreenSharePicker() {
   )
 
   useEffect(() => {
-    if (!desktop) return
+    if (!desktop || demo) return
     return desktop.media.onRequest((nextRequest) => {
       setRequest(nextRequest)
       setSources([])
@@ -148,11 +176,26 @@ export function DesktopScreenSharePicker() {
       setHasNextPage(false)
       setSubmittingSourceId(null)
     })
-  }, [desktop])
+  }, [demo, desktop])
+
+  useEffect(() => {
+    if (!demo) return
+    loadedVisuals.current.clear()
+    setSources([...demo.sources])
+    setLoadedPage(null)
+    setLoading(false)
+    setHasPreviousPage(false)
+    setHasNextPage(false)
+    setActiveTab(
+      demo.sources.some((source) => source.type === 'screen')
+        ? 'screen'
+        : 'applications',
+    )
+  }, [demo])
 
   const requestId = request?.id ?? null
   useEffect(() => {
-    if (!desktop || !requestId) return
+    if (demo || !desktop || !requestId) return
 
     let current = true
     setLoading(true)
@@ -185,9 +228,7 @@ export function DesktopScreenSharePicker() {
           Effect.sync(() => {
             if (!current) return
             toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось получить источники демонстрации',
+              apiErrorMessage(error, t('sharePicker.loadError')),
             )
             setLoading(false)
           }),
@@ -199,10 +240,10 @@ export function DesktopScreenSharePicker() {
       current = false
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [desktop, page, requestId])
+  }, [desktop, page, requestId, t])
 
   useEffect(() => {
-    if (!desktop || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
+    if (!desktop || demo || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
     const visibleSources = loadedPage.sources.filter((source) =>
       (activeTab === 'screen' ? source.type === 'screen' : source.type !== 'screen') &&
       !loadedVisuals.current.has(source.id),
@@ -225,7 +266,7 @@ export function DesktopScreenSharePicker() {
       current = false
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [activeTab, desktop, loadedPage, page, requestId])
+  }, [activeTab, desktop, demo, loadedPage, page, requestId])
 
   const screenSources = useMemo(
     () => sources.filter((source) => source.type === 'screen'),
@@ -244,13 +285,30 @@ export function DesktopScreenSharePicker() {
     setHasPreviousPage(false)
     setHasNextPage(false)
     setSubmittingSourceId(null)
-    if (desktop && activeRequest) {
+    if (demo) {
+      demo.onCancel()
+    } else if (desktop && activeRequest) {
       void desktop.media.cancelRequest(activeRequest.id)
     }
-  }, [desktop, request])
+  }, [demo, desktop, request])
 
   const selectSource = useCallback(
     async (source: DesktopDisplayMediaSource) => {
+      const selectedAudioRequested =
+        audioRequested && canRequestSourceAudio(source)
+
+      if (demo) {
+        demo.onSelect(source, selectedAudioRequested)
+        setRequest(null)
+        setSources([])
+        setLoadedPage(null)
+        setPage(0)
+        setHasPreviousPage(false)
+        setHasNextPage(false)
+        setSubmittingSourceId(null)
+        return
+      }
+
       if (!desktop || !request) return
 
       setSubmittingSourceId(source.id)
@@ -258,10 +316,10 @@ export function DesktopScreenSharePicker() {
         const selected = await desktop.media.selectDisplaySource(
           request.id,
           source.id,
-          audioRequested && canRequestSourceAudio(source),
+          selectedAudioRequested,
         )
         if (!selected) {
-          toast.error('Источник демонстрации больше недоступен')
+          toast.error(t('sharePicker.sourceGone'))
           setSubmittingSourceId(null)
           return
         }
@@ -275,14 +333,12 @@ export function DesktopScreenSharePicker() {
         setSubmittingSourceId(null)
       } catch (error) {
         toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось начать демонстрацию',
+          apiErrorMessage(error, t('sharePicker.startError')),
         )
         setSubmittingSourceId(null)
       }
     },
-    [audioRequested, desktop, request],
+    [audioRequested, demo, desktop, request, t],
   )
 
   const open = Boolean(request)
@@ -292,12 +348,11 @@ export function DesktopScreenSharePicker() {
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && cancelRequest()}>
       <DialogContent
         showCloseButton={false}
-        className="grid aspect-[4/3] w-[min(96vw,66.667vh)] max-w-none grid-rows-[1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="grid aspect-4/3 w-screen-share-picker max-w-none media-picker-rows gap-0 overflow-hidden p-0 sm:max-w-none"
       >
-        <DialogTitle className="sr-only">Демонстрация экрана</DialogTitle>
+        <DialogTitle className="sr-only">{t('sharePicker.title')}</DialogTitle>
         <DialogDescription className="sr-only">
-          Выберите экран или приложение, которое хотите показать участникам
-          голосового канала.
+          {t('sharePicker.description')}
         </DialogDescription>
 
         <Tabs
@@ -308,7 +363,7 @@ export function DesktopScreenSharePicker() {
           }}
           className="min-h-0 gap-0"
         >
-          <TabsList className="mx-4 mt-4 w-[calc(100%-2rem)] shrink-0">
+          <TabsList className="mx-4 mt-4 w-picker-inset shrink-0">
             {SOURCE_TABS.map((tab) => {
               const Icon = tab.icon
               const count =
@@ -318,7 +373,7 @@ export function DesktopScreenSharePicker() {
               return (
                 <TabsTrigger key={tab.value} value={tab.value}>
                   <Icon />
-                  <span>{tab.label}</span>
+                  <span>{t(tab.labelKey)}</span>
                   <span className="text-xs text-muted-foreground">{count}</span>
                 </TabsTrigger>
               )
@@ -330,7 +385,7 @@ export function DesktopScreenSharePicker() {
               sources={screenSources}
               submittingSourceId={submittingSourceId}
               loading={loading}
-              emptyText={EMPTY_TAB_TEXT.screen}
+              emptyText={t(EMPTY_TAB_TEXT_KEYS.screen)}
               onShare={selectSource}
             />
           </TabsContent>
@@ -342,13 +397,14 @@ export function DesktopScreenSharePicker() {
               sources={applicationSources}
               submittingSourceId={submittingSourceId}
               loading={loading}
-              emptyText={EMPTY_TAB_TEXT.applications}
+              emptyText={t(EMPTY_TAB_TEXT_KEYS.applications)}
               onShare={selectSource}
             />
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3 sm:justify-between">
+        <Separator />
+        <DialogFooter className="mx-0 mb-0 flex-row items-center justify-between rounded-none border-t-0 bg-transparent px-4 py-3 sm:justify-between">
           <ScreenSharePickerQualitySummary />
           <div className="flex items-center gap-2">
             {hasPreviousPage || hasNextPage ? (
@@ -360,7 +416,7 @@ export function DesktopScreenSharePicker() {
                   onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
                   disabled={!hasPreviousPage || loading || submitting}
                 >
-                  Назад
+                  {t('sharePicker.back')}
                 </Button>
                 <span className="min-w-8 text-center text-xs text-muted-foreground">
                   {page + 1}
@@ -372,7 +428,7 @@ export function DesktopScreenSharePicker() {
                   onClick={() => setPage((currentPage) => currentPage + 1)}
                   disabled={!hasNextPage || loading || submitting}
                 >
-                  Далее
+                  {t('sharePicker.next')}
                 </Button>
               </>
             ) : null}
@@ -382,10 +438,10 @@ export function DesktopScreenSharePicker() {
               onClick={cancelRequest}
               disabled={submitting}
             >
-              Отмена
+              {t('sharePicker.cancel')}
             </Button>
             <ScreenSharePickerSettings
-              audioSupported={Boolean(request?.nativeVideo)}
+              audioSupported={demo ? true : Boolean(request?.nativeVideo)}
               audioRequested={audioRequested}
               onAudioRequestedChange={setAudioRequested}
               disabled={submitting}
@@ -413,15 +469,17 @@ function DisplaySourceGrid({
   if (loading) {
     return (
       <div className="grid min-h-64 place-items-center text-muted-foreground">
-        <Loader2Icon className="size-6 animate-spin" />
+        <Spinner className="size-6" />
       </div>
     )
   }
 
   if (sources.length === 0) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-        {emptyText}
+      <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border">
+        <Empty className="py-6">
+          <EmptyDescription>{emptyText}</EmptyDescription>
+        </Empty>
       </div>
     )
   }
@@ -452,7 +510,8 @@ function DisplaySourceTile({
   disabled: boolean
   onShare: () => void
 }) {
-  const sourceLabel = desktopScreenShareSourceLabel(source)
+  const t = useTranslations('voice')
+  const sourceLabel = desktopScreenShareSourceLabel(source, t)
   const FallbackIcon =
     source.type === 'screen'
       ? MonitorIcon
@@ -464,8 +523,8 @@ function DisplaySourceTile({
     <div className="grid min-w-0 gap-2">
       <button
         type="button"
-        aria-label={`Демонстрировать ${sourceLabel}`}
-        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none"
+        aria-label={t('sharePicker.shareAria', { source: sourceLabel })}
+        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
         disabled={disabled}
         onClick={onShare}
       >
@@ -485,21 +544,15 @@ function DisplaySourceTile({
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-            <Button
-              asChild
-              size="sm"
-              className="bg-foreground text-background"
+            <span
+              aria-hidden="true"
+              className={buttonVariants({ size: 'sm', variant: 'secondary' })}
             >
-              <span aria-hidden="true">
-                {submitting ? (
-                  <Loader2Icon
-                    data-icon="inline-start"
-                    className="animate-spin"
-                  />
-                ) : null}
-                Демонстрировать
-              </span>
-            </Button>
+              {submitting ? (
+                <Spinner data-icon="inline-start" />
+              ) : null}
+              {t('sharePicker.share')}
+            </span>
           </div>
         </div>
       </button>
@@ -523,10 +576,13 @@ function DisplaySourceTile({
 }
 
 function ScreenSharePickerQualitySummary() {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
     <div className="mr-auto min-w-0 text-left">
-      <p className="text-sm font-semibold text-foreground">Качество стрима</p>
+      <p className="text-sm font-semibold text-foreground">
+        {t('sharePicker.quality')}
+      </p>
       <p className="text-xs text-muted-foreground">
         {quality.resolutionLabel(quality.resolution)} · {quality.fps} FPS
       </p>
@@ -545,39 +601,40 @@ function ScreenSharePickerSettings({
   onAudioRequestedChange: (value: boolean) => void
   disabled: boolean
 }) {
+  const t = useTranslations('voice')
   const quality = useScreenShareQuality()
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger render={<Button
           type="button"
           variant="outline"
           size="icon"
-          aria-label="Настройки стрима"
-          title="Настройки стрима"
+          aria-label={t('sharePicker.streamSettings')}
+          title={t('sharePicker.streamSettings')}
           disabled={disabled}
-          className="group/gear cursor-pointer disabled:cursor-not-allowed"
-        >
-          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[state=open]/gear:rotate-90 motion-reduce:transition-none" />
-        </Button>
-      </PopoverTrigger>
+          className="group/gear cursor-pointer disabled:cursor-not-allowed" />}>
+          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[popup-open]/gear:rotate-90 motion-reduce:transition-none" />
+        </PopoverTrigger>
       <PopoverContent
         side="top"
         align="end"
         sideOffset={8}
-        className={cn(voiceStagePopoverContentClass, 'w-64')}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        className={cn(
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverContentClass,
+          'w-64',
+        )}
       >
         <div className="flex flex-col gap-0.5">
           <StreamSettingsSubmenu
-            label="Разрешение экрана"
+            label={t('sharePicker.resolution')}
             hint={quality.resolutionLabel(quality.resolution)}
             side="left"
           >
             <ScreenShareResolutionOptions />
           </StreamSettingsSubmenu>
           <StreamSettingsSubmenu
-            label="Частота кадров"
+            label={t('sharePicker.frameRate')}
             hint={`${quality.fps} FPS`}
             side="left"
           >
@@ -585,15 +642,14 @@ function ScreenSharePickerSettings({
           </StreamSettingsSubmenu>
           {audioSupported ? (
             <>
-              <div className={voiceStagePopoverSeparatorClass} role="separator" />
+              <Separator className="my-0.5" />
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
-                <span>Заглушить аудио стрима</span>
-                <input
-                  type="checkbox"
-                  className={voiceStagePopoverCheckboxClass}
+                <span>{t('sharePicker.muteAudio')}</span>
+                <Checkbox
                   checked={!audioRequested}
-                  onChange={(event) =>
-                    onAudioRequestedChange(!event.target.checked)
+                  aria-label={t('sharePicker.muteAudio')}
+                  onCheckedChange={(checked) =>
+                    onAudioRequestedChange(checked !== true)
                   }
                 />
               </label>

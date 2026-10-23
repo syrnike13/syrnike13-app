@@ -27,24 +27,28 @@ vi.mock('../hotkeys', () => ({
   subscribeHotkeyActivations: vi.fn(() => () => undefined),
 }))
 
-vi.mock('../native-media-engine', () => ({
-  logNativeVoiceDiagnostic: vi.fn(),
-  createNativeRtcEngineAdapter: vi.fn(() => {
-    const engine = {
-      connect: vi.fn(async () => undefined),
-      disconnect: vi.fn(async () => undefined),
-      updateDesiredMedia: vi.fn(),
-      updateRemoteAudioSettings: vi.fn(),
-      retryMedia: vi.fn(),
-      subscribe: vi.fn(() => () => undefined),
-      prewarmMicrophone: vi.fn(async () => undefined),
-      telemetry: vi.fn(() => null),
-      dispose: vi.fn(async () => undefined),
-    }
-    runtimeMocks.engines.push(engine)
-    return engine
-  }),
-}))
+vi.mock('../native-media-engine', async () => {
+  const { Effect } = await import('effect')
+  return {
+    logNativeVoiceDiagnostic: vi.fn(),
+    createNativeRtcEngineAdapter: vi.fn(() => {
+      const engine = {
+        connect: vi.fn(async () => undefined),
+        disconnect: vi.fn(async () => undefined),
+        updateDesiredMedia: vi.fn(),
+        updateRemoteAudioSettings: vi.fn(),
+        retryMedia: vi.fn(),
+        subscribe: vi.fn(() => () => undefined),
+        prewarmMicrophone: vi.fn(async () => undefined),
+        prewarmMicrophoneEffect: vi.fn(() => Effect.void),
+        telemetry: vi.fn(() => null),
+        dispose: vi.fn(async () => undefined),
+      }
+      runtimeMocks.engines.push(engine)
+      return engine
+    }),
+  }
+})
 
 vi.mock('./desktop-voice-gateway-transport', () => ({
   DesktopVoiceGatewayTransport: class {
@@ -65,6 +69,7 @@ vi.mock('./desktop-voice-gateway-transport', () => ({
   },
 }))
 
+import { subscribeHotkeyActivations } from '../hotkeys'
 import { DesktopVoiceService } from './desktop-voice-service'
 
 describe('DesktopVoiceService session scope', () => {
@@ -163,6 +168,33 @@ describe('DesktopVoiceService session scope', () => {
     expect(runtimeMocks.engines[1]!.updateRemoteAudioSettings).toHaveBeenCalledWith(
       expect.objectContaining({ userVolumes: { 'user-b': 2 } }),
     )
+    await service.dispose()
+  })
+
+  it('ends a self-monitoring check from the deafen hotkey without saving a deafen', async () => {
+    const service = new DesktopVoiceService()
+    const persist = vi.fn()
+    service.setPreferencePersistence(persist)
+    service.startSystemLifecycle()
+    const activate = vi.mocked(subscribeHotkeyActivations).mock.calls.at(-1)![0]
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    await service.dispatch({ type: 'setSelfMonitoringActive', active: true })
+
+    activate({ action: 'push-to-mute', phase: 'pressed' })
+    activate({ action: 'push-to-mute', phase: 'released' })
+    expect(service.snapshot()).toMatchObject({ selfMonitoringActive: true, effectiveMuted: true })
+
+    activate({ action: 'toggle-deafen', phase: 'pressed' })
+    expect(service.snapshot()).toMatchObject({
+      selfMonitoringActive: false,
+      userDeafened: false,
+      effectiveMuted: false,
+    })
+    expect(persist).not.toHaveBeenCalled()
+
+    activate({ action: 'toggle-deafen', phase: 'pressed' })
+    expect(service.snapshot().userDeafened).toBe(true)
+    expect(persist).toHaveBeenCalledWith(expect.objectContaining({ deafened: true }))
     await service.dispose()
   })
 

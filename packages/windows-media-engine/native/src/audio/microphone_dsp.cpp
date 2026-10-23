@@ -16,7 +16,8 @@ bool MicrophoneDsp::configure(std::uint64_t revision, const MicrophoneDspConfig&
   stats_.config_revision = revision;
   return true;
 }
-void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, EchoReferencePort* port) noexcept {
+void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, EchoReferencePort* port,
+                            std::array<std::int16_t, kMicrophoneFrameSamples>* monitor) noexcept {
   std::optional<EchoReferenceFrame> reference = port ? port->take() : std::nullopt;
   bool unsupported_reference = false;
   if (reference) {
@@ -78,6 +79,17 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
     for (std::size_t index = 0; index < samples.size(); ++index)
       samples[index] = static_cast<float>(frame.samples[index]) / 32768.0f;
   }
+  if (monitor) {
+    const float monitor_to = stats_.gate_open ? 1.0f : 0.0f;
+    const float monitor_from = (std::max)(monitor_gate_gain_, monitor_to);
+    for (std::size_t index = 0; index < samples.size(); ++index) {
+      const float ramp = monitor_from + (monitor_to - monitor_from) * static_cast<float>(index + 1) /
+          static_cast<float>(samples.size());
+      const float output = ramp > 0 ? (std::clamp)(samples[index] * ramp, -0.98f, 0.98f) : 0.0f;
+      (*monitor)[index] = static_cast<std::int16_t>(std::lround(output * 32767.0f));
+    }
+  }
+  monitor_gate_gain_ = stats_.gate_open ? 1.0f : 0.0f;
   float output_energy = 0;
   // A closing gate fades out across one frame instead of clicking; opening is
   // immediate so speech onset is not attenuated. Mute and PTT stay immediate:

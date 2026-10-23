@@ -1,6 +1,5 @@
 import type {
   AppearanceColorMode,
-  AppearanceGradientSettings,
   AppearanceSettings,
 } from '@syrnike13/platform'
 import {
@@ -16,15 +15,14 @@ import {
 import {
   applyThemeToDocument,
   readSystemPrefersDark,
-} from '#/features/appearance/apply-theme'
+} from '@syrnike13/ui/tokens'
 import { appearanceSettingsStore } from '#/features/appearance/appearance-settings-store'
 import {
   listThemes,
-  resolveThemeGradient,
   resolveThemeVariant,
   type ThemeDefinition,
   type ThemeVariant,
-} from '#/features/appearance/theme-registry'
+} from '@syrnike13/ui/tokens'
 
 type AppearanceContextValue = {
   settings: AppearanceSettings
@@ -32,10 +30,7 @@ type AppearanceContextValue = {
   themes: ThemeDefinition[]
   setThemeId: (themeId: string) => void
   setColorMode: (colorMode: AppearanceColorMode) => void
-  resolvedGradient: AppearanceGradientSettings
-  gradientCustomized: boolean
-  previewGradient: (gradient: AppearanceGradientSettings) => void
-  setGradient: (gradient: AppearanceGradientSettings | null) => void
+  setScale: (scale: number) => void
 }
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null)
@@ -71,24 +66,13 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     appearanceSettingsStore.setColorMode(colorMode)
   }, [])
 
-  const previewGradient = useCallback((gradient: AppearanceGradientSettings) => {
-    appearanceSettingsStore.previewGradient(gradient)
+  const setScale = useCallback((scale: number) => {
+    appearanceSettingsStore.setScale(scale)
   }, [])
-
-  const setGradient = useCallback(
-    (gradient: AppearanceGradientSettings | null) => {
-      appearanceSettingsStore.setGradient(gradient)
-    },
-    [],
-  )
 
   const resolvedVariant = useMemo(
     () => resolveThemeVariant(settings, prefersDark),
     [settings, prefersDark],
-  )
-  const resolvedGradient = useMemo(
-    () => resolveThemeGradient(settings, prefersDark),
-    [prefersDark, settings],
   )
 
   const value = useMemo<AppearanceContextValue>(
@@ -98,20 +82,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       themes: listThemes(),
       setThemeId,
       setColorMode,
-      resolvedGradient,
-      gradientCustomized: settings.gradient !== null,
-      previewGradient,
-      setGradient,
+      setScale,
     }),
-    [
-      previewGradient,
-      resolvedGradient,
-      resolvedVariant,
-      setColorMode,
-      setGradient,
-      setThemeId,
-      settings,
-    ],
+    [resolvedVariant, setColorMode, setScale, setThemeId, settings],
   )
 
   return (

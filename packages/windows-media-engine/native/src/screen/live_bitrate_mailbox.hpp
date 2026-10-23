@@ -48,8 +48,13 @@ class LiveBitrateMailbox final {
       outcome = BitrateUpdateOutcome::unsafe;
     result_.outcome = outcome;
     result_.platform_result = platform_result;
-    if (outcome == BitrateUpdateOutcome::applied)
+    // The budget counts consecutive rejections: the encoder follows WebRTC's
+    // budget with frequent updates, and an occasional rejection between
+    // successful ones must not end live control for the rest of the share.
+    if (outcome == BitrateUpdateOutcome::applied) {
       result_.applied_bitrate = result_.requested_bitrate;
+      rejections_ = 0;
+    }
     if (outcome == BitrateUpdateOutcome::rejected) ++rejections_;
     if (outcome == BitrateUpdateOutcome::unsupported || outcome == BitrateUpdateOutcome::unsafe ||
         rejections_ >= kRejectionBudget) {

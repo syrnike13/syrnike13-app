@@ -1,16 +1,20 @@
+// design-allow-file restyle-shared: desktop overlay HUD has native media-overlay contracts.
 import type { DesktopOverlayState } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HeadphoneOffIcon, MicOffIcon } from '#/components/icons'
-import { Avatar, AvatarFallback } from '#/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@syrnike13/ui/primitives/avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { cn } from '#/lib/utils'
 
 export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
+  const t = useTranslations('overlay')
+
   if (!state.visible || !state.snapshot.active) return null
 
   return (
     <main className="h-screen overflow-hidden bg-transparent p-5 text-foreground">
-      <section data-overlay-panel className="w-[296px] overflow-hidden">
+      <section data-overlay-panel className="w-74 overflow-hidden">
         <div className="space-y-1">
           {state.snapshot.participants.map((participant) => (
             <div
@@ -24,7 +28,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               <Avatar
                 aria-label={
                   participant.speaking
-                    ? `${participant.displayName} говорит`
+                    ? t('speaking', { name: participant.displayName })
                     : participant.displayName
                 }
                 className={cn(
@@ -59,12 +63,12 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                   className="flex shrink-0 items-center gap-1 text-muted-foreground"
                 >
                   {participant.muted ? (
-                    <span title="Микрофон отключён">
+                    <span title={t('micMuted')}>
                       <MicOffIcon className="size-4" />
                     </span>
                   ) : null}
                   {participant.deafened ? (
-                    <span title="Звук отключён">
+                    <span title={t('soundMuted')}>
                       <HeadphoneOffIcon className="size-4" />
                     </span>
                   ) : null}

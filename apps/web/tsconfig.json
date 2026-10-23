@@ -14,13 +14,16 @@
       "@syrnike13/api-types/gateway-schema": [
         "../../packages/api-types/src/gateway-schema.ts"
       ],
-      "@syrnike13/platform": ["../../packages/platform/src/index.ts"]
+      "@syrnike13/platform": ["../../packages/platform/src/index.ts"],
+      "@syrnike13/ui": ["../../packages/ui/src/index.ts"],
+      "@syrnike13/ui/*": ["../../packages/ui/src/*"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

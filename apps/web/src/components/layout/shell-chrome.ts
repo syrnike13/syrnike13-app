@@ -4,7 +4,7 @@ import type { DesktopOs } from '@syrnike13/platform'
 export const shellNavSurface =
   'theme-surface-navigation gradient-surface-navigation text-foreground' as const
 
-/** Самый лёгкий слой каркаса: системный хром и рельс серверов. */
+/** Самый нижний слой приложения: фон под колонками и плавающими панелями. */
 export const shellLowestSurface =
   'theme-surface-lowest gradient-surface-lowest text-foreground' as const
 
@@ -69,12 +69,11 @@ export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
 export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
 /** Кнопки рельса: фиксированный квадрат; форма — Squircle, не CSS rounded. */
-export const RAIL_ICON_SIZE_PX = 44
-/** Пропорционально `RAIL_ICON_SIZE_PX` (было 14 при 40px). */
-export const RAIL_ICON_CORNER_RADIUS_PX = 15
-export const railIconButtonClass = 'size-11' as const
+export const RAIL_ICON_SIZE_PX = 40
+/** Пропорционально `RAIL_ICON_SIZE_PX`: 40px иконка → 14px радиус. */
+export const RAIL_ICON_CORNER_RADIUS_PX = 14
 /** Круглые аватары DM в рельсе — тот же визуальный размер, что и кнопки. */
-export const railAvatarClass = 'size-11' as const
+export const railAvatarClass = 'size-10' as const
 /** Glyph внутри кнопки рельса (Home, Plus, Hash). */
 export const railGlyphClass = 'size-4.5' as const
 
@@ -94,13 +93,6 @@ export const railIconIdleClass =
 /** Горизонтальный inset колонки рельса (4px = w-1 индикатора с -left-1). */
 export const railColumnInsetClass = 'px-1' as const
 
-/**
- * ScrollArea серверов: сдвиг влево + шире на 4px,
- * чтобы RailActiveIndicator (-left-1) не обрезался overflow-hidden viewport.
- */
-export const railServerScrollAreaClass =
-  '-ml-1 w-[calc(100%+0.25rem)]' as const
-
 /** Внутренний отступ контента ScrollArea — выравнивает кнопки с Home. */
 export const railServerScrollContentClass = 'pl-1' as const
 
@@ -113,7 +105,15 @@ export const shellDivider = 'border-shell-divider' as const
 
 /** Заголовок колонки (сайдбар канала, шапка канала): одна высота, липнет к верху. */
 export const shellColumnHeaderClass =
-  'sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider' as const
+  'sticky top-0 z-10 flex h-12.25 shrink-0 items-center gap-2 border-b border-shell-divider' as const
+
+/** Баннер сервера: 130px, из них 49px перекрывает шапка колонки. */
+export const GUILD_BANNER_HEIGHT_CLASS = 'h-32.5' as const
+/** Высота видимой части баннера под шапкой: 130 − 49 = 81px. */
+export const GUILD_BANNER_CONTENT_OFFSET_CLASS = 'h-20.25' as const
+/** Баннер гаснет за 88px скролла и поднимается максимум на 90px. */
+export const GUILD_BANNER_FADE_DISTANCE_PX = 88
+export const GUILD_BANNER_MAX_SHIFT_PX = 90
 
 /** Плавающие панели (UserPanel, композер): высота строки + отступ bottom-2. */
 export const FLOATING_BAR_HEIGHT_PX = 56
@@ -129,11 +129,8 @@ export function floatingBarReservePx(heightPx: number): number {
   return heightPx + FLOATING_BAR_BOTTOM_OFFSET_PX
 }
 
-/**
- * Бывший `rounded-lg` (= `--radius` / `--radius-lg` = 0.625rem ≈ 10px).
- * Форму даёт `<FloatingBarShell>` / `<Squircle>`, не CSS radius.
- */
-export const FLOATING_BAR_CORNER_RADIUS_PX = 10
+/** Радиус плавающих панелей: 8px. Форму даёт `<Squircle>`. */
+export const FLOATING_BAR_CORNER_RADIUS_PX = 8
 
 export const floatingBarSquircleProps = {
   cornerRadius: FLOATING_BAR_CORNER_RADIUS_PX,

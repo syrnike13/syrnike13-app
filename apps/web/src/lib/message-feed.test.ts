@@ -1,37 +1,20 @@
 import type { Message } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import {
-  buildMessageFeedItems,
-  feedItemEstimateHeight,
-  type MessageFeedItem,
-} from '#/lib/message-feed'
-
-const MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ702'
-
-describe('message feed item height estimates', () => {
-  it('estimates call system cards taller than regular messages', () => {
-    const item: MessageFeedItem = {
-      type: 'message',
-      key: MESSAGE_ID,
-      compact: false,
-      message: {
-        _id: MESSAGE_ID,
-        channel: 'channel-id',
-        author: '00000000000000000000000000',
-        system: {
-          type: 'call_started',
-          by: 'user-id',
-          finished_at: null,
-        },
-      } as Message,
-    }
-
-    expect(feedItemEstimateHeight(item)).toBe(104)
-  })
-})
+import { buildMessageFeedItems } from '#/lib/message-feed'
 
 const AUTHOR = '00000000000000000000000000'
+const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+function ulidAt(timestampMs: number, suffix = '0000000000000000') {
+  let time = timestampMs
+  let encoded = ''
+  for (let index = 0; index < 10; index += 1) {
+    encoded = ULID_ENCODING[time % 32]! + encoded
+    time = Math.floor(time / 32)
+  }
+  return encoded + suffix
+}
 
 function textMessage(id: string, content: string): Message {
   return { _id: id, channel: 'channel-id', author: AUTHOR, content } as Message
@@ -69,15 +52,50 @@ describe('message feed grouping around embeds', () => {
       rows.every((item) => item.type === 'message' && item.compact === false),
     ).toBe(true)
   })
+})
 
-  it('estimates an embed card taller than a plain row', () => {
-    const item: MessageFeedItem = {
-      type: 'message',
-      key: '01KT7DEM3B0T4B0BXGBXWDJ711',
-      compact: false,
-      message: embedMessage('01KT7DEM3B0T4B0BXGBXWDJ711'),
-    }
+describe('message feed grouping by time', () => {
+  const base = Date.UTC(2026, 4, 12, 10, 0, 0)
 
-    expect(feedItemEstimateHeight(item)).toBe(240)
+  it('compacts consecutive messages within seven minutes', () => {
+    const items = buildMessageFeedItems([
+      textMessage(ulidAt(base), 'one'),
+      textMessage(ulidAt(base + 6 * 60_000, 'A'), 'two'),
+    ])
+
+    const rows = items.filter((item) => item.type === 'message')
+    expect(rows[1]).toMatchObject({ type: 'message', compact: true })
+  })
+
+  it('breaks the group after seven minutes', () => {
+    const items = buildMessageFeedItems([
+      textMessage(ulidAt(base), 'one'),
+      textMessage(ulidAt(base + 8 * 60_000, 'B'), 'two'),
+    ])
+
+    const rows = items.filter((item) => item.type === 'message')
+    expect(rows[1]).toMatchObject({ type: 'message', compact: false })
+  })
+})
+
+describe('message feed unread marker', () => {
+  it('inserts the unread divider before the first unread message', () => {
+    const first = textMessage(ulidAt(1_700_000_000_000), 'read')
+    const second = textMessage(ulidAt(1_700_000_001_000, 'C'), 'unread')
+
+    const items = buildMessageFeedItems([first, second], {
+      unreadMessageId: second._id,
+    })
+
+    expect(items.map((item) => item.type)).toEqual([
+      'date',
+      'message',
+      'unread',
+      'message',
+    ])
+    expect(items[2]).toMatchObject({
+      type: 'unread',
+      messageId: second._id,
+    })
   })
 })

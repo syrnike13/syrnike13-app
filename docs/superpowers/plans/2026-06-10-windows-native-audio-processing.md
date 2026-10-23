@@ -12,7 +12,7 @@
 
 ## Decisions
 
-- Discord reference: Discord's own engineering post describes a C++ media engine built on WebRTC native library for desktop/mobile voice. Discord's Krisp support page documents Krisp as a separate noise suppression option. For this codebase, LiveKit/WebRTC APM is the correct "Standard-like" path; Krisp is intentionally out of scope.
+- Media engine: LiveKit/WebRTC APM is the correct "Standard-like" path for desktop voice; a separate Krisp noise-suppression option is intentionally out of scope.
 - AGC policy: AGC is not a setting, not a diagnostic status, and not enabled in native processing. Native APM options must always set `auto_gain_control = false`. Browser `autoGainControl: false` stays only as a defensive constraint to prevent browser-side gain processing.
 - Separate toggles: UI and runtime config expose `noiseSuppression` and `echoCancellation` independently. The checkboxes are separate and can be changed while a session is running.
 - Defaults: both `noiseSuppression` and `echoCancellation` default to `true`, matching the current voice-quality intent and the existing default `echoCancellation: true`.
@@ -21,8 +21,6 @@
 
 ## Source Notes
 
-- Discord WebRTC media engine: https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc
-- Discord Krisp FAQ: https://support.discord.com/hc/en-us/articles/360040843952-Krisp-FAQ
 - Local LiveKit APM header: `apps/desktop/native/native-voice-win/build/_deps/livekit-sdk/livekit-sdk-windows-x64-1.0.0/include/livekit/audio_processing_module.h`
 - Current native mic path: `apps/desktop/native/native-voice-win/src/microphone_publisher.cpp`
 - Current preview path: `apps/desktop/native/native-voice-win/src/microphone_preview.cpp`

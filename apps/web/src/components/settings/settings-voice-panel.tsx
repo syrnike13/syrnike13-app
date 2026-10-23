@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
 import { DesktopCameraProfileSchema } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   SettingsBlock,
@@ -8,8 +9,9 @@ import {
   SettingsToggleRow,
 } from '#/components/settings/settings-panels'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
-import { Button } from '#/components/ui/button'
-import { Switch } from '#/components/ui/switch'
+import { PresetSlider } from '#/components/ui/preset-slider'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import {
   Select,
   SelectContent,
@@ -17,22 +19,20 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Slider } from '#/components/ui/slider'
+} from '@syrnike13/ui/primitives/select'
 import {
   ensureMediaDevicePermissionEffect,
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
   SCREEN_SHARE_CAPTURE_MODES,
-  SCREEN_SHARE_CAPTURE_MODE_LABELS,
+  SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS,
   SCREEN_SHARE_QUALITY_NAMES,
-  SCREEN_SHARE_QUALITY_LABELS,
+  SCREEN_SHARE_QUALITY_LABEL_KEYS,
   ScreenShareCaptureModeSchema,
   ScreenShareQualitySchema,
   NativeScreenShareProfileSchema,
   NATIVE_SCREEN_SHARE_PROFILES,
-  NATIVE_SCREEN_SHARE_PROFILE_LABELS,
 } from '#/features/voice/voice-preference-types'
 import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -42,6 +42,7 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
+import { useSelfMonitoringEnded } from '#/features/voice/use-self-monitoring-ended'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
@@ -49,6 +50,7 @@ import {
   DEFAULT_VOICE_GATE_THRESHOLD_DB,
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 function volumeToSlider(volume: number) {
@@ -58,6 +60,8 @@ function volumeToSlider(volume: number) {
 function sliderToVolume(value: number) {
   return Number(((value / 100) * VOICE_OUTPUT_VOLUME_MAX).toFixed(2))
 }
+
+const VOLUME_STOPS = [{ value: 0 }, { value: 100 }] as const
 
 function DeviceSelectField({
   label,
@@ -70,27 +74,46 @@ function DeviceSelectField({
   devices: MediaDeviceInfo[]
   onChange: (deviceId: string) => void
 }) {
+  const ts = useTranslations('settings.voice')
   const selectableDevices = devices.filter((device) => device.deviceId.length > 0)
   const selectValue = value.length > 0 ? value : 'default'
   const unavailable = selectValue !== 'default' &&
     !selectableDevices.some((device) => device.deviceId === selectValue)
+  const items = [
+    { value: 'default', label: ts('defaultOption') },
+    ...(unavailable
+      ? [{ value: selectValue, label: ts('deviceUnavailable') }]
+      : []),
+    ...selectableDevices.map((device) => ({
+      value: device.deviceId,
+      label: device.label || ts('device'),
+    })),
+  ]
 
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
-      <Select value={selectValue} onValueChange={onChange}>
+      <Select
+        items={items}
+        value={selectValue}
+        onValueChange={(deviceId) => {
+          if (deviceId != null) onChange(deviceId)
+        }}
+      >
         <SelectTrigger aria-label={label} className="w-full">
-          <SelectValue placeholder="По умолчанию" />
+          <SelectValue placeholder={ts('defaultOption')} />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value="default">По умолчанию</SelectItem>
+            <SelectItem value="default">{ts('defaultOption')}</SelectItem>
             {unavailable ? (
-              <SelectItem value={selectValue} disabled>Устройство недоступно</SelectItem>
+              <SelectItem value={selectValue} disabled>
+                {ts('deviceUnavailable')}
+              </SelectItem>
             ) : null}
             {selectableDevices.map((device) => (
               <SelectItem key={device.deviceId} value={device.deviceId}>
-                {device.label || 'Устройство'}
+                {device.label || ts('device')}
               </SelectItem>
             ))}
           </SelectGroup>
@@ -101,12 +124,10 @@ function DeviceSelectField({
 }
 
 function VolumeSliderField({
-  id,
   label,
   value,
   onChange,
 }: {
-  id: string
   label: string
   value: number
   onChange: (value: number) => void
@@ -114,16 +135,16 @@ function VolumeSliderField({
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
-      <Slider
-        id={id}
-        value={[volumeToSlider(value)]}
-        min={0}
-        max={100}
+      <PresetSlider
+        stops={VOLUME_STOPS}
+        value={volumeToSlider(value)}
+        mode="continuous"
         step={1}
-        onValueChange={([next]) => {
-          if (next == null) return
-          onChange(sliderToVolume(next))
-        }}
+        showLabels={false}
+        showMarks={false}
+        onValueChange={(next) => onChange(sliderToVolume(next))}
+        formatValue={(next) => `${next}%`}
+        aria-label={label}
       />
     </div>
   )
@@ -139,13 +160,15 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
         <span
           key={index}
           className={cn(
-            'min-h-1 flex-1 rounded-sm bg-muted transition-[height,background-color] duration-75',
+            'min-h-1 h-(--level-height) flex-1 rounded-sm bg-muted motion-height transition-colors duration-75',
             level > 0.35 && 'bg-primary',
             level > 0.12 && level <= 0.35 && 'bg-muted-foreground/50',
           )}
-          style={{
-            height: `${Math.max(12, Math.round(level * 100))}%`,
-          }}
+          style={
+            {
+              '--level-height': `${Math.max(12, Math.round(level * 100))}%`,
+            } as CSSVars
+          }
         />
       ))}
     </div>
@@ -153,9 +176,11 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 }
 
 export function SettingsVoicePanel() {
+  const t = useTranslations('voice')
+  const ts = useTranslations('settings.voice')
   const prefs = useVoicePreferences()
   const { capabilities, os } = usePlatform()
-  const { setSelfMonitoringActive } = useVoiceMedia()
+  const { selfMonitoringActive, setSelfMonitoringActive } = useVoiceMedia()
   const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
@@ -189,6 +214,9 @@ export function SettingsVoicePanel() {
     }
   }, [micTestActive])
 
+  // The deafen button and the desktop hotkey can end the check elsewhere.
+  useSelfMonitoringEnded(selfMonitoringActive, () => setMicTestActive(false))
+
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'
   const micTestDeviceId =
@@ -215,9 +243,9 @@ export function SettingsVoicePanel() {
   return (
     <div className="space-y-2">
       {os === 'win32' ? (
-        <SettingsBlock title="Камера">
+        <SettingsBlock title={ts('camera')}>
           <DeviceSelectField
-            label="Устройство камеры"
+            label={ts('cameraDevice')}
             devices={cameraDevices}
             value={prefs.preferredVideoDevice ?? 'default'}
             onChange={(deviceId) => {
@@ -226,8 +254,18 @@ export function SettingsVoicePanel() {
               )
             }}
           />
-          <SettingsRow label="Качество видео">
+          <SettingsRow label={ts('videoQuality')}>
             <Select
+              items={[
+                {
+                  value: 'hd720p30',
+                  label: t('preferences.quality720p30'),
+                },
+                {
+                  value: 'hd1080p30',
+                  label: t('preferences.quality1080p30'),
+                },
+              ]}
               value={prefs.cameraProfile}
               onValueChange={(value) => {
                 const profile = Schema.decodeUnknownOption(
@@ -239,26 +277,30 @@ export function SettingsVoicePanel() {
               }}
             >
               <SelectTrigger
-                aria-label="Качество видео камеры"
-                className="w-[220px] max-w-full"
+                aria-label={ts('cameraQualityAria')}
+                className="w-55 max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="hd720p30">720p · 30 FPS</SelectItem>
-                  <SelectItem value="hd1080p30">1080p · 30 FPS</SelectItem>
+                  <SelectItem value="hd720p30">
+                    {t('preferences.quality720p30')}
+                  </SelectItem>
+                  <SelectItem value="hd1080p30">
+                    {t('preferences.quality1080p30')}
+                  </SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
           </SettingsRow>
         </SettingsBlock>
       ) : null}
-      <SettingsBlock title="Устройства">
+      <SettingsBlock title={ts('devices')}>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
             <DeviceSelectField
-              label="Микрофон"
+              label={ts('microphone')}
               devices={inputDevices}
               value={inputValue}
               onChange={(deviceId) => {
@@ -268,8 +310,7 @@ export function SettingsVoicePanel() {
               }}
             />
             <VolumeSliderField
-              id="voice-input-volume"
-              label="Громкость микрофона"
+              label={ts('micVolume')}
               value={prefs.inputVolume}
               onChange={(value) => {
                 voicePreferenceStore.setInputVolume(value)
@@ -279,7 +320,7 @@ export function SettingsVoicePanel() {
 
           <div className="space-y-4">
             <DeviceSelectField
-              label="Динамики / наушники"
+              label={ts('speakers')}
               devices={outputDevices}
               value={outputValue}
               onChange={(deviceId) => {
@@ -289,8 +330,7 @@ export function SettingsVoicePanel() {
               }}
             />
             <VolumeSliderField
-              id="voice-output-volume"
-              label="Громкость"
+              label={ts('volume')}
               value={prefs.outputVolume}
               onChange={(value) => {
                 voicePreferenceStore.setOutputVolume(value)
@@ -307,24 +347,24 @@ export function SettingsVoicePanel() {
                 className="shrink-0"
                 onClick={() => setMicTestActive((value) => !value)}
               >
-                {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+                {micTestActive ? ts('stop') : ts('testMic')}
               </Button>
               <MicInputMeter levels={meterLevels} />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {micTestActive
-                ? 'Слышите обработанный сигнал с выбранного микрофона — как в голосовом канале. Лучше в наушниках.'
-                : 'Воспроизведёт обработанный сигнал через выбранный вывод.'}
+                ? ts('micTestActiveHint')
+                : ts('micTestHint')}
             </p>
           </div>
         </div>
       </SettingsBlock>
 
-      <SettingsBlock title="Обработка звука">
+      <SettingsBlock title={ts('processing')}>
         {os === 'win32' ? (
           <SettingsToggleRow
-            label="Обход системной обработки микрофона"
-            hint="Запрашивает необработанный сигнал у Windows; если RAW не поддерживается, используется обычный режим"
+            label={ts('bypassProcessing')}
+            hint={ts('bypassProcessingHint')}
             checked={prefs.bypassSystemAudioInputProcessing}
             onCheckedChange={(checked) =>
               voicePreferenceStore.setBypassSystemAudioInputProcessing(checked)
@@ -333,8 +373,8 @@ export function SettingsVoicePanel() {
         ) : null}
 
         <SettingsToggleRow
-          label="Автоматическая регулировка усиления"
-          hint="Выравнивает громкость тихой и громкой речи"
+          label={ts('agc')}
+          hint={ts('agcHint')}
           checked={prefs.automaticGainControl}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setAutomaticGainControl(checked)
@@ -342,8 +382,8 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsRow
-          label="Автоматическая чувствительность"
-          hint="Регулируйте порог передачи звука в Сырниках"
+          label={ts('autoSensitivity')}
+          hint={ts('autoSensitivityHint')}
         >
           <Switch
             checked={prefs.voiceGateAutoThreshold}
@@ -365,7 +405,7 @@ export function SettingsVoicePanel() {
         </div>
 
         <SettingsToggleRow
-          label="Шумоподавление"
+          label={ts('noiseSuppression')}
           checked={prefs.noiseSuppression}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setNoiseSuppression(checked)
@@ -373,7 +413,7 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsToggleRow
-          label="Эхоподавление"
+          label={ts('echoCancellation')}
           checked={prefs.echoCancellation}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setEchoCancellation(checked)
@@ -381,10 +421,14 @@ export function SettingsVoicePanel() {
         />
       </SettingsBlock>
 
-      <SettingsBlock title="Демонстрация экрана">
-        <SettingsRow label="Качество по умолчанию">
+      <SettingsBlock title={ts('screenShare')}>
+        <SettingsRow label={ts('defaultQuality')}>
           {capabilities.nativeScreenShare ? (
             <Select
+              items={NATIVE_SCREEN_SHARE_PROFILES.map((profile) => ({
+                value: profile,
+                label: t(`preferences.quality${profile}`),
+              }))}
               value={prefs.nativeScreenShareProfile}
               onValueChange={(value) => {
                 const profile = Schema.decodeUnknownOption(
@@ -396,8 +440,8 @@ export function SettingsVoicePanel() {
               }}
             >
               <SelectTrigger
-                aria-label="Качество демонстрации экрана"
-                className="w-[220px] max-w-full"
+                aria-label={ts('screenShareQualityAria')}
+                className="w-55 max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -405,7 +449,7 @@ export function SettingsVoicePanel() {
                 <SelectGroup>
                   {NATIVE_SCREEN_SHARE_PROFILES.map((profile) => (
                     <SelectItem key={profile} value={profile}>
-                      {NATIVE_SCREEN_SHARE_PROFILE_LABELS[profile]}
+                      {t(`preferences.quality${profile}`)}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -413,6 +457,10 @@ export function SettingsVoicePanel() {
             </Select>
           ) : (
             <Select
+              items={SCREEN_SHARE_QUALITY_NAMES.map((name) => ({
+                value: name,
+                label: t(SCREEN_SHARE_QUALITY_LABEL_KEYS[name]),
+              }))}
               value={prefs.screenShareQuality}
               onValueChange={(value) => {
                 const quality = Schema.decodeUnknownOption(
@@ -423,13 +471,13 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[220px] max-w-full">
+              <SelectTrigger className="w-55 max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {SCREEN_SHARE_QUALITY_NAMES.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {SCREEN_SHARE_QUALITY_LABELS[name]}
+                    {t(SCREEN_SHARE_QUALITY_LABEL_KEYS[name])}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -438,8 +486,12 @@ export function SettingsVoicePanel() {
         </SettingsRow>
 
         {capabilities.nativeScreenShare ? (
-          <SettingsRow label="Захват экрана">
+          <SettingsRow label={ts('screenCapture')}>
             <Select
+              items={SCREEN_SHARE_CAPTURE_MODES.map((name) => ({
+                value: name,
+                label: t(SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS[name]),
+              }))}
               value={prefs.screenShareCaptureMode}
               onValueChange={(value) => {
                 const captureMode = Schema.decodeUnknownOption(
@@ -452,13 +504,13 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[220px] max-w-full">
+              <SelectTrigger className="w-55 max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {SCREEN_SHARE_CAPTURE_MODES.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {SCREEN_SHARE_CAPTURE_MODE_LABELS[name]}
+                    {t(SCREEN_SHARE_CAPTURE_MODE_LABEL_KEYS[name])}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -467,8 +519,8 @@ export function SettingsVoicePanel() {
         ) : null}
 
         <SettingsToggleRow
-          label="AV1 (экспериментально)"
-          hint={!av1Supported ? 'Не поддерживается в этом браузере' : undefined}
+          label={ts('av1')}
+          hint={!av1Supported ? ts('av1Unsupported') : undefined}
           checked={prefs.screenShareCodec === 'av1'}
           disabled={!av1Supported}
           onCheckedChange={(checked) =>
@@ -477,7 +529,7 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsToggleRow
-          label="Передавать звук с экрана по умолчанию"
+          label={ts('shareAudioByDefault')}
           checked={prefs.screenShareAudio}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setScreenShareAudio(checked)

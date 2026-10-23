@@ -22,7 +22,7 @@
 
 ## References
 
-- Discord documents WGC plus a separate advanced capture path, and says WGC cannot capture full screen exclusive apps: https://support.discord.com/hc/en-us/articles/9410427556375--Windows-Capturing-Application-Window-for-Screen-Share-and-Go-Live
+- WGC cannot capture full-screen exclusive apps; those need a separate advanced capture path.
 - Windows Graphics Capture frame pool surfaces are fixed to the frame pool size; larger content is clipped until the pool is recreated: https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture
 - `Direct3D11CaptureFramePool.Recreate` exists specifically for rebuilding the pool with new inputs: https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool
 - `IDXGIOutputDuplication::AcquireNextFrame` can return access lost and must be handled by rebuilding duplication: https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgioutputduplication-acquirenextframe

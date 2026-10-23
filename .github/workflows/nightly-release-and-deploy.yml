@@ -1,9 +1,6 @@
 name: Nightly Release And Deploy
 
 on:
-  push:
-    branches:
-      - develop
   workflow_dispatch:
     inputs:
       deploy:
@@ -18,27 +15,33 @@ permissions:
 
 concurrency:
   group: release-syrnike13-nightly
-  cancel-in-progress: true
+  # A manual run must not be cancelled halfway through by another dispatch.
+  cancel-in-progress: false
 
 jobs:
   version:
-    name: Read nightly version
+    name: Resolve nightly version
     runs-on: ubuntu-24.04
     outputs:
-      base_version: ${{ steps.version.outputs.base_version }}
       nightly_version: ${{ steps.version.outputs.nightly_version }}
       sha_tag: ${{ steps.version.outputs.sha_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Validate dispatch branch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_NAME" != "develop" ]; then
+            echo "::error::Run the nightly workflow from develop, not ${GITHUB_REF_NAME}."
+            exit 1
+          fi
       - id: version
         run: |
           set -euo pipefail
-          BASE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          # Date and commit, independent of the repository VERSION file. The
+          # leading zeros are stripped because semver rejects them.
+          NIGHTLY_DATE="$(date -u +%Y.%m.%d | awk -F. '{ printf "%d.%d.%d", $1, $2, $3 }')"
           SHA_TAG="${GITHUB_SHA::12}"
-          test -n "$BASE_VERSION"
-          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "nightly_version=${BASE_VERSION}-nightly.${SHA_TAG}" >> "$GITHUB_OUTPUT"
           echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "nightly_version=${NIGHTLY_DATE}-nightly.${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
   native-windows:
     name: Build Windows native runtime
@@ -56,6 +59,10 @@ jobs:
     needs: version
     steps:
       - uses: actions/checkout@v4
+      - name: Apply nightly version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -73,6 +80,8 @@ jobs:
             VITE_APP_TITLE=syrnike13 Nightly
             VITE_RELEASE_CHANNEL=nightly
             VITE_API_URL=https://beta.syrnike13.ru/api
+            VITE_PUBLIC_APP_URL=https://app.beta.syrnike13.ru
+            VITE_PUBLIC_SITE_URL=https://beta.syrnike13.ru
             VITE_WS_URL=wss://beta.syrnike13.ru/ws
             VITE_MEDIA_URL=https://beta.syrnike13.ru/autumn
             VITE_PROXY_URL=https://beta.syrnike13.ru/january
@@ -82,12 +91,46 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-web:nightly
             ghcr.io/${{ github.repository_owner }}/app-web:nightly-${{ needs.version.outputs.sha_tag }}
 
+  landing:
+    name: Publish nightly landing image
+    runs-on: ubuntu-24.04
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply nightly version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/landing/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13 Nightly
+            VITE_APP_URL=https://app.beta.syrnike13.ru
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-landing:nightly
+            ghcr.io/${{ github.repository_owner }}/app-landing:nightly-${{ needs.version.outputs.sha_tag }}
+
   admin:
     name: Publish nightly admin image
     runs-on: ubuntu-24.04
     needs: version
     steps:
       - uses: actions/checkout@v4
+      - name: Apply nightly version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -117,6 +160,10 @@ jobs:
     needs: version
     steps:
       - uses: actions/checkout@v4
+      - name: Apply nightly version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -164,6 +211,10 @@ jobs:
             dockerfile: crates/daemons/voice-ingress/Dockerfile
     steps:
       - uses: actions/checkout@v4
+      - name: Apply nightly version
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
@@ -201,21 +252,58 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      # A LiveKit restart drops every room on the node, so an image for an
+      # already published source tree is reused instead of rebuilt.
+      - id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse HEAD:services/livekit-server)"
+          tree_ref="$IMAGE:nightly-tree-$tree"
+          echo "tree_ref=$tree_ref" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$tree_ref" >/dev/null 2>&1; then
+            echo "Reusing $tree_ref; services/livekit-server is unchanged."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image for tree $tree; building LiveKit."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: ${{ steps.image.outputs.build == 'true' }}
+        uses: docker/build-push-action@v7
         with:
           context: services/livekit-server
           file: services/livekit-server/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
+            ${{ steps.image.outputs.tree_ref }}
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly-${{ needs.version.outputs.sha_tag }}
+      - if: ${{ steps.image.outputs.build != 'true' }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/app-livekit-server
+          TREE_REF: ${{ steps.image.outputs.tree_ref }}
+          SHA_TAG: ${{ needs.version.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          digest() {
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$1" | jq -r .digest
+          }
+          docker buildx imagetools create -t "$IMAGE:nightly-$SHA_TAG" "$TREE_REF"
+          # Touch :nightly only when it points elsewhere, so the nightly deploy
+          # keeps the same image and compose leaves livekit running.
+          if [ "$(digest "$IMAGE:nightly" 2>/dev/null || true)" != "$(digest "$TREE_REF")" ]; then
+            echo "Moving $IMAGE:nightly to $TREE_REF."
+            docker buildx imagetools create -t "$IMAGE:nightly" "$TREE_REF"
+          fi
 
   deploy:
     name: Deploy nightly
     runs-on: ubuntu-24.04
     needs:
       - web
+      - landing
       - admin
       - backend-services
       - livekit
@@ -223,13 +311,14 @@ jobs:
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.web.result == 'success' && needs.admin.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.web.result == 'success' && needs.landing.result == 'success' && needs.admin.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && inputs.deploy == true }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.NIGHTLY_DEPLOY_PATH || '/opt/syrnike13-nightly' }}
       EDGE_DEPLOY_PATH: ${{ vars.EDGE_DEPLOY_PATH || secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.NIGHTLY_SYRNIKE_DOMAIN || 'beta.syrnike13.ru' }}
+      SYRNIKE_APP_DOMAIN: ${{ vars.NIGHTLY_APP_DOMAIN || 'app.beta.syrnike13.ru' }}
       SYRNIKE_ADMIN_DOMAIN: ${{ vars.NIGHTLY_ADMIN_DOMAIN || 'admin.beta.syrnike13.ru' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
       CADDYFILE_CANDIDATE: /tmp/syrnike13-edge-Caddyfile-${{ github.run_id }}-${{ github.run_attempt }}
@@ -244,6 +333,7 @@ jobs:
           test -n "$DEPLOY_PATH"
           test -n "$EDGE_DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_APP_DOMAIN"
           test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
@@ -262,6 +352,7 @@ jobs:
           STAGING="$(mktemp -d)"
           cp -R deploy/nightly/. "$STAGING/"
           cp deploy/production/generate_config.sh "$STAGING/generate_config.sh"
+          cp deploy/production/scripts/rollout.sh "$STAGING/scripts/rollout.sh"
           cp deploy/production/secrets.env.example "$STAGING/secrets.env.example"
           tar -C "$STAGING" \
             --exclude='data*' \
@@ -287,12 +378,12 @@ jobs:
           scp -i ~/.ssh/deploy_key deploy/production/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$CADDYFILE_CANDIDATE"
           scp -i ~/.ssh/deploy_key deploy/production/scripts/reload-caddy.sh "$DEPLOY_USER@$DEPLOY_HOST:$CADDY_RELOAD_SCRIPT"
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$EDGE_DEPLOY_PATH' && CADDY_NIGHTLY_HOSTNAME='$SYRNIKE_DOMAIN' CADDY_NIGHTLY_ADMIN_HOSTNAME='$SYRNIKE_ADMIN_DOMAIN' bash '$CADDY_RELOAD_SCRIPT' '$CADDYFILE_CANDIDATE' && rm -f '$CADDYFILE_CANDIDATE' '$CADDY_RELOAD_SCRIPT'"
+            "cd '$EDGE_DEPLOY_PATH' && CADDY_NIGHTLY_HOSTNAME='$SYRNIKE_DOMAIN' CADDY_NIGHTLY_APP_HOSTNAME='$SYRNIKE_APP_DOMAIN' CADDY_NIGHTLY_ADMIN_HOSTNAME='$SYRNIKE_ADMIN_DOMAIN' bash '$CADDY_RELOAD_SCRIPT' '$CADDYFILE_CANDIDATE' && rm -f '$CADDYFILE_CANDIDATE' '$CADDY_RELOAD_SCRIPT'"
       - name: Run nightly deploy
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' && ./scripts/deploy-on-server.sh"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_APP_DOMAIN='$SYRNIKE_APP_DOMAIN' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' && ./scripts/deploy-on-server.sh"
       - name: Verify nightly API
         run: |
           set -euo pipefail
@@ -307,6 +398,8 @@ jobs:
             sleep 10
           done
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_DOMAIN}/" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_APP_DOMAIN}/" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null
   desktop:
     name: Build nightly desktop packages
@@ -330,6 +423,7 @@ jobs:
       VITE_APP_TITLE: syrnike13 Nightly
       VITE_RELEASE_CHANNEL: nightly
       VITE_API_URL: https://beta.syrnike13.ru/api
+      VITE_PUBLIC_APP_URL: https://app.beta.syrnike13.ru
       VITE_WS_URL: wss://beta.syrnike13.ru/ws
       VITE_MEDIA_URL: https://beta.syrnike13.ru/autumn
       VITE_PROXY_URL: https://beta.syrnike13.ru/january
@@ -337,6 +431,14 @@ jobs:
       VITE_VOICE_NODE: worldwide
     steps:
       - uses: actions/checkout@v4
+      - name: Apply nightly version
+        # This matrix also runs on windows-2022, where the default shell is
+        # pwsh: `printf` there receives an empty "$RELEASE_VERSION" because
+        # PowerShell needs "$env:RELEASE_VERSION" for environment variables.
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.nightly_version }}
+        run: printf '%s\n' "$RELEASE_VERSION" > VERSION
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

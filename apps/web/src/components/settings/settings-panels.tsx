@@ -1,5 +1,15 @@
 import type { ReactNode } from 'react'
-import { Loader2Icon } from '#/components/icons'
+import {
+  APPEARANCE_SCALE_MAX,
+  APPEARANCE_SCALE_MIN,
+  APPEARANCE_SCALE_STEP,
+  DEFAULT_APPEARANCE_SETTINGS,
+} from '@syrnike13/platform'
+import {
+  useLocale,
+  useTranslations,
+  type Translator,
+} from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -12,36 +22,37 @@ import { SettingsProfilePanel } from '#/components/settings/settings-profile-pan
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
-import { CustomThemeEditor } from '#/components/appearance/custom-theme-editor'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
+import { PresetSlider } from '#/components/ui/preset-slider'
 import { useAppearance } from '#/features/appearance/appearance-context'
-import { CUSTOM_GRADIENT_CONTROLS_ENABLED } from '#/features/appearance/appearance-feature-flags'
-import { getThemeById, themeSupportsColorMode } from '#/features/appearance/theme-registry'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { Switch } from '#/components/ui/switch'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import type { SettingsSection } from '#/features/settings/settings-modal-context'
 import { changeAccountPasswordEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   readBrowserDiagnosticReportsEnabled,
   writeBrowserDiagnosticReportsEnabled,
 } from '#/features/diagnostics/diagnostic-preferences'
 import { sendDiagnosticReport } from '#/features/diagnostics/diagnostic-reporter'
 
-const SECTION_TITLES: Record<SettingsSection, string> = {
-  profile: 'Профиль',
-  account: 'Аккаунт',
-  voice: 'Голос и видео',
-  sessions: 'Устройства',
-  notifications: 'Уведомления',
-  appearance: 'Оформление',
-  hotkeys: 'Горячие клавиши',
-  overlay: 'Оверлей',
-  desktop: 'Приложение',
+const SECTION_TITLE_KEYS: Record<SettingsSection, string> = {
+  profile: 'sections.profile',
+  account: 'sections.account',
+  voice: 'sections.voice',
+  sessions: 'sections.sessions',
+  notifications: 'sections.notifications',
+  appearance: 'sections.appearance',
+  language: 'sections.language',
+  hotkeys: 'sections.hotkeys',
+  overlay: 'sections.overlay',
+  desktop: 'sections.desktop',
 }
 
 export function SettingsBlock({
@@ -54,7 +65,7 @@ export function SettingsBlock({
   children: ReactNode
 }) {
   return (
-    <section className="border-b border-border/40 py-6 last:border-b-0">
+    <section className="border-b border-border py-6 last:border-b-0">
       <div className="mb-1">
         <h3 className="text-xs font-bold tracking-wide text-muted-foreground uppercase">
           {title}
@@ -147,11 +158,15 @@ export function SettingsToggleRow({
   )
 }
 
-export function settingsSectionTitle(section: SettingsSection) {
-  return SECTION_TITLES[section]
+export function settingsSectionTitle(
+  section: SettingsSection,
+  t: Translator,
+) {
+  return t(SECTION_TITLE_KEYS[section])
 }
 
 export function SettingsAccountPanel() {
+  const t = useTranslations('settings.account')
   const auth = useAuth()
   const { desktop } = usePlatform()
   const user = auth.user
@@ -165,15 +180,15 @@ export function SettingsAccountPanel() {
 
   return (
     <div className="space-y-2">
-      <SettingsBlock title="Информация об аккаунте">
-        <SettingsRow label="Имя пользователя" value={`@${user?.username}`} />
+      <SettingsBlock title={t('accountInfo')}>
+        <SettingsRow label={t('username')} value={`@${user?.username}`} />
         <SettingsRow
-          label="Отображаемое имя"
+          label={t('displayName')}
           value={user?.display_name?.trim() || '—'}
         />
       </SettingsBlock>
 
-      <SettingsBlock title="Пароль">
+      <SettingsBlock title={t('password')}>
         <form
           className="space-y-3"
           onSubmit={(event) => {
@@ -181,11 +196,11 @@ export function SettingsAccountPanel() {
             const token = auth.session?.token
             if (!token) return
             if (newPassword.length < 8) {
-              toast.error('Новый пароль: минимум 8 символов')
+              toast.error(t('passwordMin'))
               return
             }
             if (!currentPassword) {
-              toast.error('Введите текущий пароль')
+              toast.error(t('currentPasswordRequired'))
               return
             }
             setPasswordSaving(true)
@@ -199,16 +214,14 @@ export function SettingsAccountPanel() {
                   onFailure: (error) =>
                     Effect.sync(() => {
                       toast.error(
-                        error instanceof Error
-                          ? error.message
-                          : 'Не удалось сменить пароль',
+                        apiErrorMessage(error, t('passwordChangeError')),
                       )
                     }),
                   onSuccess: () =>
                     Effect.sync(() => {
                       setCurrentPassword('')
                       setNewPassword('')
-                      toast.success('Пароль изменён')
+                      toast.success(t('passwordChanged'))
                     }),
                 }),
                 Effect.ensuring(
@@ -221,7 +234,9 @@ export function SettingsAccountPanel() {
           }}
         >
           <div className="space-y-2">
-            <Label htmlFor="settings-current-password">Текущий пароль</Label>
+            <Label htmlFor="settings-current-password">
+              {t('currentPassword')}
+            </Label>
             <Input
               id="settings-current-password"
               type="password"
@@ -231,7 +246,7 @@ export function SettingsAccountPanel() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="settings-new-password">Новый пароль</Label>
+            <Label htmlFor="settings-new-password">{t('newPassword')}</Label>
             <Input
               id="settings-new-password"
               type="password"
@@ -242,16 +257,16 @@ export function SettingsAccountPanel() {
           </div>
           <Button type="submit" size="sm" disabled={passwordSaving}>
             {passwordSaving ? (
-              <Loader2Icon className="size-4 animate-spin" />
+              <Spinner className="size-4" />
             ) : (
-              'Сменить пароль'
+              t('changePassword')
             )}
           </Button>
         </form>
       </SettingsBlock>
 
-      <SettingsBlock title="Система">
-        <SettingsRow label="ID аккаунта" stacked>
+      <SettingsBlock title={t('system')}>
+        <SettingsRow label={t('accountId')} stacked>
           <code className="block w-full break-all rounded bg-muted px-2 py-1.5 font-mono text-xs">
             {user?._id}
           </code>
@@ -260,25 +275,23 @@ export function SettingsAccountPanel() {
 
       {!desktop ? (
         <SettingsBlock
-          title="Конфиденциальность и диагностика"
-          description="Настройка хранится только в этом браузере."
+          title={t('privacy')}
+          description={t('privacyDescription')}
         >
           <SettingsToggleRow
-            label="Автоматические диагностические отчёты"
-            hint="При сбое голоса или демонстрации экрана отправляет ограниченный структурированный пакет без токенов, сообщений, аудио и изображения экрана."
+            label={t('autoReports')}
+            hint={t('autoReportsHint')}
             checked={diagnosticReports}
             onCheckedChange={(checked) => {
               setDiagnosticReports(checked)
               if (!writeBrowserDiagnosticReportsEnabled(checked)) {
-                toast.warning(
-                  'Браузер не разрешил сохранить настройку; она действует только до закрытия вкладки.',
-                )
+                toast.warning(t('storageDenied'))
               }
             }}
           />
           <SettingsRow
-            label="Отправить отчёт сейчас"
-            hint="Отправляет текущий ограниченный журнал и возвращает ID отчёта для поддержки."
+            label={t('sendReport')}
+            hint={t('sendReportHint')}
           >
             <Button
               type="button"
@@ -301,15 +314,13 @@ export function SettingsAccountPanel() {
                       onFailure: (error) =>
                         Effect.sync(() => {
                           toast.error(
-                            error instanceof Error
-                              ? error.message
-                              : 'Не удалось отправить диагностический отчёт',
+                            apiErrorMessage(error, t('reportError')),
                           )
                         }),
                       onSuccess: (report) =>
                         Effect.sync(() => {
                           if (report) {
-                            toast.success(`Отчёт отправлен: ${report.id}`)
+                            toast.success(t('reportSent', { id: report.id }))
                           }
                         }),
                     }),
@@ -322,7 +333,7 @@ export function SettingsAccountPanel() {
                 )
               }}
             >
-              {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}
+              {sendingDiagnosticReport ? t('sending') : t('send')}
             </Button>
           </SettingsRow>
         </SettingsBlock>
@@ -331,53 +342,86 @@ export function SettingsAccountPanel() {
   )
 }
 
+const SCALE_MAJOR_VALUES = new Set([
+  APPEARANCE_SCALE_MIN,
+  DEFAULT_APPEARANCE_SETTINGS.scale,
+  APPEARANCE_SCALE_MAX,
+])
+
+const SCALE_STOPS = Array.from(
+  {
+    length:
+      Math.floor(
+        (APPEARANCE_SCALE_MAX - APPEARANCE_SCALE_MIN) /
+          APPEARANCE_SCALE_STEP,
+      ) + 1,
+  },
+  (_, index) => {
+    const value = APPEARANCE_SCALE_MIN + index * APPEARANCE_SCALE_STEP
+    return { value, major: SCALE_MAJOR_VALUES.has(value) }
+  },
+)
+
 export function SettingsAppearancePanel() {
-  const {
-    gradientCustomized,
-    previewGradient,
-    resolvedGradient,
-    setColorMode,
-    setGradient,
-    settings,
-  } = useAppearance()
-  const activeTheme = getThemeById(settings.themeId)
-  const supportsColorMode = themeSupportsColorMode(activeTheme)
+  const t = useTranslations('settings.appearance')
+  const { setColorMode, setScale, settings } = useAppearance()
 
   return (
     <div className="space-y-6">
-      {CUSTOM_GRADIENT_CONTROLS_ENABLED &&
-      activeTheme.kind === 'gradient' &&
-      activeTheme.customizable ? (
-        <SettingsBlock
-          title="Настройка градиента"
-          description="Один градиент проходит через всё приложение, а поверхности автоматически сохраняют контраст."
-        >
-          <CustomThemeEditor
-            gradient={resolvedGradient}
-            customized={gradientCustomized}
-            onPreview={previewGradient}
-            onChange={setGradient}
-          />
-        </SettingsBlock>
-      ) : null}
-      <SettingsBlock title="Темы">
+      <SettingsBlock title={t('themes')}>
         <ThemePickerGrid />
       </SettingsBlock>
-      <SettingsBlock title="Режим отображения">
+      <SettingsBlock title={t('displayMode')}>
         <SettingsRow
-          label="Светлая / тёмная"
-          hint={
-            supportsColorMode
-              ? 'Как отображать выбранную палитру'
-              : 'Для этой палитры доступен только один режим'
-          }
+          label={t('lightDark')}
+          hint={t('colorModeHint')}
         >
           <ColorModeSegment
             value={settings.colorMode}
-            disabled={!supportsColorMode}
             onChange={setColorMode}
           />
         </SettingsRow>
+      </SettingsBlock>
+      <SettingsBlock title={t('scale')}>
+        <SettingsRow
+          label={t('interfaceScale')}
+          hint={t('interfaceScaleHint')}
+          stacked
+        >
+          <PresetSlider
+            stops={SCALE_STOPS}
+            value={settings.scale}
+            drag="release"
+            onValueChange={setScale}
+            formatValue={(value) => `${value}%`}
+            aria-label={t('interfaceScale')}
+          />
+        </SettingsRow>
+      </SettingsBlock>
+    </div>
+  )
+}
+
+export function SettingsLanguagePanel() {
+  const { locale, setLocale } = useLocale()
+  const t = useTranslations('settings.language')
+
+  return (
+    <div className="space-y-6">
+      <SettingsBlock title={t('title')} description={t('description')}>
+        <div className="flex flex-wrap gap-2">
+          {(['ru', 'en'] as const).map((value) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={locale === value ? 'default' : 'outline'}
+              onClick={() => setLocale(value)}
+            >
+              {t(value)}
+            </Button>
+          ))}
+        </div>
       </SettingsBlock>
     </div>
   )
@@ -401,6 +445,8 @@ export function SettingsPanelContent({ section }: { section: SettingsSection }) 
       return <SettingsNotificationsPanel />
     case 'appearance':
       return <SettingsAppearancePanel />
+    case 'language':
+      return <SettingsLanguagePanel />
     case 'hotkeys':
       return <SettingsHotkeysPanel />
     case 'overlay':

@@ -10,11 +10,14 @@
       "@syrnike13/api-types": ["../../packages/api-types/src/index.ts"],
       "@syrnike13/api-types/effect-schema": [
         "../../packages/api-types/src/effect-schema.ts"
-      ]
+      ],
+      "@syrnike13/ui": ["../../packages/ui/src/index.ts"],
+      "@syrnike13/ui/*": ["../../packages/ui/src/*"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

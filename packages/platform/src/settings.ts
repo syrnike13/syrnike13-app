@@ -186,6 +186,9 @@ export type {
 export {
   APPEARANCE_GRADIENT_MAX_COLORS,
   APPEARANCE_GRADIENT_MIN_COLORS,
+  APPEARANCE_SCALE_MAX,
+  APPEARANCE_SCALE_MIN,
+  APPEARANCE_SCALE_STEP,
   AppearanceColorModeSchema,
   AppearanceGradientSettingsSchema,
   AppearanceSettingsSchema,
@@ -193,6 +196,7 @@ export {
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
   normalizeAppearanceGradientSettings,
+  normalizeAppearanceScale,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
 } from './appearance'

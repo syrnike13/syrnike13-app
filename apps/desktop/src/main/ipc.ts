@@ -113,7 +113,11 @@ export function registerDesktopIpc(
   ) => authPersistence.withPermit(operation)
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
-  registerNativeMediaRuntimeIpc(getWindow)
+  registerNativeMediaRuntimeIpc(getWindow, () => {
+    void desktopVoiceService
+      .dispatch({ type: 'setSelfMonitoringActive', active: false })
+      .catch(() => {})
+  })
   const unsubscribeVoice = desktopVoiceService.subscribe((snapshot) => {
     broadcastDesktopVoiceSnapshot(getWindow, IPC.voiceSnapshotChanged, snapshot)
   })
@@ -212,7 +216,7 @@ export function registerDesktopIpc(
       input,
     )
     lastActivity = details
-    // TODO: Discord RPC / macOS Now Playing — подключить нативный модуль.
+    // TODO: Rich presence / macOS Now Playing — подключить нативный модуль.
     if (details) {
       console.info('[desktop] activity set', details)
     } else {

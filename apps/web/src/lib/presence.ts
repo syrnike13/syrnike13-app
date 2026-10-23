@@ -1,17 +1,18 @@
 import type { ManualPresence, Presence, User } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 export type PresenceOption = {
   value: ManualPresence
-  label: string
+  labelKey: string
   dotClass: string
 }
 
 export const PRESENCE_OPTIONS: PresenceOption[] = [
-  { value: 'Online', label: 'В сети', dotClass: 'bg-chart-3' },
-  { value: 'Idle', label: 'Не активен', dotClass: 'bg-chart-2' },
-  { value: 'Focus', label: 'В фокусе', dotClass: 'bg-chart-5' },
-  { value: 'Busy', label: 'Не беспокоить', dotClass: 'bg-destructive' },
-  { value: 'Invisible', label: 'Невидимый', dotClass: 'bg-muted-foreground' },
+  { value: 'Online', labelKey: 'online', dotClass: 'bg-chart-3' },
+  { value: 'Idle', labelKey: 'idle', dotClass: 'bg-chart-2' },
+  { value: 'Focus', labelKey: 'focus', dotClass: 'bg-chart-5' },
+  { value: 'Busy', labelKey: 'busy', dotClass: 'bg-destructive' },
+  { value: 'Invisible', labelKey: 'invisible', dotClass: 'bg-muted-foreground' },
 ]
 
 export const PRESENCE_DISPLAY: Record<Presence, PresenceOption> = {
@@ -33,8 +34,8 @@ export function getUserPresence(user?: User | null): Presence {
   return user?.status?.presence ?? 'Online'
 }
 
-export function presenceModeLabel(presence: Presence) {
-  return PRESENCE_DISPLAY[presence]?.label ?? 'В сети'
+export function presenceModeLabel(presence: Presence, t: Translator) {
+  return t(PRESENCE_DISPLAY[presence]?.labelKey ?? 'online')
 }
 
 export function presenceDotClass(user?: User | null) {
@@ -53,30 +54,30 @@ export function presenceDotClass(user?: User | null) {
 }
 
 /** Подпись под именем: кастомный статус или режим присутствия. */
-export function userStatusSubtitle(user?: User | null) {
+export function userStatusSubtitle(user: User | null | undefined, t: Translator) {
   if (!user) return ''
 
   const custom = user.status?.text?.trim()
   if (custom) return custom
 
-  return presenceModeLabel(getUserPresence(user))
+  return presenceModeLabel(getUserPresence(user), t)
 }
 
 /** Для списков друзей/участников: офлайн или статус. */
-export function presenceLabel(user?: User | null) {
+export function presenceLabel(user: User | null | undefined, t: Translator) {
   if (!user) return ''
-  if (!isUserOnline(user)) return 'не в сети'
+  if (!isUserOnline(user)) return t('offline').toLowerCase()
 
   const custom = user.status?.text?.trim()
   if (custom) return custom
 
-  return presenceModeLabel(getUserPresence(user)).toLowerCase()
+  return presenceModeLabel(getUserPresence(user), t).toLowerCase()
 }
 
-export function presenceDotTitle(user?: User | null) {
+export function presenceDotTitle(user: User | null | undefined, t: Translator) {
   if (!user) return ''
   if (!isUserOnline(user) && getUserPresence(user) !== 'Invisible') {
-    return 'Не в сети'
+    return t('offline')
   }
-  return presenceModeLabel(getUserPresence(user))
+  return presenceModeLabel(getUserPresence(user), t)
 }

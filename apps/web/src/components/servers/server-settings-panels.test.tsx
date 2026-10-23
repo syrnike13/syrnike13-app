@@ -77,7 +77,7 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.fetchServerEmojis(...args),
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div role="dialog">{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -135,24 +135,22 @@ function textChannel(
 }
 
 async function chooseSystemMessageChannel(label: string) {
-  fireEvent.pointerDown(screen.getByLabelText('Канал системных сообщений'), {
-    button: 0,
-    ctrlKey: false,
-    pointerId: 1,
-    pointerType: 'mouse',
-  })
-  fireEvent.click(await screen.findByRole('option', { name: label }))
+  fireEvent.mouseDown(
+    screen.getByLabelText('Канал системных сообщений'),
+    { button: 0, ctrlKey: false },
+  )
+  const option = await screen.findByRole('option', { name: label })
+  fireEvent.pointerDown(option)
+  fireEvent.click(option)
 }
 
 async function chooseServerMediaAction(
   triggerName: string,
   actionName: string,
 ) {
-  fireEvent.pointerDown(screen.getByRole('button', { name: triggerName }), {
+  fireEvent.mouseDown(screen.getByRole('button', { name: triggerName }), {
     button: 0,
     ctrlKey: false,
-    pointerId: 1,
-    pointerType: 'mouse',
   })
   fireEvent.click(await screen.findByRole('menuitem', { name: actionName }))
 }
@@ -217,11 +215,11 @@ describe('ServerSettingsPanelContent', () => {
     const unsavedBar = screen.getByRole('status')
     expect(unsavedBar.querySelector('.gradient-surface-solid')).toBeTruthy()
     expect(
-      screen.getByRole('button', { name: 'Сбросить' }).dataset.variant,
-    ).toBe('ghost')
+      screen.getByRole('button', { name: 'Сбросить' }),
+    ).toHaveClass('hover:bg-muted')
     expect(
-      screen.getByRole('button', { name: 'Сохранить' }).dataset.variant,
-    ).toBe('default')
+      screen.getByRole('button', { name: 'Сохранить' }),
+    ).toHaveClass('bg-primary')
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
@@ -240,12 +238,14 @@ describe('ServerSettingsPanelContent', () => {
       'session-token',
       'icons',
       icon,
+      expect.anything(),
     )
     expect(mocks.uploadMediaFile).toHaveBeenNthCalledWith(
       2,
       'session-token',
       'banners',
       banner,
+      expect.anything(),
     )
   })
 

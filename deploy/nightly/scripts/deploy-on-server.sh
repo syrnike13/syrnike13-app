@@ -33,6 +33,9 @@ retry() {
   done
 }
 
+# shellcheck source=../../production/scripts/rollout.sh
+source "$(dirname "$0")/rollout.sh"
+
 edge_network="${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
 
 if ! docker network inspect "$edge_network" >/dev/null 2>&1; then
@@ -58,15 +61,30 @@ else
   echo "Existing nightly config found; keeping server-local secrets and generated config."
 fi
 
+if livekit_b_enabled; then
+  echo "Writing livekit-b.yml for the second nightly LiveKit node."
+  write_livekit_b_config \
+    "$(dotenv_value LIVEKIT_B_TCP_PORT 7884)" \
+    "$(dotenv_value LIVEKIT_B_TURN_UDP_PORT 3481)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_START 50301)" \
+    "$(dotenv_value LIVEKIT_B_RTC_PORT_RANGE_END 50400)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_START 30301)" \
+    "$(dotenv_value LIVEKIT_B_TURN_RELAY_RANGE_END 30400)"
+fi
+
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying nightly services: ${services[*]}"
   retry 3 5 docker compose pull "${services[@]}"
-  docker compose up -d --no-deps "${services[@]}"
+  rollout_deploy "${services[@]}"
   docker compose ps "${services[@]}"
 else
   echo "Deploying the full nightly stack."
   retry 3 5 docker compose pull
-  docker compose up -d --remove-orphans
+  # Create missing services and remove orphans without touching running ones,
+  # then update each service in place.
+  docker compose up -d --no-recreate --remove-orphans
+  mapfile -t services < <(docker compose config --services)
+  rollout_deploy "${services[@]}"
   docker compose ps
 fi

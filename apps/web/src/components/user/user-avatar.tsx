@@ -1,19 +1,22 @@
 import type { User } from '@syrnike13/api-types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Avatar,
   AvatarBadge,
   AvatarFallback,
-  AvatarImage,
-} from '#/components/ui/avatar'
+} from '@syrnike13/ui/primitives/avatar'
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
+import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import {
   presenceRingColorVar,
   resolvePresenceBadgeLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
+import { useImageRetry } from '#/hooks/use-image-retry'
 import { userAvatarUrl } from '#/lib/media'
-import { presenceDotClass, presenceDotTitle } from '#/lib/presence'
+import { getUserPresence, presenceDotTitle } from '#/lib/presence'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 function initials(name: string) {
@@ -45,11 +48,12 @@ export function AvatarNotificationBadge({
   ringClassName = 'border-card',
   max = 99,
 }: AvatarNotificationBadgeProps) {
+  const t = useTranslations('notifications')
   if (!badge.hasUnread && !badge.urgent) return null
 
   const layout = resolvePresenceBadgeLayoutForAvatar(className, fallbackClassName)
   const countLabel =
-    badge.count > 0 ? `${badge.count} уведомлений` : 'Есть уведомления'
+    badge.count > 0 ? t('count', { count: badge.count }) : t('hasUnread')
   const display = badge.count > max ? `${max}+` : String(badge.count || '!')
 
   return (
@@ -58,21 +62,21 @@ export function AvatarNotificationBadge({
       title={countLabel}
       data-slot="avatar-badge"
       className={cn(
-        'absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full select-none',
-        'border-0 font-bold tabular-nums',
+        'avatar-badge absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full leading-none select-none',
+        'border-0 bg-destructive-contrast font-bold text-destructive-foreground tabular-nums',
         layout.offsetClass,
-        badge.count > 9 ? 'min-w-4 px-0.5' : 'aspect-square',
+        badge.count > 9
+          ? 'h-(--badge-w) min-w-(--badge-w) px-0.5'
+          : 'aspect-square size-(--badge-w)',
       )}
-      style={{
-        width: badge.count > 9 ? undefined : layout.sizePx,
-        minWidth: layout.sizePx,
-        height: layout.sizePx,
-        fontSize: Math.round(layout.sizePx * 0.62),
-        lineHeight: 1,
-        backgroundColor: 'var(--destructive-contrast)',
-        color: 'var(--destructive-foreground)',
-        boxShadow: `0 0 0 ${layout.ringPx}px ${presenceRingColorVar(ringClassName)}`,
-      }}
+      style={
+        {
+          '--badge-w': `${layout.sizePx}px`,
+          '--badge-font': `${Math.round(layout.sizePx * 0.62)}px`,
+          '--badge-ring': `${layout.ringPx}px`,
+          '--badge-ring-color': presenceRingColorVar(ringClassName),
+        } as CSSVars
+      }
     >
       <span className="block translate-y-px leading-none">{display}</span>
     </span>
@@ -88,11 +92,21 @@ type UserAvatarProps = {
   showPresence?: boolean
   notificationBadge?: NotificationBadgeState
   animated?: UserAvatarAnimationMode
+  /**
+   * Где ловить наведение для `animated="hover"`. `self` (по умолчанию) — сам
+   * аватар. `parent` — ближайший родитель с `data-avatar-hover-scope`: так
+   * анимируются аватары в строках списков, где hover подсвечивает всю строку.
+   */
+  hoverScope?: 'self' | 'parent'
   speaking?: boolean
   /** Кольцо вокруг точки статуса (фон под аватаром) */
   presenceRingClassName?: string
   /** Кольцо вокруг бейджа уведомлений */
   notificationRingClassName?: string
+  /** Сообщает о загрузке основного изображения аватара. */
+  onImageLoadingChange?: (
+    status: 'idle' | 'loading' | 'loaded' | 'error',
+  ) => void
 }
 
 export function UserAvatar({
@@ -103,10 +117,14 @@ export function UserAvatar({
   showPresence = true,
   notificationBadge,
   animated = 'hover',
+  hoverScope = 'self',
   speaking = false,
   presenceRingClassName = 'border-card',
   notificationRingClassName = 'border-card',
+  onImageLoadingChange,
 }: UserAvatarProps) {
+  const t = useTranslations('chat')
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
@@ -116,6 +134,10 @@ export function UserAvatar({
   const showDot =
     showPresence && user && user.relationship !== 'Blocked' && !hasNotificationBadge
   const useImageSrcOverride = imageSrc != null
+  const hoverFollowsSelf =
+    animated === 'hover' && hoverScope === 'self' && !useImageSrcOverride
+  const hoverFollowsScope =
+    animated === 'hover' && hoverScope === 'parent' && !useImageSrcOverride
 
   const staticAvatarSrc = useImageSrcOverride
     ? imageSrc
@@ -142,61 +164,87 @@ export function UserAvatar({
     hasAnimatedVariant
       ? animatedAvatarSrc
       : staticAvatarSrc
+  const animatedRetry = useImageRetry(animatedAvatarSrc)
   const presenceBadge = resolvePresenceBadgeLayoutForAvatar(
     className,
     fallbackClassName,
   )
+  const presence = getUserPresence(user)
+  const dotClass =
+    !user || !user.online || presence === 'Invisible'
+      ? 'bg-muted-foreground'
+      : presence === 'Idle' || presence === 'SystemIdle'
+        ? 'bg-chart-2'
+        : presence === 'Focus'
+          ? 'bg-chart-5'
+          : presence === 'Busy'
+            ? 'bg-destructive'
+            : 'bg-chart-3'
 
   function startHoverAnimation() {
     setHovered(true)
     setHoverAnimationRequested(true)
   }
 
+  useEffect(() => {
+    if (!hoverFollowsScope || !container) return
+
+    const scope = container.closest('[data-avatar-hover-scope]')
+    if (!scope) return
+
+    const start = () => startHoverAnimation()
+    const stop = () => setHovered(false)
+
+    scope.addEventListener('pointerenter', start)
+    scope.addEventListener('pointerleave', stop)
+    scope.addEventListener('focusin', start)
+    scope.addEventListener('focusout', stop)
+
+    return () => {
+      scope.removeEventListener('pointerenter', start)
+      scope.removeEventListener('pointerleave', stop)
+      scope.removeEventListener('focusin', start)
+      scope.removeEventListener('focusout', stop)
+      setHovered(false)
+    }
+  }, [container, hoverFollowsScope])
+
   return (
     <div
+      ref={setContainer}
       className={cn(
         'relative shrink-0',
         hasNotificationBadge && 'overflow-visible',
       )}
-      onPointerEnter={
-        animated === 'hover' && !useImageSrcOverride
-          ? startHoverAnimation
-          : undefined
-      }
-      onPointerLeave={
-        animated === 'hover' && !useImageSrcOverride
-          ? () => setHovered(false)
-          : undefined
-      }
-      onFocus={
-        animated === 'hover' && !useImageSrcOverride
-          ? startHoverAnimation
-          : undefined
-      }
-      onBlur={
-        animated === 'hover' && !useImageSrcOverride
-          ? () => setHovered(false)
-          : undefined
-      }
+      onPointerEnter={hoverFollowsSelf ? startHoverAnimation : undefined}
+      onPointerLeave={hoverFollowsSelf ? () => setHovered(false) : undefined}
+      onFocus={hoverFollowsSelf ? startHoverAnimation : undefined}
+      onBlur={hoverFollowsSelf ? () => setHovered(false) : undefined}
     >
+      {/* eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing */}
       <Avatar className={cn(className, fallbackClassName)}>
         {avatarSrc ? (
-          <AvatarImage
+          <RetryingAvatarImage
             src={avatarSrc}
             alt={name}
+            onLoadingStatusChange={onImageLoadingChange}
             className={cn(
               mountAnimatedOverlay && 'transition-opacity duration-150',
               showAnimatedOverlay && 'opacity-0',
             )}
           />
         ) : null}
-        {mountAnimatedOverlay && animatedAvatarSrc ? (
+        {/* Форму задаёт сам оверлей: `Avatar` не клипует содержимое, поэтому без
+            `rounded-full` GIF на hover/speaking выходил квадратом. */}
+        {mountAnimatedOverlay && animatedAvatarSrc && !animatedRetry.failed ? (
           <img
+            key={animatedRetry.attempt}
+            onError={animatedRetry.onError}
             src={animatedAvatarSrc}
             alt=""
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-0 z-[1] size-full object-cover transition-opacity duration-150',
+              'pointer-events-none absolute inset-0 size-full rounded-full object-cover transition-opacity duration-150',
               showAnimatedOverlay ? 'opacity-100' : 'opacity-0',
             )}
             loading="lazy"
@@ -206,18 +254,22 @@ export function UserAvatar({
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>
       {showDot ? (
+        // design-allow restyle-shared: app-level presence dot wrapper
         <AvatarBadge
           className={cn(
-            'border-0 p-0 text-transparent ring-0',
+            'presence-dot size-(--dot-size) ring-0',
+            // eslint-disable-next-line shadcn/require-static-classes -- static offset class from layout helper
             presenceBadge.offsetClass,
-            presenceDotClass(user),
+            dotClass,
           )}
-          style={{
-            width: presenceBadge.sizePx,
-            height: presenceBadge.sizePx,
-            boxShadow: `0 0 0 ${presenceBadge.ringPx}px ${presenceRingColorVar(presenceRingClassName)}`,
-          }}
-          title={presenceDotTitle(user)}
+          style={
+            {
+              '--dot-size': `${presenceBadge.sizePx}px`,
+              '--dot-ring': `${presenceBadge.ringPx}px`,
+              '--dot-ring-color': presenceRingColorVar(presenceRingClassName),
+            } as CSSVars
+          }
+          title={presenceDotTitle(user, t)}
         />
       ) : null}
       {notificationBadge ? (

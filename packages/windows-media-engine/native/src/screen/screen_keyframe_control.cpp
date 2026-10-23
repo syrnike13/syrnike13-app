@@ -1,5 +1,6 @@
 #include "screen/screen_keyframe_control.hpp"
 
+#include <algorithm>
 #include <limits>
 
 namespace syrnike::windows_media::screen {
@@ -28,8 +29,8 @@ KeyframeAction ScreenKeyframeControl::poll(
   // A static or paused capture has no new input to satisfy a request. Keep
   // its intent pending without consuming retries or declaring encoder loss.
   if (last_request_ms_ && sequence <= issued_after_sequence_) return KeyframeAction::none;
-  if (attempts_ == 3) return KeyframeAction::exhausted;
-  issued_ = requested_;
+  if (attempts_ == kMaxAttempts) return KeyframeAction::exhausted;
+  issued_[attempts_] = Attempt{requested_, sequence};
   issued_after_sequence_ = sequence;
   last_request_ms_ = now;
   ++attempts_;
@@ -37,10 +38,16 @@ KeyframeAction ScreenKeyframeControl::poll(
 }
 void ScreenKeyframeControl::progress(std::uint64_t generation,
     std::uint64_t sequence, bool keyframe) noexcept {
-  if (generation != generation_ || !keyframe || !last_request_ms_ ||
-      sequence <= issued_after_sequence_ || issued_ <= acknowledged_) return;
-  acknowledged_ = issued_;
-  attempts_ = 0;
+  if (generation != generation_ || !keyframe) return;
+  // The newest attempt this keyframe's input followed is the one it answers.
+  // Later attempts stay outstanding: their keyframes may still be in flight.
+  for (auto i = attempts_; i-- > 0;) {
+    if (sequence <= issued_[i].after_sequence) continue;
+    acknowledged_ = (std::max)(acknowledged_, issued_[i].watermark);
+    std::copy(issued_.begin() + i + 1, issued_.begin() + attempts_, issued_.begin());
+    attempts_ -= i + 1;
+    break;
+  }
   // Keep last_request_ms_: new requests cannot create a keyframe storm even
   // when the encoder acknowledges the preceding keyframe immediately.
 }

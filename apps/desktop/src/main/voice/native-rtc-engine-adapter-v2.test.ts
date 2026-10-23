@@ -279,6 +279,27 @@ describe('NativeRtcEngineAdapterV2', () => {
     await adapter.dispose()
   })
 
+  it('plays a self-monitoring check locally and deafens the call meanwhile', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const monitoring = {
+      ...createInitialVoiceMediaDesiredState(),
+      outputDeviceId: '7', outputVolume: 1.5,
+      selfMonitoringActive: true, effectiveMuted: true,
+    }
+    adapter.updateDesiredMedia(monitoring)
+    await adapter.setMicrophonePreview(true)
+    expect(adapter.desiredSnapshot()?.microphone).toMatchObject({
+      state: 'warm', muted: true, monitor: true, monitorDeviceId: '7', monitorVolume: 1.5,
+    })
+    await join(runtime, adapter, monitoring)
+    expect(adapter.desiredSnapshot()?.output).toMatchObject({ state: 'on', deafened: true })
+    adapter.updateDesiredMedia({ ...monitoring, selfMonitoringActive: false, effectiveMuted: false })
+    expect(adapter.desiredSnapshot()?.microphone).toMatchObject({ monitor: false, muted: false })
+    expect(adapter.desiredSnapshot()?.output).toMatchObject({ deafened: false })
+    await adapter.dispose()
+  })
+
   it('preserves product microphone bounds and disjoint volume/mute maps', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

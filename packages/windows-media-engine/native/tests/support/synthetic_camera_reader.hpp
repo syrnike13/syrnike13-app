@@ -8,6 +8,7 @@ namespace syrnike::windows_media::lab {
 struct SyntheticCameraControl {
   bool supports_1080 = true;
   bool fail_open = false;
+  std::int64_t open_platform_error = 0;
   bool emit_late_callback = false;
   std::uint8_t color = 80;
   std::atomic_uint32_t delay_ms{0};

@@ -7,11 +7,13 @@ WORKDIR /build
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
 COPY apps/admin/package.json apps/admin/
 COPY packages/api-types/package.json packages/api-types/
+COPY packages/ui/package.json packages/ui/
 
 RUN pnpm install --frozen-lockfile
 
 COPY apps/admin apps/admin
 COPY packages/api-types packages/api-types
+COPY packages/ui packages/ui
 COPY tooling tooling
 
 ENV NODE_ENV=production

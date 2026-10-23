@@ -49,8 +49,13 @@ export const listMediaDevicesEffect = Effect.fn('voice.listMediaDevices')(
       )
     }
 
+    const mediaDevices = globalThis.navigator?.mediaDevices as
+      | MediaDevices
+      | undefined
+    if (!mediaDevices) return []
+
     const listed = yield* Effect.tryPromise({
-      try: () => navigator.mediaDevices.enumerateDevices(),
+      try: () => mediaDevices.enumerateDevices(),
       catch: (cause) => cause,
     })
     return listed.filter((device) => device.kind === kind)
@@ -62,6 +67,16 @@ export function useMediaDevices(kind: MediaDeviceKind) {
 
   useEffect(() => {
     let refreshFiber: ReturnType<typeof Effect.runFork> | undefined
+    // `navigator.mediaDevices` is undefined outside secure contexts (plain
+    // HTTP on a LAN address), so voice must degrade instead of throwing.
+    const mediaDevices = globalThis.navigator?.mediaDevices as
+      | MediaDevices
+      | undefined
+
+    if (!mediaDevices) {
+      setDevices([])
+      return
+    }
 
     function refresh() {
       if (refreshFiber) Effect.runFork(Fiber.interrupt(refreshFiber))
@@ -82,9 +97,9 @@ export function useMediaDevices(kind: MediaDeviceKind) {
     }
 
     refresh()
-    navigator.mediaDevices.addEventListener('devicechange', refresh)
+    mediaDevices.addEventListener('devicechange', refresh)
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', refresh)
+      mediaDevices.removeEventListener('devicechange', refresh)
       if (refreshFiber) Effect.runFork(Fiber.interrupt(refreshFiber))
     }
   }, [kind])

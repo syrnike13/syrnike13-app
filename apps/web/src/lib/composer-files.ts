@@ -1,3 +1,5 @@
+import { randomUuid } from '#/lib/random-uuid'
+
 export type PendingComposerFile = {
   id: string
   file: File
@@ -6,7 +8,7 @@ export type PendingComposerFile = {
   progress?: number
   status: 'pending' | 'uploading' | 'uploaded' | 'error'
   error?: string
-  /** Discord-style spoiler: upload as `SPOILER_${filename}`. */
+  /** Spoiler upload: the file is sent as `SPOILER_${filename}`. */
   spoiler?: boolean
 }
 
@@ -41,7 +43,7 @@ export function createPendingFiles(fileList: FileList | File[]): PendingComposer
     if (!file.size) continue
     const spoiler = isSpoilerFilename(file.name)
     const entry: PendingComposerFile = {
-      id: crypto.randomUUID(),
+      id: randomUuid(),
       file,
       status: 'pending',
       spoiler: spoiler || undefined,

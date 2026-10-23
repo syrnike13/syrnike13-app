@@ -26,8 +26,10 @@ vi.mock('#/components/servers/server-header-menu', () => ({
   ),
 }))
 
-vi.mock('#/components/ui/scroll-area', () => ({
-  ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+vi.mock('@syrnike13/ui/primitives/scroll-area', () => ({
+  ScrollArea: ({ children }: { children: ReactNode }) => (
+    <div data-slot="scroll-area-viewport">{children}</div>
+  ),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -94,15 +96,15 @@ describe('ChannelSidebar', () => {
 
   it('keeps an animated banner URL stable across pointer and focus interactions', () => {
     const { container } = render(<ChannelSidebar />)
-    const header = container.querySelector('header')
-    const image = header?.querySelector('img')
+    const bannerLayer = container.querySelector('[data-server-banner]')
+    const image = bannerLayer?.querySelector('img')
     const animatedUrl = serverBannerUrl(banner as never, { animated: true })
 
     expect(image?.getAttribute('src')).toBe(animatedUrl)
 
-    fireEvent.pointerEnter(header!)
+    fireEvent.pointerEnter(bannerLayer!)
     fireEvent.focus(image!)
-    fireEvent.pointerLeave(header!)
+    fireEvent.pointerLeave(bannerLayer!)
     fireEvent.blur(image!)
 
     expect(image?.getAttribute('src')).toBe(animatedUrl)
@@ -112,8 +114,33 @@ describe('ChannelSidebar', () => {
     mocks.prefersReducedMotion = true
 
     const { container } = render(<ChannelSidebar />)
-    const image = container.querySelector('header img')
+    const image = container.querySelector('[data-server-banner] img')
 
     expect(image?.getAttribute('src')).toBe(serverBannerUrl(banner as never))
+  })
+
+  it('fades and lifts the banner with channel scrolling', () => {
+    const frame = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
+
+    const { container } = render(<ChannelSidebar />)
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )!
+    const bannerLayer = container.querySelector<HTMLElement>(
+      '[data-server-banner]',
+    )!
+
+    viewport.scrollTop = 44
+    fireEvent.scroll(viewport)
+
+    expect(bannerLayer.style.getPropertyValue('--banner-opacity')).toBe('0.5')
+    expect(bannerLayer.style.getPropertyValue('--banner-shift')).toBe('-45px')
+
+    frame.mockRestore()
   })
 })

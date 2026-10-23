@@ -44,6 +44,19 @@ vi.mock('#/platform/use-platform', () => ({
   }),
 }))
 
+// Iconify schedules a load timer that can outlive jsdom and crash the runner
+// after this test file's window is torn down.
+vi.mock('@iconify/react', async () => {
+  const React = await import('react')
+  return {
+    Icon: ({ icon }: { icon?: string }) =>
+      React.createElement('svg', { 'data-icon': icon }),
+  }
+})
+
+import { createTranslator } from '@syrnike13/ui/i18n'
+
+import ru from '#/messages/ru.json'
 import {
   canRequestSourceAudio,
   DISPLAY_SOURCE_VISUAL_CONCURRENCY,
@@ -51,6 +64,8 @@ import {
   loadDisplaySourceVisualsEffect,
   sourceAudioLabel,
 } from './desktop-screen-share-picker'
+
+const t = createTranslator(ru, 'ru', 'voice')
 
 afterEach(() => {
   cleanup()
@@ -82,11 +97,11 @@ async function waitUntil(predicate: () => boolean) {
 
 describe('desktop screen share picker audio contract', () => {
   it('labels source-specific native audio modes', () => {
-    expect(sourceAudioLabel(source('screen'))).toBe(
+    expect(sourceAudioLabel(source('screen'), t)).toBe(
       'Системный звук без приложения',
     )
-    expect(sourceAudioLabel(source('game'))).toBe('Звук только игры')
-    expect(sourceAudioLabel(source('window'))).toBe('Звук только окна')
+    expect(sourceAudioLabel(source('game'), t)).toBe('Звук только игры')
+    expect(sourceAudioLabel(source('window'), t)).toBe('Звук только окна')
   })
 
   it('does not allow audio for sources without native audio support', () => {
@@ -95,7 +110,7 @@ describe('desktop screen share picker audio contract', () => {
       audioMode: 'none',
     })
 
-    expect(sourceAudioLabel(unavailableWindow)).toBe('Звук недоступен')
+    expect(sourceAudioLabel(unavailableWindow, t)).toBe('Звук недоступен')
     expect(canRequestSourceAudio(unavailableWindow)).toBe(false)
   })
 })
@@ -209,10 +224,7 @@ describe('desktop screen share picker paging UI', () => {
       'screen:1',
     ))
     expect(getDisplaySourceVisual).not.toHaveBeenCalledWith('picker-1', 'window:2')
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Приложения/ }), {
-      button: 0,
-      ctrlKey: false,
-    })
+    fireEvent.click(screen.getByRole('tab', { name: /Приложения/ }))
     await waitFor(() => expect(getDisplaySourceVisual).toHaveBeenCalledWith(
       'picker-1',
       'window:2',

@@ -1,9 +1,10 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import type { Category } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   DraftProvider,
   useDraftRegistration,
@@ -16,12 +17,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { apiErrorMessage } from '#/lib/api/error-message'
 
 type CategorySettingsDialogProps = {
   serverId: string
@@ -46,6 +48,7 @@ function CategorySettingsDialogContent({
   open,
   onOpenChange,
 }: CategorySettingsDialogProps) {
+  const t = useTranslations('channels.categories')
   const auth = useAuth()
   const [title, setTitle] = useState(category.title)
   const [savedTitle, setSavedTitle] = useState(category.title)
@@ -76,13 +79,13 @@ function CategorySettingsDialogContent({
           syncStore.upsertServer(updated)
           setTitle(trimmed)
           setSavedTitle(trimmed)
-          toast.success('Категория обновлена')
+          toast.success(t('updated'))
         })
       }).pipe(
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              apiErrorMessage(error, t('saveError')),
             )
             return false
           },
@@ -127,7 +130,7 @@ function CategorySettingsDialogContent({
         })
         yield* Effect.sync(() => {
           syncStore.upsertServer(updated)
-          toast.success('Категория удалена')
+          toast.success(t('deleted'))
           setConfirmingDeletion(false)
           onOpenChange(false)
         })
@@ -135,7 +138,7 @@ function CategorySettingsDialogContent({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить',
+              apiErrorMessage(error, t('deleteError')),
             )
           }),
         ),
@@ -162,13 +165,13 @@ function CategorySettingsDialogContent({
         <DialogHeader>
           <DialogTitle>
             {confirmingDeletion
-              ? `Удалить категорию «${category.title}»?`
-              : 'Категория'}
+              ? t('deleteTitle', { title: category.title })
+              : t('deleteFallbackTitle')}
           </DialogTitle>
           <DialogDescription>
             {confirmingDeletion
-              ? 'Каналы останутся на сервере, но категория будет удалена.'
-              : 'Переименование и удаление категории'}
+              ? t('deleteDescription')
+              : t('editDescription')}
           </DialogDescription>
         </DialogHeader>
         {confirmingDeletion ? (
@@ -179,7 +182,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => setConfirmingDeletion(false)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -187,7 +190,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => void removeCategory()}
             >
-              Удалить категорию
+              {t('delete')}
             </Button>
           </DialogFooter>
         ) : (
@@ -200,7 +203,7 @@ function CategorySettingsDialogContent({
               }}
             >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="category-title">Название</Label>
+                <Label htmlFor="category-title">{t('name')}</Label>
                 <Input
                   id="category-title"
                   value={title}
@@ -215,7 +218,7 @@ function CategorySettingsDialogContent({
               disabled={deleting}
               onClick={() => setConfirmingDeletion(true)}
             >
-              Удалить категорию
+              {t('delete')}
             </Button>
             <UnsavedChangesBar placement="flow" />
           </>

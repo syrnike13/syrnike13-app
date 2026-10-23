@@ -6,22 +6,26 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from 'react'
+import { randomUuid } from '#/lib/random-uuid'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
+import { ArrowUpIcon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
 import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
 import {
   memberDisplayColour,
   normalizeRoleColour,
 } from '#/features/sync/member-list-groups'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
 import {
@@ -38,6 +42,12 @@ import {
   serverChannelServerId,
 } from '#/lib/channel-voice'
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@syrnike13/ui/primitives/tooltip'
 import { cn } from '#/lib/utils'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { hasPermissionBit } from '#/lib/permission-bits'
@@ -56,19 +66,21 @@ function composerPlaceholder(
   currentUserId: string | undefined,
   isEditing: boolean,
   waitingForConnection: boolean,
+  t: Translator,
+  tChat: Translator,
 ) {
-  if (waitingForConnection) return 'Ожидание соединения…'
-  if (isEditing) return 'Новый текст сообщения…'
-  if (!channel) return 'Написать сообщение…'
+  if (waitingForConnection) return t('waitingConnection')
+  if (isEditing) return t('newText')
+  if (!channel) return t('writeMessage')
   if (channel.channel_type === 'TextChannel') {
-    return `Сообщение #${channel.name}`
+    return t('messageIn', { name: channel.name })
   }
   if (isServerVoiceChannel(channel)) {
-    const name = runtimeChannelName(channel) || 'голосовой'
-    return `Сообщение #${name}`
+    const name = runtimeChannelName(channel) || t('voiceChannel')
+    return t('messageIn', { name })
   }
-  const label = getChannelLabel(channel, users, currentUserId)
-  return `Сообщение — ${label}`
+  const label = getChannelLabel(channel, users, currentUserId, tChat)
+  return t('messageTo', { label })
 }
 
 type MessageComposerProps = {
@@ -132,6 +144,8 @@ export function MessageComposer({
   floating = false,
   onHeightChange,
 }: MessageComposerProps) {
+  const t = useTranslations('chat.composer')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const members = useSyncStore((s) => s.members)
   const composerRef = useRef<ComposerEditorHandle>(null)
@@ -189,6 +203,7 @@ export function MessageComposer({
     : Math.max(0, Math.ceil((slowmodeEndsAt - now) / 1_000))
   const slowmodeActive = !isEditing && slowmodeRemaining > 0
   const composerDisabled = disabled || !canSendMessages || slowmodeActive
+  const hasDraft = value.trim().length > 0 || files.length > 0
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
@@ -328,14 +343,14 @@ export function MessageComposer({
             matchingItems.push({
               kind: 'everyone',
               label: '@everyone',
-              description: 'Оповестить всех участников канала',
+              description: t('notifyEveryone'),
             })
           }
           if ('online'.startsWith(q)) {
             matchingItems.push({
               kind: 'online',
               label: '@online',
-              description: 'Оповестить участников в сети',
+              description: t('notifyOnline'),
             })
           }
         }
@@ -352,7 +367,7 @@ export function MessageComposer({
               kind: 'role',
               id: role._id,
               label: `@${role.name}`,
-              description: 'Оповестить участников с этой ролью',
+              description: t('notifyRole'),
               colour: role.colour
                 ? normalizeRoleColour(role.colour)
                 : undefined,
@@ -370,6 +385,7 @@ export function MessageComposer({
       mentionable,
       server,
       serverId,
+      t,
     ],
   )
 
@@ -393,10 +409,10 @@ export function MessageComposer({
             kind: 'channel' as const,
             id: candidate._id,
             label: `#${candidate.name}`,
-            description: 'Упомянуть текстовый канал',
+            description: t('mentionChannel'),
           }))
       },
-    [channels, serverId],
+    [channels, serverId, t],
   )
 
   function appendFiles(fileList: FileList | File[]) {
@@ -455,13 +471,13 @@ export function MessageComposer({
     }
 
     if (!token) {
-      toast.error('Нет сессии')
+      toast.error(t('noSession'))
       return
     }
 
     if (isEditing && editingMessage) {
       if (!content) {
-        toast.error('Сообщение не может быть пустым')
+        toast.error(t('emptyMessage'))
         return
       }
       if (!onEdit) return
@@ -477,7 +493,7 @@ export function MessageComposer({
         onCancelAction?.()
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : 'Не удалось изменить',
+          apiErrorMessage(error, t('editError')),
         )
       } finally {
         setSending(false)
@@ -499,7 +515,7 @@ export function MessageComposer({
       const sendAttempt =
         currentAttempt?.signature === signature
           ? currentAttempt
-          : { signature, nonce: crypto.randomUUID() }
+          : { signature, nonce: randomUuid() }
       sendAttemptRef.current = sendAttempt
       await Effect.runPromise(
         Effect.gen(function*() {
@@ -540,7 +556,7 @@ export function MessageComposer({
       )
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Не удалось отправить',
+        apiErrorMessage(error, t('sendError')),
       )
     } finally {
       setSending(false)
@@ -554,15 +570,17 @@ export function MessageComposer({
   const placeholder =
     disabledPlaceholder ??
     (slowmodeActive
-      ? `Можно отправить через ${slowmodeRemaining} с`
+      ? t('slowmodeWait', { seconds: slowmodeRemaining })
       : !canSendMessages
-      ? 'У вас нет права отправлять сообщения'
+      ? t('noPermission')
       : composerPlaceholder(
           channel,
           users,
           auth.user?._id,
           isEditing,
           waitingForConnection,
+          t,
+          tChat,
         ))
 
   const hasComposerHeader =
@@ -583,15 +601,15 @@ export function MessageComposer({
       ) : null}
 
       {isEditing && editingMessage ? (
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
-          <span>Редактирование сообщения</span>
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-sm text-muted-foreground">
+          <span>{t('editing')}</span>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
+            className="size-6 shrink-0"
             onClick={onCancelAction}
-            aria-label="Отменить редактирование"
+            aria-label={t('cancelEdit')}
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -608,11 +626,13 @@ export function MessageComposer({
       <div
         ref={composerInputRowRef}
         className={cn(
-          'flex items-end gap-0.5 px-1 pb-2',
-          floating && 'min-h-14',
+          'flex items-end gap-0.5 px-1',
+          floating
+            ? 'min-h-14 gap-5 px-3'
+            : 'pb-2',
           !floating && hasComposerHeader && 'min-h-14',
           !floating && !hasComposerHeader && 'min-h-11',
-          showComposerDivider && 'border-t border-foreground/10',
+          showComposerDivider && 'border-t border-border',
         )}
       >
         {!isEditing ? (
@@ -620,11 +640,11 @@ export function MessageComposer({
             className={cn(
               composerIconClass,
               composerIconHoverClass(floating),
-              'mb-1 cursor-pointer',
+              floating ? 'mb-3 cursor-pointer' : 'mb-1 cursor-pointer',
               (composerDisabled || sending || !canUploadFiles) &&
                 'pointer-events-none',
             )}
-            title="Вложение"
+            title={t('attachment')}
           >
             <input
               type="file"
@@ -651,10 +671,8 @@ export function MessageComposer({
               ? 'bg-secondary text-secondary-foreground'
               : 'bg-accent text-foreground'
           }
-          className="min-w-0 flex-1"
-          editorClassName={
-            floating ? 'text-secondary-foreground' : 'text-foreground'
-          }
+          className="min-h-14 min-w-0 flex-1"
+          editorClassName="min-h-14 px-0 py-4.25 leading-5.5"
           onValueChange={(nextValue) => {
             if (nextValue !== value) {
               onTyping?.()
@@ -679,7 +697,12 @@ export function MessageComposer({
           }}
         />
 
-        <div className="mb-1 flex shrink-0 items-center">
+        <div
+          className={cn(
+            'flex shrink-0 items-center gap-2',
+            floating ? 'mb-3' : 'mb-1',
+          )}
+        >
           {!isEditing ? (
             <ComposerEmojiPicker
               serverId={serverId}
@@ -699,11 +722,34 @@ export function MessageComposer({
                 'pointer-events-none',
               )}
               role="status"
-              aria-label="Отправка сообщения"
+              aria-label={t('sending')}
             >
-              <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" />
+              <Spinner className="size-5 motion-reduce:animate-none" />
             </span>
-          ) : null}
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className={
+                      floating
+                        ? 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
+                        : 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
+                    }
+                    disabled={composerDisabled || !hasDraft}
+                    onClick={() => void submit()}
+                    aria-label={t('send')}
+                  />
+                }
+              >
+                <ArrowUpIcon className="size-5" />
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                {t('send')}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </>
@@ -733,7 +779,7 @@ export function MessageComposer({
     >
       {dragActive ? (
         <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
-          Отпустите файлы для вложения
+          {t('dropFiles')}
         </p>
       ) : null}
 
@@ -754,8 +800,8 @@ export function MessageComposer({
           className={cn(
             'flex flex-col transition-colors',
             hasComposerHeader
-              ? 'overflow-hidden rounded-lg border border-border bg-accent text-foreground'
-              : 'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
+              ? 'overflow-hidden rounded-md border border-border bg-accent text-foreground'
+              : 'min-h-11 rounded-md border border-border bg-accent py-1 text-foreground',
             dragActive && 'ring-2 ring-primary/40',
             (composerDisabled || sending) && 'opacity-60',
           )}
@@ -766,5 +812,5 @@ export function MessageComposer({
     </div>
   )
 
-  return composerBody
+  return <TooltipProvider delay={300}>{composerBody}</TooltipProvider>
 }

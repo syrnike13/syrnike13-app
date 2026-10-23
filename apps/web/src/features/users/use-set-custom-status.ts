@@ -1,13 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { updateCurrentUserEffect } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
+import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore } from '#/features/sync/sync-store'
 
 export function useSetCustomStatus() {
+  const t = useTranslations('users')
   const auth = useAuth()
   const queryClient = useQueryClient()
 
@@ -18,7 +21,7 @@ export function useSetCustomStatus() {
           const token = auth.session?.token
           const user = auth.user
           if (!token || !user) {
-            return yield* Effect.fail(new Error('Не авторизован'))
+            return yield* Effect.fail(new Error(t('notAuthorized')))
           }
 
           const trimmed = text.trim()
@@ -35,9 +38,7 @@ export function useSetCustomStatus() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось обновить статус',
+        apiErrorMessage(error, t('statusUpdateError')),
       )
     },
   })

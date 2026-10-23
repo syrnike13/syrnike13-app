@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import {
   BanIcon,
-  CheckIcon,
   CopyIcon,
   HeadphonesIcon,
   MessageCircleIcon,
@@ -13,15 +12,17 @@ import {
 } from '#/components/icons'
 import type { Member, Server, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
-} from '#/components/ui/context-menu'
+} from '@syrnike13/ui/primitives/context-menu'
 import {
   Dialog,
   DialogContent,
@@ -29,11 +30,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Button } from '#/components/ui/button'
+} from '@syrnike13/ui/primitives/dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { FxImage } from '#/components/ui/fx-image'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@syrnike13/ui/primitives/native-select'
+import { UserBlockDialog } from '#/components/user/user-block-dialog'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -48,7 +54,7 @@ import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
   listServerChannels,
-  selectDirectMessageCallActionLabel,
+  selectDirectMessageCallAction,
 } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -64,7 +70,8 @@ import {
 } from '#/features/authorization/authorization'
 import { canToggleMemberRole, listServerRoles } from '#/lib/member-roles'
 import { roleIconUrl } from '#/lib/media'
-import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type UserContextMenuContentProps = {
@@ -77,10 +84,10 @@ type UserContextMenuContentProps = {
 }
 
 const BAN_DELETE_MESSAGE_PRESETS = [
-  { label: 'Не удалять', seconds: 0 },
-  { label: '1 час', seconds: 60 * 60 },
-  { label: '24 часа', seconds: 24 * 60 * 60 },
-  { label: '7 дней', seconds: 7 * 24 * 60 * 60 },
+  { labelKey: 'timeout.none', seconds: 0 },
+  { labelKey: 'timeout.oneHour', seconds: 60 * 60 },
+  { labelKey: 'timeout.oneDay', seconds: 24 * 60 * 60 },
+  { labelKey: 'timeout.sevenDays', seconds: 7 * 24 * 60 * 60 },
 ]
 
 const pendingRoleEditKeys = new Set<string>()
@@ -102,6 +109,7 @@ function UserRolesContextMenuSub({
   targetMember: Member
   token: string | undefined
 }) {
+  const t = useTranslations('users')
   const roles = useMemo(() => listServerRoles(server), [server])
   const assignedRoleIds = useMemo(
     () => new Set(targetMember.roles ?? []),
@@ -181,9 +189,8 @@ function UserRolesContextMenuSub({
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : 'Не удалось обновить роли',
-            )
+            console.error('[user-context-menu] role update failed', error)
+            toast.error(t('rolesUpdateError'))
           }),
         ),
         Effect.ensuring(
@@ -200,9 +207,9 @@ function UserRolesContextMenuSub({
 
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger className="gap-2 [&>svg:last-child]:hidden">
+      <ContextMenuSubTrigger className="gap-2">
         <SettingsIcon />
-        Роли
+        {t('roles')}
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="max-h-80 w-72 overflow-y-auto">
         {visibleRoles.map(({ role, assigned, canAdd, canRemove }) => {
@@ -214,18 +221,14 @@ function UserRolesContextMenuSub({
           const iconUrl = roleIconUrl(role.icon)
 
           return (
-            <ContextMenuItem
+            <ContextMenuCheckboxItem
               key={role._id}
+              checked={assigned}
               disabled={disabled}
-              className={cn(
-                'grid grid-cols-[1rem_minmax(0,1fr)_1rem] gap-2',
-                assigned &&
-                  disabled &&
-                  'data-[disabled]:bg-accent/45 data-[disabled]:opacity-100',
-              )}
-              onSelect={(event) => {
-                event.preventDefault()
-                if (!disabled) void toggleRole(role._id, !assigned)
+              closeOnClick={false}
+              className="gap-2"
+              onCheckedChange={(checked) => {
+                if (!disabled) void toggleRole(role._id, checked === true)
               }}
             >
               {iconUrl ? (
@@ -238,38 +241,36 @@ function UserRolesContextMenuSub({
               ) : (
                 <span className="flex size-4 shrink-0 items-center justify-center">
                   <span
-                    className="size-2.5 rounded-full bg-muted-foreground"
+                    className={cn(
+                      'size-2.5 rounded-full',
+                      role.colour ? 'bg-(--role-color)' : 'bg-muted-foreground',
+                    )}
                     style={
                       role.colour
-                        ? { backgroundColor: normalizeRoleColour(role.colour) }
+                        ? ({
+                            '--role-color': normalizeRoleColour(role.colour),
+                          } as CSSVars)
                         : undefined
                     }
                   />
                 </span>
               )}
               <span
-                className="min-w-0 truncate"
-                style={roleColourStyle(role.colour)}
+                className={cn(
+                  'min-w-0 truncate',
+                  role.colour && 'text-(--role-color)',
+                )}
+                style={
+                  role.colour
+                    ? ({
+                        '--role-color': normalizeRoleColour(role.colour),
+                      } as CSSVars)
+                    : undefined
+                }
               >
                 {role.name}
               </span>
-              <span
-                data-role-indicator={
-                  assigned ? (disabled ? 'locked' : 'assigned') : 'available'
-                }
-                className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-[3px] border',
-                  assigned && !disabled
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background text-transparent',
-                  assigned &&
-                    disabled &&
-                    'border-border bg-muted text-muted-foreground',
-                )}
-              >
-                {assigned ? <CheckIcon className="size-3" /> : null}
-              </span>
-            </ContextMenuItem>
+            </ContextMenuCheckboxItem>
           )
         })}
       </ContextMenuSubContent>
@@ -284,6 +285,8 @@ export function UserContextMenuContent({
   inVoice = false,
   onOpenProfile,
 }: UserContextMenuContentProps) {
+  const t = useTranslations('users')
+  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -296,6 +299,8 @@ export function UserContextMenuContent({
   const [banReason, setBanReason] = useState('')
   const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
   const [banning, setBanning] = useState(false)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -325,8 +330,8 @@ export function UserContextMenuContent({
         )
       : [],
   )
-  const directCallActionLabel = useSyncStore((s) =>
-    selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
+  const directCallAction = useSyncStore((s) =>
+    selectDirectMessageCallAction(s, auth.user?._id, user._id),
   )
 
   const canKick =
@@ -355,12 +360,16 @@ export function UserContextMenuContent({
     if (!token || !canDirectMessage) return
     try {
       await Effect.runPromise(
-        openDirectMessageChannel(token, user._id, (channelId) =>
-          navigate({
-            to: `${prefix}/c/$channelId`,
-            params: { channelId },
-            search: { m: undefined },
-          }),
+        openDirectMessageChannel(
+          token,
+          user._id,
+          (channelId) =>
+            navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId },
+              search: { m: undefined },
+            }),
+          t,
         ),
       )
     } catch {
@@ -372,12 +381,16 @@ export function UserContextMenuContent({
     if (!token || !canDirectMessage) return
     try {
       const channel = await Effect.runPromise(
-        openDirectMessageChannel(token, user._id, (channelId) =>
-          navigate({
-            to: `${prefix}/c/$channelId`,
-            params: { channelId },
-            search: { m: undefined },
-          }),
+        openDirectMessageChannel(
+          token,
+          user._id,
+          (channelId) =>
+            navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId },
+              search: { m: undefined },
+            }),
+          t,
         ),
       )
       await voice.join(channel._id)
@@ -405,14 +418,13 @@ export function UserContextMenuContent({
           Effect.sync(() => {
             syncStore.removeServerMember(serverId, user._id)
             handleKickDialogOpenChange(false)
-            toast.success('Участник исключён')
+            toast.success(t('kickSuccess'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : 'Не удалось исключить',
-            )
+            console.error('[user-context-menu] kick failed', error)
+            toast.error(t('kickError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setKicking(false))),
@@ -446,14 +458,13 @@ export function UserContextMenuContent({
           Effect.sync(() => {
             syncStore.removeServerMember(serverId, user._id)
             handleBanDialogOpenChange(false)
-            toast.success('Пользователь забанен')
+            toast.success(t('banSuccess'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error ? error.message : 'Не удалось забанить',
-            )
+            console.error('[user-context-menu] ban failed', error)
+            toast.error(t('banError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBanning(false))),
@@ -463,20 +474,23 @@ export function UserContextMenuContent({
 
   async function handleBlock() {
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    setBlocking(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, user._id))
+      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      setBlockDialogOpen(false)
     } catch {
-      // friend-actions already shows the concrete error toast.
+      // friend-actions already shows the error toast.
+    } finally {
+      setBlocking(false)
     }
   }
 
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success('ID скопирован')
+      toast.success(t('idCopied'))
     } catch {
-      toast.error('Не удалось скопировать')
+      toast.error(t('copyError'))
     }
   }
 
@@ -485,7 +499,7 @@ export function UserContextMenuContent({
 
   return (
     <>
-      <ContextMenuContent className="z-[200] w-56">
+      <ContextMenuContent className="z-200 w-56">
       {showVoiceControls ? (
         <UserContextMenuVoiceControls
           userId={user._id}
@@ -498,24 +512,24 @@ export function UserContextMenuContent({
           moveVoiceChannels={moveVoiceChannels}
         />
       ) : null}
-      <ContextMenuItem onSelect={() => onOpenProfile?.()}>
+      <ContextMenuItem onClick={() => onOpenProfile?.()}>
         <UserIcon />
-        Профиль
+        {t('openProfile')}
       </ContextMenuItem>
       {isSelf ? (
-        <ContextMenuItem onSelect={() => openSettings('account')}>
+        <ContextMenuItem onClick={() => openSettings('account')}>
           <SettingsIcon />
-          Настройки аккаунта
+          {t('accountSettings')}
         </ContextMenuItem>
       ) : canDirectMessage ? (
         <>
-          <ContextMenuItem onSelect={() => void openDm()}>
+          <ContextMenuItem onClick={() => void openDm()}>
             <MessageCircleIcon />
-            Написать сообщение
+            {t('sendMessage')}
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => void startDirectCall()}>
+          <ContextMenuItem onClick={() => void startDirectCall()}>
             <HeadphonesIcon />
-            {directCallActionLabel}
+            {t(directCallAction)}
           </ContextMenuItem>
           <FriendshipContextMenuItems user={user} />
         </>
@@ -529,9 +543,9 @@ export function UserContextMenuContent({
           token={token}
         />
       ) : null}
-      <ContextMenuItem onSelect={() => void copyUserId()}>
+      <ContextMenuItem onClick={() => void copyUserId()}>
         <CopyIcon />
-        Копировать ID
+        {t('copyId')}
       </ContextMenuItem>
       {showModeration ? (
         <>
@@ -539,25 +553,25 @@ export function UserContextMenuContent({
           {canKick ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={(event) => {
+              onClick={(event) => {
                 event.preventDefault()
                 setKickDialogOpen(true)
               }}
             >
               <UserMinusIcon />
-              Исключить с сервера
+              {t('kick')}
             </ContextMenuItem>
           ) : null}
           {canBan ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={(event) => {
+              onClick={(event) => {
                 event.preventDefault()
                 setBanDialogOpen(true)
               }}
             >
               <BanIcon />
-              Забанить на сервере
+              {t('ban')}
             </ContextMenuItem>
           ) : null}
         </>
@@ -567,10 +581,13 @@ export function UserContextMenuContent({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => void handleBlock()}
+            onClick={(event) => {
+              event.preventDefault()
+              setBlockDialogOpen(true)
+            }}
           >
             <BanIcon />
-            Заблокировать
+            {t('block')}
           </ContextMenuItem>
         </>
       ) : null}
@@ -579,14 +596,14 @@ export function UserContextMenuContent({
         <Dialog open={kickDialogOpen} onOpenChange={handleKickDialogOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Исключить @{user.username}</DialogTitle>
-              <DialogDescription>
-                Пользователь сможет вернуться, если получит новое приглашение.
-              </DialogDescription>
+              <DialogTitle>
+                {t('kickTitle', { username: user.username })}
+              </DialogTitle>
+              <DialogDescription>{t('kickDescription')}</DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5 py-2">
               <Label htmlFor={`kick-reason-${user._id}`}>
-                Причина исключения
+                {t('kickReason')}
               </Label>
               <Input
                 id={`kick-reason-${user._id}`}
@@ -603,7 +620,7 @@ export function UserContextMenuContent({
                 disabled={kicking}
                 onClick={() => handleKickDialogOpenChange(false)}
               >
-                Отмена
+                {t('cancel')}
               </Button>
               <Button
                 type="button"
@@ -611,7 +628,7 @@ export function UserContextMenuContent({
                 disabled={kicking}
                 onClick={() => void handleKick()}
               >
-                Исключить
+                {t('kickConfirm')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -621,14 +638,14 @@ export function UserContextMenuContent({
         <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Забанить @{user.username}</DialogTitle>
-              <DialogDescription>
-                Пользователь не сможет вернуться на сервер, пока бан не снимут.
-              </DialogDescription>
+              <DialogTitle>
+                {t('banTitle', { username: user.username })}
+              </DialogTitle>
+              <DialogDescription>{t('banDescription')}</DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <div className="space-y-1.5">
-                <Label htmlFor={`ban-reason-${user._id}`}>Причина</Label>
+                <Label htmlFor={`ban-reason-${user._id}`}>{t('reason')}</Label>
                 <Input
                   id={`ban-reason-${user._id}`}
                   value={banReason}
@@ -639,23 +656,26 @@ export function UserContextMenuContent({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor={`ban-delete-messages-${user._id}`}>
-                  Удалить историю сообщений
+                  {t('deleteMessageHistory')}
                 </Label>
-                <select
+                <NativeSelect
                   id={`ban-delete-messages-${user._id}`}
                   value={banDeleteMessageSeconds}
-                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+                  className="w-full"
                   disabled={banning}
                   onChange={(event) =>
                     setBanDeleteMessageSeconds(event.target.value)
                   }
                 >
                   {BAN_DELETE_MESSAGE_PRESETS.map((preset) => (
-                    <option key={preset.seconds} value={String(preset.seconds)}>
-                      {preset.label}
-                    </option>
+                    <NativeSelectOption
+                      key={preset.seconds}
+                      value={String(preset.seconds)}
+                    >
+                      {t(preset.labelKey)}
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
             <DialogFooter>
@@ -665,7 +685,7 @@ export function UserContextMenuContent({
                 disabled={banning}
                 onClick={() => handleBanDialogOpenChange(false)}
               >
-                Отмена
+                {t('cancel')}
               </Button>
               <Button
                 type="button"
@@ -673,11 +693,20 @@ export function UserContextMenuContent({
                 disabled={banning}
                 onClick={() => void handleBan()}
               >
-                Забанить
+                {t('banConfirm')}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      ) : null}
+      {canBlock ? (
+        <UserBlockDialog
+          user={user}
+          open={blockDialogOpen}
+          busy={blocking}
+          onOpenChange={setBlockDialogOpen}
+          onConfirm={() => void handleBlock()}
+        />
       ) : null}
     </>
   )

@@ -103,7 +103,7 @@ describe('service worker push handler', () => {
         body: 'Alice is calling you',
         tag: 'voice-call:dm-1',
         data: {
-          url: '/app/c/dm-1',
+          url: '/c/dm-1',
         },
       }),
     )
@@ -136,7 +136,7 @@ describe('service worker push handler', () => {
     let pending: Promise<unknown> | undefined
     const notification = {
       data: {
-        url: '/app/c/dm-1',
+        url: '/c/dm-1',
       },
       close: vi.fn(),
     }
@@ -151,7 +151,7 @@ describe('service worker push handler', () => {
     await pending
 
     expect(notification.close).toHaveBeenCalledTimes(1)
-    expect(clients.openWindow).toHaveBeenCalledWith('/app/c/dm-1')
+    expect(clients.openWindow).toHaveBeenCalledWith('/c/dm-1')
     expect(openedWindow.focus).toHaveBeenCalledTimes(1)
   })
 })

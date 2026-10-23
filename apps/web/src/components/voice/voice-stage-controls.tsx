@@ -1,10 +1,10 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import type { ReactNode } from 'react'
 import {
   ChevronDownIcon,
   ExternalLinkIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
-  Loader2Icon,
   LogOutIcon,
   Maximize2Icon,
   MessageSquareIcon,
@@ -20,7 +20,9 @@ import {
   VideoOffIcon,
 } from '#/components/icons'
 
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,18 +30,18 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from '#/components/ui/dropdown-menu'
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '#/components/ui/popover'
+} from '@syrnike13/ui/primitives/popover'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#/components/ui/tooltip'
+} from '@syrnike13/ui/primitives/tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
@@ -49,12 +51,14 @@ import {
 } from '#/features/voice/voice-media-availability'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
+import {
+  CameraDevicePickerAnchor,
+  VoiceCameraSplitControl,
+} from '#/components/voice/voice-camera-split-control'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
 import { VoiceStreamSettingsMenuContent } from '#/components/voice/voice-screen-share-quality'
 import {
   VoiceSplitControl,
-  splitControlDangerChevronClass,
-  splitControlDangerMainClass,
   splitControlDangerStandaloneClass,
 } from '#/components/voice/voice-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
@@ -88,31 +92,13 @@ const EMPTY_VIEW_SESSIONS: readonly VoiceStageViewSession[] = []
 const ignoreViewSessionExit = () => undefined
 
 const stageControlGroupClass =
-  'flex items-center gap-0.5 rounded-lg border border-white/10 bg-card p-1.5'
+  'flex items-center gap-0.5 rounded-lg border border-border bg-card p-1.5'
 
 const stageControlIconClass =
-  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
-
-const stageControlNeutralMainGroupHoverClass =
-  'group-hover/media:bg-white/10 group-hover/media:text-white'
-
-const stageControlNeutralChevronGroupHoverClass =
-  'group-hover/media:bg-white/[0.06] group-hover/media:text-white'
-
-/** Мьют: яркая красная иконка, полупрозрачный красный фон. */
-const stageControlDangerMainClass = splitControlDangerMainClass
-
-const stageControlDangerChevronClass = splitControlDangerChevronClass
-
-/** Камера включена. */
-const stageControlSuccessMainClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
-
-const stageControlSuccessChevronClass =
-  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
+  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-muted-foreground transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
 const stageControlHighlightClass =
-  'bg-white/15 text-white hover:bg-white/20'
+  'bg-accent text-accent-foreground hover:bg-hover'
 
 /** Отдельные кнопки в средней группе (не split media). */
 const stageControlDangerStandaloneClass = splitControlDangerStandaloneClass
@@ -129,42 +115,7 @@ function stageIconButtonClass({
     'rounded-md',
     danger && stageControlDangerStandaloneClass,
     highlight && !danger && stageControlHighlightClass,
-    !danger && !highlight && 'text-white/80 hover:bg-white/10 hover:text-white',
-  )
-}
-
-const stageControlMediaMainClass = 'rounded-l-md rounded-r-none'
-
-const stageControlChevronClass =
-  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
-
-function stageMediaSegmentButtonClass(
-  segment: 'main' | 'chevron',
-  {
-    danger,
-    success,
-    chevronDisabled,
-  }: {
-    danger?: boolean
-    success?: boolean
-    chevronDisabled?: boolean
-  },
-) {
-  const isChevron = segment === 'chevron'
-
-  return cn(
-    isChevron
-      ? stageControlChevronClass
-      : cn(stageControlIconClass, stageControlMediaMainClass),
-    danger && (isChevron ? stageControlDangerChevronClass : stageControlDangerMainClass),
-    success &&
-      (isChevron ? stageControlSuccessChevronClass : stageControlSuccessMainClass),
-    !danger &&
-      !success &&
-      (isChevron
-        ? stageControlNeutralChevronGroupHoverClass
-        : stageControlNeutralMainGroupHoverClass),
-    isChevron && chevronDisabled && !danger && !success && 'opacity-40',
+    !danger && !highlight && 'text-muted-foreground hover:bg-accent hover:text-foreground',
   )
 }
 
@@ -177,31 +128,36 @@ export function VoiceStagePopoutButton({
   disabled?: boolean
   onClick: () => void
 }) {
+  const t = useTranslations('voice')
+
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
+        <TooltipTrigger
+          render={
+            <span
+              className={cn(
+                'inline-flex self-center',
+                disabled && 'cursor-not-allowed',
+              )}
+            />
+          }
+        >
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            aria-label={t('actions.stageInWindow')}
             className={cn(
-              'inline-flex self-center',
-              disabled && 'cursor-not-allowed',
+              'flex size-9 shrink-0 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-40',
+              active ? 'text-on-media' : 'text-on-media/60 hover:text-on-media',
             )}
           >
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onClick}
-              className={cn(
-                'flex size-9 shrink-0 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-40',
-                active ? 'text-white' : 'text-white/60 hover:text-white',
-              )}
-            >
-              <ExternalLinkIcon className="size-5" />
-            </button>
-          </span>
+            <ExternalLinkIcon className="size-5" />
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
-          Стейдж в отдельном окне
+          {t('actions.stageInWindow')}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -217,31 +173,36 @@ export function VoiceStageFullscreenButton({
   disabled?: boolean
   onClick: () => void
 }) {
-  const label = active ? 'Выйти из fullscreen' : 'На весь экран'
+  const t = useTranslations('voice')
+  const label = active
+    ? t('actions.exitFullscreen')
+    : t('actions.enterFullscreen')
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={cn(
-              'inline-flex self-center',
-              disabled && 'cursor-not-allowed',
-            )}
-          >
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onClick}
-              className="flex size-9 shrink-0 items-center justify-center text-white/60 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-40"
-            >
-              {active ? (
-                <Minimize2Icon className="size-5" />
-              ) : (
-                <Maximize2Icon className="size-5" />
+        <TooltipTrigger
+          render={
+            <span
+              className={cn(
+                'inline-flex self-center',
+                disabled && 'cursor-not-allowed',
               )}
-            </button>
-          </span>
+            />
+          }
+        >
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className="flex size-9 shrink-0 items-center justify-center text-on-media/60 transition-colors hover:text-on-media disabled:pointer-events-none disabled:opacity-40"
+          >
+            {active ? (
+              <Minimize2Icon className="size-5" />
+            ) : (
+              <Maximize2Icon className="size-5" />
+            )}
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
           {label}
@@ -255,19 +216,22 @@ export function VoiceStageControls({
   channelId,
   inCall,
   connecting,
-  joinLabel = 'Подключиться к голосу',
+  joinLabel,
   compact = false,
   overlay = false,
   mobileDrawer = false,
   chatOpen = false,
   onToggleChat,
   incomingCall = false,
-  declineLabel = 'Отменить',
+  declineLabel,
   onDeclineIncomingCall,
   viewSessions = EMPTY_VIEW_SESSIONS,
   focusedStageItemId = null,
   onExitViewSession = ignoreViewSessionExit,
 }: VoiceStageControlsProps) {
+  const t = useTranslations('voice')
+  const resolvedJoinLabel = joinLabel ?? t('actions.connectVoice')
+  const resolvedDeclineLabel = declineLabel ?? t('actions.cancel')
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
   const micMuted = isMicVisuallyMuted({
@@ -277,24 +241,26 @@ export function VoiceStageControls({
     deafened: voiceSession.deafened,
   })
   const soundOff = voiceSession.deafened
-  const cameraOn = voiceMedia.cameraEnabled
+  // A camera whose device failed keeps its "on" intent: the button turns it off,
+  // and the picker under it is how the user retries with another device.
+  const cameraOn = voiceMedia.cameraEnabled || voiceMedia.cameraDeviceFailed
   const sharingScreen = voiceMedia.screenShareEnabled
   const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
     availability: voiceMedia.mediaAvailability.camera,
     active: cameraOn,
     connecting,
-    activeTitle: 'Выключить камеру',
-    inactiveTitle: 'Включить камеру',
+    activeTitle: t('actions.stopCamera'),
+    inactiveTitle: t('actions.startCamera'),
   })
   const screenShareControl = voiceMediaControlState({
     availability: voiceMedia.mediaAvailability.screenShare,
     active: sharingScreen,
     connecting,
     busy: screenShareStarting,
-    activeTitle: 'Остановить демонстрацию',
-    inactiveTitle: 'Демонстрация экрана',
-    busyTitle: 'Демонстрация запускается',
+    activeTitle: t('actions.stopScreenShare'),
+    inactiveTitle: t('actions.startScreenShare'),
+    busyTitle: t('actions.screenShareStarting'),
   })
 
   if (mobileDrawer) {
@@ -303,7 +269,7 @@ export function VoiceStageControls({
         channelId={channelId}
         connecting={connecting}
         inCall={inCall}
-        joinLabel={joinLabel}
+        joinLabel={resolvedJoinLabel}
         micMuted={micMuted}
         soundOff={soundOff}
         cameraOn={cameraOn}
@@ -314,7 +280,7 @@ export function VoiceStageControls({
         chatOpen={chatOpen}
         onToggleChat={onToggleChat}
         incomingCall={incomingCall}
-        declineLabel={declineLabel}
+        declineLabel={resolvedDeclineLabel}
         onDeclineIncomingCall={onDeclineIncomingCall}
         onToggleMic={voiceSession.toggleMic}
         onToggleDeafen={voiceSession.toggleDeafen}
@@ -380,7 +346,7 @@ export function VoiceStageControls({
         className="rounded-full px-8"
         onClick={() => void voiceSession.join(channelId)}
       >
-        {joinLabel}
+        {resolvedJoinLabel}
       </Button>
     )
     const idleControls =
@@ -390,11 +356,11 @@ export function VoiceStageControls({
             type="button"
             size="lg"
             variant="outline"
-            className="rounded-full border-white/20 bg-transparent px-6 text-white hover:bg-white/10"
+            className="rounded-full px-6"
             onClick={onDeclineIncomingCall}
           >
             <PhoneOffIcon className="size-4" />
-            {declineLabel}
+            {resolvedDeclineLabel}
           </Button>
           {joinButton}
         </div>
@@ -483,16 +449,18 @@ function VoiceStageMobileDrawerControlBar({
   onDeclineIncomingCall?: () => void
   onJoin: () => void
 }) {
+  const t = useTranslations('voice')
   const barClass =
-    'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-background/95 p-2 shadow-lg ring-1 ring-white/10'
+    'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-background/95 p-2 shadow-lg ring-1 ring-on-media/10'
   const sideButtonClass =
-    'flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-primary-foreground transition-colors hover:bg-accent disabled:opacity-50'
+    'flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-accent disabled:opacity-50'
 
   if (!inCall && !connecting) {
     const joinButton = (
       <Button
         type="button"
-        className="h-11 min-w-0 flex-1 rounded-full bg-chart-3 px-4 text-sm font-semibold text-primary-foreground hover:bg-chart-3/90"
+        variant="default"
+        className="h-11 min-w-0 flex-1 rounded-full px-4 text-sm font-semibold"
         onClick={onJoin}
       >
         {joinLabel}
@@ -503,8 +471,12 @@ function VoiceStageMobileDrawerControlBar({
       <div className={barClass}>
         <button
           type="button"
-          title={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
-          aria-label={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+          title={
+            micMuted ? t('media.enableMic') : t('media.disableMic')
+          }
+          aria-label={
+            micMuted ? t('media.enableMic') : t('media.disableMic')
+          }
           className={cn(
             sideButtonClass,
             micMuted && 'bg-destructive/20 text-destructive',
@@ -522,7 +494,7 @@ function VoiceStageMobileDrawerControlBar({
             <Button
               type="button"
               variant="outline"
-              className="h-11 shrink-0 rounded-full border-white/20 bg-transparent px-4 text-white hover:bg-white/10"
+              className="h-11 shrink-0 rounded-full px-4"
               onClick={onDeclineIncomingCall}
             >
               <PhoneOffIcon className="size-4" />
@@ -536,10 +508,12 @@ function VoiceStageMobileDrawerControlBar({
         {onToggleChat ? (
           <button
             type="button"
-            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
-            aria-label={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
+            aria-label={
+              chatOpen ? t('actions.hideChat') : t('actions.openChat')
+            }
             aria-pressed={chatOpen}
-            className={cn(sideButtonClass, chatOpen && 'bg-white/15')}
+            className={cn(sideButtonClass, chatOpen && 'bg-on-media/15')}
             onClick={onToggleChat}
           >
             <MessageSquareIcon className="size-5" />
@@ -550,11 +524,11 @@ function VoiceStageMobileDrawerControlBar({
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
       <div className={barClass}>
         <div className="flex min-w-0 flex-1 items-center justify-between gap-1">
           <MobileDrawerIconButton
-            title={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+            title={micMuted ? t('media.enableMic') : t('media.disableMic')}
             danger={micMuted}
             disabled={connecting}
             onClick={onToggleMic}
@@ -565,18 +539,20 @@ function VoiceStageMobileDrawerControlBar({
               <MicIcon className="size-5" />
             )}
           </MobileDrawerIconButton>
-          <MobileDrawerIconButton
-            title={cameraControl.title}
-            success={cameraOn}
-            disabled={cameraControl.disabled}
-            onClick={onToggleCamera}
-          >
-            {cameraOn ? (
-              <VideoIcon className="size-5" />
-            ) : (
-              <VideoOffIcon className="size-5" />
-            )}
-          </MobileDrawerIconButton>
+          <CameraDevicePickerAnchor className="flex">
+            <MobileDrawerIconButton
+              title={cameraControl.title}
+              success={cameraOn}
+              disabled={cameraControl.disabled}
+              onClick={onToggleCamera}
+            >
+              {cameraOn ? (
+                <VideoIcon className="size-5" />
+              ) : (
+                <VideoOffIcon className="size-5" />
+              )}
+            </MobileDrawerIconButton>
+          </CameraDevicePickerAnchor>
           <MobileDrawerIconButton
             title={screenShareControl.title}
             highlight={sharingScreen || screenShareStarting}
@@ -584,7 +560,7 @@ function VoiceStageMobileDrawerControlBar({
             onClick={onToggleScreenShare}
           >
             {screenShareStarting ? (
-              <Loader2Icon className="size-5 animate-spin" />
+              <Spinner className="size-5" />
             ) : sharingScreen ? (
               <MonitorXIcon className="size-5" />
             ) : (
@@ -592,7 +568,9 @@ function VoiceStageMobileDrawerControlBar({
             )}
           </MobileDrawerIconButton>
           <MobileDrawerIconButton
-            title={soundOff ? 'Включить звук' : 'Выключить звук'}
+            title={
+              soundOff ? t('actions.enableSound') : t('actions.disableSound')
+            }
             danger={soundOff}
             disabled={connecting}
             onClick={onToggleDeafen}
@@ -616,10 +594,12 @@ function VoiceStageMobileDrawerControlBar({
         {onToggleChat ? (
           <button
             type="button"
-            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
-            aria-label={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
+            aria-label={
+              chatOpen ? t('actions.hideChat') : t('actions.openChat')
+            }
             aria-pressed={chatOpen}
-            className={cn(sideButtonClass, chatOpen && 'bg-white/15')}
+            className={cn(sideButtonClass, chatOpen && 'bg-on-media/15')}
             onClick={onToggleChat}
           >
             <MessageSquareIcon className="size-5" />
@@ -654,11 +634,11 @@ function MobileDrawerIconButton({
         aria-disabled={disabled}
         onClick={disabled ? undefined : onClick}
         className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors',
+          'flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors',
           danger && 'bg-destructive/20 text-destructive',
           success && 'bg-chart-3/20 text-chart-3',
-          highlight && !danger && !success && 'bg-white/15 text-white',
-          !danger && !success && !highlight && 'bg-muted hover:bg-accent',
+          highlight && !danger && !success && 'bg-accent text-accent-foreground',
+          !danger && !success && !highlight && 'bg-muted text-foreground hover:bg-accent',
           disabled && 'opacity-50',
         )}
       >
@@ -687,8 +667,10 @@ function VoiceStageOverlayControlBar({
   focusedStageItemId,
   onExitViewSession,
 }: ControlBarStateProps) {
+  const t = useTranslations('voice')
+
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
     <div className="flex items-stretch gap-2">
       <div className={stageControlGroupClass}>
         <VoiceMicSplitControl
@@ -701,19 +683,13 @@ function VoiceStageOverlayControlBar({
 
         <StageControlDivider />
 
-        <StageMediaControl
+        <VoiceCameraSplitControl
+          surface="stage"
           title={cameraControl.title}
-          success={cameraOn}
           disabled={cameraControl.disabled}
-          onClick={onToggleCamera}
-          chevronDisabled
-        >
-          {cameraOn ? (
-            <VideoIcon className="size-5" />
-          ) : (
-            <VideoOffIcon className="size-5" />
-          )}
-        </StageMediaControl>
+          cameraOn={cameraOn}
+          onToggleCamera={onToggleCamera}
+        />
       </div>
 
       <div className={stageControlGroupClass}>
@@ -722,12 +698,12 @@ function VoiceStageOverlayControlBar({
           success={sharingScreen || screenShareStarting}
           disabled={screenShareControl.disabled}
           mainTitle={screenShareControl.title}
-          chevronTitle="Настройки стрима"
+          chevronTitle={t('actions.streamSettings')}
           onMainClick={onToggleScreenShare}
           popoverContent={<VoiceStreamSettingsMenuContent />}
         >
           {screenShareStarting ? (
-            <Loader2Icon className="size-5 animate-spin" />
+            <Spinner className="size-5" />
           ) : sharingScreen ? (
             <MonitorXIcon className="size-5" />
           ) : (
@@ -736,7 +712,9 @@ function VoiceStageOverlayControlBar({
         </VoiceSplitControl>
 
         <StageIconButton
-          title={soundOff ? 'Включить звук' : 'Выключить звук'}
+          title={
+            soundOff ? t('actions.enableSound') : t('actions.disableSound')
+          }
           danger={soundOff}
           disabled={connecting}
           onClick={onToggleDeafen}
@@ -783,13 +761,14 @@ function VoiceStageExitControl({
   onExitSession,
   onLeaveVoice,
 }: VoiceStageExitControlProps) {
+  const t = useTranslations('voice')
   const focusedSession = sessions.find(
     (session) => session.stageItemId === focusedStageItemId,
   )
   const hasMenu = sessions.length > 0 && !focusedSession
   const title = focusedSession
-    ? voiceStageViewSessionExitLabel(focusedSession)
-    : 'Отключиться от голоса'
+    ? voiceStageViewSessionExitLabel(focusedSession, t)
+    : t('disconnect')
   const onPrimaryAction = () => {
     if (focusedSession) {
       onExitSession(focusedSession)
@@ -808,7 +787,7 @@ function VoiceStageExitControl({
         onClick={onPrimaryAction}
         className={cn(
           'flex shrink-0 items-center justify-center bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50',
-          surface === 'overlay' && 'min-w-[3.75rem] self-stretch px-3',
+          surface === 'overlay' && 'min-w-15 self-stretch px-3',
           surface === 'mobile' && 'h-11 min-w-11 px-3',
           surface === 'legacy' &&
             (compact ? 'h-8 min-w-8 px-2' : 'h-11 min-w-11 px-3'),
@@ -856,11 +835,10 @@ function VoiceStageExitControl({
     <DropdownMenu>
       <div className="flex shrink-0 items-stretch gap-px">
         {mainButton}
-        <DropdownMenuTrigger asChild>
-          <button
+        <DropdownMenuTrigger render={<button
             type="button"
-            aria-label="Выбрать, что завершить"
-            title="Выбрать, что завершить"
+            aria-label={t('actions.chooseEndAction')}
+            title={t('actions.chooseEndAction')}
             disabled={disabled}
             className={cn(
               'flex shrink-0 items-center justify-center bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50',
@@ -870,11 +848,9 @@ function VoiceStageExitControl({
                 (compact
                   ? 'h-8 w-6 rounded-r-full'
                   : 'h-11 w-7 rounded-r-full'),
-            )}
-          >
+            )} />}>
             <ChevronDownIcon className="size-4" />
-          </button>
-        </DropdownMenuTrigger>
+          </DropdownMenuTrigger>
       </div>
       <DropdownMenuContent
         side="top"
@@ -883,14 +859,14 @@ function VoiceStageExitControl({
         className="w-72"
       >
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Активные просмотры</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('actions.activeViews')}</DropdownMenuLabel>
           {sessions.map((session) => {
             const SessionIcon =
               session.kind === 'activity' ? LogOutIcon : MonitorXIcon
             return (
               <DropdownMenuItem
                 key={session.id}
-                onSelect={() => onExitSession(session)}
+                onClick={() => onExitSession(session)}
               >
                 <span
                   className="inline-flex size-4 shrink-0"
@@ -900,7 +876,7 @@ function VoiceStageExitControl({
                   <SessionIcon className="size-4" />
                 </span>
                 <span className="min-w-0 truncate">
-                  {voiceStageViewSessionExitLabel(session)}
+                  {voiceStageViewSessionExitLabel(session, t)}
                 </span>
               </DropdownMenuItem>
             )
@@ -911,58 +887,8 @@ function VoiceStageExitControl({
   )
 }
 
-function StageMediaControl({
-  title,
-  danger,
-  success,
-  disabled,
-  onClick,
-  chevron,
-  chevronDisabled,
-  children,
-}: {
-  title: string
-  danger?: boolean
-  success?: boolean
-  disabled?: boolean
-  onClick: () => void
-  chevron?: ReactNode
-  chevronDisabled?: boolean
-  children: ReactNode
-}) {
-  const segmentState = { danger, success, chevronDisabled }
-
-  const mainDisabled = Boolean(disabled)
-
-  return (
-    <div className="group/media flex items-center gap-px">
-      <VoiceControlTooltip title={title}>
-        <button
-          type="button"
-          aria-disabled={mainDisabled}
-          onClick={mainDisabled ? undefined : onClick}
-          className={stageMediaSegmentButtonClass('main', segmentState)}
-        >
-          {children}
-        </button>
-      </VoiceControlTooltip>
-      {chevron ?? (
-        <VoiceControlTooltip title="Параметры камеры">
-          <button
-            type="button"
-            aria-disabled={mainDisabled || chevronDisabled}
-            className={stageMediaSegmentButtonClass('chevron', segmentState)}
-          >
-            <ChevronDownIcon className="size-3.5" />
-          </button>
-        </VoiceControlTooltip>
-      )}
-    </div>
-  )
-}
-
 function StageControlDivider() {
-  return <div className="mx-0.5 h-6 w-px shrink-0 bg-white/10" aria-hidden />
+  return <div className="mx-0.5 h-6 w-px shrink-0 bg-on-media/10" aria-hidden />
 }
 
 function StageIconButton({
@@ -1016,19 +942,24 @@ function LegacyControlBar({
   focusedStageItemId,
   onExitViewSession,
 }: ControlBarStateProps & { compact: boolean }) {
+  const t = useTranslations('voice')
+  const tMedia = useTranslations('voice.media')
   const voiceMedia = useVoiceMedia()
-  const micControl = microphoneMediaControlState({
-    availability: voiceMedia.mediaAvailability.microphone,
-    inVoice: inCall,
-    micMuted,
-    connecting,
-  })
+  const micControl = microphoneMediaControlState(
+    {
+      availability: voiceMedia.mediaAvailability.microphone,
+      inVoice: inCall,
+      micMuted,
+      connecting,
+    },
+    tMedia,
+  )
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delay={300}>
     <div
       className={cn(
-        'flex items-center gap-1 rounded-full bg-muted p-1.5 shadow-lg ring-1 ring-white/10',
+        'flex items-center gap-1 rounded-full bg-muted p-1.5 shadow-lg ring-1 ring-border',
         compact && 'p-0.5',
       )}
     >
@@ -1043,7 +974,9 @@ function LegacyControlBar({
       </LegacyControlButton>
 
       <LegacyControlButton
-        title={soundOff ? 'Включить звук' : 'Выключить звук'}
+        title={
+          soundOff ? t('actions.enableSound') : t('actions.disableSound')
+        }
         active={soundOff}
         disabled={connecting}
         compact={compact}
@@ -1056,15 +989,17 @@ function LegacyControlBar({
         )}
       </LegacyControlButton>
 
-      <LegacyControlButton
-        title={cameraControl.title}
-        active={!cameraOn}
-        disabled={cameraControl.disabled}
-        compact={compact}
-        onClick={onToggleCamera}
-      >
-        {cameraOn ? <VideoIcon className="size-5" /> : <VideoOffIcon className="size-5" />}
-      </LegacyControlButton>
+      <CameraDevicePickerAnchor className="flex">
+        <LegacyControlButton
+          title={cameraControl.title}
+          active={!cameraOn}
+          disabled={cameraControl.disabled}
+          compact={compact}
+          onClick={onToggleCamera}
+        >
+          {cameraOn ? <VideoIcon className="size-5" /> : <VideoOffIcon className="size-5" />}
+        </LegacyControlButton>
+      </CameraDevicePickerAnchor>
 
       <LegacyControlButton
         title={screenShareControl.title}
@@ -1074,7 +1009,7 @@ function LegacyControlBar({
         onClick={onToggleScreenShare}
       >
         {screenShareStarting ? (
-          <Loader2Icon className="size-5 animate-spin" />
+          <Spinner className="size-5" />
         ) : sharingScreen ? (
           <MonitorXIcon className="size-5" />
         ) : (
@@ -1105,9 +1040,10 @@ function StageViewSettings({
 }: {
   compact?: boolean
   overlay?: boolean
-  /** overlay: «…» как в Discord; legacy: шестерёнка */
+  /** overlay: «…»; legacy: шестерёнка */
   trigger?: 'settings' | 'more'
 }) {
+  const t = useTranslations('voice')
   const voiceStage = useVoiceStage()
   const filters = voiceStage.stageMediaFilters
   const resolvedTrigger = overlay ? 'more' : trigger
@@ -1120,45 +1056,45 @@ function StageViewSettings({
     )
 
   const title = overlay
-    ? 'Настройки сцены'
+    ? t('actions.sceneSettings')
     : trigger === 'more'
-      ? 'Ещё'
-      : 'Настройки сцены'
+      ? t('actions.more')
+      : t('actions.sceneSettings')
+
+  const triggerElement = overlay ? (
+    <button
+      type="button"
+      title={title}
+      className={stageIconButtonClass({})}
+    >
+      {icon}
+    </button>
+  ) : (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      title={title}
+      className={cn('rounded-full', compact ? 'size-8' : 'size-11')}
+    >
+      {icon}
+    </Button>
+  )
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        {overlay ? (
-          <button
-            type="button"
-            title={title}
-            className={stageIconButtonClass({})}
-          >
-            {icon}
-          </button>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            title={title}
-            className={cn(
-              'rounded-full text-foreground hover:bg-white/10',
-              compact ? 'size-8' : 'size-11',
-            )}
-          >
-            {icon}
-          </Button>
-        )}
-      </PopoverTrigger>
+      <PopoverTrigger render={triggerElement} />
       <PopoverContent
         align="center"
         data-voice-stage-popover
-        className={voiceStagePopoverSettingsClass}
+        className={
+          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
+          voiceStagePopoverSettingsClass
+        }
       >
         <StageFilterToggle
           checked={filters.showOwnStream}
-          label="Показывать мой стрим"
+          label={t('actions.showMyStream')}
           onChange={(checked) =>
             voiceStage.setStageMediaFilters((current) => ({
               ...current,
@@ -1168,7 +1104,7 @@ function StageViewSettings({
         />
         <StageFilterToggle
           checked={filters.showRemoteStreams}
-          label="Показывать чужие стримы"
+          label={t('actions.showOtherStreams')}
           onChange={(checked) =>
             voiceStage.setStageMediaFilters((current) => ({
               ...current,
@@ -1178,7 +1114,7 @@ function StageViewSettings({
         />
         <StageFilterToggle
           checked={filters.showParticipantsWithoutMedia}
-          label="Показывать участников без видео"
+          label={t('actions.showParticipantsWithoutVideo')}
           onChange={(checked) =>
             voiceStage.setStageMediaFilters((current) => ({
               ...current,
@@ -1202,11 +1138,10 @@ function StageFilterToggle({
 }) {
   return (
     <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/70">
-      <input
-        type="checkbox"
-        className="size-4 rounded border-input accent-primary"
+      <Checkbox
         checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+        aria-label={label}
+        onCheckedChange={(next) => onChange(next === true)}
       />
       <span>{label}</span>
     </label>
@@ -1235,13 +1170,12 @@ function LegacyControlButton({
       <Button
         type="button"
         size="icon"
-        variant="ghost"
+        variant={active ? 'destructive' : 'ghost'}
         aria-disabled={isDisabled}
         onClick={isDisabled ? undefined : onClick}
         className={cn(
-          'rounded-full text-foreground hover:bg-white/10 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          'rounded-full aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
           compact ? 'size-8' : 'size-11',
-          active && 'bg-white/10 text-destructive',
         )}
       >
         {children}

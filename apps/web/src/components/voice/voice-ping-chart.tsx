@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   formatVoicePingChartTime,
@@ -6,6 +7,7 @@ import {
   voicePingChartDomain,
   type VoicePingSample,
 } from '#/features/voice/voice-ping-history'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 const WIDTH = 288
@@ -29,6 +31,7 @@ type ChartPoint = {
 }
 
 export function VoicePingChart({ history, className }: VoicePingChartProps) {
+  const t = useTranslations('voice')
   const svgRef = useRef<SVGSVGElement>(null)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const model = useMemo(() => buildChartModel(history), [history])
@@ -63,7 +66,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
           className,
         )}
       >
-        Собираем данные…
+        {t('ping.collectingShort')}
       </div>
     )
   }
@@ -85,7 +88,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-full w-full cursor-crosshair text-muted-foreground"
         role="img"
-        aria-label="График пинга"
+        aria-label={t('ping.chartLabel')}
         onMouseLeave={() => setActiveIndex(null)}
       >
         {yTicks.map((tick) => {
@@ -104,7 +107,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
                 x={WIDTH - 4}
                 y={y + 3}
                 textAnchor="end"
-                className="fill-muted-foreground text-[9px]"
+                className="fill-muted-foreground text-3xs"
               >
                 {tick}
               </text>
@@ -148,7 +151,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
             x={tick.x}
             y={HEIGHT - 4}
             textAnchor="middle"
-            className="fill-muted-foreground text-[9px]"
+            className="fill-muted-foreground text-3xs"
           >
             {tick.label}
           </text>
@@ -167,11 +170,15 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
 
       {activePoint ? (
         <div
-          className="gradient-surface-floating pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
-          style={{ left: `${tooltipLeft}%` }}
+          className="gradient-surface-floating pointer-events-none absolute top-1 left-(--ping-left) z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+          style={{ '--ping-left': `${tooltipLeft}%` } as CSSVars}
         >
-          <p className="font-semibold tabular-nums">{activePoint.ms} мс</p>
-          <p className="text-[10px] text-muted-foreground">{activePoint.label}</p>
+          <p className="font-semibold tabular-nums">
+            {t('ping.ms', { ms: activePoint.ms })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {activePoint.label}
+          </p>
         </div>
       ) : null}
     </div>

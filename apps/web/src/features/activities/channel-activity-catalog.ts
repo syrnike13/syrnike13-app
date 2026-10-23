@@ -5,8 +5,8 @@ import {
 
 export type FirstPartyChannelActivity = Readonly<{
   id: string
-  title: string
-  description: string
+  titleKey: string
+  descriptionKey: string
   entryUrl: string
 }>
 
@@ -14,15 +14,14 @@ export const FIRST_PARTY_CHANNEL_ACTIVITIES: readonly FirstPartyChannelActivity[
   [
     {
       id: SYRNIK_RACE_APPLICATION_ID,
-      title: 'Сырниковая гонка',
-      description:
-        'Ready-лобби, общая цель, конкурентные попадания, очки и завершение раунда.',
+      titleKey: 'syrnikRace.title',
+      descriptionKey: 'syrnikRace.description',
       entryUrl: '/activities/syrnik-race/index.html',
     },
     {
       id: SHARED_COUNTER_APPLICATION_ID,
-      title: 'Совместный счётчик',
-      description: 'Минимальная проверка общей серверной ревизии.',
+      titleKey: 'sharedCounter.title',
+      descriptionKey: 'sharedCounter.description',
       entryUrl: '/activities/shared-counter/index.html',
     },
   ]

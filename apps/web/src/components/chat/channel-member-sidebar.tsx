@@ -1,9 +1,10 @@
 import type { Channel, Server } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
-import { ScrollArea } from '#/components/ui/scroll-area'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   flattenMemberListSections,
   groupServerMembersForSidebar,
@@ -16,6 +17,7 @@ import {
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { canViewChannelDraft } from '#/features/authorization/permission-draft'
+import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
 type ChannelMemberSidebarProps = {
@@ -30,8 +32,8 @@ function MemberListSectionHeader({
   count: number
 }) {
   return (
-    <li className="list-none px-2 pt-3 pb-0.5 first:pt-2">
-      <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+    <li className="list-none px-2 pt-5 pb-1 first:pt-2">
+      <p className="truncate text-sm leading-4.5 font-medium tracking-tight text-muted-foreground">
         {title} — {count}
       </p>
     </li>
@@ -74,21 +76,34 @@ function MemberSidebarRow({
       >
         <button
           type="button"
+          data-avatar-hover-scope=""
           className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
+            'flex min-h-10.5 w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[popup-open]:bg-accent',
             dimmed && 'opacity-60',
           )}
         >
-          <UserAvatar user={user} className="size-8" showPresence />
+          <UserAvatar
+            user={user}
+            className="size-8"
+            hoverScope="parent"
+            showPresence
+          />
           <div className="min-w-0 flex-1">
             <p
-              className="truncate text-sm font-medium"
-              style={nameColour ? { color: nameColour } : undefined}
+              className={cn(
+                'truncate text-base leading-5 font-medium',
+                nameColour && 'text-(--member-name-color)',
+              )}
+              style={
+                nameColour
+                  ? ({ '--member-name-color': nameColour } as CSSVars)
+                  : undefined
+              }
             >
               {displayName}
             </p>
             {showStatus && customStatus ? (
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-xs leading-3.5 text-muted-foreground">
                 {customStatus}
               </p>
             ) : null}
@@ -100,6 +115,7 @@ function MemberSidebarRow({
 }
 
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
+  const t = useTranslations('chat')
   const server = useSyncStore((s) => s.servers[channel.server])
   const members = useSyncStore((s) => listServerMembers(s, channel.server))
   const userIdsInVoice = useSyncStore((s) => {
@@ -127,11 +143,11 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
 
   const sidebarItems = useMemo(() => {
     const sections = groupServerMembersForSidebar(server, visibleMembers)
-    return flattenMemberListSections(sections)
+    return flattenMemberListSections(sections, t)
   }, [server, visibleMembers])
 
   return (
-    <aside className="theme-surface-content gradient-surface-content hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider text-card-foreground lg:flex">
+    <aside className="theme-surface-content gradient-surface-content hidden min-h-0 w-66 shrink-0 flex-col border-l border-shell-divider text-card-foreground lg:flex">
       <ScrollArea className="min-h-0 flex-1">
         <ul className="flex flex-col gap-0.5 p-2">
           {sidebarItems.map((item) =>
@@ -157,7 +173,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
           )}
           {visibleMembers.length === 0 ? (
             <li className="px-2 py-4 text-center text-xs text-muted-foreground">
-              Нет участников
+              {t('noMembers')}
             </li>
           ) : null}
         </ul>

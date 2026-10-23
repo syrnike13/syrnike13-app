@@ -1,21 +1,24 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import { AdminStickyFooter } from '#/components/layout/page'
-import { Loader2Icon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAdminDraftController } from '#/components/draft-controller-context'
 
 export function AdminUnsavedChangesBar({
-  saveLabel = 'Сохранить',
+  saveLabel,
 }: {
   saveLabel?: string
 }) {
+  const t = useTranslations('common')
   const controller = useAdminDraftController()
 
   if (!controller?.isDirty) return null
 
   return (
     <AdminStickyFooter visible>
-      <p className="min-w-0 flex-1 text-[13px] leading-5 text-muted-foreground">
-        Есть несохранённые изменения
+      <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
+        {t('unsavedChanges')}
       </p>
       <div className="flex shrink-0 items-center gap-2">
         <Button
@@ -24,7 +27,7 @@ export function AdminUnsavedChangesBar({
           disabled={controller.isSaving}
           onClick={() => controller.reset()}
         >
-          Сбросить
+          {t('reset')}
         </Button>
         <Button
           type="button"
@@ -33,11 +36,11 @@ export function AdminUnsavedChangesBar({
         >
           {controller.isSaving ? (
             <>
-              <Loader2Icon className="size-4 animate-spin" aria-hidden />
-              Сохранение…
+              <Spinner className="size-4" aria-hidden />
+              {t('saving')}
             </>
           ) : (
-            saveLabel
+            saveLabel ?? t('save')
           )}
         </Button>
       </div>

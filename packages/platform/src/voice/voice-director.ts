@@ -16,6 +16,7 @@ import {
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
+  reportedSelfVoiceFlags,
   type AuthoritativeVoiceSnapshot,
   type VoiceCommand,
   type VoiceFailure,
@@ -28,6 +29,11 @@ import {
 
 const DEFAULT_COMMIT_TIMEOUT_MS = 20_000
 const DEFAULT_RECOVERY_DELAYS_MS = [250, 1_000, ...Array(18).fill(5_000)]
+// A share that failed with a retryable error (for example under heavy GPU
+// load) is started again without the user, a bounded number of times.
+const SCREEN_RESTART_DELAYS_MS = [1_000, 3_000, 10_000]
+// Running this long proves a restart held: a later failure starts over.
+const SCREEN_RESTART_STABLE_MS = 60_000
 
 export type VoiceDirectorOptions = Readonly<{
   authority: VoiceAuthorityAdapter
@@ -39,6 +45,7 @@ export type VoiceDirectorOptions = Readonly<{
   commitTimeoutMs?: number
   recoveryDelaysMs?: readonly number[]
   delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>
+  now?: () => number
 }>
 
 type CommitWaiter = {
@@ -85,6 +92,7 @@ export class VoiceDirector {
   private readonly delay:
     | ((milliseconds: number, signal: AbortSignal) => Promise<void>)
     | null
+  private readonly now: () => number
   private readonly commitWaiters = new Set<CommitWaiter>()
 
   private desiredMedia = createInitialVoiceMediaDesiredState()
@@ -112,6 +120,11 @@ export class VoiceDirector {
   private selfStateSync: Fiber.Fiber<void, never> | null = null
   private disposed = false
   private idCounter = 0
+  // The restart budget belongs to one connection: a new lease starts over.
+  private screenRestartLease: VoiceLease | null = null
+  private screenRestartAttempts = 0
+  private screenRunningSinceMs: number | null = null
+  private screenRestartAbort: AbortController | null = null
 
   private snapshotValue: VoiceSnapshot = {
     intentChannelId: null,
@@ -127,9 +140,10 @@ export class VoiceDirector {
     serverMuted: this.desiredMedia.serverMuted,
     serverDeafened: this.desiredMedia.serverDeafened,
     systemPrivacyMuted: this.desiredMedia.systemPrivacyMuted,
-    monitoringMuted: this.desiredMedia.monitoringMuted,
+    selfMonitoringActive: this.desiredMedia.selfMonitoringActive,
     inputMode: this.desiredMedia.inputMode,
     pushToTalkHeld: this.desiredMedia.pushToTalkHeld,
+    pushToMuteHeld: this.desiredMedia.pushToMuteHeld,
     effectiveMuted: this.desiredMedia.effectiveMuted,
     speakingUserIds: [],
   }
@@ -154,6 +168,7 @@ export class VoiceDirector {
     this.recoveryDelaysMs =
       options.recoveryDelaysMs ?? DEFAULT_RECOVERY_DELAYS_MS
     this.delay = options.delay ?? null
+    this.now = options.now ?? Date.now
     this.unsubscribeAuthority = this.authority.subscribe((event) =>
       this.handleAuthorityEvent(event),
     )
@@ -199,7 +214,10 @@ export class VoiceDirector {
         this.updateDesiredMedia({ systemPrivacyMuted: command.muted })
         return
       case 'setSelfMonitoringActive':
-        this.updateDesiredMedia({ monitoringMuted: command.active })
+        this.updateDesiredMedia({ selfMonitoringActive: command.active })
+        return
+      case 'setPushToMuteHeld':
+        this.updateDesiredMedia({ pushToMuteHeld: command.held })
         return
       case 'configureMicrophone':
         this.updateDesiredMedia({
@@ -227,13 +245,18 @@ export class VoiceDirector {
       case 'configureRemoteAudio':
         this.engine.updateRemoteAudioSettings(command.settings)
         return
-      case 'setCamera':
-        this.updateDesiredMedia({
+      case 'setCamera': {
+        const changed = this.updateDesiredMedia({
           cameraEnabled: command.enabled,
           cameraDeviceId: command.deviceId,
           cameraProfile: command.profile ?? this.desiredMedia.cameraProfile,
         })
+        // Re-enabling the same camera after a failure is a restart: the
+        // unchanged intent alone never reaches the engine again.
+        if (!changed && command.enabled && this.snapshotValue.camera.state === 'failed')
+          this.engine.retryMedia('camera')
         return
+      }
       case 'setScreen':
         this.updateDesiredMedia({
           screenEnabled: command.enabled,
@@ -826,7 +849,7 @@ export class VoiceDirector {
     this.setIntent(lease.channelId, false)
   }
 
-  // Like Discord, a moderator disconnect ends the session: recovering from the
+  // A moderator disconnect ends the session: recovering from the
   // transport removal that enforces it would put the user straight back.
   private handleForcedDisconnect(
     from: NonNullable<AuthoritativeVoiceSnapshot['membership']>,
@@ -908,12 +931,13 @@ export class VoiceDirector {
     }
     if (event.type === 'mediaState') {
       this.updateMediaSnapshot(event.kind, event.media)
-      // Like Discord, closing the shared window ends the share; it is not a
+      // Closing the shared window ends the share; it is not a
       // failure the user has to dismiss or retry.
       if (event.kind === 'screen' && event.media.state === 'failed' &&
           SCREEN_SOURCE_ENDED_CODES.has(event.media.error?.code ?? '')) {
         this.updateDesiredMedia({ screenEnabled: false, screenSourceId: undefined, screenAudioEnabled: false })
       }
+      if (event.kind === 'screen') this.observeScreenState(event.media, lease)
       return
     }
     if (event.type === 'transientReconnectStarted') {
@@ -955,15 +979,14 @@ export class VoiceDirector {
 
   private updateDesiredMedia(
     patch: Partial<VoiceMediaDesiredState>,
-  ) {
-    const previousUserMuted = this.desiredMedia.userMuted
-    const previousUserDeafened = this.desiredMedia.userDeafened
+  ): boolean {
+    const previousReported = reportedSelfVoiceFlags(this.desiredMedia)
     const nextBase = { ...this.desiredMedia, ...patch }
     const nextDesired = {
       ...nextBase,
       effectiveMuted: computeEffectiveMuted(nextBase),
     }
-    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return
+    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return false
     this.desiredMedia = nextDesired
     this.engine.updateDesiredMedia(this.desiredMedia)
     this.updateSnapshot({
@@ -972,17 +995,20 @@ export class VoiceDirector {
       serverMuted: this.desiredMedia.serverMuted,
       serverDeafened: this.desiredMedia.serverDeafened,
       systemPrivacyMuted: this.desiredMedia.systemPrivacyMuted,
-      monitoringMuted: this.desiredMedia.monitoringMuted,
+      selfMonitoringActive: this.desiredMedia.selfMonitoringActive,
       inputMode: this.desiredMedia.inputMode,
       pushToTalkHeld: this.desiredMedia.pushToTalkHeld,
+      pushToMuteHeld: this.desiredMedia.pushToMuteHeld,
       effectiveMuted: this.desiredMedia.effectiveMuted,
     })
+    const reported = reportedSelfVoiceFlags(this.desiredMedia)
     if (
-      previousUserMuted !== this.desiredMedia.userMuted ||
-      previousUserDeafened !== this.desiredMedia.userDeafened
+      previousReported.userMuted !== reported.userMuted ||
+      previousReported.userDeafened !== reported.userDeafened
     ) {
       this.requestSelfStateSync()
     }
+    return true
   }
 
   private requestSelfStateSync() {
@@ -1033,7 +1059,7 @@ export class VoiceDirector {
       ) {
         handledRevision = self.selfStateRevision
         const lease = self.activeLease
-        const desired = self.desiredMedia
+        const reported = reportedSelfVoiceFlags(self.desiredMedia)
         yield* Effect.tryPromise({
           try: () =>
             self.authority.updateSelfState({
@@ -1042,8 +1068,8 @@ export class VoiceDirector {
               clientInstanceId: lease.clientInstanceId,
               operationId: lease.operationId,
               connectionEpoch: lease.connectionEpoch,
-              userMuted: desired.userMuted,
-              userDeafened: desired.userDeafened,
+              userMuted: reported.userMuted,
+              userDeafened: reported.userDeafened,
             }),
           catch: (error) => error,
         }).pipe(Effect.ignore)
@@ -1052,6 +1078,56 @@ export class VoiceDirector {
         self.selfStateHandledRevision = handledRevision
       }
     })
+  }
+
+  private observeScreenState(media: VoiceSnapshot['screen'], lease: VoiceLease) {
+    if (this.screenRestartLease !== lease) {
+      this.cancelScreenRestart()
+      this.screenRestartLease = lease
+      this.screenRestartAttempts = 0
+      this.screenRunningSinceMs = null
+    }
+    if (media.state === 'running') {
+      this.screenRunningSinceMs ??= this.now()
+      return
+    }
+    if (media.state !== 'failed') {
+      if (media.state === 'off') {
+        this.cancelScreenRestart()
+        this.screenRestartAttempts = 0
+        this.screenRunningSinceMs = null
+      }
+      return
+    }
+    const runningSince = this.screenRunningSinceMs
+    this.screenRunningSinceMs = null
+    if (runningSince !== null && this.now() - runningSince >= SCREEN_RESTART_STABLE_MS) {
+      this.screenRestartAttempts = 0
+    }
+    if (!media.error?.retryable || SCREEN_SOURCE_ENDED_CODES.has(media.error.code) ||
+        !this.desiredMedia.screenEnabled) return
+    const delay = SCREEN_RESTART_DELAYS_MS[this.screenRestartAttempts]
+    if (delay === undefined) return
+    this.screenRestartAttempts += 1
+    this.cancelScreenRestart()
+    const abort = new AbortController()
+    this.screenRestartAbort = abort
+    this.runtime.runFork(this.delayEffect(delay, abort.signal).pipe(
+      Effect.andThen(Effect.sync(() => {
+        if (this.screenRestartAbort !== abort) return
+        this.screenRestartAbort = null
+        // The user stopped the share, left, or it already recovered.
+        if (this.activeLease !== lease || !this.desiredMedia.screenEnabled ||
+            this.snapshotValue.screen.state !== 'failed') return
+        this.engine.retryMedia('screen')
+      })),
+      Effect.ignore,
+    ))
+  }
+
+  private cancelScreenRestart() {
+    this.screenRestartAbort?.abort()
+    this.screenRestartAbort = null
   }
 
   private updateMediaSnapshot(

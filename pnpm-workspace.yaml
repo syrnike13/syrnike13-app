@@ -1,11 +1,13 @@
 packages:
   - apps/web
+  - apps/landing
   - apps/admin
   - apps/desktop
   - packages/api-types
   - packages/desktop-native
   - packages/windows-media-engine
   - packages/platform
+  - packages/ui
 
 allowBuilds:
   "@sentry/cli": true

@@ -1,6 +1,5 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
-import { RiArrowRightLine, RiGitMergeLine, RiUserLine } from '@remixicon/react'
 import {
   useInfiniteQuery,
   useMutation,
@@ -11,6 +10,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Effect, Option, Schema } from 'effect'
 import { toast } from 'sonner'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   useAdminDraftController,
@@ -19,8 +19,18 @@ import {
 } from '#/components/draft-controller-context'
 import { AdminEmpty, AdminPage, AdminSection } from '#/components/layout/page'
 import { AdminUnsavedChangesBar } from '#/components/unsaved-changes-bar'
-import { CheckIcon, Loader2Icon, XIcon } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  GitMergeIcon,
+  SearchIcon,
+  UserIcon,
+  XIcon,
+} from '#/components/icons'
+import { Badge } from '@syrnike13/ui/primitives/badge'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Card } from '@syrnike13/ui/primitives/card'
+import { Empty } from '@syrnike13/ui/primitives/empty'
 import {
   Dialog,
   DialogContent,
@@ -28,8 +38,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Label } from '#/components/ui/label'
+} from '@syrnike13/ui/primitives/dialog'
+import { Label } from '@syrnike13/ui/primitives/label'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@syrnike13/ui/primitives/radio-group'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Select,
   SelectContent,
@@ -37,9 +57,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Textarea } from '#/components/ui/textarea'
-import { SearchField } from '#/components/search-field'
+} from '@syrnike13/ui/primitives/select'
+import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   approveFeedback,
@@ -82,18 +102,13 @@ type CandidateSelection = {
 
 const EMPTY_SUGGESTIONS: FeedbackSuggestion[] = []
 const FEEDBACK_PAGE_SIZE = 50
-const feedbackDateFormatter = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-})
 
 export function FeedbackModerationPage() {
   return <FeedbackModerationContent />
 }
 
 function FeedbackModerationContent() {
+  const t = useTranslations('feedback.moderation')
   const auth = useAuth()
   const queryClient = useQueryClient()
   const draftController = useAdminDraftController()
@@ -212,7 +227,7 @@ function FeedbackModerationContent() {
 
   function canLeaveActiveDraft() {
     if (!draftController?.isDirty) return true
-    toast.warning('Сохраните или сбросьте изменения перед сменой обращения')
+    toast.warning(t('draftWarning'))
     return false
   }
 
@@ -234,40 +249,40 @@ function FeedbackModerationContent() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => approveFeedback(token!, id),
     onSuccess: () => {
-      toast.success('Обращение опубликовано')
+      toast.success(t('approved'))
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error('Не удалось одобрить обращение'),
+    onError: () => toast.error(t('approveError')),
   })
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       rejectFeedback(token!, id, { reason }),
     onSuccess: () => {
-      toast.success('Обращение отклонено')
+      toast.success(t('rejected'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error('Не удалось отклонить обращение'),
+    onError: () => toast.error(t('rejectError')),
   })
   const mergeMutation = useMutation({
     mutationFn: ({ source, target }: { source: FeedbackSuggestion; target: FeedbackSuggestion }) =>
       mergeFeedback(token!, source._id, { target_id: target._id }),
     onSuccess: () => {
-      toast.success('Обращение объединено с выбранным')
+      toast.success(t('merged'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error('Не удалось объединить обращения'),
+    onError: () => toast.error(t('mergeError')),
   })
 
   const pendingTotal = pendingQuery.data?.pages[0]?.total ?? 0
   const publishedTotal = publishedQuery.data?.pages[0]?.total ?? 0
 
   return (
-    <AdminPage title="Обращения" innerClassName="max-w-[80rem]">
+    <AdminPage title={t('pageTitle')} innerClassName="max-w-320">
       <div className="flex flex-col gap-4">
         <FeedbackModeTabs
           mode={mode}
@@ -278,19 +293,17 @@ function FeedbackModerationContent() {
 
         {activeQuery.isLoading ? (
           <div className="flex min-h-80 items-center justify-center text-muted-foreground">
-            <Loader2Icon className="size-5 animate-spin" aria-label="Загрузка обращений" />
+            <Spinner className="size-5" aria-label={t('loadingAria')} />
           </div>
         ) : activeQuery.isError ? (
-          <AdminEmpty>Не удалось загрузить обращения. Попробуйте обновить страницу.</AdminEmpty>
+          <AdminEmpty>{t('loadError')}</AdminEmpty>
         ) : suggestions.length === 0 ? (
           <AdminEmpty>
-            {mode === 'pending'
-              ? 'Новых обращений на модерации нет.'
-              : 'Опубликованных обращений пока нет.'}
+            {mode === 'pending' ? t('emptyPending') : t('emptyPublished')}
           </AdminEmpty>
         ) : (
-          <AdminSection className="min-h-[calc(100svh-9.5rem)]">
-            <div className="grid h-full min-h-[calc(100svh-9.5rem)] lg:grid-cols-[minmax(19rem,0.82fr)_minmax(0,1.35fr)]">
+          <AdminSection className="min-h-feedback-page">
+            <div className="grid h-full min-h-feedback-page feedback-split-grid">
               <FeedbackQueue
                 mode={mode}
                 total={mode === 'pending' ? pendingTotal : publishedTotal}
@@ -344,11 +357,11 @@ function FeedbackModerationContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialog?.type === 'merge' ? 'Объединить обращения?' : 'Отклонить обращение'}
+              {dialog?.type === 'merge' ? t('mergeTitle') : t('rejectTitle')}
             </DialogTitle>
             <DialogDescription>
               {dialog?.type === 'merge'
-                ? 'Голоса исходного обращения будут перенесены в выбранное.'
+                ? t('mergeDescription')
                 : dialog?.source.title}
             </DialogDescription>
           </DialogHeader>
@@ -357,11 +370,13 @@ function FeedbackModerationContent() {
             <MergeComparison source={dialog.source} target={dialog.target} compact />
           ) : (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="feedback-rejection-reason">Причина для автора</Label>
+              <Label htmlFor="feedback-rejection-reason">
+                {t('rejectReasonLabel')}
+              </Label>
               <Textarea
                 id="feedback-rejection-reason"
                 value={rejectionReason}
-                placeholder="Автор увидит это пояснение"
+                placeholder={t('rejectReasonPlaceholder')}
                 onChange={(event) => setRejectionReason(event.target.value)}
               />
             </div>
@@ -369,7 +384,7 @@ function FeedbackModerationContent() {
 
           <DialogFooter>
             <Button variant="ghost" onClick={closeDialog}>
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               variant={dialog?.type === 'merge' ? 'default' : 'destructive'}
@@ -394,7 +409,9 @@ function FeedbackModerationContent() {
                 })
               }}
             >
-              {dialog?.type === 'merge' ? 'Подтвердить объединение' : 'Отклонить'}
+              {dialog?.type === 'merge'
+                ? t('confirmMerge')
+                : t('rejectConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -414,46 +431,19 @@ function FeedbackModeTabs({
   publishedTotal: number
   onChange: (mode: Mode) => void
 }) {
-  return (
-    <div
-      className="flex w-fit rounded-md border border-border/70 bg-card/40 p-0.5"
-      role="tablist"
-      aria-label="Разделы обращений"
-    >
-      <ModeTab active={mode === 'pending'} onClick={() => onChange('pending')}>
-        Новые · {pendingTotal}
-      </ModeTab>
-      <ModeTab active={mode === 'published'} onClick={() => onChange('published')}>
-        Опубликованные · {publishedTotal}
-      </ModeTab>
-    </div>
-  )
-}
+  const t = useTranslations('feedback.moderation')
 
-function ModeTab({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: ReactNode
-  onClick: () => void
-}) {
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={cn(
-        'h-9 rounded px-4 text-[13px] font-medium transition-colors',
-        active
-          ? 'bg-secondary text-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground',
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
+    <Tabs value={mode} onValueChange={(value) => onChange(value as Mode)}>
+      <TabsList aria-label={t('tabsAria')}>
+        <TabsTrigger value="pending" className="px-4">
+          {t('tabPending', { count: pendingTotal })}
+        </TabsTrigger>
+        <TabsTrigger value="published" className="px-4">
+          {t('tabPublished', { count: publishedTotal })}
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   )
 }
 
@@ -476,13 +466,15 @@ function FeedbackQueue({
   onSelect: (suggestion: FeedbackSuggestion) => void
   onLoadMore: () => void
 }) {
+  const t = useTranslations('feedback.moderation')
+
   return (
-    <aside className="min-w-0 border-b border-border/60 lg:border-r lg:border-b-0">
-      <div className="flex h-16 items-center justify-between border-b border-border/60 px-5">
-        <h2 className="text-[15px] font-semibold">
-          {mode === 'pending' ? 'Очередь модерации' : 'Опубликованные обращения'}
+    <aside className="min-w-0 border-b border-border lg:border-r lg:border-b-0">
+      <div className="flex h-16 items-center justify-between border-b border-border px-5">
+        <h2 className="text-base font-semibold">
+          {mode === 'pending' ? t('queuePending') : t('queuePublished')}
         </h2>
-        <span className="text-[12px] text-muted-foreground">{total}</span>
+        <span className="text-xs text-muted-foreground">{total}</span>
       </div>
       <div className="divide-y divide-border/60">
         {suggestions.map((suggestion) => (
@@ -496,13 +488,13 @@ function FeedbackQueue({
         ))}
       </div>
       {hasNextPage ? (
-        <div className="flex justify-center border-t border-border/60 p-4">
+        <div className="flex justify-center border-t border-border p-4">
           <Button
             variant="secondary"
             disabled={loadingNextPage}
             onClick={onLoadMore}
           >
-            {loadingNextPage ? 'Загружаем…' : 'Показать ещё'}
+            {loadingNextPage ? t('loadingMore') : t('loadMore')}
           </Button>
         </div>
       ) : null}
@@ -521,7 +513,10 @@ function FeedbackQueueItem({
   selected: boolean
   onSelect: () => void
 }) {
-  const statusLabel = feedbackProductStatusLabel(suggestion.status)
+  const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
+  const { locale } = useLocale()
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
     <button
@@ -537,24 +532,28 @@ function FeedbackQueueItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-start gap-2">
           <FeedbackTag tone={suggestion.category === 'bug' ? 'danger' : 'success'}>
-            {feedbackCategoryLabel(suggestion.category)}
+            {feedbackCategoryLabel(suggestion.category, tm)}
           </FeedbackTag>
           {mode === 'published' && statusLabel ? (
             <FeedbackTag tone="status">{statusLabel}</FeedbackTag>
           ) : null}
           {suggestion.anonymous ? (
-            <FeedbackTag tone="anonymous">Анонимно</FeedbackTag>
+            <FeedbackTag tone="anonymous">{t('anonymousShort')}</FeedbackTag>
           ) : null}
         </div>
-        <div className="mt-2 truncate text-[13px] font-semibold text-foreground">
+        <div className="mt-2 truncate text-sm font-semibold text-foreground">
           {suggestion.title}
         </div>
-        <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-          <span>{feedbackAuthorTag(suggestion)}</span>
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{feedbackAuthorTag(suggestion, t)}</span>
           <span aria-hidden>•</span>
-          <span>{suggestion.platform ? feedbackPlatformLabel(suggestion.platform) : 'Все платформы'}</span>
+          <span>
+            {suggestion.platform
+              ? feedbackPlatformLabel(suggestion.platform)
+              : t('allPlatforms')}
+          </span>
           <span aria-hidden>•</span>
-          <span>{formatFeedbackDate(suggestion.created_at)}</span>
+          <span>{formatFeedbackDate(suggestion.created_at, locale)}</span>
         </div>
       </div>
     </button>
@@ -596,46 +595,51 @@ function FeedbackInspector({
   onMerge: () => void
   onRefresh: () => void
 }) {
-  const statusLabel = feedbackProductStatusLabel(suggestion.status)
+  const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
+  const { locale } = useLocale()
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col" aria-label="Инспектор обращения">
+    <section className="flex min-h-0 min-w-0 flex-col" aria-label={t('inspectorAria')}>
       <div className="flex flex-1 flex-col gap-6 p-5 sm:p-7">
         <header className="flex flex-col gap-3">
-          <div className="text-[11px] font-semibold tracking-[0.12em] text-primary uppercase">
-            {mode === 'pending' ? 'Новое обращение' : 'Опубликованное обращение'}
+          <div className="text-xs font-semibold tracking-widest text-primary uppercase">
+            {mode === 'pending' ? t('newSuggestion') : t('publishedSuggestion')}
           </div>
-          <h2 className="text-balance text-[23px] leading-tight font-semibold tracking-tight sm:text-[26px]">
+          <h2 className="text-balance text-2xl leading-tight font-semibold tracking-tight">
             {suggestion.title}
           </h2>
           <div className="flex flex-wrap gap-2">
             <FeedbackTag tone={suggestion.category === 'bug' ? 'danger' : 'success'}>
-              {feedbackCategoryLabel(suggestion.category)}
+              {feedbackCategoryLabel(suggestion.category, tm)}
             </FeedbackTag>
             {suggestion.area ? (
-              <FeedbackTag tone="area">{feedbackAreaLabel(suggestion.area)}</FeedbackTag>
+              <FeedbackTag tone="area">{feedbackAreaLabel(suggestion.area, tm)}</FeedbackTag>
             ) : null}
             <FeedbackTag tone="platform">
-              {suggestion.platform ? feedbackPlatformLabel(suggestion.platform) : 'Все платформы'}
+              {suggestion.platform
+                ? feedbackPlatformLabel(suggestion.platform)
+                : t('allPlatforms')}
             </FeedbackTag>
             {mode === 'published' && statusLabel ? (
               <FeedbackTag tone="status">{statusLabel}</FeedbackTag>
             ) : null}
             {suggestion.anonymous ? (
-              <FeedbackTag tone="anonymous">Анонимно для пользователей</FeedbackTag>
+              <FeedbackTag tone="anonymous">{t('anonymousLong')}</FeedbackTag>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
-            <RiUserLine className="size-4" aria-hidden />
-            <span className="font-medium text-foreground">{feedbackAuthorTag(suggestion)}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <UserIcon className="size-4" aria-hidden />
+            <span className="font-medium text-foreground">{feedbackAuthorTag(suggestion, t)}</span>
             <span aria-hidden>•</span>
-            <span>{formatFeedbackDate(suggestion.created_at)}</span>
+            <span>{formatFeedbackDate(suggestion.created_at, locale)}</span>
             <span aria-hidden>•</span>
-            <span>{suggestion.vote_count} голосов</span>
+            <span>{t('votes', { count: suggestion.vote_count })}</span>
           </div>
         </header>
 
-        <div className="rounded-md border border-border/70 bg-muted/20 px-4 py-3 text-[14px] leading-6 whitespace-pre-wrap text-foreground">
+        <div className="rounded-md border border-border bg-muted/20 px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-foreground">
           {suggestion.description}
         </div>
 
@@ -661,18 +665,18 @@ function FeedbackInspector({
       </div>
 
       {mode === 'pending' ? (
-        <div className="flex flex-col-reverse gap-2 border-t border-border/60 p-5 sm:flex-row sm:justify-end sm:p-6">
+        <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end sm:p-6">
           <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onReject}>
             <XIcon data-icon="inline-start" />
-            Отклонить
+            {t('reject')}
           </Button>
           <Button variant="outline" disabled={!mergeTarget} onClick={onMerge}>
-            <RiGitMergeLine data-icon="inline-start" />
-            Объединить
+            <GitMergeIcon data-icon="inline-start" />
+            {t('merge')}
           </Button>
           <Button disabled={approving} onClick={onApprove}>
             <CheckIcon data-icon="inline-start" />
-            Одобрить
+            {t('approve')}
           </Button>
         </div>
       ) : null}
@@ -703,37 +707,52 @@ function DuplicatePicker({
   onTargetChange: (target: FeedbackSuggestion | null) => void
   onRetryCatalog: () => void
 }) {
+  const t = useTranslations('feedback.moderation')
   const hasSearch = searchValue.trim().length >= 2
 
   return (
-    <div className="flex flex-col gap-3">
+    <RadioGroup
+      value={selectedTarget?._id ?? null}
+      className="flex flex-col gap-3"
+      onValueChange={(value) => {
+        const next = [...automaticCandidates, ...manualSearchCandidates].find(
+          (candidate) => candidate.suggestion._id === value,
+        )
+        onTargetChange(next?.suggestion ?? null)
+      }}
+    >
       <div className="flex flex-col gap-1">
-        <h3 className="text-[16px] font-semibold">Возможные дубли</h3>
-        <p className="text-[12px] leading-5 text-muted-foreground">
-          Подсказки по названию и описанию по всему каталогу опубликованных обращений.
+        <h3 className="text-base font-semibold">{t('duplicatesTitle')}</h3>
+        <p className="text-xs leading-5 text-muted-foreground">
+          {t('duplicatesDescription')}
         </p>
       </div>
 
-      <SearchField
-        value={searchValue}
-        aria-label="Найти опубликованное обращение для объединения"
-        placeholder="Найти опубликованное обращение"
-        onChange={(event) => onSearchChange(event.target.value)}
-      />
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon />
+        </InputGroupAddon>
+        <InputGroupInput
+          value={searchValue}
+          aria-label={t('duplicateSearchAria')}
+          placeholder={t('duplicateSearchPlaceholder')}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+      </InputGroup>
 
-      <CandidateGroup label="Подсказки">
+      <CandidateGroup label={t('suggestions')}>
         {catalogIsLoading ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-[12px] text-muted-foreground">
-            <Loader2Icon className="size-4 animate-spin" />
-            Проверяем весь каталог…
+          <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
+            <Spinner className="size-4" aria-hidden />
+            {t('checkingCatalog')}
           </div>
         ) : catalogIsError ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 px-3 py-2">
-            <p className="text-[12px] text-destructive">
-              Не удалось проверить каталог. Одобрение временно недоступно.
+            <p className="text-xs text-destructive">
+              {t('catalogError')}
             </p>
             <Button size="sm" variant="outline" onClick={onRetryCatalog}>
-              Повторить
+              {t('retry')}
             </Button>
           </div>
         ) : automaticCandidates.length > 0 ? (
@@ -742,21 +761,20 @@ function DuplicatePicker({
               key={candidate.suggestion._id}
               candidate={candidate}
               selected={selectedTarget?._id === candidate.suggestion._id}
-              onSelect={() => onTargetChange(candidate.suggestion)}
             />
           ))
         ) : (
-          <p className="rounded-md border border-dashed border-border/70 px-3 py-3 text-[12px] leading-5 text-muted-foreground">
-            Совпадений не найдено — можно найти вручную.
-          </p>
+          <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
+            {t('noMatches')}
+          </Empty>
         )}
       </CandidateGroup>
 
       {hasSearch ? (
-        <CandidateGroup label="Результаты поиска">
+        <CandidateGroup label={t('searchResults')}>
           {catalogIsLoading ? (
-            <p className="px-1 py-2 text-[12px] text-muted-foreground">
-              Поиск станет доступен после загрузки каталога.
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              {t('searchAfterCatalog')}
             </p>
           ) : manualSearchCandidates.length > 0 ? (
             manualSearchCandidates.map((candidate) => (
@@ -764,12 +782,11 @@ function DuplicatePicker({
                 key={candidate.suggestion._id}
                 candidate={candidate}
                 selected={selectedTarget?._id === candidate.suggestion._id}
-                onSelect={() => onTargetChange(candidate.suggestion)}
               />
             ))
           ) : (
-            <p className="px-1 py-2 text-[12px] text-muted-foreground">
-              Ничего нового не найдено.
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              {t('nothingNew')}
             </p>
           )}
         </CandidateGroup>
@@ -778,18 +795,18 @@ function DuplicatePicker({
       {selectedTarget ? (
         <MergeComparison source={source} target={selectedTarget} />
       ) : (
-        <p className="rounded-md border border-dashed border-border/70 px-3 py-3 text-[12px] leading-5 text-muted-foreground">
-          Выберите опубликованное обращение, чтобы посмотреть сравнение перед объединением.
-        </p>
+        <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
+          {t('pickComparison')}
+        </Empty>
       )}
-    </div>
+    </RadioGroup>
   )
 }
 
 function CandidateGroup({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </div>
       <div className="flex flex-col gap-2">{children}</div>
@@ -800,61 +817,56 @@ function CandidateGroup({ children, label }: { children: ReactNode; label: strin
 function DuplicateCandidate({
   candidate,
   selected,
-  onSelect,
 }: {
   candidate: CandidateSelection
   selected: boolean
-  onSelect: () => void
 }) {
-  const statusLabel = feedbackProductStatusLabel(candidate.suggestion.status)
+  const t = useTranslations('feedback.similarity')
+  const tm = useTranslations('feedback.moderation')
+  const tMeta = useTranslations('feedback.meta')
+  const statusLabel = feedbackProductStatusLabel(
+    candidate.suggestion.status,
+    tMeta,
+  )
 
   return (
-    <button
-      type="button"
+    <label
       className={cn(
-        'flex w-full items-start gap-3 rounded-md border p-3 text-left transition-colors',
+        'flex w-full cursor-pointer items-start gap-3 rounded-md border p-3 text-left transition-colors',
         selected
           ? 'border-primary bg-primary/10'
-          : 'border-border/70 bg-card/35 hover:bg-muted/35',
+          : 'border-border bg-card/35 hover:bg-muted/35',
       )}
-      aria-pressed={selected}
-      onClick={onSelect}
     >
-      <span
-        className={cn(
-          'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
-          selected ? 'border-primary bg-primary' : 'border-muted-foreground/70',
-        )}
-        aria-hidden
-      >
-        {selected ? <span className="size-1.5 rounded-full bg-primary-foreground" /> : null}
-      </span>
+      <RadioGroupItem value={candidate.suggestion._id} className="mt-0.5" />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <span className="truncate text-[13px] font-semibold text-foreground">
+          <span className="truncate text-sm font-semibold text-foreground">
             {candidate.suggestion.title}
           </span>
           {candidate.similarity ? (
-            <span className="shrink-0 text-[11px] text-muted-foreground">
-              Совпадение {Math.round(candidate.similarity.score * 100)}%
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {tm('matchPercent', {
+                percent: Math.round(candidate.similarity.score * 100),
+              })}
             </span>
           ) : null}
         </span>
-        <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
-          <span>{candidate.suggestion.vote_count} голосов</span>
+        <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>{tm('votes', { count: candidate.suggestion.vote_count })}</span>
           {statusLabel ? <span>{statusLabel}</span> : null}
         </span>
         {candidate.similarity?.reasons.length ? (
           <span className="mt-2 flex flex-wrap gap-1.5">
             {candidate.similarity.reasons.map((reason) => (
               <FeedbackTag key={reason} tone="reason">
-                {reason}
+                {t(reason)}
               </FeedbackTag>
             ))}
           </span>
         ) : null}
       </span>
-    </button>
+    </label>
   )
 }
 
@@ -867,19 +879,22 @@ function MergeComparison({
   target: FeedbackSuggestion
   compact?: boolean
 }) {
+  const t = useTranslations('feedback.moderation')
+
   return (
-    <div className={cn('overflow-hidden rounded-md border border-border/70 bg-card/35', compact ? 'text-[12px]' : '')}>
-      <div className="grid items-stretch gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <FeedbackComparisonItem label="Исходное" suggestion={source} />
+    <Card className={cn('gap-0 py-0', compact ? 'text-xs' : '')}>
+      <div className="grid items-stretch gap-3 p-3 comparison-grid">
+        <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
-          <RiArrowRightLine className="size-5" aria-label="Перенос голосов" />
+          <ArrowRightIcon className="size-5" aria-label={t('votesTransferAria')} />
         </div>
-        <FeedbackComparisonItem label="Выбранное" suggestion={target} target />
+        <FeedbackComparisonItem label={t('target')} suggestion={target} target />
       </div>
-      <div className="border-t border-border/60 px-3 py-2.5 text-[12px] leading-5 text-muted-foreground">
-        <span className="font-medium text-foreground">Внимание:</span> голоса из исходного обращения перейдут в выбранное.
+      <div className="border-t border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+        <span className="font-medium text-foreground">{t('warningPrefix')}</span>{' '}
+        {t('warningText')}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -892,24 +907,26 @@ function FeedbackComparisonItem({
   suggestion: FeedbackSuggestion
   target?: boolean
 }) {
-  const statusLabel = feedbackProductStatusLabel(suggestion.status)
+  const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
+  const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
     <div className="min-w-0 rounded-md bg-muted/25 p-3">
-      <div className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+      <div className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </div>
-      <div className="mt-1.5 line-clamp-2 text-[13px] font-semibold leading-5 text-foreground">
+      <div className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-foreground">
         {suggestion.title}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-        <span>{suggestion.vote_count} голосов</span>
-        <span>{feedbackCategoryLabel(suggestion.category)}</span>
-        {suggestion.area ? <span>{feedbackAreaLabel(suggestion.area)}</span> : null}
+      <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span>{t('votes', { count: suggestion.vote_count })}</span>
+        <span>{feedbackCategoryLabel(suggestion.category, tm)}</span>
+        {suggestion.area ? <span>{feedbackAreaLabel(suggestion.area, tm)}</span> : null}
         {suggestion.platform ? <span>{feedbackPlatformLabel(suggestion.platform)}</span> : null}
         {target && statusLabel ? <span>{statusLabel}</span> : null}
       </div>
-      <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+      <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
         {suggestion.description}
       </p>
     </div>
@@ -941,6 +958,8 @@ function PublishedFeedbackEditor({
   suggestion: FeedbackSuggestion
   onSaved: () => void
 }) {
+  const t = useTranslations('feedback.moderation')
+  const tm = useTranslations('feedback.meta')
   const auth = useAuth()
   const token = auth.session?.token
   const [baseline, setBaseline] = useState<PublishedFeedbackDraft>(() =>
@@ -968,14 +987,10 @@ function PublishedFeedbackEditor({
       Effect.runPromise(
         Effect.gen(function*() {
           if (!token) {
-            return yield* Effect.fail(
-              new Error('Missing authentication token'),
-            )
+            return yield* Effect.fail(new Error(t('missingToken')))
           }
           if (!status) {
-            return yield* Effect.fail(
-              new Error('Missing feedback product status'),
-            )
+            return yield* Effect.fail(new Error(t('missingStatus')))
           }
 
           return yield* updateFeedbackEffect(token, suggestion._id, {
@@ -990,17 +1005,15 @@ function PublishedFeedbackEditor({
       setBaseline(next)
       setStatus(next.status)
       setResponse(next.response)
-      toast.success('Обращение обновлено')
+      toast.success(t('updated'))
       onSaved()
     },
     onError: (error) => {
       if (error instanceof ApiError && error.message === 'InvalidOperation') {
-        toast.error(
-          'Обращение изменилось после открытия. Обновите страницу и повторите правки.',
-        )
+        toast.error(t('staleError'))
         return
       }
-      toast.error('Не удалось сохранить изменения')
+      toast.error(t('saveError'))
     },
   })
   const hideMutation = useMutation({
@@ -1008,13 +1021,13 @@ function PublishedFeedbackEditor({
       Effect.runPromise(
         token
           ? hideFeedbackEffect(token, suggestion._id)
-          : Effect.fail(new Error('Missing authentication token')),
+          : Effect.fail(new Error(t('missingToken'))),
       ),
     onSuccess: () => {
-      toast.success('Обращение скрыто')
+      toast.success(t('hidden'))
       onSaved()
     },
-    onError: () => toast.error('Не удалось скрыть обращение'),
+    onError: () => toast.error(t('hideError')),
   })
 
   const saveDraft = useCallback(async () => {
@@ -1046,17 +1059,21 @@ function PublishedFeedbackEditor({
   useAdminDraftRegistration(draftRegistration)
 
   return (
-    <div className="flex flex-col gap-4 border-t border-border/60 pt-5">
+    <div className="flex flex-col gap-4 border-t border-border pt-5">
       <div>
-        <h3 className="text-[16px] font-semibold">Публикация и ответ</h3>
-        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-          Статус и единый официальный ответ команды видны пользователям.
+        <h3 className="text-base font-semibold">{t('publishTitle')}</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {t('publishDescription')}
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-[13rem_minmax(0,1fr)]">
+      <div className="grid gap-4 form-aside-grid">
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`status-${suggestion._id}`}>Статус</Label>
+          <Label htmlFor={`status-${suggestion._id}`}>{t('statusLabel')}</Label>
           <Select
+            items={FEEDBACK_PRODUCT_STATUSES.map((item) => ({
+              value: item.value,
+              label: tm(item.labelKey),
+            }))}
             value={status}
             onValueChange={(value) => {
               const decoded = Schema.decodeUnknownOption(
@@ -1068,13 +1085,13 @@ function PublishedFeedbackEditor({
             }}
           >
             <SelectTrigger id={`status-${suggestion._id}`} className="w-full">
-              <SelectValue placeholder="Статус не назначен" />
+              <SelectValue placeholder={t('statusPlaceholder')} />
             </SelectTrigger>
-            <SelectContent position="popper" side="bottom" align="start" sideOffset={0}>
+            <SelectContent side="bottom" align="start" sideOffset={0}>
               <SelectGroup>
                 {FEEDBACK_PRODUCT_STATUSES.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
-                    {item.label}
+                    {tm(item.labelKey)}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -1082,12 +1099,12 @@ function PublishedFeedbackEditor({
           </Select>
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`response-${suggestion._id}`}>Ответ команды</Label>
+          <Label htmlFor={`response-${suggestion._id}`}>{t('responseLabel')}</Label>
           <Textarea
             id={`response-${suggestion._id}`}
             value={response}
             className="min-h-28"
-            placeholder="Объясните решение или текущий прогресс"
+            placeholder={t('responsePlaceholder')}
             onChange={(event) => setResponse(event.target.value)}
           />
         </div>
@@ -1099,44 +1116,72 @@ function PublishedFeedbackEditor({
           disabled={hideMutation.isPending || hasChanges}
           onClick={() => hideMutation.mutate()}
         >
-          Скрыть
+          {t('hide')}
         </Button>
       </div>
     </div>
   )
 }
 
+type FeedbackTagTone =
+  | 'danger'
+  | 'success'
+  | 'area'
+  | 'platform'
+  | 'status'
+  | 'reason'
+  | 'anonymous'
+
 function FeedbackTag({
   children,
   tone,
 }: {
   children: ReactNode
-  tone: 'danger' | 'success' | 'area' | 'platform' | 'status' | 'reason' | 'anonymous'
+  tone: FeedbackTagTone
 }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] leading-4 font-medium',
-        tone === 'danger' && 'border-destructive/55 bg-destructive/10 text-destructive',
-        tone === 'success' && 'border-success/55 bg-success/10 text-success',
-        tone === 'area' && 'border-primary/50 bg-primary/10 text-primary',
-        tone === 'platform' && 'border-border/80 bg-secondary/50 text-muted-foreground',
-        tone === 'status' && 'border-warning/55 bg-warning/10 text-warning',
-        tone === 'reason' && 'border-primary/40 bg-primary/10 text-primary',
-        tone === 'anonymous' && 'border-border/80 bg-muted/60 text-muted-foreground',
-      )}
-    >
-      {children}
-    </span>
-  )
+  switch (tone) {
+    case 'danger':
+      return <Badge variant="destructive">{children}</Badge>
+    case 'success':
+      return (
+        <Badge variant="secondary" className="text-success">
+          {children}
+        </Badge>
+      )
+    case 'area':
+    case 'reason':
+      return (
+        <Badge variant="outline" className="text-primary">
+          {children}
+        </Badge>
+      )
+    case 'status':
+      return (
+        <Badge variant="outline" className="text-warning">
+          {children}
+        </Badge>
+      )
+    case 'platform':
+    case 'anonymous':
+      return <Badge variant="secondary">{children}</Badge>
+  }
 }
 
-function feedbackAuthorTag(suggestion: FeedbackSuggestion) {
+function feedbackAuthorTag(
+  suggestion: FeedbackSuggestion,
+  t: ReturnType<typeof useTranslations>,
+) {
   const author = suggestion.author_username ?? suggestion.author
-  return author ? `@${author}` : 'Неизвестный пользователь'
+  return author ? `@${author}` : t('unknownUser')
 }
 
-function formatFeedbackDate(value: string) {
+function formatFeedbackDate(value: string, locale: string) {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : feedbackDateFormatter.format(date)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
 }

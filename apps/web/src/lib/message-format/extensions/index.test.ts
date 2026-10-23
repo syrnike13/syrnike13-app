@@ -25,6 +25,19 @@ describe('createMessageExtensions', () => {
     )
   })
 
+  it('applies the localized spoiler title', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: createMessageExtensions({
+        spoilerTitle: 'Spoiler: click to show',
+      }),
+      content: '<p><span data-spoiler>hidden</span></p>',
+    })
+
+    expect(editor.getHTML()).toContain('title="Spoiler: click to show"')
+    editor.destroy()
+  })
+
   it('keeps inline mention tokens in clipboard text and HTML', () => {
     const editor = new Editor({
       element: document.createElement('div'),

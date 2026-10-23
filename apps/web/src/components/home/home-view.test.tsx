@@ -20,10 +20,10 @@ vi.mock('@tanstack/react-router', () => ({
   }: {
     children: ReactNode
     search?: Record<string, unknown>
-  }) => <a href={`/app?tab=${String(search?.tab ?? '')}`}>{children}</a>,
+  }) => <a href={`/?tab=${String(search?.tab ?? '')}`}>{children}</a>,
   useNavigate: () => mocks.navigate,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: '/app/' } }),
+    select({ location: { pathname: '/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -80,6 +80,7 @@ describe('HomeView', () => {
         'session-token',
         'friend-1',
         expect.any(Function),
+        expect.anything(),
       )
     })
   })
@@ -107,7 +108,7 @@ describe('HomeView', () => {
     render(<HomeView tab="online" />)
 
     expect(
-      screen.getByRole('link', { name: /Заявки.*1 уведомлений/ }),
+      screen.getByRole('link', { name: /Заявки.*1 уведомление/ }),
     ).toBeTruthy()
   })
 })

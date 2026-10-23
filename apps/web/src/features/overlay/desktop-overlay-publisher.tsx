@@ -6,6 +6,7 @@ import {
   normalizeDesktopOverlaySnapshot,
   type DesktopOverlaySnapshot,
 } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
@@ -111,6 +112,7 @@ export function createDesktopOverlaySnapshotPublisher(
 }
 
 export function DesktopOverlayPublisher() {
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const { desktop, os } = usePlatform()
@@ -133,9 +135,9 @@ export function DesktopOverlayPublisher() {
       !voice.channelId
         ? null
         : channel && auth.user
-          ? getChannelLabel(channel, users, auth.user._id)
-          : 'Голосовой канал',
-    [auth.user, channel, users, voice.channelId],
+          ? getChannelLabel(channel, users, auth.user._id, tChat)
+          : tChat('voiceChannelFallback'),
+    [auth.user, channel, tChat, users, voice.channelId],
   )
 
   const snapshot = useMemo(

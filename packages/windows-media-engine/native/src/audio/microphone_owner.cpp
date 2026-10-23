@@ -1,8 +1,8 @@
 #include "audio/microphone_owner.hpp"
 #include "audio/livekit_microphone_dsp.hpp"
+#include "audio/microphone_monitor.hpp"
 
 #include <windows.h>
-#include <charconv>
 #include <cstdio>
 #include <stdexcept>
 
@@ -13,20 +13,15 @@ bool publishes(const MicrophoneIntent& intent, std::optional<std::uint64_t> room
   return intent.state == MicrophoneIntentState::on && room.has_value();
 }
 // A selected device that is missing (unplugged, renamed endpoint, stale
-// renderer preference) falls back to the default input with a warning.
-AudioDeviceIntent deviceIntent(const MicrophoneIntent& intent, const AudioDeviceRegistry& devices,
-                               bool& fallback) {
+// renderer preference) falls back to the default one with a warning.
+AudioDeviceIntent deviceIntent(AudioDirection direction, const std::optional<std::string>& selected,
+                               const AudioDeviceRegistry& devices, bool& fallback) {
   fallback = false;
-  AudioDeviceIntent device;
-  if (!intent.device_id) return device;
-  AudioDeviceId id = 0;
-  const auto& text = *intent.device_id;
-  const auto parsed = std::from_chars(text.data(), text.data() + text.size(), id);
-  if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && id != 0) {
-    device.explicit_id = id;
-    if (devices.resolve(device)) return device;
-    device.explicit_id.reset();
-  }
+  AudioDeviceIntent device{direction, {}};
+  if (!selected) return device;
+  device.explicit_id = parseAudioDeviceId(*selected);
+  if (device.explicit_id && devices.resolve(device)) return device;
+  device.explicit_id.reset();
   fallback = true;
   return device;
 }
@@ -136,6 +131,9 @@ MicrophoneOwnerSnapshot MicrophoneOwner::snapshot() const {
 void MicrophoneOwner::run() noexcept {
   std::unique_ptr<MicrophonePipeline> pipeline;
   std::shared_ptr<MicrophoneSender> sender;
+  std::unique_ptr<MicrophoneMonitor> monitor;
+  std::shared_ptr<MicrophonePcmPort> monitor_source;
+  auto monitor_retry_at = Clock::now();
   std::optional<std::uint64_t> sender_room;
   std::uint64_t sender_epoch = 0;
   std::uint64_t sender_bitrate = 0;
@@ -155,7 +153,12 @@ void MicrophoneOwner::run() noexcept {
     sender.reset();
     sender_room.reset();
   };
+  const auto stopMonitor = [&] {
+    monitor.reset();
+    monitor_source.reset();
+  };
   const auto stopPipeline = [&] {
+    stopMonitor();
     stopSender();
     if (pipeline && !pipeline->stop(Clock::now() + kShutdownDeadline)) std::terminate();
     pipeline.reset();
@@ -199,9 +202,18 @@ void MicrophoneOwner::run() noexcept {
           problem && (problem->code == "microphone_publish_failed" || problem->code == "microphone_sender_failed"))
         problem.reset();
       if (pipeline && changed && problem && !retry && desired.intent.state != MicrophoneIntentState::off) {
-        // A failed input candidate must not disable mute/PTT on the retained
-        // healthy capture. DSP control has no retry/publication side effect.
-        if (pipeline->configure(dspConfig(desired.intent)) != MicrophonePipelineFailure::none)
+        // A failed input candidate must not disable mute/PTT/monitoring on the
+        // retained healthy capture. Neither DSP control nor the demand of a
+        // running capture has a retry/publication side effect.
+        const auto stats = pipeline->stats();
+        auto demand = stats.demand;
+        const bool demand_changed =
+            demand.meter != desired.intent.meter_demand || demand.monitor != desired.intent.monitor;
+        demand.meter = desired.intent.meter_demand;
+        demand.monitor = desired.intent.monitor;
+        if (pipeline->configure(dspConfig(desired.intent)) != MicrophonePipelineFailure::none ||
+            (demand_changed && stats.capture.state == MicrophoneCaptureState::healthy &&
+             pipeline->setDemand(demand, cancellation) != MicrophonePipelineFailure::none))
           stopPipeline();
       }
       if (desired.intent.state == MicrophoneIntentState::off) {
@@ -226,8 +238,10 @@ void MicrophoneOwner::run() noexcept {
           check(pipeline->configure(dspConfig(desired.intent)));
           check(pipeline->setEchoReference(desired.echo));
           check(pipeline->setSystemProcessingBypass(desired.intent.bypass_system_processing, cancellation));
-          check(pipeline->selectInput(devices_, deviceIntent(desired.intent, devices_, device_fallback), cancellation));
-          check(pipeline->setDemand({true, publish, desired.intent.meter_demand}, cancellation));
+          check(pipeline->selectInput(devices_, deviceIntent(AudioDirection::input, desired.intent.device_id, devices_,
+                                                            device_fallback), cancellation));
+          check(pipeline->setDemand({true, publish, desired.intent.meter_demand, desired.intent.monitor},
+                                    cancellation));
           if (publish && !sender) {
             // Capture may have taken seconds to open. Recheck the latest Room
             // before installing a cancellable publication transaction.
@@ -257,6 +271,34 @@ void MicrophoneOwner::run() noexcept {
         problem = previous_problem;
         selection_pending = true;
         continue;
+      }
+      if (!pipeline || !desired.intent.monitor || desired.intent.state == MicrophoneIntentState::off) {
+        stopMonitor();
+      } else if (changed || (monitor ? monitor_source != pipeline->monitorOutput()
+                                     : Clock::now() >= monitor_retry_at)) {
+        // Self-monitoring follows the selected output, or the default output
+        // while that one is missing, like remote playout. It is best effort: a
+        // missing output never fails the microphone and is retried.
+        const auto volume = static_cast<float>(desired.intent.monitor_volume);
+        bool output_fallback = false;
+        const auto endpoint = devices_.resolve(
+            deviceIntent(AudioDirection::output, desired.intent.monitor_device_id, devices_, output_fallback));
+        if (!endpoint) {
+          stopMonitor();
+          monitor_retry_at = Clock::now() + std::chrono::seconds{2};
+        } else if (!monitor || monitor->endpointId() != endpoint->endpoint_id ||
+                   monitor_source != pipeline->monitorOutput()) {
+          stopMonitor();
+          try {
+            monitor_source = pipeline->monitorOutput();
+            monitor = std::make_unique<MicrophoneMonitor>(*endpoint, monitor_source, volume);
+          } catch (...) {
+            stopMonitor();
+            monitor_retry_at = Clock::now() + std::chrono::seconds{2};
+          }
+        } else {
+          monitor->setVolume(volume);
+        }
       }
       MicrophoneOwnerSnapshot current;
       current.pipeline = pipeline ? pipeline->stats() : MicrophonePipelineStats{};

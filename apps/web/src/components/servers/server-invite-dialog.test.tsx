@@ -32,7 +32,7 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('#/components/ui/dialog', () => ({
+vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div>{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -166,7 +166,7 @@ describe('ServerInviteDialog', () => {
         _id: 'message-1',
         channel: 'dm-1',
         author: 'user-1',
-        content: 'https://syrnike13.ru/invite/new-code',
+        content: 'https://app.syrnike13.ru/invite/new-code',
       }),
     )
     mocks.writeClipboardText.mockReturnValue(Effect.void)
@@ -503,7 +503,7 @@ describe('ServerInviteDialog', () => {
         'dm-1',
         {
           content:
-            'Приглашение на сервер Server: https://syrnike13.ru/invite/new-code',
+            'Приглашение на сервер Server: https://app.syrnike13.ru/invite/new-code',
         },
       )
     })

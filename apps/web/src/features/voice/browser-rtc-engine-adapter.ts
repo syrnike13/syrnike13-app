@@ -17,6 +17,7 @@ import type {
   VoiceMediaKind,
   VoiceMediaSnapshot,
 } from '@syrnike13/platform'
+import { computeEffectiveDeafened } from '@syrnike13/platform'
 
 import {
   createVoiceRoomOptions,
@@ -732,7 +733,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   ) {
     const outputKey = JSON.stringify([
       desired.outputDeviceId ?? '',
-      desired.userDeafened || desired.serverDeafened,
+      computeEffectiveDeafened(desired),
       desired.outputVolume,
     ])
     if (active.appliedOutputKey === outputKey) return Effect.void
@@ -740,11 +741,11 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       const outputDeviceId = desired.outputDeviceId ?? 'default'
       yield* active.audioMixer.setOutputDeviceEffect(desired.outputDeviceId)
       active.appliedOutputDeviceId = outputDeviceId
-      const muted = desired.userDeafened || desired.serverDeafened
+      const muted = computeEffectiveDeafened(desired)
       yield* active.audioMixer.applyVolumesEffect(muted, desired.outputVolume)
       yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'output', {
-        state: desired.userDeafened || desired.serverDeafened ? 'muted' : 'running',
+        state: computeEffectiveDeafened(desired) ? 'muted' : 'running',
       })
       active.appliedOutputKey = outputKey
     }).pipe(
@@ -768,18 +769,18 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       if (desired.outputDeviceId) {
         yield* active.audioMixer.setOutputDeviceEffect(undefined)
         yield* active.audioMixer.applyVolumesEffect(
-          desired.userDeafened || desired.serverDeafened,
+          computeEffectiveDeafened(desired),
           desired.outputVolume,
         )
         yield* this.assertCurrentEffect(active)
         active.appliedOutputDeviceId = 'default'
         active.appliedOutputKey = JSON.stringify([
           desired.outputDeviceId,
-          desired.userDeafened || desired.serverDeafened,
+          computeEffectiveDeafened(desired),
           desired.outputVolume,
         ])
         this.emitMedia(active, 'output', {
-          state: desired.userDeafened || desired.serverDeafened ? 'muted' : 'running',
+          state: computeEffectiveDeafened(desired) ? 'muted' : 'running',
           error: {
             code: 'output_device_fallback',
             message: 'Selected audio output is unavailable; using system default',
@@ -818,13 +819,14 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     kind: VoiceMediaKind,
     error: unknown,
   ) {
+    const message = error instanceof Error ? error.message : `${kind} failed`
     this.emitMedia(active, kind, {
       state: 'failed',
-      error: {
-        code: `${kind}_unavailable`,
-        message: error instanceof Error ? error.message : `${kind} failed`,
-        retryable: true,
-      },
+      error: kind === 'camera' && isCameraDeviceError(error)
+        // The device itself could not be opened: choosing another one helps,
+        // unlike a denied permission.
+        ? { code: 'camera_input_failed', message, retryable: true, stage: 'camera' }
+        : { code: `${kind}_unavailable`, message, retryable: true },
     })
   }
 
@@ -905,7 +907,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   ) {
     this.effectRuntime.runFork(
       active.audioMixer.applyVolumesEffect(
-        desired.userDeafened || desired.serverDeafened,
+        computeEffectiveDeafened(desired),
         desired.outputVolume,
       ).pipe(Effect.ignore),
     )
@@ -1035,4 +1037,17 @@ function abortSignal(signal: AbortSignal) {
     signal.addEventListener('abort', onAbort, { once: true })
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
+}
+
+const CAMERA_DEVICE_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'NotFoundError',
+  'DevicesNotFoundError',
+  'NotReadableError',
+  'TrackStartError',
+  'OverconstrainedError',
+])
+
+function isCameraDeviceError(error: unknown) {
+  return typeof error === 'object' && error !== null && 'name' in error &&
+    typeof error.name === 'string' && CAMERA_DEVICE_ERROR_NAMES.has(error.name)
 }

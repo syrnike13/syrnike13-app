@@ -29,7 +29,8 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
+  useAppRoutePrefix: () => '',
+  useAppRouteIdPrefix: () => '/_app',
 }))
 
 const textChannel = {
@@ -83,7 +84,7 @@ describe('ChannelSettingsDialog', () => {
     fireEvent.click(screen.getByRole('button'))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
+      to: '/c/$channelId',
       params: { channelId: 'text-general' },
       search: {
         settingsChannel: 'text-general',

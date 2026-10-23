@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   FEEDBACK_AREAS,
@@ -36,17 +37,18 @@ import {
   UserIcon,
   WindowsIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { ScrollArea } from '#/components/ui/scroll-area'
+} from '@syrnike13/ui/primitives/dialog'
+import { Input } from '@syrnike13/ui/primitives/input'
+import { Label } from '@syrnike13/ui/primitives/label'
+import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import {
   Select,
   SelectContent,
@@ -54,8 +56,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#/components/ui/select'
-import { Textarea } from '#/components/ui/textarea'
+} from '@syrnike13/ui/primitives/select'
+import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createFeedbackSuggestion,
@@ -87,9 +89,9 @@ const PLATFORM_ICON_CLASSES = {
 } satisfies Record<FeedbackPlatform, string>
 
 const STEPS = [
-  { id: 'type', label: 'Тип' },
-  { id: 'text', label: 'Текст' },
-  { id: 'review', label: 'Проверка' },
+  { id: 'type', labelKey: 'stepType' },
+  { id: 'text', labelKey: 'stepText' },
+  { id: 'review', labelKey: 'stepReview' },
 ] as const
 
 function FeedbackPlatformOption({
@@ -97,6 +99,7 @@ function FeedbackPlatformOption({
 }: {
   platform: (typeof FEEDBACK_PLATFORMS)[number]
 }) {
+  const tm = useTranslations('feedback.meta')
   const Icon = PLATFORM_ICONS[platform.value]
 
   return (
@@ -109,7 +112,7 @@ function FeedbackPlatformOption({
       >
         <Icon className="size-4" aria-hidden />
       </span>
-      <span className="truncate">{platform.label}</span>
+      <span className="truncate">{tm(platform.labelKey)}</span>
     </span>
   )
 }
@@ -123,6 +126,9 @@ export function FeedbackCreateDialog({
   onOpenChange: (open: boolean) => void
   onCreated?: () => void
 }) {
+  const t = useTranslations('feedback.create')
+  const tm = useTranslations('feedback.meta')
+  const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
@@ -205,13 +211,13 @@ export function FeedbackCreateDialog({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
-      toast.success('Обращение отправлено на модерацию')
+      toast.success(t('sent'))
       resetWizard()
       onOpenChange(false)
       onCreated?.()
     },
     onError: () => {
-      toast.error('Не удалось отправить обращение')
+      toast.error(t('sendError'))
     },
   })
 
@@ -226,13 +232,13 @@ export function FeedbackCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <DialogHeader className="shrink-0 gap-1 border-b border-shell-divider px-6 pt-4 pb-3">
-          <DialogTitle>Добавить обращение</DialogTitle>
+      <DialogContent className="flex max-h-dialog-sm flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 gap-1 px-6 pt-4 pb-3">
+          <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
-            {step === 0 && 'Начнём с типа обращения — это займёт меньше минуты.'}
-            {step === 1 && 'Уточните, где это проявляется, и опишите своими словами.'}
-            {step === 2 && 'Проверьте обращение перед отправкой на модерацию.'}
+            {step === 0 && t('descriptionType')}
+            {step === 1 && t('descriptionText')}
+            {step === 2 && t('descriptionReview')}
           </DialogDescription>
           <ol className="flex items-center gap-2 pt-2">
             {STEPS.map((item, index) => (
@@ -259,15 +265,16 @@ export function FeedbackCreateDialog({
                     index === step ? 'text-foreground' : 'text-muted-foreground',
                   )}
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </span>
                 {index < STEPS.length - 1 ? (
-                  <span className="mx-1 h-px w-8 bg-border" aria-hidden />
+                  <Separator aria-hidden className="mx-1 w-8" />
                 ) : null}
               </li>
             ))}
           </ol>
         </DialogHeader>
+        <Separator />
 
         <ScrollArea className="min-h-0 flex-1">
           <form
@@ -281,7 +288,7 @@ export function FeedbackCreateDialog({
             {step === 0 ? (
               <>
                 <section className="space-y-3" aria-labelledby="feedback-category-label">
-                  <Label id="feedback-category-label">Тип обращения</Label>
+                  <Label id="feedback-category-label">{t('category')}</Label>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {FEEDBACK_CATEGORIES.map((item) => {
                       const selected = category === item.value
@@ -310,9 +317,11 @@ export function FeedbackCreateDialog({
                             <Icon className="size-5" aria-hidden />
                           </span>
                           <span className="min-w-0">
-                            <span className="block text-sm font-semibold">{item.label}</span>
+                            <span className="block text-sm font-semibold">
+                              {tm(item.labelKey)}
+                            </span>
                             <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                              {item.description}
+                              {tm(item.descriptionKey)}
                             </span>
                           </span>
                         </button>
@@ -327,8 +336,17 @@ export function FeedbackCreateDialog({
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="feedback-area">Область <span className="font-normal text-muted-foreground">— необязательно</span></Label>
+                    <Label htmlFor="feedback-area">
+                      {t('area')}{' '}
+                      <span className="font-normal text-muted-foreground">
+                        {t('optional')}
+                      </span>
+                    </Label>
                     <Select
+                      items={FEEDBACK_AREAS.map((item) => ({
+                        value: item.value,
+                        label: tm(item.labelKey),
+                      }))}
                       value={area}
                       onValueChange={(value) => {
                         const decoded = Schema.decodeUnknownOption(
@@ -338,10 +356,9 @@ export function FeedbackCreateDialog({
                       }}
                     >
                       <SelectTrigger id="feedback-area" className="h-11 w-full">
-                        <SelectValue placeholder="Выберите область" />
+                        <SelectValue placeholder={t('chooseArea')} />
                       </SelectTrigger>
                       <SelectContent
-                        position="popper"
                         side="bottom"
                         align="start"
                         sideOffset={8}
@@ -349,7 +366,7 @@ export function FeedbackCreateDialog({
                         <SelectGroup>
                           {FEEDBACK_AREAS.map((item) => (
                             <SelectItem key={item.value} value={item.value}>
-                              {item.label}
+                              {tm(item.labelKey)}
                             </SelectItem>
                           ))}
                         </SelectGroup>
@@ -358,7 +375,7 @@ export function FeedbackCreateDialog({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="feedback-platform">Платформа</Label>
+                    <Label htmlFor="feedback-platform">{t('platform')}</Label>
                     <Select
                       value={platform}
                       onValueChange={(value) => {
@@ -369,14 +386,13 @@ export function FeedbackCreateDialog({
                       }}
                     >
                       <SelectTrigger id="feedback-platform" className="h-11 w-full">
-                        <SelectValue placeholder="Выберите платформу">
+                        <SelectValue placeholder={t('choosePlatform')}>
                           {selectedPlatform ? (
                             <FeedbackPlatformOption platform={selectedPlatform} />
                           ) : null}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent
-                        position="popper"
                         side="bottom"
                         align="start"
                         sideOffset={8}
@@ -395,7 +411,7 @@ export function FeedbackCreateDialog({
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="feedback-title">Название</Label>
+                    <Label htmlFor="feedback-title">{t('titleLabel')}</Label>
                     <span className="text-xs tabular-nums text-muted-foreground">
                       {title.length}/{TITLE_MAX}
                     </span>
@@ -405,7 +421,7 @@ export function FeedbackCreateDialog({
                     value={title}
                     maxLength={TITLE_MAX}
                     autoFocus
-                    placeholder="Коротко опишите идею"
+                    placeholder={t('titlePlaceholder')}
                     className="h-11 text-base"
                     onChange={(event) => setTitle(event.target.value)}
                   />
@@ -414,11 +430,13 @@ export function FeedbackCreateDialog({
                 {normalizedTitle.length >= 4 && (similar.length > 0 || similarQuery.isLoading) ? (
                   <section className="space-y-2" aria-labelledby="similar-feedback-title">
                     <h2 id="similar-feedback-title" className="text-sm font-semibold">
-                      Похожие предложения
+                      {t('similarTitle')}
                     </h2>
                     <div className="gradient-surface-card overflow-hidden rounded-lg border border-shell-divider bg-card/20">
                       {similarQuery.isLoading ? (
-                        <div className="p-4 text-sm text-muted-foreground">Ищем похожие обращения…</div>
+                        <div className="p-4 text-sm text-muted-foreground">
+                          {t('searchingSimilar')}
+                        </div>
                       ) : (
                         similar.map((suggestion) => (
                           <Link
@@ -430,7 +448,7 @@ export function FeedbackCreateDialog({
                           >
                             <span className="flex size-14 shrink-0 flex-col items-center justify-center rounded-md border border-primary/25 bg-primary/5 text-xs font-semibold text-primary">
                               <ArrowUpIcon className="size-4" aria-hidden />
-                              {suggestion.vote_count.toLocaleString('ru-RU')}
+                              {suggestion.vote_count.toLocaleString(locale)}
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-semibold">{suggestion.title}</span>
@@ -449,7 +467,7 @@ export function FeedbackCreateDialog({
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="feedback-description">Описание</Label>
+                    <Label htmlFor="feedback-description">{t('descriptionLabel')}</Label>
                     <span className="text-xs tabular-nums text-muted-foreground">
                       {description.length}/{DESCRIPTION_MAX}
                     </span>
@@ -458,7 +476,7 @@ export function FeedbackCreateDialog({
                     id="feedback-description"
                     value={description}
                     maxLength={DESCRIPTION_MAX}
-                    placeholder="Опишите проблему, как должно работать решение и какую пользу оно принесёт сообществу."
+                    placeholder={t('descriptionPlaceholder')}
                     className="min-h-36 resize-y text-sm leading-6"
                     onChange={(event) => setDescription(event.target.value)}
                   />
@@ -470,23 +488,27 @@ export function FeedbackCreateDialog({
               <>
                 <dl className="space-y-3 rounded-lg border border-shell-divider bg-muted/10 p-4 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="shrink-0 text-muted-foreground">Тип</dt>
+                    <dt className="shrink-0 text-muted-foreground">{t('typeSummary')}</dt>
                     <dd>{category ? <FeedbackCategoryBadge category={category} /> : '—'}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="shrink-0 text-muted-foreground">Область</dt>
-                    <dd className="truncate">{area ? feedbackAreaLabel(area) : '—'}</dd>
+                    <dt className="shrink-0 text-muted-foreground">{t('areaSummary')}</dt>
+                    <dd className="truncate">
+                      {area ? feedbackAreaLabel(area, tm) : '—'}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="shrink-0 text-muted-foreground">Платформа</dt>
-                    <dd className="truncate">{platform ? feedbackPlatformLabel(platform) : '—'}</dd>
+                    <dt className="shrink-0 text-muted-foreground">{t('platformSummary')}</dt>
+                    <dd className="truncate">
+                      {platform ? feedbackPlatformLabel(platform, tm) : '—'}
+                    </dd>
                   </div>
                   <div className="border-t border-shell-divider pt-3">
-                    <dt className="text-muted-foreground">Название</dt>
+                    <dt className="text-muted-foreground">{t('titleSummary')}</dt>
                     <dd className="mt-1 font-semibold">{normalizedTitle}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Описание</dt>
+                    <dt className="text-muted-foreground">{t('descriptionSummary')}</dt>
                     <dd className="mt-1 line-clamp-4 leading-6 whitespace-pre-wrap text-foreground/90">
                       {description.trim()}
                     </dd>
@@ -495,9 +517,9 @@ export function FeedbackCreateDialog({
 
                 <section className="space-y-3" aria-labelledby="feedback-author-label">
                   <div>
-                    <Label id="feedback-author-label">От чьего имени опубликовать</Label>
+                    <Label id="feedback-author-label">{t('authorLabel')}</Label>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      При анонимной публикации ваше имя увидят только модераторы.
+                      {t('authorHint')}
                     </p>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -505,14 +527,16 @@ export function FeedbackCreateDialog({
                       {
                         value: false,
                         icon: UserIcon,
-                        label: auth.user?.username ? `@${auth.user.username}` : 'От моего имени',
-                        hint: 'Имя будет видно всем',
+                        label: auth.user?.username
+                          ? `@${auth.user.username}`
+                          : t('asMe'),
+                        hint: t('asMeHint'),
                       },
                       {
                         value: true,
                         icon: EyeOffIcon,
-                        label: 'Анонимно',
-                        hint: 'Имя увидят только модераторы',
+                        label: t('anonymous'),
+                        hint: t('anonymousHint'),
                       },
                     ] as const).map((option) => {
                       const selected = anonymous === option.value
@@ -553,7 +577,7 @@ export function FeedbackCreateDialog({
             onClick={() => setStep((current) => Math.max(0, current - 1))}
           >
             <ChevronLeftIcon className="size-4" data-icon="inline-start" />
-            Назад
+            {t('back')}
           </Button>
           <Button
             type="submit"
@@ -561,10 +585,10 @@ export function FeedbackCreateDialog({
             disabled={!stepValid || createMutation.isPending}
           >
             {isLastStep ? (
-              createMutation.isPending ? 'Отправляем…' : 'Отправить на модерацию'
+              createMutation.isPending ? t('submitting') : t('submit')
             ) : (
               <>
-                Далее
+                {t('next')}
                 <ChevronRightIcon className="size-4" data-icon="inline-end" />
               </>
             )}
