@@ -1,4 +1,5 @@
 import type { Room } from 'livekit-client'
+import { randomUuid } from '#/lib/random-uuid'
 import {
   computeEffectiveMuted,
   isVoiceCommand,
@@ -148,7 +149,7 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     dependencies: VoiceTabOwnerDependencies = {},
   ) {
     this.snapshotValue = initialSnapshot
-    this.tabId = dependencies.createTabId?.() ?? crypto.randomUUID()
+    this.tabId = dependencies.createTabId?.() ?? randomUuid()
     this.holdExclusiveLock =
       dependencies.holdExclusiveLock ?? browserExclusiveLock
     const createChannel =
@@ -286,7 +287,7 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
           try: () =>
             holdExclusiveLock(lockName, async () => {
               if (this.disposed || !this.pendingJoin) return
-              const ownerEpoch = crypto.randomUUID()
+              const ownerEpoch = randomUuid()
               this.ownerId = this.tabId
               this.ownerEpoch = ownerEpoch
               this.ownerSequence = 0

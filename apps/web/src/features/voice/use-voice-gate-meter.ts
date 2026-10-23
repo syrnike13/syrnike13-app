@@ -101,6 +101,12 @@ export function useVoiceGateMeter(
       })
     }
 
+    // Insecure contexts expose no `navigator.mediaDevices`; keep the meter idle.
+    if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+      outputRef.current = DEFAULT_METRICS
+      return
+    }
+
     let acceptUpdates = true
     const captureConstraints = voiceAudioProcessingConstraints(prefsRef.current)
     const acquireStream = Effect.callback<MediaStream, unknown>((resume) => {

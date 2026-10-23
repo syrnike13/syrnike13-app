@@ -1,4 +1,5 @@
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
+import { randomUuid } from '#/lib/random-uuid'
 import {
   useCallback,
   useEffect,
@@ -1572,7 +1573,7 @@ function createBrowserVoiceClient(getCurrentUserId: () => string | null): VoiceC
     authority,
     engine,
     rtcEngine: 'web',
-    clientInstanceId: `web-${crypto.randomUUID()}`,
+    clientInstanceId: `web-${randomUuid()}`,
   })
   const disposeEffect = Effect.fn('voice.disposeBrowserVoiceClient')(
     function*() {

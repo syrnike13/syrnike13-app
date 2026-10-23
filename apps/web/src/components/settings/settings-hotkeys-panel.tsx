@@ -14,6 +14,7 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
+import { randomUuid } from '#/lib/random-uuid'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
@@ -379,8 +380,5 @@ function statusMessage(
 }
 
 function createBindingId() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `hotkey-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return randomUuid()
 }

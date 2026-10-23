@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from 'react'
+import { randomUuid } from '#/lib/random-uuid'
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
@@ -514,7 +515,7 @@ export function MessageComposer({
       const sendAttempt =
         currentAttempt?.signature === signature
           ? currentAttempt
-          : { signature, nonce: crypto.randomUUID() }
+          : { signature, nonce: randomUuid() }
       sendAttemptRef.current = sendAttempt
       await Effect.runPromise(
         Effect.gen(function*() {

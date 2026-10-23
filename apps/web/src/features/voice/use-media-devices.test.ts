@@ -153,4 +153,19 @@ describe('media device permissions', () => {
     )
     setInterval.mockRestore()
   })
+
+  it('degrades without throwing when mediaDevices is unavailable', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: undefined,
+    })
+
+    await expect(
+      Effect.runPromise(listMediaDevicesEffect('audioinput')),
+    ).resolves.toEqual([])
+
+    const { result } = renderHook(() => useMediaDevices('audioinput'))
+
+    await waitFor(() => expect(result.current).toEqual([]))
+  })
 })

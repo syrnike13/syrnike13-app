@@ -1,5 +1,6 @@
 import { eventsGateway } from '#/features/events/gateway'
 import { Effect, Fiber, Schedule } from 'effect'
+import { randomUuid } from '#/lib/random-uuid'
 
 import {
   isChannelActivityErrorCode,
@@ -249,7 +250,7 @@ export class ChannelActivityClient {
   }
 
   #requestId(channelId: string) {
-    return `activity-request-${channelId}-${crypto.randomUUID()}`
+    return `activity-request-${channelId}-${randomUuid()}`
   }
 
   #setError(channelId: string, error: ChannelActivityViewState['error']) {

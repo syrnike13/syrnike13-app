@@ -1,6 +1,7 @@
 import type { Category, Channel, Server } from '@syrnike13/api-types'
 
 import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { randomUuid } from '#/lib/random-uuid'
 
 export const UNCATEGORIZED_SECTION_ID = '__uncategorized__'
 
@@ -500,5 +501,5 @@ export function appendChannelToCategory(
 }
 
 export function createCategoryId() {
-  return crypto.randomUUID().replace(/-/g, '').slice(0, 26)
+  return randomUuid().replace(/-/g, '').slice(0, 26)
 }
