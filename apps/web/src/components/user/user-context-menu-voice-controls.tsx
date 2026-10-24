@@ -19,15 +19,13 @@ import {
 } from '#/components/icons'
 import {
   ContextMenuCheckboxItem,
-  ContextMenuGroup,
   ContextMenuItem,
-  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from '@syrnike13/ui/primitives/context-menu'
-import { Slider } from '@syrnike13/ui/primitives/slider'
+import { ContextMenuVolume } from '#/components/voice/context-menu-volume'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import {
@@ -198,34 +196,14 @@ export function UserContextMenuVoiceControls({
     <>
       {!isSelf ? (
         <>
-          <div
-            className="px-2 py-2"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ContextMenuGroup>
-              <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
-                {t('volume')}
-              </ContextMenuLabel>
-            </ContextMenuGroup>
-            <div className="flex items-center gap-2">
-              <Slider
-                className="flex-1"
-                min={0}
-                max={VOICE_USER_VOLUME_MAX}
-                step={0.1}
-                value={[volume]}
-                onValueChange={(value) => {
-                  const next = typeof value === 'number' ? value : value[0]
-                  if (next == null) return
-                  voiceListenerStore.setUserVolume(userId, next)
-                }}
-              />
-              <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {formatUserVolumeLabel(volume)}
-              </span>
-            </div>
-          </div>
+          <ContextMenuVolume
+            label={t('volume')}
+            value={volume}
+            max={VOICE_USER_VOLUME_MAX}
+            step={0.1}
+            valueLabel={formatUserVolumeLabel(volume)}
+            onValueChange={(next) => voiceListenerStore.setUserVolume(userId, next)}
+          />
           <ContextMenuCheckboxItem
             checked={muted}
             closeOnClick={false}
