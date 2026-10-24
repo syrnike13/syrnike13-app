@@ -823,6 +823,8 @@ impl State {
             },
             voice_states,
             voice_calls,
+            // TODO(activities): collect running instances for visible voice channels.
+            activities: None,
 
             emojis,
             user_settings,

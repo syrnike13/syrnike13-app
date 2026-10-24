@@ -817,22 +817,6 @@ async fn worker(
                             }
                         }
                     }
-                    ClientMessage::ChannelActivity {
-                        request_id,
-                        channel_id,
-                        request,
-                    } => {
-                        if let Some(event) = crate::channel_activity::handle_request(
-                            &user,
-                            request_id,
-                            channel_id,
-                            request,
-                        )
-                        .await
-                        {
-                            write.lock().await.send(config.encode(&event)).await.ok();
-                        }
-                    }
                     ClientMessage::VoiceMediaStopped { source } => {
                         match syrnike_database::voice::clear_voice_media_track(&user.id, source)
                             .await

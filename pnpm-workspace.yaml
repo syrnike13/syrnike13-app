@@ -3,6 +3,7 @@ packages:
   - apps/landing
   - apps/admin
   - apps/desktop
+  - packages/activity-sdk
   - packages/api-types
   - packages/desktop-native
   - packages/windows-media-engine

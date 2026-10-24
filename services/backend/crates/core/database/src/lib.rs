@@ -116,7 +116,6 @@ pub use amqp::amqp::AMQP;
 pub mod voice;
 
 #[cfg(feature = "voice")]
-pub mod channel_activity;
 
 /// Utility function to check if a boolean value is false
 pub fn if_false(t: &bool) -> bool {

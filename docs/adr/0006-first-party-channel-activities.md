@@ -1,6 +1,6 @@
 # ADR-0006 — First-party Channel Activities over authoritative voice membership
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0011
 - **Date:** 2026-07-19
 
 ## Context
