@@ -16,12 +16,14 @@ type SplitButtonContextValue = VariantProps<typeof splitButtonSegmentVariants>
 const SplitButtonContext = React.createContext<SplitButtonContextValue>({})
 
 const splitButtonSegmentVariants = cva(
-  "inline-flex shrink-0 items-center justify-center text-muted-foreground transition-colors outline-none select-none first:rounded-l-lg last:rounded-r-lg focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center text-muted-foreground transition-colors outline-none select-none focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
+      // Rounding by role, not :first/:last: an open popover inserts focus
+      // guards next to its trigger.
       segment: {
-        main: "",
-        chevron: "",
+        main: "rounded-l-lg",
+        chevron: "rounded-r-lg",
       },
       size: {
         default: "",
@@ -29,11 +31,11 @@ const splitButtonSegmentVariants = cva(
       },
       variant: {
         default:
-          "group-hover/split:bg-hover/50 group-hover/split:text-foreground hover:bg-hover",
+          "group-hover/split:bg-hover/50 group-hover/split:text-foreground hover:bg-hover data-popup-open:bg-hover data-popup-open:text-foreground",
         destructive:
-          "bg-destructive/20 text-destructive group-hover/split:bg-destructive/25 hover:bg-destructive/30",
+          "bg-destructive/20 text-destructive group-hover/split:bg-destructive/25 hover:bg-destructive/30 data-popup-open:bg-destructive/30",
         success:
-          "bg-success/20 text-success group-hover/split:bg-success/25 hover:bg-success/30",
+          "bg-success/20 text-success group-hover/split:bg-success/25 hover:bg-success/30 data-popup-open:bg-success/30",
       },
     },
     compoundVariants: [
@@ -79,7 +81,7 @@ function SplitButton({
         data-slot="split-button"
         data-size={size}
         data-variant={variant}
-        className={cn("group/split inline-flex items-stretch", className)}
+        className={cn("group/split inline-flex items-stretch gap-px", className)}
         {...props}
       />
     </SplitButtonContext.Provider>
