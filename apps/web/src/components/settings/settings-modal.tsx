@@ -32,6 +32,12 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@syrnike13/ui/primitives/input-group'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
+} from '@syrnike13/ui/primitives/sidebar'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   type SettingsSection,
@@ -130,72 +136,66 @@ function SettingsDesktopModal() {
         </DialogDescription>
 
         <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-          <div className="p-3">
-            <Button
-              type="button"
-              variant={section === 'profile' ? 'secondary' : 'ghost'}
-              className="h-auto w-full justify-start gap-2 p-1.5 text-left"
+          <div className="flex flex-col gap-3 p-3">
+            <SidebarMenuButton
+              size="lg"
+              isActive={section === 'profile'}
               onClick={() => setSection('profile')}
             >
               <UserAvatar
                 user={user}
-                className="size-10"
-                fallbackClassName="size-10"
+                className="size-8"
+                fallbackClassName="size-8"
                 showPresence={false}
               />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-muted-foreground">
-                  @{user?.username}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-foreground">
+                  {user?.display_name ?? user?.username}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
                   {t('edit')}
-                </p>
-              </div>
-            </Button>
-            <InputGroup className="mt-3 h-8">
+                </span>
+              </span>
+            </SidebarMenuButton>
+            <InputGroup size="sm">
               <InputGroupAddon>
-                <SearchIcon className="size-4" />
+                <SearchIcon />
               </InputGroupAddon>
-              <InputGroupInput
-                disabled
-                placeholder={t('searchSoon')}
-                className="text-xs"
-              />
+              <InputGroupInput disabled placeholder={t('searchSoon')} />
             </InputGroup>
           </div>
 
           <ScrollArea className="h-0 min-h-0 flex-1">
-            <nav className="flex flex-col gap-0.5 p-2">
+            <SidebarMenu className="p-2">
               {navItems.map((item) => {
                 const Icon = item.icon
-                const active = section === item.id
                 return (
-                  <Button
-                    key={item.id}
-                    type="button"
-                    variant={active ? 'secondary' : 'ghost'}
-                    aria-current={active ? 'page' : undefined}
-                    className="h-9 w-full justify-start gap-2 px-2"
-                    onClick={() => setSection(item.id)}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {t(item.labelKey)}
-                  </Button>
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      size="lg"
+                      isActive={section === item.id}
+                      aria-current={section === item.id ? 'page' : undefined}
+                      onClick={() => setSection(item.id)}
+                    >
+                      <Icon />
+                      <span>{t(item.labelKey)}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 )
               })}
-              <div className="mt-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-9 w-full justify-start gap-2 px-2 text-destructive hover:text-destructive"
+              <SidebarSeparator className="my-2" />
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="lg"
+                  variant="destructive"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}
                 >
-                  <LogOutIcon className="size-4 shrink-0" />
-                  {loggingOut ? t('loggingOut') : t('logout')}
-                </Button>
-              </div>
-            </nav>
+                  <LogOutIcon />
+                  <span>{loggingOut ? t('loggingOut') : t('logout')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </ScrollArea>
         </aside>
 
@@ -209,10 +209,10 @@ function SettingsDesktopModal() {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                shape="circle"
                 onClick={() => setOpen(false)}
               >
-                <XIcon className="size-4" />
+                <XIcon />
                 <span className="sr-only">{t('close')}</span>
               </Button>
             </header>
