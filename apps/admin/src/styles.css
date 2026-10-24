@@ -95,6 +95,8 @@
   --color-surface-raised-foreground: var(--surface-raised-foreground);
   --color-disabled-foreground: var(--disabled-foreground);
   --color-ring: var(--ring);
+  --color-on-media: var(--on-media);
+  --color-media-backdrop: var(--media-backdrop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
