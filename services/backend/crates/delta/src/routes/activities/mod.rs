@@ -243,6 +243,7 @@ mod tests {
     async fn routes_do_not_collide() {
         let (routes, _) = super::routes();
         rocket::build()
+            .manage(syrnike_database::Database::Reference(Default::default()))
             .mount("/activities", routes)
             .ignite()
             .await
