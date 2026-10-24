@@ -39,9 +39,6 @@ const buttonVariants = cva(
         'icon-sm':
           'size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg',
         'icon-lg': 'size-9',
-        // Narrow chevron half of a Discord split control (mic, sound).
-        'icon-split':
-          "h-8 w-4 [&_svg:not([class*='size-'])]:size-3",
       },
       // Not in base-nova: Discord uses round icon buttons for row and banner
       // actions. Declared after `size` so it wins over size-specific radii.
