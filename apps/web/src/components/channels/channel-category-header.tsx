@@ -10,6 +10,9 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@syrnike13/ui/primitives/context-menu'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Collapsible, CollapsibleTrigger } from '@syrnike13/ui/primitives/collapsible'
+import { SidebarGroupLabel } from '@syrnike13/ui/primitives/sidebar'
 import { cn } from '#/lib/utils'
 
 type ChannelCategoryHeaderProps = {
@@ -35,44 +38,41 @@ export function ChannelCategoryHeader({
 
   const header = (
     <div
-      className="group/category flex h-10 items-center gap-1 px-2 pt-4"
+      className="group/category flex h-10 items-end gap-1 pr-1"
       data-channel-category=""
     >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-1 text-left"
-        onClick={onToggleCollapsed}
+      <Collapsible
+        open={!collapsed}
+        onOpenChange={onToggleCollapsed}
+        className="flex min-w-0 flex-1"
       >
-        <span className="truncate text-sm font-medium leading-4.5 tracking-tight text-muted-foreground">
-          {title}
-        </span>
-        <ChevronDownIcon
-          className={cn(
-            'size-3 shrink-0 text-muted-foreground transition-transform',
-            collapsed && '-rotate-90',
-          )}
-        />
-      </button>
+        <SidebarGroupLabel render={<CollapsibleTrigger />}>
+          <span>{title}</span>
+          <ChevronDownIcon className={cn('transition-transform', collapsed && '-rotate-90')} />
+        </SidebarGroupLabel>
+      </Collapsible>
       {canManage ? (
-        <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/category:opacity-100">
-          <button
+        <div className="flex shrink-0 items-center text-muted-foreground opacity-0 transition-opacity group-hover/category:opacity-100 focus-within:opacity-100">
+          <Button
             type="button"
-            className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size="icon-xs"
             title={t('createChannel')}
             aria-label={t('createChannel')}
             onClick={() => setCreateChannelOpen(true)}
           >
-            <PlusIcon className="size-3.5" />
-          </button>
-          <button
+            <PlusIcon />
+          </Button>
+          <Button
             type="button"
-            className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size="icon-xs"
             title={t('categorySettings')}
             aria-label={t('categorySettings')}
             onClick={() => setSettingsOpen(true)}
           >
-            <SettingsIcon className="size-3.5" />
-          </button>
+            <SettingsIcon />
+          </Button>
         </div>
       ) : null}
     </div>

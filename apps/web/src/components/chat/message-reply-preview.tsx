@@ -8,6 +8,7 @@ import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { messagePreviewText } from '#/lib/message-format/preview-text'
 
 export function messageAuthorName(
   message: Message,
@@ -75,6 +76,8 @@ export function InlineReplyQuote({
   const t = useTranslations('chat')
   const members = useSyncStore((s) => s.members)
   const servers = useSyncStore((s) => s.servers)
+  const channels = useSyncStore((s) => s.channels)
+  const emojis = useSyncStore((s) => s.emojis)
 
   const original = messagesById[replyId]
   if (!original) {
@@ -88,7 +91,14 @@ export function InlineReplyQuote({
   const name = messageAuthorName(original, users, t('messageLabel'))
   const replyUser = original.user ?? users[original.author]
   const snippet =
-    original.content?.trim().slice(0, 100) || t('attachmentPreview')
+    (original.content
+      ? messagePreviewText(original.content, {
+          users,
+          channels,
+          emojis,
+          roles: serverId ? servers[serverId]?.roles : undefined,
+        }).slice(0, 100)
+      : '') || t('attachmentPreview')
   const nameColor = replyAuthorColor(
     serverId,
     original,

@@ -103,21 +103,11 @@ function upsertServer(owner = 'user-1') {
 }
 
 describe('ServerHeaderMenu', () => {
-  it('uses a translucent trigger background over a server banner', () => {
-    render(
-      <ServerHeaderMenu
-        serverId="server-1"
-        serverName="Server"
-        overBanner
-      />,
-    )
+  it('uses the ghost Button as the menu trigger', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
 
-    const triggerClass = screen.getByRole('button', {
-      name: 'Server',
-    }).className
-
-    expect(triggerClass).toContain('hover:bg-background/60')
-    expect(triggerClass).toContain('hover:backdrop-blur-sm')
+    const trigger = screen.getByRole('button', { name: 'Server' })
+    expect(trigger.getAttribute('data-variant')).toBe('ghost')
   })
 
   it('renders the server name with the header weight', () => {

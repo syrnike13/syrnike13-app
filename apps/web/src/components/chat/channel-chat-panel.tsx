@@ -235,7 +235,6 @@ export function ChannelChatPanel({
           <MessageComposer
             channel={channel}
             users={users}
-            floating
             onHeightChange={setComposerHeight}
             disabled={
               !token || auth.gatewayState !== 'connected' || dmMessagesBlocked

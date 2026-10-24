@@ -54,12 +54,6 @@ import { hasPermissionBit } from '#/lib/permission-bits'
 import { useComposerState } from '#/features/chat/use-composer-state'
 import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
 
-const composerIconClass =
-  'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
-
-const composerIconHoverClass = (floating: boolean) =>
-  floating ? 'hover:bg-muted' : 'hover:bg-secondary'
-
 function composerPlaceholder(
   channel: Channel | undefined,
   users: Record<string, User>,
@@ -97,7 +91,6 @@ type MessageComposerProps = {
   onTyping?: () => void
   onStopTyping?: () => void
   /** Плавает над лентой (как UserPanel). */
-  floating?: boolean
   onHeightChange?: (height: number) => void
 }
 
@@ -141,7 +134,6 @@ export function MessageComposer({
   onEdit,
   onTyping,
   onStopTyping,
-  floating = false,
   onHeightChange,
 }: MessageComposerProps) {
   const t = useTranslations('chat.composer')
@@ -150,6 +142,7 @@ export function MessageComposer({
   const members = useSyncStore((s) => s.members)
   const composerRef = useRef<ComposerEditorHandle>(null)
   const composerInputRowRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const composerBodyRef = useRef<HTMLDivElement>(null)
   const sendAttemptRef = useRef<{ signature: string; nonce: string } | null>(null)
 
@@ -583,8 +576,6 @@ export function MessageComposer({
           tChat,
         ))
 
-  const hasComposerHeader =
-    showReplyBanner || isEditing || files.length > 0
   const showComposerDivider = showReplyBanner || isEditing
 
   const composerChrome = (
@@ -606,12 +597,11 @@ export function MessageComposer({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
+            size="icon-xs"
             onClick={onCancelAction}
             aria-label={t('cancelEdit')}
           >
-            <XIcon className="size-3.5" />
+            <XIcon />
           </Button>
         </div>
       ) : null}
@@ -626,35 +616,33 @@ export function MessageComposer({
       <div
         ref={composerInputRowRef}
         className={cn(
-          'flex items-end gap-0.5 px-1',
-          floating
-            ? 'min-h-14 gap-5 px-3'
-            : 'pb-2',
-          !floating && hasComposerHeader && 'min-h-14',
-          !floating && !hasComposerHeader && 'min-h-11',
+          'flex min-h-14 items-end gap-3 px-3',
           showComposerDivider && 'border-t border-border',
         )}
       >
         {!isEditing ? (
-          <label
-            className={cn(
-              composerIconClass,
-              composerIconHoverClass(floating),
-              floating ? 'mb-3 cursor-pointer' : 'mb-1 cursor-pointer',
-              (composerDisabled || sending || !canUploadFiles) &&
-                'pointer-events-none',
-            )}
-            title={t('attachment')}
-          >
+          <div className="mb-3 flex shrink-0">
             <input
+              ref={fileInputRef}
               type="file"
               multiple
-              className="sr-only"
+              hidden
               disabled={composerDisabled || sending || !canUploadFiles}
               onChange={handleFilesSelected}
             />
-            <PlusIcon className="size-5" />
-          </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              title={t('attachment')}
+              aria-label={t('attachment')}
+              disabled={composerDisabled || sending || !canUploadFiles}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <PlusIcon className="size-5" />
+            </Button>
+          </div>
         ) : null}
 
         <ComposerEditor
@@ -666,11 +654,7 @@ export function MessageComposer({
           mentionItems={buildMentionItems}
           channelItems={buildChannelItems}
           menuAnchorRef={composerInputRowRef}
-          menuSurfaceClassName={
-            floating
-              ? 'bg-secondary text-secondary-foreground'
-              : 'bg-accent text-foreground'
-          }
+          menuSurfaceClassName="bg-secondary text-secondary-foreground"
           className="min-h-14 min-w-0 flex-1"
           editorClassName="min-h-14 px-0 py-4.25 leading-5.5"
           onValueChange={(nextValue) => {
@@ -697,46 +681,26 @@ export function MessageComposer({
           }}
         />
 
-        <div
-          className={cn(
-            'flex shrink-0 items-center gap-2',
-            floating ? 'mb-3' : 'mb-1',
-          )}
-        >
+        <div className="mb-3 flex shrink-0 items-center gap-1 text-muted-foreground">
           {!isEditing ? (
             <ComposerEmojiPicker
               serverId={serverId}
               disabled={composerDisabled || sending}
               onInsert={insertAtCaret}
-              triggerClassName={cn(
-                composerIconClass,
-                composerIconHoverClass(floating),
-              )}
             />
           ) : null}
           {sending ? (
-            <span
-              className={cn(
-                composerIconClass,
-                composerIconHoverClass(floating),
-                'pointer-events-none',
-              )}
-              role="status"
-              aria-label={t('sending')}
-            >
+            <span role="status" aria-label={t('sending')} className="flex size-8 items-center justify-center">
               <Spinner className="size-5 motion-reduce:animate-none" />
             </span>
           ) : (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
+                  <Button
                     type="button"
-                    className={
-                      floating
-                        ? 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
-                        : 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
-                    }
+                    variant="ghost"
+                    size="icon"
                     disabled={composerDisabled || !hasDraft}
                     onClick={() => void submit()}
                     aria-label={t('send')}
@@ -758,12 +722,7 @@ export function MessageComposer({
   const composerBody = (
     <div
       ref={composerBodyRef}
-      className={cn(
-        'relative flex flex-col',
-        floating
-          ? 'pointer-events-auto gap-2'
-          : 'gradient-surface-raised gap-2 border-t border-border bg-card p-3 text-card-foreground',
-      )}
+      className="pointer-events-auto relative flex flex-col gap-2"
       onDragEnter={(event) => {
         event.preventDefault()
         if (!isEditing) setDragActive(true)
@@ -783,32 +742,16 @@ export function MessageComposer({
         </p>
       ) : null}
 
-      {floating ? (
-        <FloatingBarShell
-          data-composer-chrome
-          className={cn(
-            dragActive && 'ring-2 ring-primary/40',
-            (composerDisabled || sending) && 'opacity-60',
-          )}
-          surfaceClassName="flex flex-col transition-colors"
-        >
-          {composerChrome}
-        </FloatingBarShell>
-      ) : (
-        <div
-          data-composer-chrome
-          className={cn(
-            'flex flex-col transition-colors',
-            hasComposerHeader
-              ? 'overflow-hidden rounded-md border border-border bg-accent text-foreground'
-              : 'min-h-11 rounded-md border border-border bg-accent py-1 text-foreground',
-            dragActive && 'ring-2 ring-primary/40',
-            (composerDisabled || sending) && 'opacity-60',
-          )}
-        >
-          {composerChrome}
-        </div>
-      )}
+      <FloatingBarShell
+        data-composer-chrome
+        className={cn(
+          dragActive && 'ring-2 ring-primary/40',
+          (composerDisabled || sending) && 'opacity-60',
+        )}
+        surfaceClassName="flex flex-col transition-colors"
+      >
+        {composerChrome}
+      </FloatingBarShell>
     </div>
   )
 

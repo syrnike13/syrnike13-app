@@ -47,13 +47,11 @@ import { cn } from '#/lib/utils'
 type ServerHeaderMenuProps = {
   serverId: string
   serverName: string
-  overBanner?: boolean
 }
 
 export function ServerHeaderMenu({
   serverId,
   serverName,
-  overBanner = false,
 }: ServerHeaderMenuProps) {
   const t = useTranslations('servers.menu')
   const auth = useAuth()
@@ -147,18 +145,11 @@ export function ServerHeaderMenu({
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger
           render={
-            <button
+            <Button
               type="button"
-              className={cn(
-                'flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-left transition-colors hover:bg-accent',
-                !menuPermissions?.invite && 'flex-1',
-                overBanner &&
-                  'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
-                menuOpen &&
-                  (overBanner
-                    ? 'bg-background/60 backdrop-blur-sm'
-                    : 'bg-accent'),
-              )}
+              variant="ghost"
+              size="sm"
+              className={cn('min-w-0 justify-start', !menuPermissions?.invite && 'flex-1')}
             />
           }
         >
@@ -275,12 +266,12 @@ export function ServerHeaderMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="ml-auto size-8 shrink-0"
+          className="ml-auto"
           aria-label={t('invite')}
           title={t('invite')}
           onClick={() => setInviteOpen(true)}
         >
-          <UserPlusIcon className="size-4" />
+          <UserPlusIcon className="size-5" />
         </Button>
       ) : null}
 

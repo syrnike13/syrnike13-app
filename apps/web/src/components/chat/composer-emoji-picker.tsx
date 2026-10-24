@@ -16,14 +16,12 @@ type ComposerEmojiPickerProps = {
   serverId?: string | null
   disabled?: boolean
   onInsert: (text: string) => void
-  triggerClassName?: string
 }
 
 export function ComposerEmojiPicker({
   serverId,
   disabled,
   onInsert,
-  triggerClassName,
 }: ComposerEmojiPickerProps) {
   const t = useTranslations('chat')
   const customEmojis = useSyncStore((s) =>
@@ -32,18 +30,20 @@ export function ComposerEmojiPicker({
 
   return (
     <Popover>
-      <PopoverTrigger render={<Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={
-            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-            triggerClassName ?? 'size-8 shrink-0'
-          }
-          disabled={disabled}
-          title={t('emoji')} />}>
-          <SmileIcon className="size-5" />
-        </PopoverTrigger>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled}
+            title={t('emoji')}
+            aria-label={t('emoji')}
+          />
+        }
+      >
+        <SmileIcon className="size-5" />
+      </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">
           {t('emoji')}

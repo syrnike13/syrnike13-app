@@ -151,7 +151,6 @@ export function ChannelSidebar({
             <ServerHeaderMenu
               serverId={selectedServerId}
               serverName={serverName}
-              overBanner={Boolean(bannerUrl)}
             />
           </div>
         ) : (
