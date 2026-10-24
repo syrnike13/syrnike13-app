@@ -9,6 +9,7 @@ import {
   SettingsToggleRow,
 } from '#/components/settings/settings-panels'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
+import { Field, FieldTitle } from '@syrnike13/ui/primitives/field'
 import { PresetSlider } from '#/components/ui/preset-slider'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Switch } from '@syrnike13/ui/primitives/switch'
@@ -91,8 +92,8 @@ function DeviceSelectField({
   ]
 
   return (
-    <div className="space-y-2">
-      <p className="text-base font-medium">{label}</p>
+    <Field>
+      <FieldTitle>{label}</FieldTitle>
       <Select
         items={items}
         value={selectValue}
@@ -119,7 +120,7 @@ function DeviceSelectField({
           </SelectGroup>
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   )
 }
 
@@ -133,8 +134,8 @@ function VolumeSliderField({
   onChange: (value: number) => void
 }) {
   return (
-    <div className="space-y-2">
-      <p className="text-base font-medium">{label}</p>
+    <Field>
+      <FieldTitle>{label}</FieldTitle>
       <PresetSlider
         stops={VOLUME_STOPS}
         value={volumeToSlider(value)}
@@ -146,7 +147,7 @@ function VolumeSliderField({
         formatValue={(next) => `${next}%`}
         aria-label={label}
       />
-    </div>
+    </Field>
   )
 }
 
