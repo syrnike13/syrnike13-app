@@ -503,6 +503,9 @@ const sidebarMenuButtonVariants = cva(
         default: "h-8",
         sm: "h-7 text-xs",
         lg: "h-10.5 gap-3 group-data-[collapsible=icon]:p-0!",
+        // Not in base-nova: the leading account row (settings): 56px with a
+        // 40px avatar and two lines.
+        xl: "h-14 gap-3 group-data-[collapsible=icon]:p-0!",
       },
     },
     defaultVariants: {

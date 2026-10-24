@@ -40,3 +40,14 @@ export const EyeOffIcon = defineIcon(iconifyIcon('lucide:eye-off'), {
   pack: 'iconify',
   name: 'lucide:eye-off',
 })
+
+/** Image editor (crop dialog). */
+export const ImageIcon = defineIcon(iconifyIcon('lucide:image'), {
+  pack: 'iconify',
+  name: 'lucide:image',
+})
+
+export const RotateCwIcon = defineIcon(iconifyIcon('lucide:rotate-cw'), {
+  pack: 'iconify',
+  name: 'lucide:rotate-cw',
+})

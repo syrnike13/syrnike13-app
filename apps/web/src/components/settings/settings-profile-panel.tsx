@@ -11,7 +11,14 @@ import {
   ProfileName,
   ProfileSurface,
 } from '#/components/user/profile/profile-parts'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { useImageCropper } from '#/components/media/image-crop-dialog'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@syrnike13/ui/primitives/context-menu'
 import {
   Field,
   FieldGroup,
@@ -36,6 +43,9 @@ import {
 } from '#/components/settings/profile-draft-context'
 import { SettingsProfileStatusDialog } from '#/components/settings/settings-profile-status-dialog'
 
+/** Profile banners show at 300×105 (popover) and 400×140 (dialog). */
+const PROFILE_BANNER_ASPECT = 17 / 6
+
 type ProfileBaseline = {
   displayName: string
   statusText: string
@@ -58,6 +68,7 @@ export function SettingsProfilePanel() {
   const token = auth.session?.token
 
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  const { cropImage, cropDialog } = useImageCropper()
   const bannerInputRef = useRef<HTMLInputElement>(null)
   const savedBaselineRef = useRef<ProfileBaseline>({
     displayName: '',
@@ -421,9 +432,9 @@ export function SettingsProfilePanel() {
         aria-hidden
         onChange={(event) => {
           const file = event.target.files?.[0]
-          if (!file) return
-          void uploadAvatar(file)
           event.target.value = ''
+          if (!file) return
+          cropImage(file, { kind: 'circle' }, (cropped) => void uploadAvatar(cropped))
         }}
       />
       <input
@@ -435,9 +446,13 @@ export function SettingsProfilePanel() {
         aria-hidden
         onChange={(event) => {
           const file = event.target.files?.[0]
-          if (!file) return
-          void uploadBanner(file)
           event.target.value = ''
+          if (!file) return
+          cropImage(
+            file,
+            { kind: 'rect', aspect: PROFILE_BANNER_ASPECT },
+            (cropped) => void uploadBanner(cropped),
+          )
         }}
       />
 
@@ -456,26 +471,6 @@ export function SettingsProfilePanel() {
           <FieldLabel htmlFor="profile-username">{t('username')}</FieldLabel>
           <Input id="profile-username" value={`@${username}`} disabled />
         </Field>
-        <ProfileMediaField
-          label={t('avatar')}
-          changeLabel={hasAvatar ? t('editAvatar') : t('addAvatar')}
-          removeLabel={t('removeAvatar')}
-          disabled={mediaBusy}
-          onChange={() => avatarInputRef.current?.click()}
-          onRemove={hasAvatar && user.avatar ? () => void removeAvatar() : undefined}
-        />
-        <ProfileMediaField
-          label={t('banner')}
-          changeLabel={hasBanner ? t('editBanner') : t('addBanner')}
-          removeLabel={t('removeBanner')}
-          disabled={mediaBusy}
-          onChange={() => bannerInputRef.current?.click()}
-          onRemove={
-            hasBanner && profileQuery.data?.background
-              ? () => void removeBanner()
-              : undefined
-          }
-        />
         <Field>
           <FieldLabel htmlFor="profile-bio">{t('bio')}</FieldLabel>
           <Textarea
@@ -491,28 +486,77 @@ export function SettingsProfilePanel() {
 
       <aside className="order-1 flex flex-col gap-2 lg:order-2 lg:sticky lg:top-0 lg:self-start">
         <FieldTitle>{t('preview')}</FieldTitle>
-        <ProfileSurface
-          surface="popover"
-          className="overflow-hidden rounded-lg bg-popover ring-1 ring-foreground/10"
-        >
-          <ProfileHeader
-            user={{
-              ...user,
-              status: { ...user.status, text: statusText.trim() || null },
-            }}
-            bannerSrc={bannerPreview}
-            avatarSrc={avatarPreview}
-            onStatusClick={() => setStatusDialogOpen(true)}
-          />
-          <ProfileBody>
-            <ProfileName
-              user={{ ...user, display_name: displayName.trim() || null }}
+        <ContextMenu>
+          <ContextMenuTrigger
+            render={
+              <div className="overflow-hidden rounded-lg bg-popover ring-1 ring-foreground/10" />
+            }
+          >
+            <ProfileSurface surface="popover">
+            <ProfileHeader
+              user={{
+                ...user,
+                status: { ...user.status, text: statusText.trim() || null },
+              }}
+              bannerSrc={bannerPreview}
+              avatarSrc={avatarPreview}
+              editable
+              avatarLabel={hasAvatar ? t('editAvatar') : t('addAvatar')}
+              bannerLabel={hasBanner ? t('editBanner') : t('addBanner')}
+              onAvatarClick={
+                mediaBusy ? undefined : () => avatarInputRef.current?.click()
+              }
+              onBannerClick={
+                mediaBusy ? undefined : () => bannerInputRef.current?.click()
+              }
+              onStatusClick={() => setStatusDialogOpen(true)}
             />
-            {bio.trim() ? (
-              <p className="line-clamp-4 text-sm whitespace-pre-wrap">{bio.trim()}</p>
+            <ProfileBody>
+              <ProfileName
+                user={{ ...user, display_name: displayName.trim() || null }}
+              />
+              {bio.trim() ? (
+                <p className="line-clamp-4 text-sm whitespace-pre-wrap">{bio.trim()}</p>
+              ) : null}
+            </ProfileBody>
+            </ProfileSurface>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem
+              disabled={mediaBusy}
+              onClick={() => avatarInputRef.current?.click()}
+            >
+              {hasAvatar ? t('editAvatar') : t('addAvatar')}
+            </ContextMenuItem>
+            {hasAvatar && user.avatar ? (
+              <ContextMenuItem
+                variant="destructive"
+                disabled={mediaBusy}
+                onClick={() => void removeAvatar()}
+              >
+                {t('removeAvatar')}
+              </ContextMenuItem>
             ) : null}
-          </ProfileBody>
-        </ProfileSurface>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={mediaBusy}
+              onClick={() => bannerInputRef.current?.click()}
+            >
+              {hasBanner ? t('editBanner') : t('addBanner')}
+            </ContextMenuItem>
+            {hasBanner && profileQuery.data?.background ? (
+              <ContextMenuItem
+                variant="destructive"
+                disabled={mediaBusy}
+                onClick={() => void removeBanner()}
+              >
+                {t('removeBanner')}
+              </ContextMenuItem>
+            ) : null}
+          </ContextMenuContent>
+        </ContextMenu>
+
+        {cropDialog}
       </aside>
 
       <SettingsProfileStatusDialog
@@ -527,44 +571,5 @@ export function SettingsProfilePanel() {
         bannerUrl={bannerPreview}
       />
     </div>
-  )
-}
-
-/** Avatar or banner: change and remove buttons. */
-function ProfileMediaField({
-  label,
-  changeLabel,
-  removeLabel,
-  disabled,
-  onChange,
-  onRemove,
-}: {
-  label: string
-  changeLabel: string
-  removeLabel: string
-  disabled: boolean
-  onChange: () => void
-  onRemove?: () => void
-}) {
-  return (
-    <Field>
-      <FieldTitle>{label}</FieldTitle>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={disabled} onClick={onChange}>
-          {changeLabel}
-        </Button>
-        {onRemove ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={disabled}
-            onClick={onRemove}
-          >
-            {removeLabel}
-          </Button>
-        ) : null}
-      </div>
-    </Field>
   )
 }

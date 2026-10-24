@@ -37,6 +37,15 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
 }))
 
+// The crop editor is a canvas dialog; uploads in these tests pass straight through.
+vi.mock('#/components/media/image-crop-dialog', () => ({
+  useImageCropper: () => ({
+    cropImage: (file: File, _shape: unknown, onApply: (file: File) => void) =>
+      onApply(file),
+    cropDialog: null,
+  }),
+}))
+
 vi.mock('sonner', () => ({
   toast: {
     error: (...args: Parameters<typeof mocks.toastError>) =>

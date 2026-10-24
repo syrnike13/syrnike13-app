@@ -138,21 +138,21 @@ function SettingsDesktopModal() {
         <aside className="flex min-h-0 w-54.5 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
           <div className="flex flex-col gap-3 p-3">
             <SidebarMenuButton
-              size="lg"
+              size="xl"
               isActive={section === 'profile'}
               onClick={() => setSection('profile')}
             >
               <UserAvatar
                 user={user}
-                className="size-8"
-                fallbackClassName="size-8"
+                className="size-10"
+                fallbackClassName="size-10"
                 showPresence={false}
               />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-foreground">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate leading-5 font-semibold text-foreground">
                   {user?.display_name ?? user?.username}
                 </span>
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate text-sm leading-4.5 text-muted-foreground">
                   {t('edit')}
                 </span>
               </span>

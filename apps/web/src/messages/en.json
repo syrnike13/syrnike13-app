@@ -2237,6 +2237,14 @@
     "profileNameMin": "Name must be at least 2 characters"
   },
   "media": {
+    "crop": {
+      "title": "Edit image",
+      "zoom": "Zoom",
+      "rotate": "Rotate",
+      "reset": "Reset",
+      "cancel": "Cancel",
+      "apply": "Apply"
+    },
     "imageFallback": "Image",
     "imageNumber": "Image {index}",
     "zoomIn": "Zoom in",

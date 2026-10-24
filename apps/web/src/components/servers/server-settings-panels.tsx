@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import { useImageCropper } from '#/components/media/image-crop-dialog'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
@@ -79,6 +80,9 @@ const SYSTEM_MESSAGE_KEYS = [
   'user_banned',
 ] as const
 const SERVER_EMOJI_NAME_PATTERN = /^[A-Za-z0-9_]+$/
+
+/** Server banners crop like Discord's 960×540. */
+const SERVER_BANNER_ASPECT = 16 / 9
 
 function SettingsField({
   label,
@@ -322,6 +326,7 @@ function ServerSettingsGeneralPanel({
   const t = useTranslations('servers.settings')
   const tm = useTranslations('media')
   const auth = useAuth()
+  const { cropImage, cropDialog } = useImageCropper()
   const server = useSyncStore((s) => s.servers[serverId])
   const [name, setName] = useState(serverName)
   const [description, setDescription] = useState(
@@ -552,7 +557,8 @@ function ServerSettingsGeneralPanel({
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
-                if (file) selectIconFile(file)
+                event.target.value = ''
+                if (file) cropImage(file, { kind: 'rect', aspect: 1 }, selectIconFile)
               }}
             />
             <Input
@@ -565,11 +571,15 @@ function ServerSettingsGeneralPanel({
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
-                if (file) selectBannerFile(file)
+                event.target.value = ''
+                if (file) {
+                  cropImage(file, { kind: 'rect', aspect: SERVER_BANNER_ASPECT }, selectBannerFile)
+                }
               }}
             />
           </div>
 
+          {cropDialog}
           <ServerProfilePreview
             name={name}
             description={description}

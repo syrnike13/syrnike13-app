@@ -2,6 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
+import { PencilFillIcon } from '#/components/icons'
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBadges } from '#/components/user/user-badges'
@@ -67,8 +68,16 @@ export function ProfileHeader({
   onStatusClick,
   bannerSrc,
   avatarSrc,
+  onBannerClick,
+  bannerLabel,
+  editable = false,
 }: {
   user: User
+  /** Profile settings: clicking the banner picks a new one. */
+  onBannerClick?: () => void
+  bannerLabel?: string
+  /** Show a pencil over the avatar and banner on hover. */
+  editable?: boolean
   /** Preview (profile settings): unsaved banner; null shows the gradient. */
   bannerSrc?: string | null
   /** Preview (profile settings): unsaved avatar. */
@@ -104,7 +113,7 @@ export function ProfileHeader({
     <div className={cn('relative shrink-0', lg ? 'h-55' : 'h-38')}>
       <div
         className={cn(
-          'relative w-full overflow-hidden',
+          'group/banner relative w-full overflow-hidden',
           lg ? 'h-35' : 'h-26.25',
           !showBanner &&
             'bg-linear-to-br from-primary via-chart-4 to-sidebar-primary',
@@ -123,6 +132,22 @@ export function ProfileHeader({
               className="pointer-events-none absolute inset-0 bg-media-backdrop/20"
             />
           </>
+        ) : null}
+        {onBannerClick ? (
+          <button
+            type="button"
+            title={bannerLabel}
+            aria-label={bannerLabel}
+            className="absolute inset-0 flex cursor-pointer items-center justify-center bg-media-backdrop/0 text-on-media transition-colors outline-none hover:bg-media-backdrop/40 focus-visible:bg-media-backdrop/40"
+            onClick={onBannerClick}
+          >
+            {editable ? (
+              <PencilFillIcon
+                aria-hidden
+                className="size-5 opacity-0 transition-opacity group-hover/banner:opacity-100"
+              />
+            ) : null}
+          </button>
         ) : null}
       </div>
 
@@ -152,8 +177,12 @@ export function ProfileHeader({
             {avatar}
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-0 rounded-full bg-media-backdrop/0 transition-colors group-hover/avatar:bg-media-backdrop/30"
-            />
+              className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-media-backdrop/0 text-on-media transition-colors group-hover/avatar:bg-media-backdrop/40"
+            >
+              {editable ? (
+                <PencilFillIcon className="size-5 opacity-0 transition-opacity group-hover/avatar:opacity-100" />
+              ) : null}
+            </span>
           </button>
         ) : (
           avatar

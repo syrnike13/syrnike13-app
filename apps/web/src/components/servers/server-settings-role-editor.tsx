@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   FieldsRole,
   Member,
@@ -14,10 +14,8 @@ import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
 import { FxImage } from '#/components/ui/fx-image'
-import {
-  Button,
-  buttonVariants,
-} from '@syrnike13/ui/primitives/button'
+import { useImageCropper } from '#/components/media/image-crop-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
@@ -126,6 +124,8 @@ export function ServerSettingsRoleEditor({
     overrideFieldFromRole(role.permissions),
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
+  const iconInputRef = useRef<HTMLInputElement>(null)
+  const { cropImage, cropDialog } = useImageCropper()
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -452,29 +452,32 @@ export function ServerSettingsRoleEditor({
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <label
-                  className={cn(
-                    buttonVariants({ variant: 'secondary', size: 'sm' }),
-                    'cursor-pointer',
-                    (!canEditRole || saving) &&
-                      'pointer-events-none opacity-50',
-                  )}
+                <input
+                  ref={iconInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={!canEditRole || saving}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (!file) return
+                    cropImage(file, { kind: 'rect', aspect: 1 }, (cropped) => {
+                      setIconFile(cropped)
+                      setRemoveIcon(false)
+                    })
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!canEditRole || saving}
+                  onClick={() => iconInputRef.current?.click()}
                 >
                   {t('upload')}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    disabled={!canEditRole || saving}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (!file) return
-                      setIconFile(file)
-                      setRemoveIcon(false)
-                      event.target.value = ''
-                    }}
-                  />
-                </label>
+                </Button>
+                {cropDialog}
                 {previewIconUrl ? (
                   <Button
                     type="button"
