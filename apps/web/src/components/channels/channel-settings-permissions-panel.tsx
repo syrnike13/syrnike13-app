@@ -42,19 +42,11 @@ import {
 } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 const USER_PERMISSIONS_PREFIX = '__user_permissions__:'
-
-const ROLE_SIDEBAR_ROW_BASE =
-  'flex h-9 w-full items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors'
-
-function roleSidebarRowStateClass(selected: boolean) {
-  return selected
-    ? 'border-primary/40 bg-accent text-foreground'
-    : 'border-border text-foreground hover:bg-muted/40'
-}
 
 function ChannelPermissionEditor({
   channel,
@@ -180,7 +172,7 @@ function ChannelPermissionEditor({
                 return (
                   <li
                     key={permission.flag}
-                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-hover"
                   >
                     <span className="text-sm">{tp(permission.labelKey)}</span>
                     <PermissionStateButton
@@ -222,12 +214,9 @@ function RoleListItem({
   onSelect: () => void
 }) {
   return (
-    <button
-      type="button"
-      className={cn(
-        ROLE_SIDEBAR_ROW_BASE,
-        roleSidebarRowStateClass(selected),
-      )}
+    <SidebarMenuButton
+      size="lg"
+      isActive={selected}
       onClick={onSelect}
     >
       {roleIconUrl(role.icon) ? (
@@ -250,7 +239,7 @@ function RoleListItem({
       >
         {role.name}
       </span>
-    </button>
+    </SidebarMenuButton>
   )
 }
 
@@ -268,12 +257,9 @@ function MemberListItem({
   onSelect: () => void
 }) {
   return (
-    <button
-      type="button"
-      className={cn(
-        ROLE_SIDEBAR_ROW_BASE,
-        roleSidebarRowStateClass(selected),
-      )}
+    <SidebarMenuButton
+      size="lg"
+      isActive={selected}
       onClick={onSelect}
     >
       <UserAvatar
@@ -282,7 +268,7 @@ function MemberListItem({
         showPresence={false}
       />
       <span className="truncate">{memberDisplayName(entry)}</span>
-    </button>
+    </SidebarMenuButton>
   )
 }
 
@@ -382,18 +368,13 @@ export function ChannelSettingsPermissionsPanel({
       <aside className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
         <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24 max-lg:max-h-56">
           <div className="space-y-2 pr-2">
-            <button
-              type="button"
-              className={cn(
-                ROLE_SIDEBAR_ROW_BASE,
-                roleSidebarRowStateClass(
-                  effectiveSelectedId === DEFAULT_PERMISSIONS_ID,
-                ),
-              )}
+            <SidebarMenuButton
+              size="lg"
+              isActive={effectiveSelectedId === DEFAULT_PERMISSIONS_ID}
               onClick={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
             >
               @everyone
-            </button>
+            </SidebarMenuButton>
 
             {roles.length === 0 ? (
               <Empty size="inline">

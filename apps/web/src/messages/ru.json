@@ -325,6 +325,56 @@
       "description": "На каком языке показывать приложение",
       "en": "English",
       "ru": "Русский"
+    },
+    "permissions": {
+      "groups": {
+        "general": "Общие права сервера",
+        "members": "Участники",
+        "textChannels": "Текстовые каналы",
+        "voiceChannels": "Голосовые каналы",
+        "channelAccess": "Доступ к каналу"
+      },
+      "labels": {
+        "administrator": "Администратор",
+        "manageChannel": "Управление каналами",
+        "manageServer": "Управление сервером",
+        "managePermissions": "Управление правами",
+        "manageRole": "Управление ролями",
+        "manageCustomisation": "Управление оформлением",
+        "kickMembers": "Исключать участников",
+        "banMembers": "Банить участников",
+        "timeoutMembers": "Тайм-аут участников",
+        "assignRoles": "Назначать роли",
+        "changeNickname": "Менять свой ник",
+        "manageNicknames": "Управлять никами",
+        "changeAvatar": "Менять свой аватар",
+        "removeAvatars": "Удалять аватары",
+        "viewChannels": "Просмотр каналов",
+        "viewThisChannel": "Видеть этот канал",
+        "readMessageHistory": "Читать историю сообщений",
+        "sendMessage": "Отправлять сообщения",
+        "manageMessages": "Управлять сообщениями",
+        "manageWebhooks": "Управлять вебхуками",
+        "inviteOthers": "Приглашать людей",
+        "sendEmbeds": "Встраивать контент",
+        "uploadFiles": "Прикреплять файлы",
+        "masquerade": "Маскировка",
+        "react": "Добавлять реакции",
+        "mentionEveryone": "Упоминать @everyone",
+        "mentionRoles": "Упоминать роли",
+        "bypassSlowmode": "Обходить slowmode",
+        "connect": "Подключаться",
+        "speak": "Говорить",
+        "video": "Видео",
+        "listen": "Слушать",
+        "muteMembers": "Мьютить участников",
+        "deafenMembers": "Отключать звук",
+        "moveMembers": "Перемещать участников",
+        "useActivities": "Использовать Активности"
+      },
+      "hints": {
+        "administrator": "Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются."
+      }
     }
   },
   "auth": {
@@ -518,56 +568,6 @@
         "headline": "Спойлеры, анонсы и.. Сырники!",
         "dismiss": "Я уже подписан",
         "open": "В Telegram"
-      }
-    },
-    "permissions": {
-      "groups": {
-        "general": "Общие права сервера",
-        "members": "Участники",
-        "textChannels": "Текстовые каналы",
-        "voiceChannels": "Голосовые каналы",
-        "channelAccess": "Доступ к каналу"
-      },
-      "labels": {
-        "administrator": "Администратор",
-        "manageChannel": "Управление каналами",
-        "manageServer": "Управление сервером",
-        "managePermissions": "Управление правами",
-        "manageRole": "Управление ролями",
-        "manageCustomisation": "Управление оформлением",
-        "kickMembers": "Исключать участников",
-        "banMembers": "Банить участников",
-        "timeoutMembers": "Тайм-аут участников",
-        "assignRoles": "Назначать роли",
-        "changeNickname": "Менять свой ник",
-        "manageNicknames": "Управлять никами",
-        "changeAvatar": "Менять свой аватар",
-        "removeAvatars": "Удалять аватары",
-        "viewChannels": "Просмотр каналов",
-        "viewThisChannel": "Видеть этот канал",
-        "readMessageHistory": "Читать историю сообщений",
-        "sendMessage": "Отправлять сообщения",
-        "manageMessages": "Управлять сообщениями",
-        "manageWebhooks": "Управлять вебхуками",
-        "inviteOthers": "Приглашать людей",
-        "sendEmbeds": "Встраивать контент",
-        "uploadFiles": "Прикреплять файлы",
-        "masquerade": "Маскировка",
-        "react": "Добавлять реакции",
-        "mentionEveryone": "Упоминать @everyone",
-        "mentionRoles": "Упоминать роли",
-        "bypassSlowmode": "Обходить slowmode",
-        "connect": "Подключаться",
-        "speak": "Говорить",
-        "video": "Видео",
-        "listen": "Слушать",
-        "muteMembers": "Мьютить участников",
-        "deafenMembers": "Отключать звук",
-        "moveMembers": "Перемещать участников",
-        "useActivities": "Использовать Активности"
-      },
-      "hints": {
-        "administrator": "Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются."
       }
     }
   },

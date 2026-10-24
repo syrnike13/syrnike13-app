@@ -11,7 +11,7 @@ describe('PermissionStateButton', () => {
     vi.clearAllMocks()
   })
 
-  it('names the permission and current state for assistive tech', () => {
+  it('names each state of the permission for assistive tech', () => {
     const onChange = vi.fn()
 
     render(
@@ -23,32 +23,46 @@ describe('PermissionStateButton', () => {
     )
 
     fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Просмотр каналов: наследуется',
-      }),
+      screen.getByRole('button', { name: 'Просмотр каналов: разрешено' }),
     )
 
     expect(onChange).toHaveBeenCalledWith('allow')
   })
 
-  it('skips states that are not allowed for this permission change', () => {
+  it('disables states that are not allowed for this permission change', () => {
+    render(
+      <PermissionStateButton
+        label="Просмотр каналов"
+        state="neutral"
+        allowedStates={['neutral', 'deny']}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Просмотр каналов: разрешено' })
+        .hasAttribute('disabled') ||
+        screen
+          .getByRole('button', { name: 'Просмотр каналов: разрешено' })
+          .getAttribute('aria-disabled') === 'true',
+    ).toBe(true)
+  })
+
+  it('renders a switch for on/off permissions', () => {
     const onChange = vi.fn()
 
     render(
       <PermissionStateButton
-        label="РџСЂРѕСЃРјРѕС‚СЂ РєР°РЅР°Р»РѕРІ"
+        label="Просмотр каналов"
         state="neutral"
-        allowedStates={['neutral', 'deny']}
+        mode="switch"
         onChange={onChange}
       />,
     )
 
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: /наследуется/i,
-      }),
-    )
+    fireEvent.click(screen.getByRole('switch', { name: 'Просмотр каналов' }))
 
-    expect(onChange).toHaveBeenCalledWith('deny')
+    expect(onChange).toHaveBeenCalledWith('allow')
   })
 })

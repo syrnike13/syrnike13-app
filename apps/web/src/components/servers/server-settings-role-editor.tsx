@@ -16,6 +16,7 @@ import { RoleMembersPanel } from '#/components/servers/role-members-panel'
 import { FxImage } from '#/components/ui/fx-image'
 import { useImageCropper } from '#/components/media/image-crop-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
@@ -46,7 +47,6 @@ import {
   setPermissionTriState,
   type PermissionOverrideField,
 } from '#/lib/server-permissions'
-import { cn } from '#/lib/utils'
 
 import { PermissionStateButton } from '#/components/servers/permission-state-button'
 import {
@@ -59,15 +59,6 @@ type RoleEditorTab = 'display' | 'permissions' | 'members'
 function normalizeRoleColour(value: string | null | undefined): string | null {
   const trimmed = (value ?? '').trim()
   return trimmed || null
-}
-
-function roleEditorTabClass(active: boolean) {
-  return cn(
-    'relative shrink-0 pb-3 text-sm font-medium transition-colors',
-    active
-      ? 'text-primary'
-      : 'text-muted-foreground hover:text-foreground',
-  )
 }
 
 function upsertServerRole(serverId: string, role: Role) {
@@ -379,30 +370,19 @@ export function ServerSettingsRoleEditor({
           ) : null}
         </div>
 
-        <nav
-          className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-b border-border"
-          aria-label={t('sectionsAria')}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+          className="mt-4"
         >
-          {roleEditorTabs.map((tab) => {
-            const active = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                className={roleEditorTabClass(active)}
-                onClick={() => setActiveTab(tab.id)}
-              >
+          <TabsList variant="line" aria-label={t('sectionsAria')}>
+            {roleEditorTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
-                {active ? (
-                  <span
-                    className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary"
-                    aria-hidden
-                  />
-                ) : null}
-              </button>
-            )
-          })}
-        </nav>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {activeTab === 'display' ? (
@@ -569,7 +549,7 @@ export function ServerSettingsRoleEditor({
                   return (
                     <li
                       key={permission.flag}
-                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-hover"
                     >
                       <span className="text-sm">{tp(permission.labelKey)}</span>
                       <PermissionStateButton

@@ -325,6 +325,56 @@
       "description": "Choose the language used across the app",
       "en": "English",
       "ru": "Русский"
+    },
+    "permissions": {
+      "groups": {
+        "general": "General server permissions",
+        "members": "Members",
+        "textChannels": "Text channels",
+        "voiceChannels": "Voice channels",
+        "channelAccess": "Channel access"
+      },
+      "labels": {
+        "administrator": "Administrator",
+        "manageChannel": "Manage channels",
+        "manageServer": "Manage server",
+        "managePermissions": "Manage permissions",
+        "manageRole": "Manage roles",
+        "manageCustomisation": "Manage customisation",
+        "kickMembers": "Kick members",
+        "banMembers": "Ban members",
+        "timeoutMembers": "Timeout members",
+        "assignRoles": "Assign roles",
+        "changeNickname": "Change own nickname",
+        "manageNicknames": "Manage nicknames",
+        "changeAvatar": "Change own avatar",
+        "removeAvatars": "Remove avatars",
+        "viewChannels": "View channels",
+        "viewThisChannel": "View this channel",
+        "readMessageHistory": "Read message history",
+        "sendMessage": "Send messages",
+        "manageMessages": "Manage messages",
+        "manageWebhooks": "Manage webhooks",
+        "inviteOthers": "Invite people",
+        "sendEmbeds": "Embed content",
+        "uploadFiles": "Attach files",
+        "masquerade": "Masquerade",
+        "react": "Add reactions",
+        "mentionEveryone": "Mention @everyone",
+        "mentionRoles": "Mention roles",
+        "bypassSlowmode": "Bypass slowmode",
+        "connect": "Connect",
+        "speak": "Speak",
+        "video": "Video",
+        "listen": "Listen",
+        "muteMembers": "Mute members",
+        "deafenMembers": "Deafen members",
+        "moveMembers": "Move members",
+        "useActivities": "Use Activities"
+      },
+      "hints": {
+        "administrator": "Members with this permission receive all regular server permissions and bypass channel restrictions. Owner-only actions and role hierarchy still apply."
+      }
     }
   },
   "auth": {
@@ -518,56 +568,6 @@
         "headline": "Spoilers, announcements and.. Syrniki!",
         "dismiss": "I'm already following",
         "open": "Open Telegram"
-      }
-    },
-    "permissions": {
-      "groups": {
-        "general": "General server permissions",
-        "members": "Members",
-        "textChannels": "Text channels",
-        "voiceChannels": "Voice channels",
-        "channelAccess": "Channel access"
-      },
-      "labels": {
-        "administrator": "Administrator",
-        "manageChannel": "Manage channels",
-        "manageServer": "Manage server",
-        "managePermissions": "Manage permissions",
-        "manageRole": "Manage roles",
-        "manageCustomisation": "Manage customisation",
-        "kickMembers": "Kick members",
-        "banMembers": "Ban members",
-        "timeoutMembers": "Timeout members",
-        "assignRoles": "Assign roles",
-        "changeNickname": "Change own nickname",
-        "manageNicknames": "Manage nicknames",
-        "changeAvatar": "Change own avatar",
-        "removeAvatars": "Remove avatars",
-        "viewChannels": "View channels",
-        "viewThisChannel": "View this channel",
-        "readMessageHistory": "Read message history",
-        "sendMessage": "Send messages",
-        "manageMessages": "Manage messages",
-        "manageWebhooks": "Manage webhooks",
-        "inviteOthers": "Invite people",
-        "sendEmbeds": "Embed content",
-        "uploadFiles": "Attach files",
-        "masquerade": "Masquerade",
-        "react": "Add reactions",
-        "mentionEveryone": "Mention @everyone",
-        "mentionRoles": "Mention roles",
-        "bypassSlowmode": "Bypass slowmode",
-        "connect": "Connect",
-        "speak": "Speak",
-        "video": "Video",
-        "listen": "Listen",
-        "muteMembers": "Mute members",
-        "deafenMembers": "Deafen members",
-        "moveMembers": "Move members",
-        "useActivities": "Use Activities"
-      },
-      "hints": {
-        "administrator": "Members with this permission receive all regular server permissions and bypass channel restrictions. Owner-only actions and role hierarchy still apply."
       }
     }
   },

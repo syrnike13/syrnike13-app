@@ -1,9 +1,15 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
+
+import { CheckIcon, MinusIcon, XIcon } from '#/components/icons'
+import { Switch } from '@syrnike13/ui/primitives/switch'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@syrnike13/ui/primitives/toggle-group'
 import {
   PERMISSION_TRI_STATE_ORDER,
   type PermissionTriState,
 } from '#/lib/server-permissions'
-import { cn } from '#/lib/utils'
 
 const STATE_KEYS: Record<PermissionTriState, string> = {
   neutral: 'permissionInherited',
@@ -11,59 +17,78 @@ const STATE_KEYS: Record<PermissionTriState, string> = {
   deny: 'permissionDenied',
 }
 
+const STATE_ICONS: Record<PermissionTriState, typeof CheckIcon> = {
+  deny: XIcon,
+  neutral: MinusIcon,
+  allow: CheckIcon,
+}
+
+/** Deny, inherit, allow — left to right, like Discord. */
+const DISPLAY_ORDER: PermissionTriState[] = ['deny', 'neutral', 'allow']
+
+/**
+ * A permission's value. `switch`: on/off (role defaults). `tri`: deny,
+ * inherit and allow side by side (channel and role overrides); states the
+ * actor may not set are disabled instead of skipped.
+ */
 export function PermissionStateButton({
   label,
   state,
   disabled,
-  allowedStates,
+  allowedStates = PERMISSION_TRI_STATE_ORDER,
+  mode = 'tri',
   onChange,
 }: {
   label: string
   state: PermissionTriState
   disabled?: boolean
-  allowedStates?: PermissionTriState[]
+  allowedStates?: readonly PermissionTriState[]
+  mode?: 'switch' | 'tri'
   onChange: (next: PermissionTriState) => void
 }) {
   const t = useTranslations('servers.roles')
-  const stateOrder = PERMISSION_TRI_STATE_ORDER
-  const allowed = allowedStates ?? stateOrder
-  const hasNextState = stateOrder.some(
-    (candidate) => candidate !== state && allowed.includes(candidate),
-  )
-  const isDisabled = Boolean(disabled || !hasNextState)
 
-  function cycle() {
-    if (isDisabled) return
-
-    const index = stateOrder.indexOf(state)
-    for (let offset = 1; offset <= stateOrder.length; offset += 1) {
-      const next = stateOrder[(index + offset) % stateOrder.length]!
-      if (allowed.includes(next)) {
-        onChange(next)
-        return
-      }
-    }
+  if (mode === 'switch') {
+    return (
+      <Switch
+        checked={state === 'allow'}
+        disabled={
+          disabled ||
+          !allowedStates.includes(state === 'allow' ? 'neutral' : 'allow')
+        }
+        aria-label={label}
+        onCheckedChange={(checked) => onChange(checked ? 'allow' : 'neutral')}
+      />
+    )
   }
 
-  const stateLabel = t(STATE_KEYS[state])
-
   return (
-    <button
-      type="button"
-      disabled={isDisabled}
-      onClick={cycle}
-      aria-label={`${label}: ${stateLabel.toLowerCase()}`}
-      className={cn(
-        'flex size-8 items-center justify-center rounded-md border text-xs font-semibold transition-colors',
-        state === 'allow' &&
-          'border-chart-3/40 bg-chart-3/15 text-chart-3',
-        state === 'deny' && 'border-destructive/40 bg-destructive/15 text-destructive',
-        state === 'neutral' && 'border-border text-muted-foreground',
-        isDisabled && 'cursor-not-allowed opacity-50',
-      )}
-      title={stateLabel}
+    <ToggleGroup
+      variant="outline"
+      size="sm"
+      aria-label={label}
+      value={[state]}
+      disabled={disabled}
+      onValueChange={(next) => {
+        const value = next[0] as PermissionTriState | undefined
+        if (value && value !== state) onChange(value)
+      }}
     >
-      {state === 'allow' ? '✓' : state === 'deny' ? '✕' : '—'}
-    </button>
+      {DISPLAY_ORDER.map((option) => {
+        const Icon = STATE_ICONS[option]
+        const stateLabel = t(STATE_KEYS[option])
+        return (
+          <ToggleGroupItem
+            key={option}
+            value={option}
+            aria-label={`${label}: ${stateLabel.toLowerCase()}`}
+            title={stateLabel}
+            disabled={option !== state && !allowedStates.includes(option)}
+          >
+            <Icon />
+          </ToggleGroupItem>
+        )
+      })}
+    </ToggleGroup>
   )
 }
