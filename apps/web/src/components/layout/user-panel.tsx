@@ -163,7 +163,8 @@ export function UserPanel({
                 <SidebarMenuButton
                   size="lg"
                   data-avatar-hover-scope=""
-                  className="min-w-0 flex-1 text-foreground"
+                  // Avatar edge: half the right inset reads as optically even.
+                  className="min-w-0 flex-1 pl-1 text-foreground"
                 />
               }
             >
