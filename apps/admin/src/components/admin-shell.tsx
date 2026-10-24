@@ -10,6 +10,7 @@ import {
 import {
   AwardIcon,
   BugIcon,
+  GamepadIcon,
   LogOutIcon,
   SparklesIcon,
   UserSearchIcon,
@@ -33,6 +34,7 @@ import { cn } from '#/lib/utils'
 const NAV = [
   { to: '/diagnostics', labelKey: 'nav.diagnostics', icon: BugIcon },
   { to: '/badges', labelKey: 'nav.badges', icon: AwardIcon },
+  { to: '/activities', labelKey: 'nav.activities', icon: GamepadIcon },
   { to: '/users', labelKey: 'nav.users', icon: UserSearchIcon },
   { to: '/feedback', labelKey: 'nav.feedback', icon: SparklesIcon },
 ] as const

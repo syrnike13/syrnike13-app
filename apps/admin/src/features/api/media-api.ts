@@ -4,7 +4,7 @@ import { Effect, Option, Schema } from 'effect'
 
 export type UploadProgressHandler = (progress: number) => void
 
-export type MediaUploadTag = 'avatars' | 'backgrounds' | 'badges'
+export type MediaUploadTag = 'avatars' | 'backgrounds' | 'badges' | 'icons'
 
 const UploadResponseSchema = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1)),
