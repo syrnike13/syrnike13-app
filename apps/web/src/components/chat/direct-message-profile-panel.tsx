@@ -10,8 +10,11 @@ import { Button } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { ulidToDate } from '#/lib/ulid'
+import { cn } from '#/lib/utils'
 
 type DirectMessageProfilePanelProps = {
+  /** Closed panels stay mounted and collapse to zero width, so they can animate. */
+  open: boolean
   user: User
   currentUserId?: string
   token?: string | null
@@ -24,6 +27,7 @@ type DirectMessageProfilePanelProps = {
  * full profile button pinned to its bottom.
  */
 export function DirectMessageProfilePanel({
+  open,
   user,
   currentUserId,
   token,
@@ -47,8 +51,23 @@ export function DirectMessageProfilePanel({
   })
 
   return (
-    <aside aria-label={t('profileLabel')} className="hidden w-85 shrink-0 py-2 pr-2 lg:flex">
-      <FloatingBarShell className="flex min-h-0 w-full" surfaceClassName="h-full">
+    <aside
+      aria-label={t('profileLabel')}
+      aria-hidden={!open}
+      inert={!open}
+      data-state={open ? 'open' : 'closed'}
+      className={cn(
+        'hidden shrink-0 overflow-hidden transition-[width] duration-300 ease-out-expo motion-reduce:transition-none lg:flex',
+        open ? 'w-85' : 'w-0',
+      )}
+    >
+      <FloatingBarShell
+        className={cn(
+          'flex min-h-0 w-85 shrink-0 py-2 pr-2 transition-[opacity,translate] duration-300 ease-out-expo motion-reduce:transition-none',
+          open ? 'translate-x-0 opacity-100' : 'translate-x-6 opacity-0',
+        )}
+        surfaceClassName="h-full"
+      >
         <div className="flex h-full min-h-0 flex-col">
           <ScrollArea className="min-h-0 flex-1">
             <UserProfileHeader user={user} variant="panel" onAvatarClick={onOpenProfile} />

@@ -722,8 +722,9 @@ export function ChannelView({
             </div>
           </div>
           </div>
-          {isDirectMessage && dmRecipient && !dmInCallLayout && dmProfilePanelOpen ? (
+          {isDirectMessage && dmRecipient && !dmInCallLayout ? (
             <DirectMessageProfilePanel
+              open={dmProfilePanelOpen}
               user={dmRecipient}
               currentUserId={auth.user?._id}
               token={token}

@@ -394,11 +394,12 @@ describe('ChannelView direct message header', () => {
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(profileButton)
-    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
+    expect(panel.getAttribute('data-state')).toBe('closed')
+    expect(panel.getAttribute('aria-hidden')).toBe('true')
     expect(profileButton.getAttribute('aria-pressed')).toBe('false')
 
     fireEvent.click(profileButton)
-    expect(screen.getByLabelText('Профиль пользователя')).toBeTruthy()
+    expect(panel.getAttribute('data-state')).toBe('open')
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
   })
 
