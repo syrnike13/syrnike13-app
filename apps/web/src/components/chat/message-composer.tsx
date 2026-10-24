@@ -86,6 +86,8 @@ type MessageComposerProps = {
   replyTo?: Message | null
   editingMessage?: Message | null
   onCancelAction?: () => void
+  /** Стрелка вверх в пустом поле: редактировать последнее своё сообщение. */
+  onEditLast?: () => boolean
   onSend: (input: SendMessageInput) => Promise<void>
   onEdit?: (messageId: string, content: string) => Promise<void>
   onTyping?: () => void
@@ -130,6 +132,7 @@ export function MessageComposer({
   replyTo,
   editingMessage,
   onCancelAction,
+  onEditLast,
   onSend,
   onEdit,
   onTyping,
@@ -675,6 +678,12 @@ export function MessageComposer({
               onCancelAction?.()
               return
             }
+            if (event.key === 'ArrowUp') {
+              if (!isEditing && files.length === 0 && onEditLast?.()) {
+                event.preventDefault()
+              }
+              return
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               void submit()
             }
@@ -746,7 +755,7 @@ export function MessageComposer({
         data-composer-chrome
         className={cn(
           dragActive && 'ring-2 ring-primary/40',
-          (composerDisabled || sending) && 'opacity-60',
+          composerDisabled && 'opacity-60',
         )}
         surfaceClassName="flex flex-col transition-colors"
       >

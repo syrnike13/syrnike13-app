@@ -210,7 +210,10 @@ import {
   MessageAvatar,
   MessageContent,
   MessageGroup,
+  MessageDivider,
   MessageHeader,
+  MessageNote,
+  MessageTimestamp,
 } from '@syrnike13/ui/primitives/message'
 import {
   MessageScroller,
@@ -1261,27 +1264,29 @@ function DataGallery() {
 function MessagingGallery() {
   return (
     <>
-      <Demo title="Message" hint="Message row with avatar and header." wide>
+      <Demo title="Message" hint="Discord feed: group start, continuation, divider." wide>
         <MessageGroup>
-          <Message>
+          <MessageDivider>Today</MessageDivider>
+          <Message groupStart>
             <MessageAvatar>
-              <Avatar>
+              <Avatar className="size-10">
                 <AvatarFallback>SY</AvatarFallback>
               </Avatar>
             </MessageAvatar>
             <MessageContent>
               <MessageHeader>
-                <span className="font-semibold">syrnike</span>
-                <span className="text-xs text-muted-foreground">21:24</span>
+                syrnike
+                <MessageTimestamp>Today at 21:24</MessageTimestamp>
               </MessageHeader>
               <p>All primitives now come from shadcn base-nova.</p>
             </MessageContent>
           </Message>
-          <Message align="end">
+          <Message mentioned>
+            <MessageTimestamp placement="gutter">21:25</MessageTimestamp>
             <MessageContent>
-              <div className="w-fit rounded-xl bg-primary px-3 py-2 text-primary-foreground">
-                Nice.
-              </div>
+              <p>
+                A continuation that mentions you.<MessageNote>(edited)</MessageNote>
+              </p>
             </MessageContent>
           </Message>
         </MessageGroup>

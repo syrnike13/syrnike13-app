@@ -10,7 +10,6 @@ import { MessageEmbeds, visibleEmbeds } from '#/components/chat/message-embeds'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageReactions } from '#/components/chat/message-reactions'
 import { MessageSystemRow } from '#/components/chat/message-system-row'
-import { MESSAGE_COMPACT_TIME_CLASS } from '#/components/chat/message-layout'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import {
@@ -35,6 +34,8 @@ import {
   MessageAvatar,
   MessageContent,
   MessageHeader,
+  MessageNote,
+  MessageTimestamp,
 } from '@syrnike13/ui/primitives/message'
 import {
   memberRoleEntries,
@@ -245,9 +246,8 @@ export function MessageRow({
       <button
         type="button"
         className={cn(
-          'max-w-full truncate rounded-sm text-left font-medium tracking-tight',
+          'min-w-0 truncate rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
           nameColor && 'text-(--author-name-color)',
-          'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
         )}
         style={
           nameColor
@@ -259,7 +259,7 @@ export function MessageRow({
       </button>
     </MessageAuthorProfileTrigger>
   ) : (
-    <span className="truncate font-medium">{name}</span>
+    <span className="min-w-0 truncate">{name}</span>
   )
 
   const avatar = (
@@ -273,33 +273,22 @@ export function MessageRow({
   )
 
   const row = (
-    // design-allow restyle-shared: mention/highlight background is a message state.
     <MessagePrimitive
       data-message-id={message._id}
-      className={cn(
-        'relative flex w-full min-w-0 items-start gap-4 py-0.5 pr-6 pl-18 hover:bg-hover',
-        isCompact ? 'min-h-5.5' : 'mt-4.25',
-        highlighted && 'bg-primary/10',
-        mentionsCurrentUser && !highlighted && 'bg-chart-2/10',
-      )}
+      groupStart={!isCompact}
+      highlighted={highlighted}
+      mentioned={mentionsCurrentUser && !highlighted}
     >
       {isCompact ? (
-        <time
+        <MessageTimestamp
+          placement="gutter"
           dateTime={createdAt.toISOString()}
-          className={MESSAGE_COMPACT_TIME_CLASS}
+          title={timestamp}
         >
           {shortTime}
-        </time>
-      ) : null}
-
-      {!isCompact ? (
-        <MessageAvatar
-          className={
-            showReplyQuote
-              ? 'absolute top-5.5 left-4 w-10'
-              : 'absolute top-0.5 left-4 w-10'
-          }
-        >
+        </MessageTimestamp>
+      ) : (
+        <MessageAvatar>
           {authorUser ? (
             <MessageAuthorProfileTrigger
               user={authorUser}
@@ -310,7 +299,9 @@ export function MessageRow({
             >
               <button
                 type="button"
-                className="rounded-full transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+                tabIndex={-1}
+                aria-hidden
+                className="rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 {avatar}
               </button>
@@ -319,9 +310,9 @@ export function MessageRow({
             avatar
           )}
         </MessageAvatar>
-      ) : null}
+      )}
 
-      <MessageContent className="relative min-w-0 flex-1 gap-1 text-base leading-5.5">
+      <MessageContent>
         {showReplyQuote && replyId ? (
           <InlineReplyQuote
             replyId={replyId}
@@ -333,24 +324,16 @@ export function MessageRow({
         ) : null}
 
         {!isCompact ? (
-          <MessageHeader className="mb-0.5 flex min-h-5.5 items-baseline gap-2 px-0 text-base leading-snug text-foreground">
+          <MessageHeader>
             {authorButton}
-            <time
-              className="shrink-0 text-xs font-medium leading-5.5 text-muted-foreground"
-              dateTime={createdAt.toISOString()}
-            >
+            <MessageTimestamp dateTime={createdAt.toISOString()}>
               {timestamp}
-            </time>
+            </MessageTimestamp>
             {message.pinned ? (
               <PinIcon
-                className="size-3 shrink-0 text-primary"
+                className="size-3 shrink-0 self-center text-muted-foreground"
                 aria-label={ts('pinned')}
               />
-            ) : null}
-            {edited ? (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {ts('edited')}
-              </span>
             ) : null}
           </MessageHeader>
         ) : (
@@ -359,61 +342,65 @@ export function MessageRow({
           </span>
         )}
 
-        {onReply && onToggleReaction ? (
-          <MessageHoverToolbar
+        {hasContent ? (
+          <div className="select-text">
+            {renderedContent}
+            {edited ? <MessageNote>{ts('edited')}</MessageNote> : null}
+          </div>
+        ) : null}
+
+        {hasAttachments || hasEmbeds ? (
+          <div className="flex flex-col gap-1 py-0.5">
+            {hasAttachments ? (
+              <MessageAttachments
+                attachments={message.attachments!}
+                author={{
+                  user: authorUser,
+                  name,
+                  nameColor,
+                  createdAt,
+                }}
+              />
+            ) : null}
+            {hasEmbeds ? <MessageEmbeds embeds={embeds} /> : null}
+          </div>
+        ) : null}
+
+        {!hasContent && !hasAttachments && !hasEmbeds ? (
+          <p className="text-muted-foreground italic">{ts('systemMessage')}</p>
+        ) : null}
+
+        {onToggleReaction ? (
+          <MessageReactions
             message={message}
-            channelId={channelId}
-            own={own}
-            compact={isCompact}
+            users={users}
             currentUserId={currentUserId}
-            onReply={() => onReply(message)}
-            onEdit={onEdit ? () => onEdit(message) : undefined}
-            onDelete={requestDelete}
-            onBlock={onBlock && !own ? () => onBlock(message) : undefined}
-            onPin={onPin ? () => onPin(message) : undefined}
-            onUnpin={onUnpin ? () => onUnpin(message) : undefined}
-            onToggleReaction={(emoji, active) =>
+            serverId={serverId}
+            onToggle={(emoji, active) =>
               onToggleReaction(message._id, emoji, active)
             }
           />
         ) : null}
-
-        <div className="flex flex-col gap-1 text-base leading-5.5 text-foreground">
-          {hasContent ? (
-            <div className="select-text break-words">{renderedContent}</div>
-          ) : null}
-          {hasAttachments ? (
-            <MessageAttachments
-              attachments={message.attachments!}
-              author={{
-                user: authorUser,
-                name,
-                nameColor,
-                createdAt,
-              }}
-            />
-          ) : null}
-          {hasEmbeds ? <MessageEmbeds embeds={embeds} /> : null}
-          {!hasContent && !hasAttachments && !hasEmbeds ? (
-            <p className="text-xs text-muted-foreground italic">
-              {ts('systemMessage')}
-            </p>
-          ) : null}
-        </div>
-
-        {onToggleReaction ? (
-          <div className="mt-0.5">
-            <MessageReactions
-              message={message}
-              users={users}
-              currentUserId={currentUserId}
-              onToggle={(emoji, active) =>
-                onToggleReaction(message._id, emoji, active)
-              }
-            />
-          </div>
-        ) : null}
       </MessageContent>
+
+      {onReply && onToggleReaction ? (
+        <MessageHoverToolbar
+          message={message}
+          channelId={channelId}
+          own={own}
+          serverId={serverId}
+          currentUserId={currentUserId}
+          onReply={() => onReply(message)}
+          onEdit={onEdit ? () => onEdit(message) : undefined}
+          onDelete={requestDelete}
+          onBlock={onBlock && !own ? () => onBlock(message) : undefined}
+          onPin={onPin ? () => onPin(message) : undefined}
+          onUnpin={onUnpin ? () => onUnpin(message) : undefined}
+          onToggleReaction={(emoji, active) =>
+            onToggleReaction(message._id, emoji, active)
+          }
+        />
+      ) : null}
     </MessagePrimitive>
   )
 

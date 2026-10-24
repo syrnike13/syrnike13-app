@@ -11,8 +11,6 @@ import {
 import { syncStore } from '#/features/sync/sync-store'
 import { apiErrorMessage } from '#/lib/api/error-message'
 
-const HIGHLIGHT_CLASS = 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-
 export function useJumpToMessage(
   channelId: string,
   messageId: string | undefined,
@@ -24,16 +22,10 @@ export function useJumpToMessage(
   useEffect(() => {
     if (!messageId || !token || lastJumped.current === messageId) return
 
-    const scrollTo = () => {
-      const element = document.querySelector<HTMLElement>(
-        `[data-message-id="${messageId}"]`,
-      )
-      if (!element) return false
-      element.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      element.classList.add(HIGHLIGHT_CLASS)
-      window.setTimeout(() => element.classList.remove(HIGHLIGHT_CLASS), 2500)
-      return true
-    }
+    // Прокрутку и подсветку делает MessageList; здесь только догружаем
+    // сообщение и историю перед ним, если их ещё нет в ленте.
+    const isRendered = () =>
+      document.querySelector(`[data-message-id="${messageId}"]`) != null
 
     const nextAnimationFrame = Effect.callback<void>((resume) => {
       const frame = requestAnimationFrame(() => resume(Effect.void))
@@ -42,7 +34,7 @@ export function useJumpToMessage(
 
     const fiber = Effect.runFork(
       Effect.gen(function*() {
-        if (scrollTo()) {
+        if (isRendered()) {
           lastJumped.current = messageId
           return
         }
@@ -79,7 +71,7 @@ export function useJumpToMessage(
 
         yield* nextAnimationFrame
         yield* Effect.sync(() => {
-          if (!scrollTo()) {
+          if (!isRendered()) {
             toast.error(t('messageNotFound'))
           } else {
             lastJumped.current = messageId

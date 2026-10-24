@@ -253,6 +253,15 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
             return true
           }
 
+          if (
+            event.key === 'ArrowUp' &&
+            isEmptyDocument &&
+            onKeyDownRef.current
+          ) {
+            onKeyDownRef.current(event as unknown as ReactKeyboardEvent)
+            return event.defaultPrevented
+          }
+
           if (event.key === 'Escape' && onKeyDownRef.current) {
             event.preventDefault()
             onKeyDownRef.current(event as unknown as ReactKeyboardEvent)

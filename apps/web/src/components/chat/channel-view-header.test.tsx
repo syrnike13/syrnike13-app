@@ -154,7 +154,8 @@ vi.mock('#/features/chat/use-channel-chat', () => ({
     jumpToMessage: vi.fn(),
     replyTo: null,
     editingMessage: null,
-    listHighlightMessageId: undefined,
+    jumpMessageId: undefined,
+    editLastOwnMessage: () => false,
     notifyTyping: vi.fn(),
   }),
 }))

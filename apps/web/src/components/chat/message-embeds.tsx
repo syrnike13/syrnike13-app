@@ -92,7 +92,7 @@ function EmbedCardShell({
     <div
       data-embed={type}
       className={cn(
-        'flex max-w-137.5 flex-col gap-1 rounded-md border border-l-4 border-border bg-card/50 px-3 py-2 text-base leading-5.5',
+        'flex max-w-108 flex-col gap-2 rounded-sm border-l-4 border-border bg-secondary py-2 pr-4 pl-3 text-sm leading-4.5 text-secondary-foreground',
         accent && 'border-l-(--embed-accent)',
       )}
       style={accent ? ({ '--embed-accent': accent } as CSSVars) : undefined}
@@ -117,8 +117,8 @@ function EmbedSiteHeader({
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
       {icon ? (
-        <span className="relative size-4 shrink-0 overflow-hidden rounded-sm">
-          <FxImage src={embedMediaUrl(icon)} alt="" fill rounded="sm" />
+        <span className="relative size-6 shrink-0 overflow-hidden rounded-full">
+          <FxImage src={embedMediaUrl(icon)} alt="" fill rounded="full" />
         </span>
       ) : null}
       {name ? <span className="truncate">{name}</span> : null}
@@ -136,7 +136,7 @@ function EmbedTitleLink({
   const link = safeLink(href)
 
   if (!link) {
-    return <span className="font-semibold text-foreground">{children}</span>
+    return <span className="text-base leading-5.5 font-semibold text-foreground">{children}</span>
   }
 
   return (
@@ -144,7 +144,7 @@ function EmbedTitleLink({
       href={link}
       target="_blank"
       rel="noreferrer noopener"
-      className="font-semibold text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="text-base leading-5.5 font-semibold text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       {children}
     </a>
@@ -181,7 +181,7 @@ function EmbedImageBox({
     <div
       data-embed-image
       data-aspect-ratio={String(aspectRatio)}
-      className="relative aspect-(--embed-aspect) max-h-87.5 w-(--embed-width) max-w-full overflow-hidden rounded-md border border-border bg-border"
+      className="relative aspect-(--embed-aspect) max-h-87.5 w-(--embed-width) max-w-full overflow-hidden rounded-sm bg-background/40"
       style={
         {
           '--embed-aspect': aspectRatio,
@@ -207,7 +207,7 @@ function EmbedVideoLink({
   const link = safeLink(url)
   const host = hostnameOf(url) ?? t('video')
   const className =
-    'flex items-center gap-2 rounded-md border border-border bg-background/40 px-3 py-2 text-xs text-foreground'
+    'flex items-center gap-2 rounded-sm bg-background/40 px-3 py-2 text-xs text-foreground'
 
   const body = (
     <>
@@ -266,7 +266,7 @@ function WebsiteEmbed({ embed }: { embed: Extract<Embed, { type: 'Website' }> })
           ) : null}
         </div>
         {thumbnail ? (
-          <span className="relative size-20 shrink-0 overflow-hidden rounded-md border border-border bg-border">
+          <span className="relative size-20 shrink-0 overflow-hidden rounded-sm bg-background/40">
             <FxImage
               src={embedMediaUrl(thumbnail)}
               alt={title ?? t('linkPreview')}
@@ -352,7 +352,7 @@ function EmbedMediaLink({ media }: { media: MediaFile }) {
       href={attachmentOriginalUrl(media)}
       target="_blank"
       rel="noreferrer noopener"
-      className="flex items-center gap-2 rounded-md border border-border bg-background/40 px-3 py-2 text-xs text-foreground hover:bg-background/70"
+      className="flex items-center gap-2 rounded-sm bg-background/40 px-3 py-2 text-xs text-foreground hover:bg-background/70"
     >
       <FileIcon className="size-4 shrink-0" />
       <span className="truncate">{label}</span>

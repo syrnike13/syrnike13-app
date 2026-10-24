@@ -56,9 +56,6 @@ export function useChannelChat({
   const [hasOlder, setHasOlder] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
 
-  const replyTargetId =
-    composerAction?.type === 'reply' ? composerAction.message._id : null
-
   const historyQuery = useQuery({
     queryKey: queryKeys.channels.messages(channelId),
     queryFn: async ({ signal }) => {
@@ -103,15 +100,6 @@ export function useChannelChat({
     setLoadingOlder(false)
     lastAckedMessageIdRef.current = null
   }, [channelId])
-
-  useEffect(() => {
-    if (!replyTargetId) return
-    requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-message-id="${replyTargetId}"]`)
-        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    })
-  }, [replyTargetId])
 
   useEffect(() => {
     if (!enabled || !token || !lastMessageId || !channel) return
@@ -270,11 +258,21 @@ export function useChannelChat({
     [channelId, t, token],
   )
 
+  /** Discord: стрелка вверх в пустом композере редактирует своё последнее сообщение. */
+  const editLastOwnMessage = useCallback(() => {
+    const userId = auth.user?._id
+    const last = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.author === userId && !message.system)
+    if (!last) return false
+    setComposerAction({ type: 'edit', message: last })
+    return true
+  }, [auth.user?._id])
+
   const replyTo =
     composerAction?.type === 'reply' ? composerAction.message : null
   const editingMessage =
     composerAction?.type === 'edit' ? composerAction.message : null
-  const listHighlightMessageId = replyTo?._id ?? highlightMessageId
 
   return {
     auth,
@@ -296,7 +294,8 @@ export function useChannelChat({
     jumpToMessage,
     replyTo,
     editingMessage,
-    listHighlightMessageId,
+    jumpMessageId: highlightMessageId,
+    editLastOwnMessage,
     notifyTyping,
     stopTyping,
   }

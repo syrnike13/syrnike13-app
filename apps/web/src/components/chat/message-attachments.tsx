@@ -76,7 +76,7 @@ export function MessageAttachments({
         ) : mosaic ? (
           <div
             data-attachment-mosaic={imageFiles.length}
-            className="relative aspect-(--mosaic-aspect) max-h-87.5 w-(--mosaic-width) max-w-full overflow-hidden rounded-md border"
+            className="relative aspect-(--mosaic-aspect) max-h-87.5 w-(--mosaic-width) max-w-full overflow-hidden rounded-lg"
             style={
               {
                 '--mosaic-aspect': mosaic.aspectRatio,
@@ -102,7 +102,7 @@ export function MessageAttachments({
                   }
                   className={cn(
                     'absolute left-(--tile-left) top-(--tile-top) h-(--tile-height) w-(--tile-width) overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                    'bg-border',
+                    'bg-secondary',
                   )}
                   style={
                     {
@@ -128,11 +128,7 @@ export function MessageAttachments({
                     className={cn(spoiler && 'scale-105 blur-xl')}
                     wrapperClassName="cursor-pointer"
                   />
-                  {spoiler ? (
-                    <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-xs font-semibold tracking-wide text-foreground uppercase">
-                      {t('spoiler')}
-                    </span>
-                  ) : null}
+                  {spoiler ? <SpoilerBadge label={t('spoiler')} /> : null}
                 </button>
               )
             })}
@@ -215,7 +211,7 @@ function SingleImageAttachment({
       data-attachment-single
       data-aspect-ratio={String(aspectRatio)}
       aria-label={spoiler ? t('spoilerShow') : label}
-      className="relative block aspect-(--single-aspect) max-h-87.5 w-(--single-width) max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="relative block aspect-(--single-aspect) max-h-87.5 w-(--single-width) max-w-full overflow-hidden rounded-lg bg-secondary text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       style={
         {
           '--single-aspect': aspectRatio,
@@ -240,11 +236,18 @@ function SingleImageAttachment({
         className={cn(spoiler && 'scale-105 blur-xl')}
         wrapperClassName="cursor-pointer"
       />
-      {spoiler ? (
-        <span className="absolute inset-0 flex items-center justify-center bg-background/55 text-sm font-semibold tracking-wide text-foreground uppercase">
-          {t('spoiler')}
-        </span>
-      ) : null}
+      {spoiler ? <SpoilerBadge label={t('spoiler')} /> : null}
     </button>
+  )
+}
+
+/** Плашка «Спойлер» поверх размытой картинки. */
+function SpoilerBadge({ label }: { label: string }) {
+  return (
+    <span className="absolute inset-0 flex items-center justify-center">
+      <span className="rounded-full bg-background/80 px-3 py-1.5 text-sm font-semibold tracking-wide text-foreground uppercase">
+        {label}
+      </span>
+    </span>
   )
 }

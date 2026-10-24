@@ -6,6 +6,7 @@ import { Effect } from 'effect'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { MessageSearch } from '#/components/chat/message-search'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
+import { ChannelIntro } from '#/components/chat/channel-intro'
 import { MessageComposer } from '#/components/chat/message-composer'
 import {
   MessageList,
@@ -85,7 +86,8 @@ export function ChannelChatPanel({
     jumpToMessage,
     replyTo,
     editingMessage,
-    listHighlightMessageId,
+    jumpMessageId,
+    editLastOwnMessage,
     notifyTyping,
     stopTyping,
   } = chat
@@ -163,7 +165,17 @@ export function ChannelChatPanel({
           scrollbarInsetBottom={
             composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
           }
-          highlightMessageId={listHighlightMessageId}
+          highlightMessageId={replyTo?._id ?? editingMessage?._id}
+          jumpMessageId={jumpMessageId}
+          intro={
+            channel ? (
+              <ChannelIntro
+                channel={channel}
+                users={users}
+                currentUserId={auth.user?._id}
+              />
+            ) : null
+          }
           messages={messages}
           users={users}
           currentUserId={auth.user?._id}
@@ -244,6 +256,7 @@ export function ChannelChatPanel({
             replyTo={replyTo}
             editingMessage={editingMessage}
             onCancelAction={() => setComposerAction(null)}
+            onEditLast={editLastOwnMessage}
             onTyping={notifyTyping}
             onStopTyping={stopTyping}
             onSend={async (input) => {
