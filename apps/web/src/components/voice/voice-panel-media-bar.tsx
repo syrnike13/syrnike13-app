@@ -19,7 +19,10 @@ import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { voiceMediaControlState } from '#/features/voice/voice-media-availability'
-import { isChannelActivityStageItemId } from '#/features/activities/channel-activity-stage'
+import { isActivityStageItemId } from '#/features/activities/activity-stage'
+import { useActivityInstance } from '#/features/activities/use-activities'
+import { canUseActivities } from '#/features/authorization/authorization'
+import { useSyncStore } from '#/features/sync/sync-store'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -113,6 +116,12 @@ export function VoicePanelMediaBar() {
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
   const connecting = voiceSession.status === 'connecting'
+  const activityRunning =
+    useActivityInstance(voiceSession.channelId) !== null
+  // Subscribes to authorization snapshot changes for the voice channel.
+  const activitiesAllowed = useSyncStore(() =>
+    canUseActivities(voiceSession.channelId ?? undefined),
+  )
   // A camera whose device failed keeps its "on" intent: the button turns it off.
   const cameraOn = voiceMedia.cameraEnabled || voiceMedia.cameraDeviceFailed
   const sharingScreen = voiceMedia.screenShareEnabled
@@ -169,12 +178,19 @@ export function VoicePanelMediaBar() {
 
         {uiFeatureFlags.channelActivities ? (
           <PanelMediaButton
-            title={t('actions.activities')}
+            title={
+              activityRunning || activitiesAllowed
+                ? t('actions.activities')
+                : t('actions.activitiesNoPermission')
+            }
             active={
               voiceStage.activityLauncherOpen ||
-              isChannelActivityStageItemId(voiceStage.focusedMediaId)
+              isActivityStageItemId(voiceStage.focusedMediaId)
             }
-            disabled={voiceSession.status !== 'connected'}
+            disabled={
+              voiceSession.status !== 'connected' ||
+              (!activityRunning && !activitiesAllowed)
+            }
             onClick={() => {
               if (voiceStage.activityLauncherOpen) {
                 voiceStage.setActivityLauncherOpen(false)

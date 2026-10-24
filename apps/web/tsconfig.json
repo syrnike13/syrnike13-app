@@ -7,6 +7,9 @@
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
+      "@syrnike13/activity-sdk/protocol": [
+        "../../packages/activity-sdk/src/protocol.ts"
+      ],
       "@syrnike13/api-types": ["../../packages/api-types/src/index.ts"],
       "@syrnike13/api-types/effect-schema": [
         "../../packages/api-types/src/effect-schema.ts"

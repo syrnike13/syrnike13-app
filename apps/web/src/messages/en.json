@@ -559,7 +559,8 @@
         "listen": "Listen",
         "muteMembers": "Mute members",
         "deafenMembers": "Deafen members",
-        "moveMembers": "Move members"
+        "moveMembers": "Move members",
+        "useActivities": "Use Activities"
       },
       "hints": {
         "administrator": "Members with this permission receive all regular server permissions and bypass channel restrictions. Owner-only actions and role hierarchy still apply."
@@ -1387,11 +1388,11 @@
       "backToChannel": "Back to channel",
       "soon": "Coming soon",
       "activities": "Activities",
-      "soundboard": "Soundboard"
+      "soundboard": "Soundboard",
+      "activitiesNoPermission": "Activities: no permission to start"
     },
     "stage": {
       "activity": "Activity",
-      "unknownApp": "Unknown app",
       "loadingActivity": "Loading activity…",
       "otherStreams": "Other streams in the channel",
       "noOne": "No one is in the channel",
@@ -1420,15 +1421,8 @@
       "deafened": "Sound off",
       "micOff": "Microphone muted",
       "participantMuted": "You muted this participant",
-      "activityPlaying": "Voice channel members are already playing.",
-      "activityUpdateClient": "Update the client to open this app.",
-      "unsupportedActivity": "Unsupported activity",
-      "joinActivity": "Join",
-      "joiningActivity": "Connecting…",
-      "leaveActivity": "Leave activity",
       "exitActivity": "Leave {name}",
       "stopWatchingName": "Stop watching {name}",
-      "activityError": "Could not connect.",
       "popoutTitle": "Voice stage in a separate window",
       "goToWindow": "Go to window",
       "returnHere": "Bring back here"
@@ -1626,17 +1620,6 @@
       "inputVolume": "Incoming volume",
       "dontHear": "Don't hear"
     },
-    "activity": {
-      "unsupported": "Unsupported activity",
-      "playing": "Voice channel members are already playing.",
-      "updateClient": "Update the client to open this app.",
-      "join": "Join",
-      "joining": "Connecting…",
-      "joinError": "Could not connect.",
-      "leave": "Leave activity",
-      "loading": "Loading activity…",
-      "title": "Activity"
-    },
     "call": {
       "user": "User",
       "direct": "Direct call",
@@ -1707,6 +1690,13 @@
       "outputUnavailable": "The selected output device is unavailable. Using the default device.",
       "micFallback": "The selected microphone is unavailable. Using the default microphone.",
       "micUnavailableLabel": "Microphone unavailable"
+    },
+    "activityParticipant": "In the activity",
+    "activityParticipants": {
+      "count": "{count, plural, one {# player} other {# players}}",
+      "one": "{name} is playing",
+      "two": "{first} and {second} are playing",
+      "many": "Playing: {count}"
     }
   },
   "channels": {
@@ -2230,17 +2220,55 @@
   },
   "activities": {
     "title": "Activities",
-    "description": "Start a shared app for everyone in this voice channel.",
-    "launchError": "Could not start the activity: {error}",
+    "description": "Start an app for everyone in this voice channel.",
+    "missingPermission": "You need the Use Activities permission to start an activity in this channel.",
+    "loading": "Loading apps…",
+    "loadError": "Could not load apps.",
+    "retry": "Try again",
+    "emptyTitle": "No apps yet",
+    "emptyDescription": "Apps will appear here once they are available.",
     "start": "Start",
     "back": "Back",
-    "syrnikRace": {
-      "title": "Syrnik Race",
-      "description": "Ready lobby, shared goal, competitive hits, points and round completion."
+    "unknownApplication": "Activity",
+    "leave": "Leave activity",
+    "endForEveryone": "End for everyone",
+    "join": "Join",
+    "joining": "Joining…",
+    "full": "Activity is full",
+    "applicationUnavailable": "This app is no longer available.",
+    "sidebarParticipants": "{count, plural, one {# player} other {# players}}",
+    "errors": {
+      "generic": "Something went wrong. Try again.",
+      "not_in_voice_channel": "Join the voice channel first.",
+      "missing_permission": "You do not have permission to start activities here.",
+      "unknown_application": "This app is not available.",
+      "already_running": "An activity is already running in this channel.",
+      "full": "This activity is full.",
+      "not_allowed": "You are not allowed to do that.",
+      "rate_limited": "Too many requests. Wait a moment.",
+      "disconnected": "No connection. Try again when you are back online.",
+      "timeout": "The server did not respond. Try again."
     },
-    "sharedCounter": {
-      "title": "Shared counter",
-      "description": "Minimal check of the shared server revision."
+    "frame": {
+      "loading": "Loading activity…",
+      "unavailable": "This activity cannot be opened."
+    },
+    "authorize": {
+      "title": "Allow {name} to access your account?",
+      "description": "{name} is asking for:",
+      "allow": "Allow",
+      "scopes": {
+        "identify": "Your username, display name and avatar",
+        "storage": "Your saved progress and scores in this app"
+      }
+    },
+    "externalLink": {
+      "title": "Open an external link?",
+      "description": "{name} wants to open this link outside syrnike13. Only continue if you trust it.",
+      "open": "Open link"
+    },
+    "dialog": {
+      "cancel": "Cancel"
     }
   },
   "nativeMedia": {

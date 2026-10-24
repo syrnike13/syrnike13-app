@@ -60,6 +60,41 @@ export const AuthorizationSnapshot = Schema.Struct({
 })
 export type AuthorizationSnapshot = typeof AuthorizationSnapshot.Type
 
+export const ActivityParticipant = Schema.Struct({
+  user_id: Schema.String,
+  joined_at: Timestamp,
+})
+export type ActivityParticipant = typeof ActivityParticipant.Type
+
+/** Running Activity Application in one voice channel (ADR-0011). */
+export const ActivityInstance = Schema.Struct({
+  id: Schema.String,
+  application_id: Schema.String,
+  channel_id: Schema.String,
+  server_id: Schema.optionalKey(Schema.String),
+  revision: Schema.Number,
+  host_id: Schema.String,
+  participants: Schema.Array(ActivityParticipant),
+  started_by: Schema.String,
+  started_at: Timestamp,
+})
+export type ActivityInstance = typeof ActivityInstance.Type
+
+export const ActivitySharedState = Schema.Struct({
+  instance_id: Schema.String,
+  version: Schema.Number,
+  data: Schema.Unknown,
+  updated_by: Schema.optionalKey(Schema.String),
+})
+export type ActivitySharedState = typeof ActivitySharedState.Type
+
+export const ActivityEndReason = Schema.Literals([
+  'ended',
+  'empty',
+  'application_unavailable',
+])
+export type ActivityEndReason = typeof ActivityEndReason.Type
+
 const PartialMessage = Api.Message.mapFields(
   Struct.map(Schema.optionalKey),
 )
@@ -131,6 +166,7 @@ const GatewayEventItemSchema = Schema.Union([
     emojis: Schema.optionalKey(Schema.Array(Api.Emoji)),
     voice_states: Schema.optionalKey(Schema.Array(ChannelVoiceState)),
     voice_calls: Schema.optionalKey(Schema.Array(VoiceCall)),
+    activities: Schema.optionalKey(Schema.Array(ActivityInstance)),
     channel_unreads: Schema.optionalKey(Schema.Array(Api.ChannelUnread)),
     authorization: Schema.optionalKey(AuthorizationSnapshot),
   }),
@@ -183,6 +219,34 @@ const GatewayEventItemSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('VoiceCallEnd'),
     channel_id: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ActivityInstanceUpdate'),
+    instance: ActivityInstance,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ActivityInstanceEnd'),
+    channel_id: Schema.String,
+    instance_id: Schema.String,
+    reason: ActivityEndReason,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ActivityMessage'),
+    instance_id: Schema.String,
+    from: Schema.String,
+    payload: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ActivityState'),
+    state: ActivitySharedState,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ActivityResponse'),
+    request_id: Schema.String,
+    // Kept open so a newer backend error code still resolves the request.
+    error: Schema.optionalKey(Schema.String),
+    instance: Schema.optionalKey(ActivityInstance),
+    state: Schema.optionalKey(ActivitySharedState),
   }),
   Schema.Struct({
     type: Schema.Literal('MessageReact'),

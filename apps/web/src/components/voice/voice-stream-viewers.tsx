@@ -23,10 +23,14 @@ export type StreamViewer = Readonly<{
   displayName: string
 }>
 
+/** Message group in the `voice` namespace: stream viewers or activity players. */
+export type StreamViewerLabels = 'viewers' | 'activityParticipants'
+
 type VoiceStreamViewersProps = {
   viewers: readonly StreamViewer[]
   /** `count` fits small tiles: an eye and the number of viewers. */
   variant: 'avatars' | 'count'
+  labels?: StreamViewerLabels
   className?: string
 }
 
@@ -36,26 +40,31 @@ const POPOVER_CLOSE_DELAY_MS = 150
 const viewerChipClass =
   'flex items-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm'
 
-export function streamViewerCountLabel(count: number, t: Translator) {
-  return t('viewers.count', { count })
+export function streamViewerCountLabel(
+  count: number,
+  t: Translator,
+  labels: StreamViewerLabels = 'viewers',
+) {
+  return t(`${labels}.count`, { count })
 }
 
 /** Names for one or two viewers, otherwise the count. */
 export function streamViewersSummary(
   viewers: readonly StreamViewer[],
   t: Translator,
+  labels: StreamViewerLabels = 'viewers',
 ) {
   if (viewers.length === 1) {
-    return t('viewers.one', { name: viewers[0]!.displayName })
+    return t(`${labels}.one`, { name: viewers[0]!.displayName })
   }
   if (viewers.length === 2) {
-    return t('viewers.two', {
+    return t(`${labels}.two`, {
       first: viewers[0]!.displayName,
       second: viewers[1]!.displayName,
     })
   }
-  return t('viewers.many', {
-    count: streamViewerCountLabel(viewers.length, t),
+  return t(`${labels}.many`, {
+    count: streamViewerCountLabel(viewers.length, t, labels),
   })
 }
 
@@ -63,21 +72,28 @@ export function streamViewersSummary(
 export function VoiceStreamViewers({
   viewers,
   variant,
+  labels = 'viewers',
   className,
 }: VoiceStreamViewersProps) {
   if (viewers.length === 0) return null
   return variant === 'count' ? (
-    <StreamViewerCount viewers={viewers} className={className} />
+    <StreamViewerCount viewers={viewers} labels={labels} className={className} />
   ) : (
-    <StreamViewerAvatars viewers={viewers} className={className} />
+    <StreamViewerAvatars
+      viewers={viewers}
+      labels={labels}
+      className={className}
+    />
   )
 }
 
 function StreamViewerCount({
   viewers,
+  labels,
   className,
 }: {
   viewers: readonly StreamViewer[]
+  labels: StreamViewerLabels
   className?: string
 }) {
   const t = useTranslations('voice')
@@ -93,7 +109,7 @@ function StreamViewerCount({
                 'gap-1 px-1.5 py-0.5 text-xs',
                 className,
               )}
-              aria-label={streamViewersSummary(viewers, t)}
+              aria-label={streamViewersSummary(viewers, t, labels)}
             />
           }
         >
@@ -103,7 +119,7 @@ function StreamViewerCount({
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="z-420">
-          {streamViewersSummary(viewers, t)}
+          {streamViewersSummary(viewers, t, labels)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -112,9 +128,11 @@ function StreamViewerCount({
 
 function StreamViewerAvatars({
   viewers,
+  labels,
   className,
 }: {
   viewers: readonly StreamViewer[]
+  labels: StreamViewerLabels
   className?: string
 }) {
   const t = useTranslations('voice')
@@ -158,7 +176,7 @@ function StreamViewerAvatars({
               'p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring',
               className,
             )}
-            aria-label={streamViewersSummary(viewers, t)}
+            aria-label={streamViewersSummary(viewers, t, labels)}
             onMouseEnter={show}
             onMouseLeave={scheduleClose}
             onFocus={show}
@@ -196,7 +214,7 @@ function StreamViewerAvatars({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="px-1 pb-1.5 text-xs font-semibold uppercase text-muted-foreground">
-          {streamViewerCountLabel(viewers.length, t)}
+          {streamViewerCountLabel(viewers.length, t, labels)}
         </p>
         <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
           {viewers.map((viewer) => (

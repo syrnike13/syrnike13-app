@@ -38,6 +38,7 @@ const READY_FIELDS = [
   'emojis',
   'voice_states',
   'voice_calls',
+  'activities',
   'channel_unreads',
   'authorization',
 ] as const

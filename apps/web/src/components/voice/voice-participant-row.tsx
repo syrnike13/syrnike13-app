@@ -2,6 +2,7 @@ import type { User } from '@syrnike13/api-types'
 import { useState, type DragEvent } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
+import { ActivityIcon } from '#/components/icons'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import {
@@ -30,6 +31,8 @@ type VoiceParticipantRowProps = {
   /** Войс активен с другого клиента — приглушённый вид в сайдбаре. */
   voiceElsewhere?: boolean
   compact?: boolean
+  /** The participant plays the channel's running activity. */
+  inActivity?: boolean
   serverId?: string
   serverName?: string
   roles?: MemberRoleEntry[]
@@ -44,6 +47,7 @@ export function VoiceParticipantRow({
   dimmed = false,
   voiceElsewhere = false,
   compact = false,
+  inActivity = false,
   serverId,
   serverName,
   roles,
@@ -136,6 +140,14 @@ export function VoiceParticipantRow({
         {displayName}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
+        {inActivity ? (
+          <ActivityIcon
+            data-testid="voice-participant-activity"
+            className="size-3.5 text-primary"
+            aria-label={t('activityParticipant')}
+            role="img"
+          />
+        ) : null}
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}

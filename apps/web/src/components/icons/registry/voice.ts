@@ -1,5 +1,6 @@
 import {
   RiGamepadLine,
+  RiShutDownLine,
   RiVideoOffFill,
   RiVideoOnFill,
   RiVolumeMuteLine,
@@ -118,4 +119,10 @@ export const SoundboardIcon = defineIcon(iconifyIcon('lucide:audio-lines'), {
 export const ActivityIcon = defineIcon(iconifyIcon('duo-icons:app'), {
   pack: 'iconify',
   name: 'duo-icons:app',
+})
+
+/** Завершить активность для всех участников. */
+export const PowerIcon = defineIcon(RiShutDownLine, {
+  pack: 'remixicon',
+  name: 'RiShutDownLine',
 })
