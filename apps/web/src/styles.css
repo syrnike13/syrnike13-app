@@ -322,6 +322,17 @@ html {
   background: var(--theme-surface-solid, var(--popover));
 }
 
+/*
+ * Floating surfaces (user panel, composer, DM profile, toolbars) sit lighter
+ * than the columns, where the solid Prism hover fill nearly vanishes. Inside
+ * them the hover fill is a translucent wash of the text colour, so it reads
+ * on any surface in light and dark themes.
+ */
+.gradient-surface-floating {
+  --hover: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --sidebar-accent: var(--hover);
+}
+
 :root[data-theme-gradient]:not([data-theme-gradient='none']) body {
   background: transparent;
 }
