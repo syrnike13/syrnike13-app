@@ -37,14 +37,16 @@ function ScrollBar({
       data-orientation={orientation}
       orientation={orientation}
       className={cn(
-        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        // Chat-style overlay scrollbar: an 8px track with a 4px thumb that
+        // shows only while the area is hovered or scrolling.
+        "flex touch-none p-0.5 opacity-0 transition-opacity duration-150 select-none data-horizontal:h-2 data-horizontal:flex-col data-vertical:h-full data-vertical:w-2 data-hovering:opacity-100 data-scrolling:opacity-100",
         className
       )}
       {...props}
     >
       <ScrollAreaPrimitive.Thumb
         data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-border"
+        className="relative flex-1 rounded-full bg-foreground/25 transition-colors hover:bg-foreground/40"
       />
     </ScrollAreaPrimitive.Scrollbar>
   )
