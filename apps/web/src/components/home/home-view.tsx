@@ -136,8 +136,9 @@ function HomeFriendRow({
         {onOpen ? (
           <Button
             type="button"
-            size="icon"
-            variant="secondary"
+            size="icon-lg"
+            shape="circle"
+            variant="ghost"
             className="text-muted-foreground"
             title={t('write')}
             aria-label={t('write')}
@@ -152,8 +153,9 @@ function HomeFriendRow({
               render={
                 <Button
                   type="button"
-                  size="icon"
-                  variant="secondary"
+                  size="icon-lg"
+                  shape="circle"
+                  variant="ghost"
                   className="text-muted-foreground"
                   title={t('more')}
                   aria-label={t('more')}

@@ -35,7 +35,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted has-data-[slot=item-overlay]:relative has-[[data-slot=item-overlay]:hover]:bg-hover has-[[data-slot=item-overlay]:focus-visible]:border-ring has-[[data-slot=item-overlay]:focus-visible]:ring-[3px] has-[[data-slot=item-overlay]:focus-visible]:ring-ring/50",
+  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted has-data-[slot=item-overlay]:relative has-data-[slot=item-overlay]:hover:bg-hover has-[[data-slot=item-overlay]:focus-visible]:border-ring has-[[data-slot=item-overlay]:focus-visible]:ring-[3px] has-[[data-slot=item-overlay]:focus-visible]:ring-ring/50",
   {
     variants: {
       variant: {
@@ -47,8 +47,9 @@ const itemVariants = cva(
         default: "gap-2.5 px-3 py-2.5",
         sm: "gap-2.5 px-3 py-2.5",
         xs: "gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0",
-        // Discord list row (friends, members): 62px, 16px title, 14px status.
-        lg: "min-h-15.5 gap-3 px-2.5 py-2",
+        // Discord list row (friends, members): 62px, 16px title, 14px status,
+        // a hairline above every row that hides around the hovered row.
+        lg: "relative min-h-15.5 gap-3 px-2.5 py-2 before:pointer-events-none before:absolute before:inset-x-2.5 before:top-0 before:h-px before:bg-border hover:before:hidden [[data-slot=item]:hover+&]:before:hidden",
       },
     },
     defaultVariants: {
@@ -181,7 +182,12 @@ function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="item-actions"
-      className={cn("relative flex items-center gap-2", className)}
+      className={cn(
+        // Ghost action buttons (triggers included) get a surface while the
+        // item or the button is hovered or focused, like Discord list rows.
+        "relative flex items-center gap-2 group-hover/item:[&_[data-variant=ghost]]:bg-card group-focus-within/item:[&_[data-variant=ghost]]:bg-card",
+        className
+      )}
       {...props}
     />
   )

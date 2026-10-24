@@ -38,10 +38,17 @@ const buttonVariants = cva(
           'size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg',
         'icon-lg': 'size-9',
       },
+      // Not in base-nova: Discord uses round icon buttons for row and banner
+      // actions. Declared after `size` so it wins over size-specific radii.
+      shape: {
+        default: '',
+        circle: 'rounded-full',
+      },
     },
     defaultVariants: {
       variant: 'default',
       size: 'default',
+      shape: 'default',
     },
   },
 )
@@ -50,12 +57,14 @@ function Button({
   className,
   variant = 'default',
   size = 'default',
+  shape = 'default',
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      data-variant={variant}
+      className={cn(buttonVariants({ variant, size, shape, className }))}
       {...props}
     />
   )
