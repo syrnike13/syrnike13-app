@@ -71,57 +71,60 @@ export function SoundSettings() {
         </Select>
       </SettingsRow>
 
-      <SettingsRow
-        label={t('volume')}
-        value={`${volumeToSlider(preferences.volume)}%`}
-        stacked
-      >
-        <PresetSlider
-          stops={VOLUME_STOPS}
-          value={volumeToSlider(preferences.volume)}
-          mode="continuous"
-          step={1}
-          showLabels={false}
-          showMarks={false}
+      <SettingsRow label={t('volume')}>
+        <VolumeControl
+          label={t('volume')}
+          value={preferences.volume}
           disabled={!preferences.enabled}
-          onValueChange={(next) =>
-            soundPreferenceStore.setVolume(sliderToVolume(next))
-          }
-          formatValue={formatVolume}
-          aria-label={t('volume')}
+          onChange={(volume) => soundPreferenceStore.setVolume(volume)}
         />
       </SettingsRow>
 
-      {soundEvents.map((event) => {
-        const eventVolume = preferences.eventVolumes[event.id] ?? 1
-        return (
-          <SettingsRow
-            key={event.id}
+      {soundEvents.map((event) => (
+        <SettingsRow key={event.id} label={t(event.labelKey)}>
+          <VolumeControl
             label={t(event.labelKey)}
-            value={`${volumeToSlider(eventVolume)}%`}
-            stacked
-          >
-            <PresetSlider
-              stops={VOLUME_STOPS}
-              value={volumeToSlider(eventVolume)}
-              mode="continuous"
-              step={1}
-              showLabels={false}
-              showMarks={false}
-              disabled={!preferences.enabled}
-              onValueChange={(next) =>
-                soundPreferenceStore.setEventVolume(
-                  event.id,
-                  sliderToVolume(next),
-                )
-              }
-              formatValue={formatVolume}
-              aria-label={t(event.labelKey)}
-            />
-          </SettingsRow>
-        )
-      })}
-
+            value={preferences.eventVolumes[event.id] ?? 1}
+            disabled={!preferences.enabled}
+            onChange={(volume) =>
+              soundPreferenceStore.setEventVolume(event.id, volume)
+            }
+          />
+        </SettingsRow>
+      ))}
     </SettingsBlock>
+  )
+}
+
+/** Compact volume: a 192px slider and its percentage, beside the row label. */
+function VolumeControl({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: number
+  disabled: boolean
+  onChange: (volume: number) => void
+}) {
+  return (
+    <div className="flex w-56 shrink-0 items-center gap-3">
+      <PresetSlider
+        stops={VOLUME_STOPS}
+        value={volumeToSlider(value)}
+        mode="continuous"
+        step={1}
+        showLabels={false}
+        showMarks={false}
+        disabled={disabled}
+        onValueChange={(next) => onChange(sliderToVolume(next))}
+        formatValue={formatVolume}
+        aria-label={label}
+      />
+      <span className="w-10 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
+        {formatVolume(volumeToSlider(value))}
+      </span>
+    </div>
   )
 }

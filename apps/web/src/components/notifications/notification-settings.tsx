@@ -7,6 +7,7 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
+import { Switch } from '@syrnike13/ui/primitives/switch'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Card,
@@ -51,6 +52,27 @@ export function NotificationSettings({
   )
   const [pushReady, setPushReady] = useState(false)
   const [vapidKey, setVapidKey] = useState<string | null>(null)
+  /** Whether this browser holds a push subscription; null while checking. */
+  const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return
+    }
+    let cancelled = false
+    void navigator.serviceWorker
+      .getRegistration()
+      .then((registration) => registration?.pushManager.getSubscription())
+      .then((subscription) => {
+        if (!cancelled) setPushSubscribed(Boolean(subscription))
+      })
+      .catch(() => {
+        if (!cancelled) setPushSubscribed(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const fiber = Effect.runFork(
@@ -149,6 +171,7 @@ export function NotificationSettings({
           p256dh,
         })
         yield* Effect.sync(() => {
+          setPushSubscribed(true)
           toast.success(t('pushEnabled'))
         })
       }).pipe(
@@ -197,6 +220,7 @@ export function NotificationSettings({
           })
         }
         yield* Effect.sync(() => {
+          setPushSubscribed(false)
           toast.success(t('pushDisabled'))
         })
       }).pipe(
@@ -223,14 +247,11 @@ export function NotificationSettings({
               status: permissionLabel(permission),
             })}
           >
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={enableDesktop}
-            >
-              {t('allow')}
-            </Button>
+            {permission === 'default' ? (
+              <Button type="button" variant="outline" size="sm" onClick={enableDesktop}>
+                {t('allow')}
+              </Button>
+            ) : null}
           </SettingsRow>
         </SettingsBlock>
 
@@ -240,19 +261,14 @@ export function NotificationSettings({
               label={t('backgroundPush')}
               hint={t('backgroundHint')}
             >
-              <div className="flex items-center gap-2">
-                <Button type="button" size="sm" onClick={enablePush}>
-                  {t('enable')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={disablePush}
-                >
-                  {t('disable')}
-                </Button>
-              </div>
+              <Switch
+                checked={pushSubscribed ?? false}
+                disabled={pushSubscribed === null}
+                aria-label={t('backgroundPush')}
+                onCheckedChange={(checked) =>
+                  checked ? enablePush() : disablePush()
+                }
+              />
             </SettingsRow>
           </SettingsBlock>
         ) : null}
