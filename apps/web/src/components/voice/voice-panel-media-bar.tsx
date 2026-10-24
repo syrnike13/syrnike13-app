@@ -23,7 +23,6 @@ import { isActivityStageItemId } from '#/features/activities/activity-stage'
 import { useActivityInstance } from '#/features/activities/use-activities'
 import { canUseActivities } from '#/features/authorization/authorization'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { shellDivider } from '#/components/layout/shell-chrome'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'
@@ -145,7 +144,7 @@ export function VoicePanelMediaBar() {
 
   return (
     <TooltipProvider delay={300}>
-      <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
+      <div className="flex gap-1.5 px-2 pt-1 pb-2">
         <CameraDevicePickerAnchor className="flex min-w-0 flex-1">
           <PanelMediaButton
             title={cameraControl.title}
