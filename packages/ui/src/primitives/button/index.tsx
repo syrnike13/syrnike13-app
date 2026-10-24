@@ -1,5 +1,3 @@
-// design-allow-file arbitrary-radius: literal shadcn base-nova button sizes
-// design-allow-file arbitrary-color: literal shadcn base-nova secondary variant
 import { Button as ButtonPrimitive } from '@base-ui/react/button'
 import { cva, type VariantProps } from 'class-variance-authority'
 

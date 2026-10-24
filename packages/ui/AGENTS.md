@@ -9,11 +9,11 @@
 - адаптация цветов на семантические токены, если upstream использует палитру;
 - добавление upstream-варианта в существующий компонент;
 - интеграция портала с `usePortalContainer()` для Electron-попаутов;
-- комментарии `// design-allow-file <rule>: literal shadcn base-nova source`, если checker ругается на upstream-классы.
+- расширения под стиль продукта (метрики Discord, токены Prism) — прямо в исходнике примитива, с комментарием, зачем.
 
 Всё остальное — отклонение от правила.
 
-**Перед завершением UI-задачи:** `pnpm check:ui`. Новое нарушение роняет команду и CI. Исправляйте код, а не baseline. Осознанное исключение — `// design-allow <rule>: <причина>` на той же/предыдущей строке или `// design-allow-file <rule>: <причина>` в первых 12 строках.
+**Перед завершением UI-задачи:** `pnpm lint:design`. Baseline нет: любая находка — нарушение, она роняет команду и CI. Исправляйте код. Осознанное исключение — только на одну строку: `// eslint-disable-next-line <rule> -- <причина>`; отключать правила дизайна для файла или блока нельзя.
 
 ## Структура пакета
 
@@ -60,13 +60,29 @@
 - **Цвет — только семантические токены.** `text-foreground`, `text-muted-foreground`, `bg-background`, `bg-card`, `bg-muted`, `bg-accent`, `border-border`, `bg-primary`/`text-primary`, `text-destructive`, `text-success`, `text-warning` и их подложки. Палитра Tailwind (`text-emerald-600`, `bg-zinc-900`, `bg-white`) и произвольные цвета (`bg-[#…]`, `rgb(…)` в CSS) запрещены.
 - **Темы — только якоря Prism.** Все цвета, включая `primary*`, `ring`, `destructive*` и `chart-*`, генерирует Prism из `accent`/`background`/`foreground`/`contrast`; отдельных бренд-цветов нет. `--input` — поверхность поля, `--color-input` в Tailwind — `--input-border`.
 - **Shared-компоненты владеют поверхностью и состояниями** (фон, рамка, форма, hover/focus/disabled). В `className` на месте вызова — только layout (`w-full`, `mt-3`, `justify-start`, `md:mr-auto`) и текстовый токен.
-- **Слайдеры в настройках — `PresetSlider`.** Любой слайдер в настройках (и любой новый слайдер с остановками, подписями или дискретными значениями) собирается из `apps/web/src/components/ui/preset-slider.tsx`: остановки, подписи, режимы `stops`/`continuous`, обычный вид без меток — `showLabels={false} showMarks={false}`. Примитив `@syrnike13/ui/primitives/slider` — его внутренняя база; напрямую в настройках не подключается, это проверяет `pnpm check:ui`. Исключения — live-визуализации вроде метра голосового гейта и dev-инструменты.
+- **Слайдеры в настройках — `PresetSlider`.** Любой слайдер в настройках (и любой новый слайдер с остановками, подписями или дискретными значениями) собирается из `apps/web/src/components/ui/preset-slider.tsx`: остановки, подписи, режимы `stops`/`continuous`, обычный вид без меток — `showLabels={false} showMarks={false}`. Примитив `@syrnike13/ui/primitives/slider` — его внутренняя база; напрямую в настройках не подключается, это проверяет `pnpm lint:design`. Исключения — live-визуализации вроде метра голосового гейта и dev-инструменты.
 - **Двухстрочные пункты меню — через `description`.** Проп есть у `DropdownMenuItem`, `DropdownMenuSubTrigger`, `DropdownMenuCheckboxItem`, `DropdownMenuRadioItem` и их context-аналогов (вторая строка: 12px `text-muted-foreground`, остаётся приглушённой и при ховере, высота пункта — 50px). Не собирайте вторую строку самописными `span` внутри пункта. Ручные строки в поповерах (например, устройства в голосовой панели) — кандидаты на миграцию.
 - **Размеры в rem**, по возможности классами Tailwind. `px` — только для границ, focus-offset и canvas.
 - **Адаптивность встроена.** Вёрстка обязана работать на 375px: `min-w-0`, `truncate`, `flex-col sm:flex-row`.
 - **Иконки — только через реестр** `@syrnike13/ui/icons` или app-local `components/icons`. Прямые импорты `@remixicon/react`, `@iconify/react`, `iconoir-react`, `lucide-react` внутри shadcn-исходников допустимы только в `icon-placeholder`.
 - **Строки интерфейса — только через i18n.** Web: `useTranslations` из `@syrnike13/ui/i18n`, ключи в `apps/web/src/messages/{en,ru}.json`. Landing: `apps/landing/src/messages/{en,ru}.json`. Admin: `apps/admin/src/messages/{en,ru}.json`. Это касается и `aria-label`, `placeholder`, `title`.
 - **Контракты desktop не ломать:** `.dark`, `data-theme`, `data-theme-gradient`, имена семантических CSS-переменных, `.theme-surface-*`, `.gradient-surface-*`, `.shell-title-bar-drag/no-drag`, `data-overlay-panel`, `data-participant-*`, `data-slot="scroll-area-viewport"`, прозрачность overlay, popout-клонирование стилей.
+
+## Линтер дизайна
+
+`pnpm lint:design` — ESLint с плагином `tooling/eslint-plugin-design` и правилами `@shadcn/lint`. Он защищает от двух вещей: переопределения стилей примитивов и самописных копий вместо существующих компонентов.
+
+| Правило | Что запрещает |
+| --- | --- |
+| `design/no-restyle` | визуальные классы на примитиве, у которого есть своя поверхность (это определяется по исходнику в `packages/ui`), на элементе из его `render` и рядом с `*Variants()`. Разрешено только размещение: margin, ширина, flex/grid/position, `gap`, `p-0`, видимость, текстовый цвет-токен |
+| `design/no-lookalike` | сырые `button`, `input`, `textarea`, `select`, ссылки со своими поверхностями и `div`/`span` с `onClick` — нужен примитив |
+| `design/no-hardcoded-text` | текст интерфейса в JSX и в `aria-label`/`title`/`placeholder`/`alt`/`label` мимо i18n |
+| `design/require-disable-reason` | отключение правил дизайна без причины или на весь файл |
+| `design-css/*` | CSS-селекторы по `[data-slot]` и литеральные цвета вне custom properties |
+| `shadcn/*` | неизвестные Tailwind-классы, произвольные значения, палитровые цвета, inline-стили, динамические классы |
+| `no-restricted-imports` | иконки мимо реестра, примитив `Slider` в настройках |
+
+Нужен другой вид — добавьте вариант или размер в примитив, а не класс на месте вызова.
 
 ## Добавление компонента из shadcn
 
@@ -76,7 +92,7 @@
 4. Если источник использует палитровые цвета — замените их на семантические токены.
 5. Добавьте `usePortalContainer()` в портал, если компонент рендерит overlay.
 6. Экспортируйте компонент из `src/index.ts`.
-7. Запустите `pnpm check:ui` и `pnpm ui:typecheck`.
+7. Запустите `pnpm lint:design` и `pnpm ui:typecheck`.
 
 ## Сезонные иконки
 
@@ -104,9 +120,8 @@
 ## Проверка
 
 ```sh
-pnpm check:ui              # правила; baseline только уменьшается
-pnpm check:ui:update       # пересчитать baseline после исправлений
-pnpm lint:design           # @shadcn/lint по apps; 0 находок, arbitrary/inline запрещены
+pnpm lint:design           # правила дизайна; 0 находок, без baseline
+pnpm lint:design:test      # тесты самих правил (tooling/eslint-plugin-design)
 pnpm ui:typecheck && pnpm web:typecheck && pnpm admin:typecheck
 pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build

@@ -1,5 +1,3 @@
-// design-allow-file px-size: literal shadcn base-nova source
-// design-allow-file restyle-shared: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"
@@ -329,7 +327,6 @@ function SidebarInput({
   ...props
 }: React.ComponentProps<typeof Input>) {
   return (
-    // design-allow restyle-shared: literal shadcn base-nova sidebar input
     <Input
       data-slot="sidebar-input"
       data-sidebar="input"

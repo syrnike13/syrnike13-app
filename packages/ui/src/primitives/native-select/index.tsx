@@ -1,4 +1,3 @@
-// design-allow-file arbitrary-radius: literal shadcn base-nova source
 import * as React from "react"
 import { cn } from "../../lib/cn"
 

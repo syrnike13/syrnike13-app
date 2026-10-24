@@ -1,4 +1,3 @@
-// design-allow-file palette-color: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"

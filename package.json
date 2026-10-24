@@ -27,10 +27,9 @@
     "admin:typecheck": "pnpm --filter @syrnike13/admin typecheck",
     "ui:test": "pnpm --filter @syrnike13/ui test",
     "ui:typecheck": "pnpm --filter @syrnike13/ui typecheck",
-    "check:ui": "node tooling/scripts/check-ui.mjs",
     "check:messages": "node tooling/scripts/check-messages.mjs",
-    "lint:design": "eslint apps/web/src apps/landing/src apps/admin/src",
-    "check:ui:update": "node tooling/scripts/check-ui.mjs --update",
+    "lint:design": "eslint apps/web/src apps/landing/src apps/admin/src packages/ui/src",
+    "lint:design:test": "node --test tooling/eslint-plugin-design/design.test.mjs",
     "desktop:dev": "pnpm --filter @syrnike13/desktop dev",
     "desktop:dev:prod": "pnpm --filter @syrnike13/desktop dev:prod",
     "desktop:dev:local": "pnpm --filter @syrnike13/desktop dev:local",
@@ -59,6 +58,7 @@
     "livekit:check": "cd services/livekit-server && go test ./..."
   },
   "devDependencies": {
+    "@eslint/css": "^2.0.1",
     "@shadcn/lint": "^0.2.1",
     "@typescript-eslint/parser": "^8.71.2",
     "eslint": "^9.39.5",

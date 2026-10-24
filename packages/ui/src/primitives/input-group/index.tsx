@@ -1,5 +1,3 @@
-// design-allow-file arbitrary-radius: literal shadcn base-nova source
-// design-allow-file restyle-shared: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"
@@ -123,7 +121,6 @@ function InputGroupInput({
   ...props
 }: React.ComponentProps<"input">) {
   return (
-    // design-allow restyle-shared: literal shadcn base-nova input group control
     <Input
       data-slot="input-group-control"
       className={cn(
@@ -140,7 +137,6 @@ function InputGroupTextarea({
   ...props
 }: React.ComponentProps<"textarea">) {
   return (
-    // design-allow restyle-shared: literal shadcn base-nova input group control
     <Textarea
       data-slot="input-group-control"
       className={cn(

@@ -10,8 +10,8 @@ on:
       - apps/web/src/styles.css
       - apps/landing/src/**
       - apps/admin/src/**
-      - tooling/scripts/check-ui*
-      - tooling/ui-baseline.json
+      - tooling/eslint-plugin-design/**
+      - eslint.config.mjs
       - .github/workflows/design-ci.yml
   push:
     branches:
@@ -25,8 +25,8 @@ on:
       - apps/web/src/styles.css
       - apps/landing/src/**
       - apps/admin/src/**
-      - tooling/scripts/check-ui*
-      - tooling/ui-baseline.json
+      - tooling/eslint-plugin-design/**
+      - eslint.config.mjs
       - .github/workflows/design-ci.yml
 
 permissions:
@@ -42,8 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tooling/scripts/check-ui.test.mjs
-      - run: node tooling/scripts/check-ui.mjs
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:design:test
+      - run: pnpm lint:design

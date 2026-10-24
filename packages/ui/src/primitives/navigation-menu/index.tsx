@@ -1,4 +1,3 @@
-// design-allow-file px-size: literal shadcn base-nova source
 import { NavigationMenu as NavigationMenuPrimitive } from "@base-ui/react/navigation-menu"
 import { cva } from "class-variance-authority"
 import { cn } from "../../lib/cn"

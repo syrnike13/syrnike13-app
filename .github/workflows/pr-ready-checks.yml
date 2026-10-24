@@ -31,7 +31,7 @@ jobs:
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Check UI rules
-        run: pnpm check:ui && pnpm check:messages
+        run: pnpm lint:design && pnpm check:messages
       - name: Typecheck frontend
         run: pnpm ui:typecheck && pnpm web:typecheck && pnpm landing:typecheck && pnpm admin:typecheck
       - name: Test frontend

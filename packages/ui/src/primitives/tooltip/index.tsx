@@ -1,4 +1,3 @@
-// design-allow-file arbitrary-radius: literal shadcn base-nova source
 // Surface adaptation: the tooltip uses the Prism `popover` role instead of the
 // inverted `foreground` fill so dark themes don't show a white bubble.
 "use client"

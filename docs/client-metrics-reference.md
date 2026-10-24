@@ -163,35 +163,9 @@ user panel, лента сообщений, композер и профили в
 
 ## Линтер
 
-`@shadcn/lint` подключён в `eslint.config.mjs`, команда — `pnpm lint:design`.
+Правила дизайна, их назначение и исключения описаны в `packages/ui/AGENTS.md`
+(раздел «Линтер дизайна»); команда — `pnpm lint:design`, без baseline.
 
-- Проверяются `apps/web/src` и `apps/admin/src`.
-- `packages/ui/src/primitives` исключён из `restyle-shared`: это literal
-  shadcn base-nova sources, а не call sites.
-- `no-restyle` выключен: точную политику репозитория (layout + текстовые
-  токены) проверяет `tooling/scripts/check-ui.mjs`.
-- `check:ui` покрывает не только `Button`/`Input`/`Badge`, но и
-  surface-owning контейнеры: `PopoverContent`, `DialogContent`,
-  `AlertDialogContent`, `SheetContent`, `DrawerContent`,
-  `DropdownMenuContent`, `ContextMenuContent`, `Command`, `Card`,
-  `TabsList`, `Avatar*`, `Skeleton`, `Empty`, `Attachment`, `Message`,
-  `MessageScroller`, `TooltipContent`.
-- Чекер разворачивает локальные `const`-классы (`className={panelClass}`,
-  `cn(itemClass, …)`), поэтому переопределения через класс-мэпы больше не
-  проходят незамеченными.
-- Baseline `tooling/ui-baseline.json` пуст; осознанные исключения — только
-  `design-allow`/`design-allow-file restyle-shared` с причиной.
-- Точечные исключения: dev-галерея, Prism tuning, Tiptap mention-listbox
-  (фокус управляется редактором), fullscreen media viewer, voice/media-
-  поверхности, desktop overlay HUD, Squircle-рельс, landing pill CTA,
-  мобильный settings sheet, presence-точка аватара, подсветка сообщений и
-  destructive-фокус голосовых действий.
-- Включены `no-arbitrary-values`, `no-raw-colors`, `no-unknown-classes`,
-  `require-static-classes`, `no-inline-styles`.
-- Существующие нарушения зафиксированы в `eslint-suppressions.json`; новые
-  нарушения валят команду. После миграции baseline удалён: `pnpm lint:design`
-  должен проходить с 0 находок. `--suppress-all` не использовать; осознанное
-  исключение — точечный `eslint-disable-next-line <rule> -- <причина>`.
 - Алиас `tv` для `useTranslations` переименован в `tValidation`/`tVoice`:
   `tv` — встроенная функция tailwind-variants, и линтер принимал ключи
   переводов за классы.

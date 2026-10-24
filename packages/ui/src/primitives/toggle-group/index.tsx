@@ -1,4 +1,3 @@
-// design-allow-file arbitrary-radius: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"

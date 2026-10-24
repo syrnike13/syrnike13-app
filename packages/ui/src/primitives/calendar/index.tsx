@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"
@@ -220,7 +219,6 @@ function CalendarDayButton({
   }, [modifiers.focused])
 
   return (
-    // design-allow restyle-shared: literal shadcn base-nova calendar day button
     <Button
       variant="ghost"
       size="icon"
