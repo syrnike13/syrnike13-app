@@ -146,6 +146,10 @@ blocked_domains = []
 client_origins = "http://localhost:3001 http://127.0.0.1:3001"
 # Listen address of the activity proxy
 proxy_listen = "0.0.0.0:14707"
+# On-demand TLS questions for hosts under this suffix are forwarded to
+# ask_delegate_url (one Caddy fronts production and nightly). Empty disables.
+ask_delegate_suffix = ""
+ask_delegate_url = ""
 
 [files]
 # Encryption key for stored files
@@ -360,3 +364,4 @@ proxy = ""
 pushd = ""
 crond = ""
 gifbox = ""
+activity_proxy = ""

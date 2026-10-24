@@ -203,6 +203,8 @@ jobs:
             dockerfile: crates/services/january/Dockerfile
           - image: gifbox
             dockerfile: crates/services/gifbox/Dockerfile
+          - image: activity-proxy
+            dockerfile: crates/services/activity-proxy/Dockerfile
           - image: crond
             dockerfile: crates/daemons/crond/Dockerfile
           - image: pushd

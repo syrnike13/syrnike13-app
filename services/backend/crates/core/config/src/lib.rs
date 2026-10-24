@@ -317,6 +317,11 @@ pub struct Activities {
     pub client_origins: String,
     /// Address the activity proxy listens on.
     pub proxy_listen: String,
+    /// Host suffix (e.g. `.activities.beta.syrnike13.ru`) whose on-demand TLS
+    /// questions this proxy forwards to `ask_delegate_url`; empty disables it.
+    pub ask_delegate_suffix: String,
+    /// Ask endpoint of the proxy that owns `ask_delegate_suffix`.
+    pub ask_delegate_url: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -447,6 +452,7 @@ pub struct Sentry {
     pub pushd: String,
     pub crond: String,
     pub gifbox: String,
+    pub activity_proxy: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

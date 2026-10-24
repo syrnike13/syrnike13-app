@@ -6,6 +6,8 @@ WORKDIR /build
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
 COPY apps/web/package.json apps/web/
+COPY apps/activity-lab/package.json apps/activity-lab/
+COPY packages/activity-sdk/package.json packages/activity-sdk/
 COPY packages/api-types/package.json packages/api-types/
 COPY packages/platform/package.json packages/platform/
 COPY packages/ui/package.json packages/ui/
@@ -13,6 +15,8 @@ COPY packages/ui/package.json packages/ui/
 RUN pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
+COPY apps/activity-lab apps/activity-lab
+COPY packages/activity-sdk packages/activity-sdk
 COPY packages/api-types packages/api-types
 COPY packages/platform packages/platform
 COPY packages/ui packages/ui
@@ -42,7 +46,8 @@ ENV VITE_VOICE_NODE=$VITE_VOICE_NODE
 
 RUN pnpm version:sync && \
     export VITE_APP_VERSION="$(cat VERSION)" && \
-    pnpm --filter @syrnike13/web build
+    pnpm --filter @syrnike13/web build && \
+    pnpm --filter @syrnike13/activity-lab build
 
 FROM node:24-alpine
 
@@ -54,6 +59,9 @@ ENV PORT=5000
 COPY apps/web/docker/server.mjs ./server.mjs
 COPY apps/web/docker/spa-server.mjs ./spa-server.mjs
 COPY --from=builder /build/apps/web/dist ./dist
+# First-party Activity Lab, proxied by activity-proxy from
+# http://web:5000/_activities/lab (ADR-0011).
+COPY --from=builder /build/apps/activity-lab/dist ./dist/client/_activities/lab
 
 EXPOSE 5000
 

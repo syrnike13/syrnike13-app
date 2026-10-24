@@ -9061,6 +9061,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "syrnike-activity-proxy"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "hyper 1.9.0",
+ "hyper-rustls 0.27.7",
+ "hyper-util",
+ "log",
+ "moka",
+ "rustls 0.23.37",
+ "syrnike-config",
+ "syrnike-database",
+ "syrnike-result",
+ "tokio 1.51.0",
+ "tower",
+]
+
+[[package]]
 name = "syrnike-autumn"
 version = "0.1.0"
 dependencies = [
