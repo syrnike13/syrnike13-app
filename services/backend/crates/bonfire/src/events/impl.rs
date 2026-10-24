@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use futures::future::join_all;
 use syrnike_database::{
+    activities,
     events::client::{
         AuthorizationSnapshot, EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase,
     },
@@ -703,6 +704,24 @@ impl State {
             None
         };
 
+        let activities = if fields.activities {
+            let voice_channel_ids = channels
+                .iter()
+                .filter(|channel| {
+                    matches!(
+                        channel,
+                        Channel::DirectMessage { .. }
+                            | Channel::Group { .. }
+                            | Channel::TextChannel { voice: Some(_), .. }
+                    )
+                })
+                .map(|channel| channel.id().to_string())
+                .collect::<Vec<_>>();
+            Some(activities::instances_for_channels(&voice_channel_ids).await?)
+        } else {
+            None
+        };
+
         // Fetch presence data for known users.
         let online_ids = filter_online(&user_ids.iter().cloned().collect::<Vec<String>>()).await;
 
@@ -823,8 +842,7 @@ impl State {
             },
             voice_states,
             voice_calls,
-            // TODO(activities): collect running instances for visible voice channels.
-            activities: None,
+            activities,
 
             emojis,
             user_settings,

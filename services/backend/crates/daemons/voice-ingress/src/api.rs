@@ -3,7 +3,7 @@ use livekit_protocol::TrackType;
 use rocket::{State, post};
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
-    AMQP, Channel, Database, VoiceCallEndReason,
+    AMQP, Channel, Database, VoiceCallEndReason, activities,
     events::client::EventV1,
     iso8601_timestamp::{Duration, Timestamp},
     util::reference::Reference,
@@ -563,6 +563,7 @@ pub async fn ingress(
 
             // Only publish one event when a user is moved from one channel to another.
             if let Some(moved_from) = moved_from {
+                activities::remove_voice_member(&moved_from.id, user_id).await;
                 EventV1::VoiceChannelMove {
                     user: user_id.to_string(),
                     from: moved_from.id,
@@ -628,6 +629,7 @@ pub async fn ingress(
             }
             .p(channel_id.clone())
             .await;
+            activities::remove_voice_member(channel_id, user_id).await;
 
             let remaining_members = get_voice_channel_members(&channel)
                 .await?
@@ -737,6 +739,7 @@ pub async fn ingress(
                         }
                         .p(channel_id.clone())
                         .await;
+                        activities::remove_voice_member(channel_id, user_id).await;
 
                         let remaining_members = get_voice_channel_members(&channel)
                             .await?
@@ -842,6 +845,7 @@ pub async fn ingress(
                 .collect::<Vec<_>>();
 
             for (user_id, operation_id) in deleted_sessions {
+                activities::remove_voice_member(channel_id, &user_id).await;
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
                     user: user_id,

@@ -72,6 +72,7 @@ auto_derived!(
         ServerIcon,
         RoleIcon,
         BadgeIcon,
+        ActivityIcon,
     }
 
     /// Information about what the file was used for
@@ -255,6 +256,25 @@ impl File {
             FileUsedFor {
                 id: parent.to_owned(),
                 object_type: FileUsedForType::RoleIcon,
+            },
+            uploader_id.to_owned(),
+        )
+        .await
+    }
+
+    /// Use a file for an Activity Application icon
+    pub async fn use_activity_icon(
+        db: &Database,
+        id: &str,
+        parent: &str,
+        uploader_id: &str,
+    ) -> Result<File> {
+        db.find_and_use_attachment(
+            id,
+            "icons",
+            FileUsedFor {
+                id: parent.to_owned(),
+                object_type: FileUsedForType::ActivityIcon,
             },
             uploader_id.to_owned(),
         )

@@ -10,7 +10,7 @@ use crate::{
         bson::{doc, from_bson, from_document, to_document, Bson, DateTime, Document},
         options::FindOptions,
     },
-    AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
+    AbstractServers, ActivityApplication, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
 };
 use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;
@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 59; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 60; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1663,6 +1663,112 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
         }
     };
 
+    if revision <= 59 {
+        info!("Running migration [revision 59 / 24-10-2026]: Add Channel Activities platform.");
+
+        create_activity_collections(db).await;
+
+        db.col::<Document>("servers")
+            .update_many(
+                doc! {},
+                doc! {
+                    "$bit": {
+                        "default_permissions": {
+                            "or": ChannelPermission::UseActivities as i64
+                        },
+                    }
+                },
+            )
+            .await
+            .expect("Failed to add UseActivities to default_permissions.");
+    };
+
     // Reminder to update LATEST_REVISION when adding new migrations.
     LATEST_REVISION.max(revision)
+}
+
+/// Activity collections, indexes and the first-party `lab` application
+/// (ADR-0011). Shared by migrations and fresh databases.
+pub async fn create_activity_collections(db: &MongoDb) {
+    for collection in [
+        "activity_applications",
+        "activity_player_data",
+        "activity_scores",
+    ] {
+        db.db().create_collection(collection).await.ok();
+    }
+
+    db.db()
+        .run_command(doc! {
+            "createIndexes": "activity_player_data",
+            "indexes": [
+                {
+                    "key": {
+                        "application_id": 1_i32,
+                        "scope_id": 1_i32,
+                        "user_id": 1_i32
+                    },
+                    "name": "application_scope_user_unique",
+                    "unique": true
+                }
+            ]
+        })
+        .await
+        .expect("Failed to create activity player data index.");
+
+    db.db()
+        .run_command(doc! {
+            "createIndexes": "activity_scores",
+            "indexes": [
+                {
+                    "key": {
+                        "application_id": 1_i32,
+                        "scope_id": 1_i32,
+                        "key": 1_i32,
+                        "user_id": 1_i32
+                    },
+                    "name": "application_scope_key_user_unique",
+                    "unique": true
+                },
+                {
+                    "key": {
+                        "application_id": 1_i32,
+                        "scope_id": 1_i32,
+                        "key": 1_i32,
+                        "value": 1_i32,
+                        "updated_at": 1_i32
+                    },
+                    "name": "leaderboard"
+                }
+            ]
+        })
+        .await
+        .expect("Failed to create activity scores indexes.");
+
+    let now = Timestamp::now_utc();
+    let lab = ActivityApplication {
+        id: "lab".to_string(),
+        name: "Syrnik Lab".to_string(),
+        description: None,
+        icon: None,
+        origin_url: "http://web:5000/_activities/lab".to_string(),
+        url_mappings: Vec::new(),
+        max_participants: 16,
+        first_party: true,
+        enabled: true,
+        client_secret_hash: None,
+        created_at: now,
+        updated_at: now,
+    };
+    db.col::<Document>("activity_applications")
+        .update_one(
+            doc! { "_id": &lab.id },
+            doc! {
+                "$setOnInsert": to_document(&lab)
+                    .expect("failed to serialise activity application seed")
+            },
+        )
+        .upsert(true)
+        .await
+        .expect("Failed to seed activity applications.");
 }

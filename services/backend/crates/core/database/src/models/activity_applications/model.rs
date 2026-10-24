@@ -1,4 +1,5 @@
 use iso8601_timestamp::Timestamp;
+use syrnike_models::v0;
 
 use crate::File;
 
@@ -86,6 +87,67 @@ impl ActivityApplication {
             .iter()
             .find(|mapping| mapping.prefix == prefix)
             .map(|mapping| (mapping.target.as_str(), tail))
+    }
+}
+
+impl ActivityApplication {
+    /// Client view with the Activity Origin built from `hosts.activities`.
+    pub fn into_v0(self, activity_url_template: &str) -> v0::ActivityApplication {
+        v0::ActivityApplication {
+            activity_url: self.activity_url(activity_url_template),
+            id: self.id,
+            name: self.name,
+            description: self.description,
+            icon: self.icon.map(Into::into),
+            max_participants: u32::try_from(self.max_participants).unwrap_or(0),
+            first_party: self.first_party,
+        }
+    }
+
+    /// Administrator view.
+    pub fn into_admin(self, activity_url_template: &str) -> v0::AdminActivityApplication {
+        let origin_url = self.origin_url.clone();
+        let url_mappings = self.url_mappings.iter().cloned().map(Into::into).collect();
+        let enabled = self.enabled;
+        let has_client_secret = self.client_secret_hash.is_some();
+        let created_at = self.created_at;
+        let updated_at = self.updated_at;
+        v0::AdminActivityApplication {
+            application: self.into_v0(activity_url_template),
+            origin_url,
+            url_mappings,
+            enabled,
+            has_client_secret,
+            created_at,
+            updated_at,
+        }
+    }
+}
+
+impl From<ActivityUrlMapping> for v0::ActivityUrlMapping {
+    fn from(value: ActivityUrlMapping) -> Self {
+        Self {
+            prefix: value.prefix,
+            target: value.target,
+        }
+    }
+}
+
+impl From<v0::ActivityUrlMapping> for ActivityUrlMapping {
+    fn from(value: v0::ActivityUrlMapping) -> Self {
+        Self {
+            prefix: value.prefix,
+            target: value.target,
+        }
+    }
+}
+
+impl From<v0::FieldsActivityApplication> for FieldsActivityApplication {
+    fn from(value: v0::FieldsActivityApplication) -> Self {
+        match value {
+            v0::FieldsActivityApplication::Description => Self::Description,
+            v0::FieldsActivityApplication::Icon => Self::Icon,
+        }
     }
 }
 

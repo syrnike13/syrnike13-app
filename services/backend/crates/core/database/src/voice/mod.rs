@@ -1505,6 +1505,7 @@ pub async fn remove_user_from_voice_channel(
         }
         .p(channel.id.clone())
         .await;
+        crate::activities::remove_voice_member(&channel.id, user_id).await;
     }
 
     Ok(())
@@ -1724,6 +1725,7 @@ async fn delete_voice_channel_with_members(
     let deleted_sessions = delete_channel_voice_state(channel, &users).await?;
 
     for (user_id, operation_id) in deleted_sessions {
+        crate::activities::remove_voice_member(&channel.id, &user_id).await;
         EventV1::VoiceChannelLeave {
             id: channel.id.clone(),
             user: user_id,
