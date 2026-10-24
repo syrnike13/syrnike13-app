@@ -15,7 +15,7 @@ import {
 } from '#/components/layout/page'
 import { PlusIcon, SearchIcon, XIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Empty } from '@syrnike13/ui/primitives/empty'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   InputGroup,
   InputGroupAddon,
@@ -249,8 +249,8 @@ function BadgeList({
           <Spinner className="size-4" aria-hidden />
         </div>
       ) : badges.length === 0 ? (
-        <Empty className="px-4 py-8 text-sm text-muted-foreground">
-          {t('emptyList')}
+        <Empty>
+          <EmptyDescription>{t('emptyList')}</EmptyDescription>
         </Empty>
       ) : (
         <ul>

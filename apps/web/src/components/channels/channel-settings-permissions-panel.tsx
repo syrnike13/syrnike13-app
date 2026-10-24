@@ -42,6 +42,7 @@ import {
 } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 const USER_PERMISSIONS_PREFIX = '__user_permissions__:'
@@ -395,7 +396,9 @@ export function ChannelSettingsPermissionsPanel({
             </button>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
+              <Empty size="inline">
+                <EmptyDescription>{t('noRoles')}</EmptyDescription>
+              </Empty>
             ) : (
               <div className="space-y-1">
                 {roles.map((role) => (
@@ -414,9 +417,9 @@ export function ChannelSettingsPermissionsPanel({
                 {t('members')}
               </p>
               {members.length === 0 ? (
-                <p className="px-1 text-sm text-muted-foreground">
-                  {t('noMembers')}
-                </p>
+                <Empty size="inline">
+                  <EmptyDescription>{t('noMembers')}</EmptyDescription>
+                </Empty>
               ) : (
                 members.map((entry) => {
                   const selectionId = `${USER_PERMISSIONS_PREFIX}${entry.user._id}`

@@ -74,6 +74,7 @@ import {
 import { roleIconUrl } from '#/lib/media'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 
@@ -700,7 +701,9 @@ export function ServerSettingsRolesPanel({
             </button>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
+              <Empty size="inline">
+                <EmptyDescription>{t('noRoles')}</EmptyDescription>
+              </Empty>
             ) : (
               <SortableRolesList
                 roles={roles}

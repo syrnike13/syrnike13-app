@@ -434,7 +434,7 @@ export function FeedbackView({
 
 function FeedbackEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <Empty>
+    <Empty size="page">
       <EmptyMedia variant="icon">
         <LightbulbIcon aria-hidden />
       </EmptyMedia>

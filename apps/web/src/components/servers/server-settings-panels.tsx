@@ -902,7 +902,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         {emojiLoading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : emojis.length === 0 ? (
-          <Empty className="py-6">
+          <Empty>
             <EmptyDescription>{t('noEmoji')}</EmptyDescription>
           </Empty>
         ) : (

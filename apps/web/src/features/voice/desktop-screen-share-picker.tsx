@@ -477,7 +477,7 @@ function DisplaySourceGrid({
   if (sources.length === 0) {
     return (
       <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border">
-        <Empty className="py-6">
+        <Empty>
           <EmptyDescription>{emptyText}</EmptyDescription>
         </Empty>
       </div>

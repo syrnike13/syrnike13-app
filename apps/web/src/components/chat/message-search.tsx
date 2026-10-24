@@ -127,7 +127,7 @@ function SearchResults({
 
   if (!ready || searching || hits.length === 0) {
     return (
-      <Empty>
+      <Empty size="sm">
         <EmptyDescription>
           {!ready ? t('minChars') : searching ? t('searching') : t('nothingFound')}
         </EmptyDescription>

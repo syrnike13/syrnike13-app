@@ -64,7 +64,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   if (!query.data) {
     return (
       <div className="theme-surface-content gradient-surface-content flex flex-1 items-center justify-center px-6">
-        <Empty>
+        <Empty size="page">
           <EmptyDescription>{t('notFound')}</EmptyDescription>
         </Empty>
       </div>

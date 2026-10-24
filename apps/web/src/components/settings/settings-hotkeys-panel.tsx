@@ -222,7 +222,7 @@ export function SettingsHotkeysPanel() {
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : bindings.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-4 py-8">
-            <Empty className="p-0">
+            <Empty size="inline">
               <EmptyDescription>{t('empty')}</EmptyDescription>
             </Empty>
           </div>

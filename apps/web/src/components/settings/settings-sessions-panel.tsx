@@ -214,7 +214,7 @@ export function SettingsSessionsPanel() {
             </ul>
           </>
         ) : (
-          <Empty className="py-3">
+          <Empty size="sm">
             <EmptyDescription>{t('noOthers')}</EmptyDescription>
           </Empty>
         )}

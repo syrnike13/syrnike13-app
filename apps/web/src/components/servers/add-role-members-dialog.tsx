@@ -266,7 +266,7 @@ export function AddRoleMembersDialog({
             })}
           </ul>
           {candidates.length === 0 ? (
-            <Empty className="px-3 py-8">
+            <Empty>
               <EmptyDescription>
                 {query.trim() ? t('noResults') : t('noCandidates')}
               </EmptyDescription>

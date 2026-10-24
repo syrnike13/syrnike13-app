@@ -50,7 +50,7 @@ export function UserGlobalProfileSections({
 
       <TabsContent value="servers" className="min-h-0 flex-1 overflow-y-auto pt-5">
         {mutualServers.length === 0 ? (
-          <Empty className="items-start p-0 text-left">
+          <Empty size="inline">
             <EmptyDescription>{t('noMutualServers')}</EmptyDescription>
           </Empty>
         ) : (
@@ -78,7 +78,7 @@ export function UserGlobalProfileSections({
 
       <TabsContent value="friends" className="min-h-0 flex-1 overflow-y-auto pt-5">
         {mutualFriendsCount === 0 ? (
-          <Empty className="items-start p-0 text-left">
+          <Empty size="inline">
             <EmptyDescription>{t('noMutualFriends')}</EmptyDescription>
           </Empty>
         ) : mutualFriends.length === 0 ? (

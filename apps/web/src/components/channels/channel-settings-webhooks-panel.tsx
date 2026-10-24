@@ -287,7 +287,7 @@ export function ChannelSettingsWebhooksPanel({
         {loading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : sortedWebhooks.length === 0 ? (
-          <Empty className="py-6">
+          <Empty>
             <EmptyDescription>{t('empty')}</EmptyDescription>
           </Empty>
         ) : (

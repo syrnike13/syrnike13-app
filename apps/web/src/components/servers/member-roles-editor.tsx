@@ -18,6 +18,7 @@ import { roleIconUrl } from '#/lib/media'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type MemberRolesEditorProps = {
   server: Server
@@ -150,9 +151,9 @@ export function MemberRolesEditor({
 
   if (roles.length === 0) {
     return (
-      <p className={cn('text-sm text-muted-foreground', className)}>
-        {t('noRoles')}
-      </p>
+      <Empty size="inline" className={className}>
+        <EmptyDescription>{t('noRoles')}</EmptyDescription>
+      </Empty>
     )
   }
 
@@ -243,14 +244,11 @@ export function MemberRolesEditor({
         })}
       </ul>
       {filteredRoles.length === 0 ? (
-        <p
-          className={cn(
-            'px-2 text-center text-sm text-muted-foreground',
-            compact ? 'py-4' : 'py-6',
-          )}
-        >
-          {roleSearch.trim() ? t('noMatchingRoles') : t('noRoles')}
-        </p>
+        <Empty size={compact ? 'sm' : 'default'}>
+          <EmptyDescription>
+            {roleSearch.trim() ? t('noMatchingRoles') : t('noRoles')}
+          </EmptyDescription>
+        </Empty>
       ) : null}
     </div>
   )

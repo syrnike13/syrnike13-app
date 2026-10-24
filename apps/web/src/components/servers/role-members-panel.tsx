@@ -215,7 +215,7 @@ export function RoleMembersPanel({
         </ul>
 
         {withRole.length === 0 ? (
-          <Empty className="py-8">
+          <Empty>
             <EmptyDescription>
               {query.trim() ? t('noResults') : t('noMembers')}
             </EmptyDescription>

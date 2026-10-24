@@ -2,11 +2,11 @@ import { useId } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@syrnike13/ui/primitives/card'
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@syrnike13/ui/primitives/empty'
 
 export function ActiveNowPanel() {
   const t = useTranslations('home.activeNow')
@@ -21,12 +21,12 @@ export function ActiveNowPanel() {
         <h2 id={titleId} className="text-xl font-bold">
           {t('title')}
         </h2>
-        <Card size="sm">
-          <CardHeader className="text-center">
-            <CardTitle>{t('soon')}</CardTitle>
-            <CardDescription>{t('description')}</CardDescription>
-          </CardHeader>
-        </Card>
+        <Empty size="sm" variant="card">
+          <EmptyHeader>
+            <EmptyTitle>{t('soon')}</EmptyTitle>
+            <EmptyDescription>{t('description')}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </div>
     </aside>
   )

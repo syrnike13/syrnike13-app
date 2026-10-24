@@ -107,7 +107,7 @@ export function ChannelPinnedDialog({
           {!pinnedQuery.isFetching &&
           !pinnedQuery.isError &&
           messages.length === 0 ? (
-            <Empty className="py-8">
+            <Empty>
               <EmptyDescription>{t('noPinned')}</EmptyDescription>
             </Empty>
           ) : null}

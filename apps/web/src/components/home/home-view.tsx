@@ -30,6 +30,7 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from '@syrnike13/ui/primitives/empty'
 import {
@@ -470,7 +471,10 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
       </div>
 
       {visibleUsers.length === 0 ? (
-        <Empty>
+        <Empty size="page">
+          <EmptyMedia variant="icon">
+            <UsersIcon />
+          </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>{emptyTitle}</EmptyTitle>
             {query ? <EmptyDescription>{t('emptySearch')}</EmptyDescription> : null}

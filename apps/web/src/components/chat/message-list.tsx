@@ -411,10 +411,10 @@ function MessageListBody({
   if (messages.length === 0) {
     return (
       <div
-        className="relative flex h-0 min-h-0 flex-1 flex-col"
+        className="relative flex h-0 min-h-0 flex-1 flex-col pb-(--scroll-padding)"
         style={scrollVars}
       >
-        <Empty className="h-full pb-(--scroll-padding)">
+        <Empty size="page">
           <EmptyMedia variant="icon">
             <MessageSquareIcon />
           </EmptyMedia>

@@ -196,7 +196,7 @@ export function NewConversationButton() {
             />
             <CommandList className="max-h-72 px-2 pb-3">
               {filteredFriends.length === 0 ? (
-                <Empty className="px-2 py-6">
+                <Empty size="sm">
                   <EmptyDescription>{t('noFriends')}</EmptyDescription>
                 </Empty>
               ) : (
@@ -251,7 +251,7 @@ export function NewConversationButton() {
             />
             <CommandList className="max-h-52 px-2 pb-3">
               {filteredFriends.length === 0 ? (
-                <Empty className="px-2 py-4">
+                <Empty size="sm">
                   <EmptyDescription>{t('noFriendsToAdd')}</EmptyDescription>
                 </Empty>
               ) : (

@@ -372,7 +372,7 @@ export function ServerInviteDialog({
             {t('serverMembers')}
           </p>
           {visibleFriends.length === 0 ? (
-            <Empty className="py-8">
+            <Empty>
               <EmptyDescription>{t('noFriends')}</EmptyDescription>
             </Empty>
           ) : (

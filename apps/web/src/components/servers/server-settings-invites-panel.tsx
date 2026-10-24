@@ -177,7 +177,7 @@ export function ServerSettingsInvitesPanel({
       ) : invitesQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : invites.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('empty')}</EmptyDescription>
         </Empty>
       ) : (

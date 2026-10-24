@@ -19,6 +19,7 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ChannelMemberSidebarProps = {
   channel: Extract<Channel, { channel_type: 'TextChannel' }>
@@ -172,8 +173,10 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
             ),
           )}
           {visibleMembers.length === 0 ? (
-            <li className="px-2 py-4 text-center text-xs text-muted-foreground">
-              {t('noMembers')}
+            <li>
+              <Empty size="sm">
+                <EmptyDescription>{t('noMembers')}</EmptyDescription>
+              </Empty>
             </li>
           ) : null}
         </ul>

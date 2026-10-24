@@ -21,6 +21,7 @@ import {
 } from '#/features/sync/voice-call-utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type DmChannelListProps = {
   activeChannelId?: string
@@ -50,9 +51,9 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
 
   if (dmChannels.length === 0) {
     return (
-      <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        {t('empty')}
-      </p>
+      <Empty size="sm" className={className}>
+        <EmptyDescription>{t('empty')}</EmptyDescription>
+      </Empty>
     )
   }
 

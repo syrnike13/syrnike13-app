@@ -94,11 +94,9 @@ export function ChannelChatPanel({
     return (
       <aside className="theme-surface-content gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider text-card-foreground">
         <PanelHeader title={t('panelChat')} onClose={onClose} />
-        <div className="flex flex-1 items-center justify-center px-6">
-          <Empty>
-            <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
-          </Empty>
-        </div>
+        <Empty size="page">
+          <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
+        </Empty>
       </aside>
     )
   }

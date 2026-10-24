@@ -26,6 +26,7 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ServerSettingsMembersPanelProps = {
   serverId: string
@@ -230,9 +231,9 @@ export function ServerSettingsMembersPanel({
             )
           })}
           {filteredMembers.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {t('noMembers')}
-            </div>
+            <Empty>
+              <EmptyDescription>{t('noMembers')}</EmptyDescription>
+            </Empty>
           ) : null}
         </div>
       </div>

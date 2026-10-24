@@ -30,7 +30,7 @@ import {
 import { Badge } from '@syrnike13/ui/primitives/badge'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Card } from '@syrnike13/ui/primitives/card'
-import { Empty } from '@syrnike13/ui/primitives/empty'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Dialog,
   DialogContent,
@@ -764,8 +764,8 @@ function DuplicatePicker({
             />
           ))
         ) : (
-          <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
-            {t('noMatches')}
+          <Empty size="sm" variant="card">
+            <EmptyDescription>{t('noMatches')}</EmptyDescription>
           </Empty>
         )}
       </CandidateGroup>
@@ -795,8 +795,8 @@ function DuplicatePicker({
       {selectedTarget ? (
         <MergeComparison source={source} target={selectedTarget} />
       ) : (
-        <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
-          {t('pickComparison')}
+        <Empty size="sm" variant="card">
+          <EmptyDescription>{t('pickComparison')}</EmptyDescription>
         </Empty>
       )}
     </RadioGroup>

@@ -23,6 +23,7 @@ import { useMediaQuery } from '#/hooks/use-media-query'
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ChannelSidebarProps = {
   activeChannelId?: string
@@ -173,9 +174,9 @@ export function ChannelSidebar({
         ) : (
           <div className="min-h-full p-2">
             {dmChannels.length === 0 ? (
-              <p className="px-2 py-4 text-xs text-muted-foreground">
-                {t('noChannels')}
-              </p>
+              <Empty size="sm">
+                <EmptyDescription>{t('noChannels')}</EmptyDescription>
+              </Empty>
             ) : (
               <nav>
                 <ul className="flex flex-col gap-0.5">

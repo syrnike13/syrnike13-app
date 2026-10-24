@@ -736,7 +736,7 @@ export function ServerSettingsAuditPanel({
       ) : auditQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : entries.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('empty')}</EmptyDescription>
         </Empty>
       ) : (

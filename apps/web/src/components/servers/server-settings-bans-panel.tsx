@@ -188,11 +188,11 @@ export function ServerSettingsBansPanel({
       ) : bansQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : bans.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('empty')}</EmptyDescription>
         </Empty>
       ) : filteredBans.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('noResults')}</EmptyDescription>
         </Empty>
       ) : (
