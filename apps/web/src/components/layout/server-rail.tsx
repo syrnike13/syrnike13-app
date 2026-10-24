@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: rail uses the Squircle brand shape and product hover states.
 import { useMatch, useRouterState } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
@@ -28,7 +27,10 @@ import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railColumnInsetClass,
   railGlyphClass,
+  railIconClass,
+  railIconItemRowClass,
   railIconSquircleProps,
+  railSeparatorClass,
   railServerScrollContentClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
@@ -133,7 +135,7 @@ function ServerRailTooltip({
 
   return (
     <div className="w-max max-w-52 space-y-2">
-      <div className="truncate text-sm font-black">{serverName}</div>
+      <div className="truncate text-sm font-semibold">{serverName}</div>
       <ServerRailTooltipAvatarRow
         kind="voice"
         label={t('voiceParticipants')}
@@ -234,7 +236,8 @@ export function ServerRail({
   }
 
   return (
-    <div
+    <nav
+      aria-label={t('servers')}
       className={cn(
         'flex h-full w-18 shrink-0 flex-col',
         reserveUserPanelSpace ? 'pb-(--rail-bottom-reserve)' : 'pb-3',
@@ -248,31 +251,35 @@ export function ServerRail({
           railColumnInsetClass,
         )}
       >
-        <RailIconButton
-          active={homeActive}
-          title={t('home')}
-          to={homeTo}
-          search={{ tab: 'online' }}
-          onClick={() => syncStore.setSelectedServerId(null)}
-        >
-          <span className="relative flex size-full items-center justify-center">
-            <HomeIcon className={railGlyphClass} />
-            <NotificationBadge
-              badge={homeBadge}
-              className="absolute -top-1 -right-1"
-            />
-          </span>
-        </RailIconButton>
+        <ul className="flex w-full flex-col items-center gap-2">
+          <RailIconButton
+            active={homeActive}
+            title={t('home')}
+            to={homeTo}
+            search={{ tab: 'online' }}
+            onClick={() => syncStore.setSelectedServerId(null)}
+          >
+            <span className="relative flex size-full items-center justify-center">
+              <HomeIcon className={railGlyphClass} />
+              <NotificationBadge
+                badge={homeBadge}
+                className="absolute -top-1 -right-1"
+              />
+            </span>
+          </RailIconButton>
 
-        <PeopleRailSection
-          variant={variant}
-          activeChannelId={activeChannelId}
-        />
+          <PeopleRailSection
+            variant={variant}
+            activeChannelId={activeChannelId}
+          />
+        </ul>
+
+        <div aria-hidden="true" className={railSeparatorClass} />
 
         <ScrollArea
           className={cn('min-h-0 flex-1', '-ml-1 rail-overflow-width')}
         >
-          <div
+          <ul
             className={cn(
               'flex flex-col items-center gap-2',
               railServerScrollContentClass,
@@ -290,24 +297,25 @@ export function ServerRail({
               />
             ))}
             {servers.length === 0 ? (
-              <Squircle
-                {...railIconSquircleProps}
-                className={cn(
-                  'size-10',
-                  'bg-card text-foreground hover:bg-secondary hover:text-foreground',
-                  'flex items-center justify-center text-foreground',
-                )}
-                title={t('noServers')}
-              >
-                <HashIcon className={railGlyphClass} />
-              </Squircle>
+              <li className={railIconItemRowClass}>
+                <Squircle
+                  {...railIconSquircleProps}
+                  // eslint-disable-next-line shadcn/require-static-classes -- shared rail surface, same literals as RailIconButton
+                  className={railIconClass(false)}
+                  title={t('noServers')}
+                >
+                  <HashIcon className={railGlyphClass} />
+                </Squircle>
+              </li>
             ) : null}
 
-            <CreateServerDialog />
-          </div>
+            <li className={railIconItemRowClass}>
+              <CreateServerDialog />
+            </li>
+          </ul>
         </ScrollArea>
       </div>
-    </div>
+    </nav>
   )
 }
 

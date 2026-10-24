@@ -216,7 +216,7 @@ describe('ServerSettingsPanelContent', () => {
     expect(unsavedBar.querySelector('.gradient-surface-solid')).toBeTruthy()
     expect(
       screen.getByRole('button', { name: 'Сбросить' }),
-    ).toHaveClass('hover:bg-muted')
+    ).toHaveClass('hover:bg-hover')
     expect(
       screen.getByRole('button', { name: 'Сохранить' }),
     ).toHaveClass('bg-primary')

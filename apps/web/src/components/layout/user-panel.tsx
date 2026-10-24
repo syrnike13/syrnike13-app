@@ -165,7 +165,7 @@ export function UserPanel({
                 <button
                   type="button"
                   data-avatar-hover-scope=""
-                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-accent/60"
+                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-hover"
                 />
               }
             >

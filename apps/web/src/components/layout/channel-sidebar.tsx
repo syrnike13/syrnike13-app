@@ -174,20 +174,23 @@ export function ChannelSidebar({
           <div className="min-h-full p-2">
             {dmChannels.length === 0 ? (
               <p className="px-2 py-4 text-xs text-muted-foreground">
-                Нет доступных каналов
+                {t('noChannels')}
               </p>
             ) : (
-              <nav className="flex flex-col gap-0.5">
-                {dmChannels.map((channel) => (
-                  <ChannelSidebarItem
-                    key={channel._id}
-                    channel={channel}
-                    activeChannelId={activeChannelId}
-                    users={users}
-                    currentUserId={auth.user?._id}
-                    unreads={unreads}
-                  />
-                ))}
+              <nav>
+                <ul className="flex flex-col gap-0.5">
+                  {dmChannels.map((channel) => (
+                    <li key={channel._id}>
+                      <ChannelSidebarItem
+                        channel={channel}
+                        activeChannelId={activeChannelId}
+                        users={users}
+                        currentUserId={auth.user?._id}
+                        unreads={unreads}
+                      />
+                    </li>
+                  ))}
+                </ul>
               </nav>
             )}
           </div>

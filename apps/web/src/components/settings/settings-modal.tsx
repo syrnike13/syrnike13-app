@@ -207,7 +207,7 @@ function SettingsDesktopModal() {
               </h2>
               <Button
                 type="button"
-                variant="ghost-hover"
+                variant="ghost"
                 size="icon"
                 className="size-8"
                 onClick={() => setOpen(false)}

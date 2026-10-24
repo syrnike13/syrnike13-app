@@ -194,7 +194,6 @@ describe('ServerRail', () => {
       )
       expect(tooltipContent).toBeTruthy()
       expect(tooltipContent?.textContent).toBe('Demo')
-      expect(tooltipContent?.className).toContain('font-black')
     })
   })
 

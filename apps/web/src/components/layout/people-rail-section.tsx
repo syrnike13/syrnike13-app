@@ -23,7 +23,10 @@ import {
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
-import { railAvatarClass } from '#/components/layout/shell-chrome'
+import {
+  railAvatarClass,
+  railIconItemRowClass,
+} from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 type PeopleRailVariant = 'desktop' | 'mobile'
@@ -69,18 +72,15 @@ export function PeopleRailSection({
   return (
     <>
       {people.map((channel) => (
-        <PeopleRailButton
-          key={channel._id}
-          channel={channel}
-          variant={variant}
-          activeChannelId={activeChannelId}
-          currentUserId={auth.user?._id}
-        />
+        <li key={channel._id} className={railIconItemRowClass}>
+          <PeopleRailButton
+            channel={channel}
+            variant={variant}
+            activeChannelId={activeChannelId}
+            currentUserId={auth.user?._id}
+          />
+        </li>
       ))}
-      <div
-        aria-hidden="true"
-        className="my-0.5 h-0.5 w-9 shrink-0 rounded-full bg-border"
-      />
     </>
   )
 }

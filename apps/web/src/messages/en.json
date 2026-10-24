@@ -480,7 +480,8 @@
       "unread": "Unread messages",
       "more": "More: {count}",
       "home": "Home",
-      "noServers": "No servers"
+      "noServers": "No servers",
+      "servers": "Servers"
     },
     "voice": {
       "activeCall": "Call in progress",
@@ -491,7 +492,8 @@
       "soundOff": "Sound off"
     },
     "channel": {
-      "directMessages": "Direct messages"
+      "directMessages": "Direct messages",
+      "noChannels": "No channels available"
     },
     "serverTooltip": {
       "voiceParticipants": "Voice channel participants",
@@ -2152,6 +2154,10 @@
       "noFriendsToAdd": "No friends to add",
       "cancel": "Cancel",
       "create": "Create"
+    },
+    "sidebar": {
+      "navigation": "Home navigation",
+      "directMessages": "Direct messages"
     }
   },
   "invite": {

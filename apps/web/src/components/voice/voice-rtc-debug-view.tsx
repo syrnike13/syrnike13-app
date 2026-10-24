@@ -107,7 +107,7 @@ export function VoiceRtcDebugView() {
         </nav>
       </aside>
 
-      <main className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <ScrollArea className="h-full">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {voiceSession.status !== 'connected' ? (
@@ -126,7 +126,7 @@ export function VoiceRtcDebugView() {
             )}
           </div>
         </ScrollArea>
-      </main>
+      </div>
     </div>
   )
 }

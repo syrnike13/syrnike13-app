@@ -86,9 +86,19 @@ export const railIconSquircleProps = {
   cornerRadius: RAIL_ICON_CORNER_RADIUS_PX,
 } as const
 
-/** Фон кнопок рельса: card заметнее background, hover — secondary. */
-export const railIconIdleClass =
-  'bg-card text-foreground hover:bg-secondary hover:text-foreground' as const
+/**
+ * Поверхность кнопки рельса (Home, сервер, «+»). Как в Discord: в покое —
+ * карточка, при наведении и в активном состоянии — акцент темы (`primary`).
+ * Форму даёт `<Squircle>`, поэтому CSS-радиуса нет.
+ */
+export function railIconClass(active: boolean): string {
+  return [
+    'flex size-10 shrink-0 items-center justify-center overflow-hidden outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50',
+    active
+      ? 'bg-primary text-primary-foreground'
+      : 'bg-card text-foreground hover:bg-primary hover:text-primary-foreground',
+  ].join(' ')
+}
 
 /** Горизонтальный inset колонки рельса (4px = w-1 индикатора с -left-1). */
 export const railColumnInsetClass = 'px-1' as const
@@ -96,9 +106,13 @@ export const railColumnInsetClass = 'px-1' as const
 /** Внутренний отступ контента ScrollArea — выравнивает кнопки с Home. */
 export const railServerScrollContentClass = 'pl-1' as const
 
-/** Обёртка квадратной кнопки рельса (RailIconButton). */
+/** Пункт рельса: `li` с индикатором слева и кнопкой по центру. */
 export const railIconItemRowClass =
   'group relative flex w-full justify-center' as const
+
+/** Разделитель рельса после Home и DM: 32×2px. */
+export const railSeparatorClass =
+  'h-0.5 w-8 shrink-0 rounded-full bg-border' as const
 
 /** Разделители оболочки — полная непрозрачность. */
 export const shellDivider = 'border-shell-divider' as const

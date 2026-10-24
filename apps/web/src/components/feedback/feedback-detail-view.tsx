@@ -95,7 +95,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
+        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
           <article className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -175,7 +175,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
               </section>
             ) : null}
           </article>
-        </main>
+        </div>
       </ScrollArea>
     </div>
   )

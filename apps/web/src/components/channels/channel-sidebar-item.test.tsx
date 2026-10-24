@@ -35,14 +35,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     children,
-    onClick,
     params,
+    search: _search,
+    to: _to,
+    ...props
   }: {
     children: ReactNode
-    onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void
     params: { channelId: string }
-  }) => (
-    <a href={`/c/${params.channelId}`} onClick={onClick}>
+    search?: unknown
+    to?: string
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={`/c/${params.channelId}`} {...props}>
       {children}
     </a>
   ),
@@ -259,10 +262,10 @@ describe('ChannelSidebarItem voice navigation', () => {
     renderVoiceItem('text-general')
 
     const link = screen.getByRole('link', { name: 'main' })
-    const row = link.parentElement
+    const row = link
 
     expect(row?.className).toContain('text-muted-foreground')
-    expect(row?.className).toContain('hover:text-foreground')
+    expect(row?.className).toContain('hover:text-sidebar-accent-foreground')
     expect(row?.className).toContain('font-medium')
     expect(row?.className).not.toContain('font-normal')
   })
@@ -272,7 +275,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.voice.status = 'idle'
     renderVoiceItem('voice-main')
 
-    const row = screen.getByRole('link', { name: 'main' }).parentElement
+    const row = screen.getByRole('link', { name: 'main' })
 
     expect(row?.className).toContain('font-medium')
     expect(row?.className).not.toContain('font-normal')
@@ -283,7 +286,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.voice.status = 'connected'
     renderVoiceItem('text-general')
 
-    const row = screen.getByRole('link', { name: 'main' }).parentElement
+    const row = screen.getByRole('link', { name: 'main' })
 
     expect(row?.className).toContain('text-foreground')
     expect(row?.className).not.toContain('text-muted-foreground')

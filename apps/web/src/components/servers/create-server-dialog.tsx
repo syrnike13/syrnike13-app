@@ -7,10 +7,9 @@ import { toast } from 'sonner'
 
 import {
   railGlyphClass,
-  railIconIdleClass,
+  railIconClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { cn } from '#/lib/utils'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
@@ -180,20 +179,14 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         render={
           trigger ?? (
             <Squircle asChild {...railIconSquircleProps}>
-              {/* design-allow restyle-shared: rail idle surface is a brand/rail exception */}
-              <Button
+              <button
                 type="button"
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  'size-10',
-                  // eslint-disable-next-line shadcn/require-static-classes -- shared rail idle surface constant
-                  railIconIdleClass,
-                )}
+                className={railIconClass(false)}
                 title={t('triggerAria')}
+                aria-label={t('triggerAria')}
               >
                 <PlusIcon className={railGlyphClass} />
-              </Button>
+              </button>
             </Squircle>
           )
         }

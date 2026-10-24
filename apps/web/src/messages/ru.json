@@ -480,7 +480,8 @@
       "unread": "Есть непрочитанные сообщения",
       "more": "Ещё {count}",
       "home": "Главная",
-      "noServers": "Нет серверов"
+      "noServers": "Нет серверов",
+      "servers": "Серверы"
     },
     "voice": {
       "activeCall": "Идёт звонок",
@@ -491,7 +492,8 @@
       "soundOff": "Звук выключен"
     },
     "channel": {
-      "directMessages": "Личные сообщения"
+      "directMessages": "Личные сообщения",
+      "noChannels": "Нет доступных каналов"
     },
     "serverTooltip": {
       "voiceParticipants": "Участники голосовых каналов",
@@ -2152,6 +2154,10 @@
       "noFriendsToAdd": "Нет друзей для добавления",
       "cancel": "Отмена",
       "create": "Создать"
+    },
+    "sidebar": {
+      "navigation": "Навигация",
+      "directMessages": "Личные сообщения"
     }
   },
   "invite": {

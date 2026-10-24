@@ -206,27 +206,28 @@ function ChannelDroppableList({
 }) {
   if (!canDrag) {
     return (
-      <div className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-0.5">
         {channels.map((channel) => (
-          <ChannelSidebarItem
-            key={channel._id}
-            channel={channel}
-            activeChannelId={activeChannelId}
-            users={users}
-            currentUserId={currentUserId}
-            unreads={unreads}
-            canManage={canManage}
-            canInvite={canInvite(channel)}
-          />
+          <li key={channel._id}>
+            <ChannelSidebarItem
+              channel={channel}
+              activeChannelId={activeChannelId}
+              users={users}
+              currentUserId={currentUserId}
+              unreads={unreads}
+              canManage={canManage}
+              canInvite={canInvite(channel)}
+            />
+          </li>
         ))}
-      </div>
+      </ul>
     )
   }
 
   return (
     <Droppable droppableId={sectionId}>
       {(provided) => (
-        <div
+        <ul
           ref={provided.innerRef}
           {...provided.droppableProps}
           className="flex shrink-0 flex-col gap-0.5"
@@ -238,7 +239,7 @@ function ChannelDroppableList({
               index={index}
             >
               {(dragProvided, dragSnapshot) => (
-                <div
+                <li
                   ref={(element) => {
                     dragProvided.innerRef(element)
                     if (index === 0) {
@@ -261,12 +262,12 @@ function ChannelDroppableList({
                     canInvite={canInvite(channel)}
                     dragHandleProps={dragProvided.dragHandleProps ?? undefined}
                   />
-                </div>
+                </li>
               )}
             </Draggable>
           ))}
           {provided.placeholder}
-        </div>
+        </ul>
       )}
     </Droppable>
   )

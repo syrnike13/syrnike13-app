@@ -7,16 +7,17 @@ type ShellContentFrameProps = {
   children: ReactNode
 }
 
+/** Основная область shell: только верхняя граница, края окна без линий. */
 export function ShellContentFrame({ children }: ShellContentFrameProps) {
   return (
-    <div
+    <main
       className={cn(
-        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-l-0 shadow-sm',
+        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t',
         shellDivider,
         shellContentSurface,
       )}
     >
       {children}
-    </div>
+    </main>
   )
 }

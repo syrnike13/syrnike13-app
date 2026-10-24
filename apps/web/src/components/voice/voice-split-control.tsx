@@ -42,7 +42,7 @@ export function splitControlMainButtonClass(
         ? splitControlDangerMainClass
         : success
           ? splitControlSuccessMainClass
-          : 'group-hover/media:bg-accent group-hover/media:text-foreground',
+          : 'group-hover/media:bg-hover group-hover/media:text-foreground',
     )
   }
 
@@ -52,7 +52,7 @@ export function splitControlMainButtonClass(
       ? splitControlDangerMainClass
       : success
         ? splitControlSuccessMainClass
-        : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+        : 'bg-transparent text-muted-foreground group-hover/media:bg-hover group-hover/media:text-foreground',
   )
 }
 
@@ -83,7 +83,7 @@ function SplitControlChevron({
             ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
             : success
               ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
-              : 'group-hover/media:bg-accent group-hover/media:text-foreground',
+              : 'group-hover/media:bg-hover group-hover/media:text-foreground',
         )
       : cn(
           'flex h-8 w-4 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
@@ -91,7 +91,7 @@ function SplitControlChevron({
             ? 'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
             : success
               ? 'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
-              : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+              : 'bg-transparent text-muted-foreground group-hover/media:bg-hover group-hover/media:text-foreground',
         )
 
   return (

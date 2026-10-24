@@ -20,6 +20,7 @@ import { RailUnreadIndicator } from '#/components/layout/rail-icon-button'
 import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -427,8 +428,9 @@ export function ChannelSidebarItem({
     )
   }
 
-  const channelActionButtonClassName =
-    'flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+  const hasActions = serverVoice || (canManage && isServerChannel)
+  const channelActionClassName =
+    'text-muted-foreground opacity-0 group-hover/channel:opacity-100 focus-visible:opacity-100'
 
   const row = (
     <div
@@ -443,32 +445,28 @@ export function ChannelSidebarItem({
       onDragLeave={handleVoiceDragLeave}
       onDrop={(event) => void handleVoiceDrop(event)}
     >
-      <div
-        data-avatar-hover-scope=""
-        className={cn(
-          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-medium tracking-tight transition-colors',
-          active
-            ? 'bg-secondary text-foreground'
-            : connectedVoice
-              ? 'text-foreground hover:bg-accent'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-        )}
-      >
+      <div data-avatar-hover-scope="" className="relative">
         {!active && notificationBadge.hasUnread ? (
           <RailUnreadIndicator className="-left-2" />
         ) : null}
-        <Link
-          to={channelPath}
-          params={{ channelId: channel._id }}
-          search={{ m: undefined }}
+        <SidebarMenuButton
+          isActive={active}
           className={cn(
-            'flex h-full min-w-0 flex-1 items-center gap-2 px-2',
+            connectedVoice && !active && 'text-foreground',
+            hasActions && 'group-hover/channel:pr-16',
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
           )}
-          onClick={serverVoice ? handleVoiceChannelClick : undefined}
-          {...(canManage && dragHandleProps ? dragHandleProps : {})}
+          render={
+            <Link
+              to={channelPath}
+              params={{ channelId: channel._id }}
+              search={{ m: undefined }}
+              onClick={serverVoice ? handleVoiceChannelClick : undefined}
+              {...(canManage && dragHandleProps ? dragHandleProps : {})}
+            />
+          }
         >
           {channel.channel_type === 'DirectMessage' && dmUser ? (
             <UserAvatar
@@ -517,33 +515,38 @@ export function ChannelSidebarItem({
               <HeadphonesIcon aria-hidden="true" className="size-3.5" />
             </span>
           ) : null}
-        </Link>
-        {serverVoice || (canManage && isServerChannel) ? (
-          <div className="mr-1 flex shrink-0 self-center items-center gap-0.5">
+        </SidebarMenuButton>
+        {hasActions ? (
+          <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
             {serverVoice ? (
-              <button
+              <Button
                 type="button"
-                className={channelActionButtonClassName}
+                variant="ghost"
+                size="icon-xs"
+                className={channelActionClassName}
                 title={t('openChat')}
                 aria-label={t('openChat')}
                 onClick={openVoiceChannelChat}
               >
-                <MessageSquareIcon className="size-3.5" />
-              </button>
+                <MessageSquareIcon />
+              </Button>
             ) : null}
             {canManage && isServerChannel ? (
-              <button
+              <Button
                 type="button"
-                className={channelActionButtonClassName}
+                variant="ghost"
+                size="icon-xs"
+                className={channelActionClassName}
                 title={t('channelSettings')}
+                aria-label={t('channelSettings')}
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
                   openChannelSettings()
                 }}
               >
-                <SettingsIcon className="size-3.5" />
-              </button>
+                <SettingsIcon />
+              </Button>
             ) : null}
           </div>
         ) : null}
