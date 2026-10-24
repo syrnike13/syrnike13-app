@@ -1047,6 +1047,7 @@
       "addEmojiDescription": "Имя — латиница, без пробелов. Файл — изображение.",
       "nameLabel": "Имя",
       "fileLabel": "Файл",
+      "uploadEmoji": "Загрузить эмодзи",
       "serverEmoji": "Серверные emoji",
       "loading": "Загрузка…",
       "noEmoji": "Нет серверных emoji",

@@ -1047,6 +1047,7 @@
       "addEmojiDescription": "Name — Latin letters, no spaces. File — an image.",
       "nameLabel": "Name",
       "fileLabel": "File",
+      "uploadEmoji": "Upload emoji",
       "serverEmoji": "Server emoji",
       "loading": "Loading…",
       "noEmoji": "No server emoji",

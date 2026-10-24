@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PencilIcon, Trash2Icon } from '#/components/icons'
 import type {
@@ -36,6 +36,17 @@ import {
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { useImageCropper } from '#/components/media/image-crop-dialog'
+import { SettingsBlock } from '#/components/settings/settings-panels'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { Field, FieldLabel } from '@syrnike13/ui/primitives/field'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
@@ -64,7 +75,6 @@ import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { serverBannerUrl, serverIconUrl } from '#/lib/media'
-import { cn } from '#/lib/utils'
 
 type ServerSettingsPanelsProps = {
   serverId: string
@@ -84,33 +94,14 @@ const SERVER_EMOJI_NAME_PATTERN = /^[A-Za-z0-9_]+$/
 /** Server banners crop like Discord's 960×540. */
 const SERVER_BANNER_ASPECT = 16 / 9
 
-function SettingsField({
-  label,
-  description,
-  children,
-  className,
-}: {
-  label: string
-  description?: string
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <section
-      className={cn(
-        'border-b border-border py-6 last:border-b-0',
-        className,
-      )}
-    >
-      <div className="mb-4">
-        <h3 className="text-base font-semibold">{label}</h3>
-        {description ? (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      <div>{children}</div>
-    </section>
-  )
+/** Discord: an emoji without a typed name takes the file name. */
+function emojiNameFromFile(file: File) {
+  return file.name
+    .replace(/\.[^.]+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32)
 }
 
 function createFilePreviewUrl(file: File) {
@@ -696,8 +687,8 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
         </p>
       </div>
 
-      <SettingsField
-        label={t('systemMessages')}
+      <SettingsBlock
+        title={t('systemMessages')}
         description={t('systemMessagesDescription')}
       >
         <div className="flex max-w-xl flex-col gap-2">
@@ -749,7 +740,7 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
             </SelectContent>
           </Select>
         </div>
-      </SettingsField>
+      </SettingsBlock>
 
     </form>
   )
@@ -802,7 +793,8 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
 
   async function handleEmojiUpload(file: File) {
     const token = auth.session?.token
-    const trimmedName = emojiName.trim()
+    // Discord: without a typed name the file name becomes the emoji name.
+    const trimmedName = emojiName.trim() || emojiNameFromFile(file)
     if (!token || !trimmedName) {
       toast.error(t('emojiNameRequired'))
       if (emojiFileRef.current) emojiFileRef.current.value = ''
@@ -875,13 +867,13 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
 
   return (
     <>
-      <SettingsField
-        label={t('addEmoji')}
+      <SettingsBlock
+        title={t('addEmoji')}
         description={t('addEmojiDescription')}
       >
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="emoji-name">{t('nameLabel')}</Label>
+        <div className="flex items-end gap-2">
+          <Field className="flex-1">
+            <FieldLabel htmlFor="emoji-name">{t('nameLabel')}</FieldLabel>
             <Input
               id="emoji-name"
               value={emojiName}
@@ -890,25 +882,31 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               placeholder="party_parrot"
               onChange={(event) => setEmojiName(event.target.value)}
             />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="emoji-file">{t('fileLabel')}</Label>
-            <Input
-              id="emoji-file"
-              ref={emojiFileRef}
-              type="file"
-              accept="image/*"
-              disabled={emojiUploading}
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void handleEmojiUpload(file)
-              }}
-            />
-          </div>
+          </Field>
+          <input
+            ref={emojiFileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            aria-label={t('fileLabel')}
+            disabled={emojiUploading}
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) void handleEmojiUpload(file)
+            }}
+          />
+          <Button
+            type="button"
+            disabled={emojiUploading}
+            onClick={() => emojiFileRef.current?.click()}
+          >
+            {emojiUploading ? <Spinner /> : null}
+            {t('uploadEmoji')}
+          </Button>
         </div>
-      </SettingsField>
+      </SettingsBlock>
 
-      <SettingsField label={t('serverEmoji')}>
+      <SettingsBlock title={t('serverEmoji')}>
         {emojiLoading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : emojis.length === 0 ? (
@@ -916,31 +914,32 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
             <EmptyDescription>{t('noEmoji')}</EmptyDescription>
           </Empty>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ItemGroup className="gap-0">
             {emojis.map((emoji) => (
-              <li
-                key={emoji._id}
-                className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5"
-              >
-                <CustomEmoji emojiId={emoji._id} name={emoji.name} size="md" />
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  :{emoji.name}:
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0"
-                  title={t('delete')}
-                  onClick={() => setEmojiPendingDeletion(emoji)}
-                >
-                  <Trash2Icon className="size-4" />
-                </Button>
-              </li>
+              <Item key={emoji._id} size="sm">
+                <ItemMedia>
+                  <CustomEmoji emojiId={emoji._id} name={emoji.name} size="lg" />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>:{emoji.name}:</ItemTitle>
+                </ItemContent>
+                <ItemActions>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon-sm"
+                    title={t('delete')}
+                    aria-label={t('delete')}
+                    onClick={() => setEmojiPendingDeletion(emoji)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </ItemActions>
+              </Item>
             ))}
-          </ul>
+          </ItemGroup>
         )}
-      </SettingsField>
+      </SettingsBlock>
       <Dialog
         open={emojiPendingDeletion !== null}
         onOpenChange={(open) => {
