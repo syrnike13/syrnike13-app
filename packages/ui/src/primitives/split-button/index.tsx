@@ -42,10 +42,9 @@ const splitButtonSegmentVariants = cva(
         // Voice stage: no fill at rest, like the default variant, in on-media colours.
         media:
           "text-on-media/80 group-hover/split:bg-on-media/5 group-hover/split:text-on-media hover:bg-on-media/10 data-popup-open:bg-on-media/10 data-popup-open:text-on-media",
-        // Solid red: leave the call. `destructive-contrast` is the saturated
-        // fill red; `destructive` is tuned for text on dark surfaces.
+        // Solid red: leave the call.
         danger:
-          "bg-destructive-contrast text-destructive-foreground group-hover/split:bg-destructive-contrast/90 hover:bg-destructive-contrast/80 data-popup-open:bg-destructive-contrast/80",
+          "bg-destructive text-destructive-foreground group-hover/split:bg-destructive/90 hover:bg-destructive/80 data-popup-open:bg-destructive/80",
       },
     },
     compoundVariants: [
@@ -72,7 +71,7 @@ const splitButtonSegmentVariants = cva(
       {
         segment: "main",
         size: "xl",
-        class: "h-12.5 min-w-20 rounded-l-xl px-3 last:rounded-r-xl [&_svg:not([class*='size-'])]:size-6",
+        class: "h-12.5 min-w-15 rounded-l-xl px-3 last:rounded-r-xl [&_svg:not([class*='size-'])]:size-5",
       },
       {
         segment: "chevron",
