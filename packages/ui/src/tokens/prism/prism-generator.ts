@@ -22,7 +22,7 @@ const SURFACE_MIX = {
   muted: 9,
   input: 8,
   sidebar: 6,
-  border: 18,
+  border: 14,
   accent: 17,
   hover: 10,
   selection: 18,
