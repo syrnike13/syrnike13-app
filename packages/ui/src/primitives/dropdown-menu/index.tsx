@@ -229,19 +229,24 @@ function DropdownMenuCheckboxItem({
   checked,
   inset,
   description,
+  variant = "default",
   ...props
 }: MenuPrimitive.CheckboxItem.Props & {
   inset?: boolean
   /** Вторая строка под подписью пункта. */
   description?: React.ReactNode
+  /** Not in base-nova: red item, e.g. server mute in a member menu. */
+  variant?: "default" | "destructive"
 }) {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
+      data-variant={variant}
       className={cn(
         "group/checkbox-item relative flex cursor-default items-center gap-1.5 rounded-md py-2 pr-9 pl-1.5 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         description != null && "py-1.5",
+        "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       checked={checked}

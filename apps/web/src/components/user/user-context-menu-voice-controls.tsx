@@ -55,10 +55,6 @@ type UserContextMenuVoiceControlsProps = {
 
 type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect' | 'move'
 
-const voiceActionClassName =
-  'grid icon-text-grid items-center gap-x-2'
-const destructiveVoiceActionClassName = `${voiceActionClassName} text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20 [&_svg]:text-destructive`
-
 function isServerVoiceMoveTarget(channel: Channel): boolean {
   return channel.channel_type === 'TextChannel' && channel.voice != null
 }
@@ -220,7 +216,7 @@ export function UserContextMenuVoiceControls({
           {!isSelf ? <ContextMenuSeparator /> : null}
           {canServerMute ? (
             <ContextMenuCheckboxItem
-              className={destructiveVoiceActionClassName}
+              variant="destructive"
               checked={serverMuted}
               disabled={pendingAction !== null}
               closeOnClick={false}
@@ -238,7 +234,7 @@ export function UserContextMenuVoiceControls({
           ) : null}
           {canServerDeafen ? (
             <ContextMenuCheckboxItem
-              className={destructiveVoiceActionClassName}
+              variant="destructive"
               checked={serverDeafened}
               disabled={pendingAction !== null}
               closeOnClick={false}
@@ -257,7 +253,6 @@ export function UserContextMenuVoiceControls({
           {canServerMove && moveTargets.length > 0 ? (
             <ContextMenuSub>
               <ContextMenuSubTrigger
-                className="grid icon-text-icon-grid items-center gap-x-2"
                 disabled={pendingAction !== null}
               >
                 <HeadphonesIcon />
@@ -288,7 +283,6 @@ export function UserContextMenuVoiceControls({
           ) : null}
           {canServerMove ? (
             <ContextMenuItem
-              className={voiceActionClassName}
               variant="destructive"
               disabled={pendingAction !== null}
               onClick={() => {
