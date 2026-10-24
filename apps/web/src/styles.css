@@ -745,6 +745,49 @@ html {
   image-rendering: pixelated;
 }
 
+/* Syrnik mascot scenes in empty states. */
+.syrnik-scene {
+  overflow: visible;
+}
+
+.syrnik-z {
+  color: var(--muted-foreground);
+  opacity: 0;
+  animation: syrnik-z-float 3s steps(12, end) infinite;
+}
+
+.syrnik-z-2 {
+  animation-delay: 1s;
+}
+
+.syrnik-z-3 {
+  animation-delay: 2s;
+}
+
+@keyframes syrnik-z-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 2px);
+  }
+  25% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(1px, -2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .syrnik-z {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Halloween set dressing: the logo itself never changes in this scene. */
 .cake-halloween-decor,
 .cake-bat {

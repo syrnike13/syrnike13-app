@@ -15,6 +15,7 @@ import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
+import { SyrnikScene } from '#/components/mascot/syrnik-scene'
 import { shellColumnHeaderClass } from '#/components/layout/shell-chrome'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -472,8 +473,8 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
 
       {visibleUsers.length === 0 ? (
         <Empty size="page">
-          <EmptyMedia variant="icon">
-            <UsersIcon />
+          <EmptyMedia variant="illustration">
+            <SyrnikScene scene="sleeping" />
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>{emptyTitle}</EmptyTitle>

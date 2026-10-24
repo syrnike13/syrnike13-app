@@ -64,6 +64,10 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
+        // Mascot artwork (an SVG scene): 128px in a page empty state, 64px
+        // in compact ones.
+        illustration:
+          "mb-0 size-32 group-data-[size=sm]/empty:size-16 group-data-[size=inline]/empty:size-12 [&_svg]:size-full",
         icon: "flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground group-data-[size=page]/empty:size-12 group-data-[size=page]/empty:rounded-xl [&_svg:not([class*='size-'])]:size-4 group-data-[size=page]/empty:[&_svg:not([class*='size-'])]:size-6",
       },
     },
