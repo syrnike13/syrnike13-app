@@ -47,6 +47,9 @@ export function PresenceStatusSelect({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
+        // Discord: nested profile menus open on hover, like submenus.
+        openOnHover
+        delay={50}
         disabled={isPending}
         render={
           <Item
