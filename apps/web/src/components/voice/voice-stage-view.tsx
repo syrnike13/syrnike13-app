@@ -718,14 +718,17 @@ export function VoiceStageView({
               displayName={resolveParticipantDisplayName}
             />
           ) : (
-            <EmptyVoiceStage
+            <VoiceStageJoinPrompt
               title={title}
+              participants={[]}
+              users={users}
+              displayName={resolveParticipantDisplayName}
               joinLabel={resolvedJoinLabel ?? t('actions.join')}
               onJoin={() => void voiceSession.join(channelId)}
             />
           )
         ) : showRemoteJoinPreview ? (
-          <VoiceStageJoinPreview
+          <VoiceStageJoinPrompt
             title={title}
             participants={participants}
             users={users}
@@ -1083,7 +1086,7 @@ function VoiceStageWaitingCall({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-background">
+      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-media-backdrop">
         <UserAvatar
           user={counterpart}
           className="size-28 sm:size-32 md:size-36"
@@ -1105,29 +1108,12 @@ function VoiceStageWaitingCall({
   )
 }
 
-function EmptyVoiceStage({
-  title,
-  joinLabel,
-  onJoin,
-}: {
-  title: string
-  joinLabel: string
-  onJoin: () => void
-}) {
-  const t = useTranslations('voice')
-
-  return (
-    <div className="flex min-h-voice-tile-sm flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-      <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
-      <p className="text-sm text-muted-foreground">{t('stage.noOne')}</p>
-      <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
-        {joinLabel}
-      </Button>
-    </div>
-  )
-}
-
-function VoiceStageJoinPreview({
+/**
+ * Before joining: who is in the channel (a stack of up to four avatars), the
+ * channel name, a status line and the join button. Empty channels show no
+ * avatars.
+ */
+function VoiceStageJoinPrompt({
   title,
   participants,
   users,
@@ -1148,60 +1134,62 @@ function VoiceStageJoinPreview({
   const visibleParticipants = participants.slice(0, 4)
   const hiddenParticipantCount =
     participants.length - visibleParticipants.length
-  const firstParticipantName = displayName(participants[0].id)
   const status =
-    participants.length === 1
-      ? t('stage.inVoiceChat', { name: firstParticipantName })
-      : t('stage.andMoreInVoiceChat', {
-          name: firstParticipantName,
-          count: participants.length - 1,
-        })
+    participants.length === 0
+      ? t('stage.noOne')
+      : participants.length === 1
+        ? t('stage.inVoiceChat', { name: displayName(participants[0]!.id) })
+        : t('stage.andMoreInVoiceChat', {
+            name: displayName(participants[0]!.id),
+            count: participants.length - 1,
+          })
 
   return (
-    <div className="grid min-h-voice-tile flex-1 place-items-center px-4 text-center">
-      <div className="flex translate-y-3 flex-col items-center gap-4">
-        <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
-          <ul
-            className="flex -space-x-3"
-            aria-label={t('stage.participantsLabel')}
-          >
-            {visibleParticipants.map((participant) => {
-              const user =
-                users[participant.id] ??
-                (participant.id === currentUser?._id
-                  ? (currentUser ?? undefined)
-                  : undefined)
-              return (
-                <li key={participant.id} title={displayName(participant.id)}>
-                  <UserAvatar
-                    user={user}
-                    className="size-12 ring-2 ring-muted"
-                    fallbackClassName="size-12 text-sm"
-                    showPresence={false}
-                  />
-                </li>
-              )
-            })}
-            {hiddenParticipantCount > 0 ? (
+    <div className="flex min-h-voice-tile-sm flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+      {visibleParticipants.length > 0 ? (
+        <ul className="flex -space-x-3" aria-label={t('stage.participantsLabel')}>
+          {visibleParticipants.map((participant) => {
+            const user =
+              users[participant.id] ??
+              (participant.id === currentUser?._id
+                ? (currentUser ?? undefined)
+                : undefined)
+            return (
               <li
-                className="relative grid size-12 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground ring-2 ring-muted"
-                aria-label={t('stage.moreParticipants', {
-                  count: hiddenParticipantCount,
-                })}
+                key={participant.id}
+                title={displayName(participant.id)}
+                className="rounded-full ring-4 ring-media-backdrop"
               >
-                +{hiddenParticipantCount}
+                <UserAvatar
+                  user={user}
+                  className="size-16"
+                  fallbackClassName="size-16 text-base"
+                  showPresence={false}
+                />
               </li>
-            ) : null}
-          </ul>
-        </div>
-        <div className="space-y-1.5">
-          <h2 className="max-w-md truncate text-3xl font-bold">{title}</h2>
-          <p className="max-w-lg text-sm text-muted-foreground">{status}</p>
-        </div>
-        <Button type="button" size="lg" className="mt-1" onClick={onJoin}>
-          {joinLabel}
-        </Button>
+            )
+          })}
+          {hiddenParticipantCount > 0 ? (
+            <li
+              className="grid size-16 place-items-center rounded-full bg-on-media/15 text-base font-semibold text-on-media ring-4 ring-media-backdrop"
+              aria-label={t('stage.moreParticipants', {
+                count: hiddenParticipantCount,
+              })}
+            >
+              +{hiddenParticipantCount}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <h2 className="max-w-md truncate text-2xl font-bold text-on-media">
+          {title}
+        </h2>
+        <p className="max-w-lg text-sm text-on-media/60">{status}</p>
       </div>
+      <Button type="button" size="lg" onClick={onJoin}>
+        {joinLabel}
+      </Button>
     </div>
   )
 }
