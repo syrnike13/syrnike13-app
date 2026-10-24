@@ -5,8 +5,11 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from '@syrnike13/ui/primitives/empty'
+
+import { SyrnikScene } from '#/components/mascot/syrnik-scene'
 
 export function ActiveNowPanel() {
   const t = useTranslations('home.activeNow')
@@ -22,6 +25,9 @@ export function ActiveNowPanel() {
           {t('title')}
         </h2>
         <Empty size="sm" variant="card">
+          <EmptyMedia variant="illustration">
+            <SyrnikScene scene="chilling" />
+          </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>{t('soon')}</EmptyTitle>
             <EmptyDescription>{t('description')}</EmptyDescription>

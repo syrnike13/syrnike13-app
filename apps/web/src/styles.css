@@ -750,21 +750,21 @@ html {
   overflow: visible;
 }
 
-.syrnik-z {
+.syrnik-float {
   color: var(--muted-foreground);
   opacity: 0;
-  animation: syrnik-z-float 3s steps(12, end) infinite;
+  animation: syrnik-float 3s steps(12, end) infinite;
 }
 
-.syrnik-z-2 {
+.syrnik-float-2 {
   animation-delay: 1s;
 }
 
-.syrnik-z-3 {
+.syrnik-float-3 {
   animation-delay: 2s;
 }
 
-@keyframes syrnik-z-float {
+@keyframes syrnik-float {
   0% {
     opacity: 0;
     transform: translate(0, 2px);
@@ -782,7 +782,7 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .syrnik-z {
+  .syrnik-float {
     animation: none;
     opacity: 1;
   }
