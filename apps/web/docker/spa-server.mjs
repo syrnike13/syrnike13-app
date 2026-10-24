@@ -6,18 +6,36 @@ import { extname, join, normalize, resolve, sep } from 'node:path'
 /** Путь к prerendered SPA shell от TanStack Start (`spa.enabled`). */
 export const SPA_SHELL_PATH = '/_shell.html'
 
+/**
+ * First-party Activity applications bundled into this image, served to the
+ * activity proxy as plain static sites: directory index, no SPA fallback.
+ */
+export const ACTIVITIES_PATH = '/_activities/'
+
 const contentTypes = {
+  '.avif': 'image/avif',
   '.css': 'text/css; charset=utf-8',
   '.gif': 'image/gif',
   '.html': 'text/html; charset=utf-8',
   '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.ogg': 'audio/ogg',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf',
   '.txt': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.wav': 'audio/wav',
+  '.webm': 'video/webm',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.webp': 'image/webp',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 }
@@ -49,6 +67,10 @@ function cacheControlFor(pathname) {
 
   if (pathname === SPA_SHELL_PATH) {
     return 'no-store, no-cache, must-revalidate'
+  }
+
+  if (pathname.startsWith(ACTIVITIES_PATH) && extname(pathname) === '.html') {
+    return 'no-cache'
   }
 
   return 'public, max-age=300'
@@ -158,6 +180,16 @@ export function createSpaStaticServer({
       )
 
       if (await serveAsset(req, res, resolvedClientDir, url.pathname)) return
+
+      if (url.pathname.startsWith(ACTIVITIES_PATH)) {
+        // Directory index for bundled activities; a missing file is a 404,
+        // never the app shell.
+        const index = `${url.pathname.replace(/\/?$/, '/')}index.html`
+        if (await serveAsset(req, res, resolvedClientDir, index)) return
+        res.statusCode = 404
+        res.end('Not Found')
+        return
+      }
 
       if (url.pathname.startsWith('/assets/')) {
         // A missing hashed asset must not fall back to the HTML shell, or the

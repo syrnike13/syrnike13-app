@@ -56,6 +56,10 @@ server before enabling the app host in Caddy:
 Nightly uses `beta.syrnike13.ru` for the landing and `app.beta.syrnike13.ru` for
 the application.
 
+Channel Activities need wildcard records `*.activities.syrnike13.ru` and
+`*.activities.beta.syrnike13.ru` pointing at the same server (see
+[Channel Activities](#channel-activities)).
+
 ## Existing Hosts
 
 On an existing server, update the server-local `Syrnike.toml` before the first
@@ -97,17 +101,17 @@ The repository `VERSION` file is not read by this workflow, so no commit is
 needed to release.
 
 Selecting the backend services only (for example
-`services: api events autumn january gifbox crond pushd voice-ingress`) runs:
+`services: api events autumn january gifbox activity-proxy crond pushd voice-ingress`) runs:
 
 ```bash
-DEPLOY_SERVICES="api events autumn january gifbox crond pushd voice-ingress" ./scripts/deploy-on-server.sh
+DEPLOY_SERVICES="api events autumn january gifbox activity-proxy crond pushd voice-ingress" ./scripts/deploy-on-server.sh
 ```
 
 The server pulls the listed images and updates them through
 `scripts/rollout.sh`:
 
 - User-facing services (`api`, `events`, `autumn`, `january`, `gifbox`,
-  `voice-ingress`, `landing`, `web`, `admin`) are rolled out. When the image or compose
+  `activity-proxy`, `voice-ingress`, `landing`, `web`, `admin`) are rolled out. When the image or compose
   definition changed, a second container starts next to the running one; once
   it accepts connections on its port the old container is stopped. Caddy
   reaches these services through network aliases (`syrnike13-<service>`) that
@@ -211,6 +215,7 @@ existing WebSocket and LiveKit sessions.
 - `ghcr.io/syrnike13/app-file-server:latest`
 - `ghcr.io/syrnike13/app-proxy:latest`
 - `ghcr.io/syrnike13/app-gifbox:latest`
+- `ghcr.io/syrnike13/app-activity-proxy:latest`
 - `ghcr.io/syrnike13/app-crond:latest`
 - `ghcr.io/syrnike13/app-pushd:latest`
 - `ghcr.io/syrnike13/app-voice-ingress:latest`
@@ -218,6 +223,80 @@ existing WebSocket and LiveKit sessions.
 - `ghcr.io/syrnike13/app-livekit-server:latest`
 
 Backend, web, desktop, and LiveKit release jobs are published from this monorepo.
+
+## Channel Activities
+
+Every Activity Origin (`https://{id}.activities.syrnike13.ru`, nightly
+`https://{id}.activities.beta.syrnike13.ru`) is served by the `activity-proxy`
+service (ADR-0011, `services/backend/crates/services/activity-proxy`). Each
+environment runs its own proxy against its own registry
+(`activity_applications` in its MongoDB).
+
+The proxy takes the application id from the `Host` header, looks the
+application up (cached for 15 seconds, so disabling an application takes
+effect within that time), and forwards the request to `origin_url`, or to the
+matching `url_mappings` target for `/.proxy/{prefix}/…`, including WebSocket
+upgrades. It never forwards `Forwarded`, `X-Forwarded-*`, `X-Real-IP` or other
+client address headers, removes `X-Frame-Options`, and adds
+`Content-Security-Policy: frame-ancestors <client origins>; connect-src 'self' wss://{id}.…`
+next to the application's own policy. Unknown or disabled applications get
+`404`.
+
+Configuration (environment variables in `compose.yml`):
+
+| Variable | Production | Nightly |
+| --- | --- | --- |
+| `SYRNIKE__HOSTS__ACTIVITIES` (also on `api` and `events`, which build `activity_url`) | `https://{id}.activities.syrnike13.ru` | `https://{id}.activities.beta.syrnike13.ru` |
+| `SYRNIKE__ACTIVITIES__CLIENT_ORIGINS` (space separated, CSP `frame-ancestors`) | `https://app.syrnike13.ru http://127.0.0.1:*` | `https://app.beta.syrnike13.ru http://127.0.0.1:*` |
+| `SYRNIKE__ACTIVITIES__ASK_DELEGATE_SUFFIX` | `.activities.beta.syrnike13.ru` | empty |
+| `SYRNIKE__ACTIVITIES__ASK_DELEGATE_URL` | `http://caddy:14700/_caddy/ask` | empty |
+
+`http://127.0.0.1:*` admits the desktop renderer, which the Electron app
+serves from a random local port. `activities.proxy_listen` defaults to
+`0.0.0.0:14707`.
+
+The first-party Activity Lab is built into the web image and served by the
+`web` service at `/_activities/lab/`; its registry entry uses
+`origin_url = "http://web:5000/_activities/lab"`. The production proxy is
+therefore only on the production default network, where `web` is the
+production web service.
+
+### Certificates
+
+Caddy serves `*.activities.syrnike13.ru` and `*.activities.beta.syrnike13.ru`
+with on-demand certificates (one Let's Encrypt certificate per application
+host, issued on the first TLS handshake). Before issuing, Caddy asks
+`http://syrnike13-activity-proxy:14707/_caddy/ask?domain=<host>` (global
+`on_demand_tls` option):
+
+1. A host under the production suffix is approved only if the production
+   registry has that application enabled.
+2. A host under `ASK_DELEGATE_SUFFIX` is forwarded to `ASK_DELEGATE_URL`.
+   That is Caddy's internal `:14700` site (not published on the host), which
+   passes the question to the nightly proxy over the edge network; the nightly
+   proxy answers from the nightly registry.
+3. Everything else is refused, so random subdomains cannot exhaust certificate
+   rate limits.
+
+`/_caddy/ask` and `/_health` are answered only for requests whose `Host` is not
+an Activity Origin, so applications cannot shadow them. Until the production
+proxy runs, Caddy refuses every activity certificate; existing hosts are not
+affected.
+
+### Local development
+
+The defaults in `crates/core/config/Syrnike.toml` serve
+`http://{id}.activities.localhost:14707` (browsers resolve `*.localhost` to the
+loopback address) and allow `http://localhost:3001` and `http://127.0.0.1:3001`
+to frame activities:
+
+```bash
+cargo run --manifest-path services/backend/Cargo.toml -p syrnike-activity-proxy
+curl -H 'Host: lab.activities.localhost:14707' http://127.0.0.1:14707/
+```
+
+Register an application (enabled, with an `origin_url` such as the Vite dev
+server of `apps/activity-lab`) in the local MongoDB first.
 
 ## Desktop Auto-Updates
 
@@ -296,7 +375,8 @@ input controls whether the run deploys after publishing images.
 Production Caddy remains the edge proxy for both domains. It joins the shared
 external Docker network `syrnike13-edge` and routes `beta.syrnike13.ru`
 to the nightly landing and `app.beta.syrnike13.ru` to the nightly web app.
-API and media stay on `beta.syrnike13.ru`.
+API and media stay on `beta.syrnike13.ru`. Nightly Activity Origins
+(`*.activities.beta.syrnike13.ru`) go to the nightly `activity-proxy`.
 
 Nightly keeps its own server-local runtime files and data:
 

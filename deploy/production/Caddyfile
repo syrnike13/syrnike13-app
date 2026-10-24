@@ -1,3 +1,14 @@
+# Global options must stay first in this file.
+{
+	# Activity Origins get certificates on demand (ADR-0011). Before issuing
+	# one, Caddy asks the production activity proxy, which approves only
+	# enabled registered applications and relays questions about nightly hosts
+	# to the nightly proxy (see the :14700 site below).
+	on_demand_tls {
+		ask http://syrnike13-activity-proxy:14707/_caddy/ask
+	}
+}
+
 # Per-project Caddy configs live outside this repository. The directory is mounted
 # into the container (see compose.override.yml on the server), so deploys that ship
 # this file never touch them.
@@ -219,5 +230,38 @@ import /etc/caddy/sites/*.caddyfile
 {$NIGHTLY_ADMIN_HOSTNAME:admin.beta.syrnike13.ru} {
 	reverse_proxy http://syrnike13-nightly-admin:5000 {
 		import rolling_upstream
+	}
+}
+
+# Activity Origins: {id}.activities.syrnike13.ru (production) and
+# {id}.activities.beta.syrnike13.ru (nightly). Each environment's proxy picks
+# the application from the Host header and serves it from its own registry.
+*.activities.syrnike13.ru {
+	tls {
+		on_demand
+	}
+	reverse_proxy http://syrnike13-activity-proxy:14707 {
+		import rolling_upstream
+	}
+}
+
+*.activities.beta.syrnike13.ru {
+	tls {
+		on_demand
+	}
+	reverse_proxy http://syrnike13-nightly-activity-proxy:14707 {
+		import rolling_upstream
+	}
+}
+
+# Internal relay (port not published): the production activity proxy is not on
+# the edge network, so it forwards on-demand TLS questions about nightly hosts
+# here, and Caddy passes them to the nightly proxy.
+http://:14700 {
+	handle /_caddy/ask {
+		reverse_proxy http://syrnike13-nightly-activity-proxy:14707
+	}
+	handle {
+		respond 404
 	}
 }

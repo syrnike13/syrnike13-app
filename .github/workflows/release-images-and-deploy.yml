@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          backend_services="api events autumn january gifbox crond pushd voice-ingress"
+          backend_services="api events autumn january gifbox activity-proxy crond pushd voice-ingress"
           frontend_services="web landing admin"
           all_services="$frontend_services $backend_services livekit"
 
@@ -299,6 +299,8 @@ jobs:
             dockerfile: crates/services/january/Dockerfile
           - image: gifbox
             dockerfile: crates/services/gifbox/Dockerfile
+          - image: activity-proxy
+            dockerfile: crates/services/activity-proxy/Dockerfile
           - image: crond
             dockerfile: crates/daemons/crond/Dockerfile
           - image: pushd
