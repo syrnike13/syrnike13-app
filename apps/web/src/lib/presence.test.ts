@@ -29,7 +29,7 @@ describe('presence labels', () => {
     const presence = 'SystemIdle'
 
     expect(presenceModeLabel(presence, t)).toBe('Не активен')
-    expect(presenceLabel(userWithPresence(presence), t)).toBe('не активен')
+    expect(presenceLabel(userWithPresence(presence), t)).toBe('Не активен')
     expect(presenceDotTitle(userWithPresence(presence), t)).toBe('Не активен')
   })
 
@@ -41,7 +41,7 @@ describe('presence labels', () => {
 
     for (const presence of systemOnlinePresences) {
       expect(presenceModeLabel(presence, t)).toBe('В сети')
-      expect(presenceLabel(userWithPresence(presence), t)).toBe('в сети')
+      expect(presenceLabel(userWithPresence(presence), t)).toBe('В сети')
       expect(presenceDotTitle(userWithPresence(presence), t)).toBe('В сети')
     }
   })

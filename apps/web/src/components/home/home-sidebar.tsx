@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useId } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { LightbulbIcon, UsersIcon } from '#/components/icons'
 
@@ -6,7 +7,10 @@ import { CommandPaletteTrigger } from '#/components/command-palette/command-pale
 import { DmChannelList } from '#/components/home/dm-channel-list'
 import { NewConversationButton } from '#/components/home/new-conversation-button'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
-import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
+import {
+  shellColumnHeaderClass,
+  shellNavSurface,
+} from '#/components/layout/shell-chrome'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   SidebarMenu,
@@ -30,6 +34,7 @@ export function HomeSidebar({
   const tFriends = useTranslations('home.friends')
   const tFeedback = useTranslations('feedback.view')
   const tSidebar = useTranslations('home.sidebar')
+  const dmHeadingId = useId()
   const prefix = useAppRoutePrefix()
   return (
     <aside
@@ -46,9 +51,12 @@ export function HomeSidebar({
           : undefined
       }
     >
-      <div className={`flex flex-col gap-2 border-b p-2 ${shellDivider}`}>
+      <header className={cn(shellColumnHeaderClass, 'px-2')}>
         <CommandPaletteTrigger />
-        <nav aria-label={tSidebar('navigation')}>
+      </header>
+
+      <ScrollArea className="min-h-0 flex-1">
+        <nav aria-label={tSidebar('navigation')} className="p-2">
           <SidebarMenu className="gap-0.5">
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -57,7 +65,7 @@ export function HomeSidebar({
                   <Link
                     to={prefix || '/'}
                     search={{ tab: 'online' }}
-                    activeOptions={{ exact: true }}
+                    activeOptions={{ exact: true, includeSearch: false }}
                     activeProps={{ 'data-active': '' }}
                   />
                 }
@@ -83,17 +91,16 @@ export function HomeSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </nav>
-      </div>
 
-      <div className="flex items-center justify-between px-3 py-2">
-        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {tSidebar('directMessages')}
-        </h2>
-        <NewConversationButton />
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1 px-2">
-        <DmChannelList activeChannelId={activeChannelId} />
+        <section aria-labelledby={dmHeadingId} className="px-2 pb-2">
+          <div className="flex items-center justify-between pt-2 pr-1 pb-1 pl-2">
+            <h2 id={dmHeadingId} className="text-sm font-medium text-muted-foreground">
+              {tSidebar('directMessages')}
+            </h2>
+            <NewConversationButton />
+          </div>
+          <DmChannelList activeChannelId={activeChannelId} />
+        </section>
       </ScrollArea>
     </aside>
   )

@@ -29,11 +29,12 @@ export function CommandPaletteTrigger({
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="secondary"
+      size="sm"
       onClick={() => setOpen(true)}
-      className={cn('h-8 w-full justify-start gap-2 px-2.5 font-normal', className)}
+      className={cn('w-full justify-start text-muted-foreground', className)}
     >
-      <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+      <SearchIcon data-icon="inline-start" />
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
       <Kbd className="hidden sm:inline-flex">{shortcut}</Kbd>
     </Button>

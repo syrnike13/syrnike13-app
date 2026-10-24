@@ -66,12 +66,12 @@ export function userStatusSubtitle(user: User | null | undefined, t: Translator)
 /** Для списков друзей/участников: офлайн или статус. */
 export function presenceLabel(user: User | null | undefined, t: Translator) {
   if (!user) return ''
-  if (!isUserOnline(user)) return t('offline').toLowerCase()
+  if (!isUserOnline(user)) return t('offline')
 
   const custom = user.status?.text?.trim()
   if (custom) return custom
 
-  return presenceModeLabel(getUserPresence(user), t).toLowerCase()
+  return presenceModeLabel(getUserPresence(user), t)
 }
 
 export function presenceDotTitle(user: User | null | undefined, t: Translator) {

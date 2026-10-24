@@ -2099,7 +2099,7 @@
   "home": {
     "activeNow": {
       "title": "Active now",
-      "soon": "Coming soon",
+      "soon": "It's quiet for now",
       "description": "Games and friends' activities will appear here"
     },
     "dm": {
@@ -2110,7 +2110,9 @@
       "tabs": {
         "online": "Online",
         "all": "All",
-        "pending": "Requests"
+        "pending": "Pending",
+        "blocked": "Blocked",
+        "add": "Add friend"
       },
       "idCopied": "ID copied",
       "copyError": "Could not copy",
@@ -2126,16 +2128,25 @@
       "allCount": "All friends — {count}",
       "pendingCount": "Requests — {count}",
       "title": "Friends",
-      "add": "Add",
-      "send": "Send",
+      "send": "Send friend request",
       "usernamePlaceholder": "Username",
       "searchPlaceholder": "Search friends",
-      "emptyOnline": "No friends online",
-      "emptyPending": "No requests",
-      "emptyAll": "No friends yet",
       "accept": "Accept",
       "cancel": "Cancel",
-      "decline": "Decline"
+      "decline": "Decline",
+      "tabsLabel": "Friends",
+      "blockedCount": "Blocked — {count}",
+      "addTitle": "Add friend",
+      "addDescription": "You can add friends by their username.",
+      "openConversation": "Message {name}",
+      "unblock": "Unblock",
+      "emptySearch": "Nobody matches this search.",
+      "empty": {
+        "online": "No one is around right now",
+        "all": "No friends yet",
+        "pending": "No pending friend requests",
+        "blocked": "You haven't blocked anyone"
+      }
     },
     "newConversation": {
       "title": "New conversation",

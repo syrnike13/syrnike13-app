@@ -2099,7 +2099,7 @@
   "home": {
     "activeNow": {
       "title": "Сейчас активны",
-      "soon": "Скоро",
+      "soon": "Пока тихо",
       "description": "Здесь появятся игры и активности друзей"
     },
     "dm": {
@@ -2110,7 +2110,9 @@
       "tabs": {
         "online": "В сети",
         "all": "Все",
-        "pending": "Заявки"
+        "pending": "Запросы",
+        "blocked": "Заблокированные",
+        "add": "Добавить в друзья"
       },
       "idCopied": "ID скопирован",
       "copyError": "Не удалось скопировать",
@@ -2126,16 +2128,25 @@
       "allCount": "Все друзья — {count}",
       "pendingCount": "Заявки — {count}",
       "title": "Друзья",
-      "add": "Добавить",
-      "send": "Отправить",
+      "send": "Отправить запрос",
       "usernamePlaceholder": "Имя пользователя",
       "searchPlaceholder": "Поиск по друзьям",
-      "emptyOnline": "Нет друзей в сети",
-      "emptyPending": "Нет заявок",
-      "emptyAll": "Пока нет друзей",
       "accept": "Принять",
       "cancel": "Отменить",
-      "decline": "Отклонить"
+      "decline": "Отклонить",
+      "tabsLabel": "Друзья",
+      "blockedCount": "Заблокированные — {count}",
+      "addTitle": "Добавить в друзья",
+      "addDescription": "Добавляйте друзей по имени пользователя.",
+      "openConversation": "Написать {name}",
+      "unblock": "Разблокировать",
+      "emptySearch": "Никого не нашлось.",
+      "empty": {
+        "online": "Сейчас никого нет в сети",
+        "all": "Пока нет друзей",
+        "pending": "Нет запросов в друзья",
+        "blocked": "Вы никого не заблокировали"
+      }
     },
     "newConversation": {
       "title": "Новая беседа",

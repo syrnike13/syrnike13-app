@@ -4,32 +4,51 @@ import {
   CopyIcon,
   MessageCircleIcon,
   MoreHorizontalIcon,
+  SearchIcon,
   UserMinusIcon,
-  UserPlusIcon,
   UsersIcon,
   XIcon,
 } from '#/components/icons'
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
+import { shellColumnHeaderClass } from '#/components/layout/shell-chrome'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBlockDialog } from '#/components/user/user-block-dialog'
-import {
-  Button,
-  buttonVariants,
-} from '@syrnike13/ui/primitives/button'
+import { Button, buttonVariants } from '@syrnike13/ui/primitives/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
-import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@syrnike13/ui/primitives/empty'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemOverlay,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {
@@ -39,6 +58,7 @@ import {
   declineIncomingFriendRequest,
   removeFriend,
   sendFriendRequestByUsername,
+  unblockBlockedUser,
 } from '#/features/friends/friend-actions'
 import { selectFriendRequestNotificationBadge } from '#/features/notifications/notification-selectors'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -47,49 +67,35 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
 import { useTranslations } from '@syrnike13/ui/i18n'
-
 import { cn } from '#/lib/utils'
 
-export type HomeTab = 'online' | 'all' | 'pending'
+export const HOME_TABS = ['online', 'all', 'pending', 'blocked', 'add'] as const
+export type HomeTab = (typeof HOME_TABS)[number]
+type ListTab = Exclude<HomeTab, 'add'>
 
-const TABS: { id: HomeTab; key: string }[] = [
-  { id: 'online', key: 'online' },
-  { id: 'all', key: 'all' },
-  { id: 'pending', key: 'pending' },
-]
+const LIST_TABS: ListTab[] = ['online', 'all', 'pending', 'blocked']
 
 function userLabel(user: { username: string; display_name?: string | null }) {
   return user.display_name ?? user.username
 }
 
-const rowIconActionClass = 'size-9 shrink-0 text-muted-foreground'
-
 function HomeFriendRow({
   user,
   token,
-  onMessage,
   onOpen,
   actions,
 }: {
   user: User
   token?: string
-  onMessage?: () => void
   onOpen?: () => void
   actions?: ReactNode
 }) {
   const t = useTranslations('home.friends')
   const tf = useTranslations('friends')
   const tc = useTranslations('chat')
-  const interactive = Boolean(onOpen)
   const [blockDialogOpen, setBlockDialogOpen] = useState(false)
   const [blocking, setBlocking] = useState(false)
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!onOpen || event.target !== event.currentTarget) return
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onOpen()
-  }
+  const label = userLabel(user)
 
   async function copyUserId() {
     try {
@@ -114,122 +120,101 @@ function HomeFriendRow({
   }
 
   return (
-    <>
-      <div
-        role={interactive ? 'button' : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        className={cn(
-          'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
-          interactive &&
-            'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
-        )}
-        onClick={onOpen}
-        onKeyDown={handleKeyDown}
-      >
-        <UserAvatar
-          user={user}
-          className="size-10"
-          fallbackClassName="size-10"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{userLabel(user)}</p>
-          <p className="truncate text-sm text-muted-foreground">
-            {presenceLabel(user, tc)}
-          </p>
-        </div>
-        <div
-          className="flex shrink-0 items-center gap-1"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {actions}
-          {onMessage ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className={rowIconActionClass}
-              title={t('write')}
-              aria-label={t('write')}
-              onClick={onMessage}
+    <Item size="lg" render={<li />} data-avatar-hover-scope="">
+      {onOpen ? (
+        <ItemOverlay aria-label={t('openConversation', { name: label })} onClick={onOpen} />
+      ) : null}
+      <ItemMedia>
+        <UserAvatar user={user} className="size-8" fallbackClassName="size-8" hoverScope="parent" />
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle>{label}</ItemTitle>
+        <ItemDescription>{presenceLabel(user, tc)}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        {actions}
+        {onOpen ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            className="text-muted-foreground"
+            title={t('write')}
+            aria-label={t('write')}
+            onClick={onOpen}
+          >
+            <MessageCircleIcon />
+          </Button>
+        ) : null}
+        {token && user.relationship !== 'Blocked' ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="text-muted-foreground"
+                  title={t('more')}
+                  aria-label={t('more')}
+                />
+              }
             >
-              <MessageCircleIcon className="size-4" />
-            </Button>
-          ) : null}
-          {token ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className={rowIconActionClass}
-                    title={t('more')}
-                    aria-label={t('more')}
-                  />
-                }
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-44">
-                {user.relationship === 'Incoming' ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      Effect.runFork(
-                        declineIncomingFriendRequest(token, user._id, tf).pipe(
-                          Effect.ignore,
-                        ),
-                      )
-                    }}
-                  >
-                    <XIcon />
-                    {t('declineRequest')}
-                  </DropdownMenuItem>
-                ) : null}
-                {user.relationship === 'Outgoing' ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      Effect.runFork(
-                        cancelOutgoingFriendRequest(token, user._id, tf).pipe(
-                          Effect.ignore,
-                        ),
-                      )
-                    }}
-                  >
-                    <XIcon />
-                    {t('cancelRequest')}
-                  </DropdownMenuItem>
-                ) : null}
-                {user.relationship === 'Friend' ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      Effect.runFork(
-                        removeFriend(token, user._id, tf).pipe(Effect.ignore),
-                      )
-                    }}
-                  >
-                    <UserMinusIcon />
-                    {t('removeFriend')}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem onClick={() => void copyUserId()}>
-                  <CopyIcon />
-                  {t('copyId')}
-                </DropdownMenuItem>
+              <MoreHorizontalIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {user.relationship === 'Incoming' ? (
                 <DropdownMenuItem
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setBlockDialogOpen(true)
+                  onClick={() => {
+                    Effect.runFork(
+                      declineIncomingFriendRequest(token, user._id, tf).pipe(Effect.ignore),
+                    )
                   }}
                 >
-                  <BanIcon />
-                  {t('block')}
+                  <XIcon />
+                  {t('declineRequest')}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-      </div>
+              ) : null}
+              {user.relationship === 'Outgoing' ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    Effect.runFork(
+                      cancelOutgoingFriendRequest(token, user._id, tf).pipe(Effect.ignore),
+                    )
+                  }}
+                >
+                  <XIcon />
+                  {t('cancelRequest')}
+                </DropdownMenuItem>
+              ) : null}
+              {user.relationship === 'Friend' ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    Effect.runFork(removeFriend(token, user._id, tf).pipe(Effect.ignore))
+                  }}
+                >
+                  <UserMinusIcon />
+                  {t('removeFriend')}
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem onClick={() => void copyUserId()}>
+                <CopyIcon />
+                {t('copyId')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setBlockDialogOpen(true)
+                }}
+              >
+                <BanIcon />
+                {t('block')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </ItemActions>
       {token ? (
         <UserBlockDialog
           user={user}
@@ -239,13 +224,22 @@ function HomeFriendRow({
           onConfirm={() => void handleBlock()}
         />
       ) : null}
-    </>
+    </Item>
+  )
+}
+
+function useRelationshipUsers(
+  relationship: 'Friend' | 'Incoming' | 'Outgoing' | 'Blocked',
+) {
+  const auth = useAuth()
+  return useSyncStore((s) =>
+    listUsersByRelationship(s, relationship, auth.user?._id).filter((user) => !user.bot),
   )
 }
 
 function usersForTab(
-  tab: HomeTab,
-  lists: Record<'Friend' | 'Incoming' | 'Outgoing', User[]>,
+  tab: ListTab,
+  lists: Record<'Friend' | 'Incoming' | 'Outgoing' | 'Blocked', User[]>,
 ): User[] {
   switch (tab) {
     case 'online':
@@ -254,16 +248,107 @@ function usersForTab(
       return lists.Friend
     case 'pending':
       return [...lists.Incoming, ...lists.Outgoing]
-    default:
-      return lists.Friend
+    case 'blocked':
+      return lists.Blocked
   }
 }
 
-type HomeViewProps = {
-  tab: HomeTab
+function HomeTabsNav({ tab }: { tab: HomeTab }) {
+  const t = useTranslations('home.friends')
+  const auth = useAuth()
+  const prefix = useAppRoutePrefix()
+  const friendRequestBadge = useSyncStore((s) =>
+    selectFriendRequestNotificationBadge(s, auth.user?._id),
+  )
+
+  return (
+    <nav aria-label={t('tabsLabel')} className="flex min-w-0 items-center gap-2 overflow-x-auto">
+      {LIST_TABS.map((item) => (
+        <Link
+          key={item}
+          to={prefix || '/'}
+          search={{ tab: item }}
+          aria-current={tab === item ? 'page' : undefined}
+          className={buttonVariants({
+            variant: tab === item ? 'secondary' : 'ghost',
+            size: 'sm',
+          })}
+        >
+          {t(`tabs.${item}`)}
+          {item === 'pending' ? <NotificationBadge badge={friendRequestBadge} /> : null}
+        </Link>
+      ))}
+      <Link
+        to={prefix || '/'}
+        search={{ tab: 'add' }}
+        aria-current={tab === 'add' ? 'page' : undefined}
+        className={buttonVariants({
+          variant: tab === 'add' ? 'secondary' : 'default',
+          size: 'sm',
+        })}
+      >
+        {t('tabs.add')}
+      </Link>
+    </nav>
+  )
 }
 
-export function HomeView({ tab }: HomeViewProps) {
+function AddFriendPanel() {
+  const t = useTranslations('home.friends')
+  const tf = useTranslations('friends')
+  const auth = useAuth()
+  const token = auth.session?.token
+  const [username, setUsername] = useState('')
+  const [sending, setSending] = useState(false)
+  const titleId = useId()
+
+  async function handleSendRequest() {
+    const trimmed = username.trim()
+    if (!token || !trimmed) return
+    setSending(true)
+    try {
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed, tf))
+      setUsername('')
+    } catch {
+      // friend-actions already shows the concrete error toast.
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby={titleId} className="flex flex-col gap-2 px-6 py-5">
+      <h2 id={titleId} className="text-base font-semibold">
+        {t('addTitle')}
+      </h2>
+      <p className="text-sm text-muted-foreground">{t('addDescription')}</p>
+      <form
+        className="mt-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void handleSendRequest()
+        }}
+      >
+        <InputGroup>
+          <InputGroupInput
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder={t('usernamePlaceholder')}
+            aria-label={t('usernamePlaceholder')}
+            disabled={sending}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton type="submit" variant="default" disabled={sending || !username.trim()}>
+              {t('send')}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </form>
+    </section>
+  )
+}
+
+function FriendsList({ tab }: { tab: ListTab }) {
   const t = useTranslations('home.friends')
   const tf = useTranslations('friends')
   const tu = useTranslations('users')
@@ -271,56 +356,23 @@ export function HomeView({ tab }: HomeViewProps) {
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const token = auth.session?.token
-  const [username, setUsername] = useState('')
-  const [sending, setSending] = useState(false)
-  const [addOpen, setAddOpen] = useState(false)
-  const [friendSearch, setFriendSearch] = useState('')
-
-  const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
-      (user) => !user.bot,
-    ),
-  )
-  const incoming = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Incoming', auth.user?._id).filter(
-      (user) => !user.bot,
-    ),
-  )
-  const outgoing = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Outgoing', auth.user?._id).filter(
-      (user) => !user.bot,
-    ),
-  )
-  const friendRequestBadge = useSyncStore((s) =>
-    selectFriendRequestNotificationBadge(s, auth.user?._id),
-  )
+  const [search, setSearch] = useState('')
+  const headingId = useId()
 
   const lists = {
-    Friend: friends,
-    Incoming: incoming,
-    Outgoing: outgoing,
+    Friend: useRelationshipUsers('Friend'),
+    Incoming: useRelationshipUsers('Incoming'),
+    Outgoing: useRelationshipUsers('Outgoing'),
+    Blocked: useRelationshipUsers('Blocked'),
   }
-  const hasPending = incoming.length > 0 || outgoing.length > 0
-  const visibleTabs = TABS.filter(
-    (item) => item.id !== 'pending' || hasPending,
+
+  const query = search.trim().toLowerCase()
+  const visibleUsers = usersForTab(tab, lists).filter(
+    (user) =>
+      !query ||
+      userLabel(user).toLowerCase().includes(query) ||
+      user.username.toLowerCase().includes(query),
   )
-
-  useEffect(() => {
-    if (tab === 'pending' && !hasPending) {
-      void navigate({
-        to: prefix || '/',
-        search: { tab: 'online' },
-        replace: true,
-      })
-    }
-  }, [tab, hasPending, navigate, prefix])
-
-  const visibleUsers = usersForTab(tab, lists).filter((user) => {
-    const q = friendSearch.trim().toLowerCase()
-    if (!q) return true
-    const label = (user.display_name ?? user.username).toLowerCase()
-    return label.includes(q) || user.username.toLowerCase().includes(q)
-  })
 
   async function openDm(userId: string) {
     if (!token) return
@@ -339,192 +391,126 @@ export function HomeView({ tab }: HomeViewProps) {
     )
   }
 
-  async function handleSendRequest() {
-    if (!token) return
-    const trimmed = username.trim()
-    if (!trimmed) return
-
-    setSending(true)
-    try {
-      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed, tf))
-      setUsername('')
-      setAddOpen(false)
-    } catch {
-      // friend-actions already shows the concrete error toast.
-    } finally {
-      setSending(false)
+  function rowActions(user: User): ReactNode {
+    if (!token) return null
+    if (tab === 'blocked') {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            Effect.runFork(unblockBlockedUser(token, user._id, tf).pipe(Effect.ignore))
+          }}
+        >
+          {t('unblock')}
+        </Button>
+      )
     }
-  }
-
-  const sectionTitle =
-    tab === 'online'
-      ? t('onlineCount', { count: visibleUsers.length })
-      : tab === 'all'
-        ? t('allCount', { count: visibleUsers.length })
-        : t('pendingCount', { count: visibleUsers.length })
-
-  return (
-    <div className="flex min-w-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-shell-divider px-4 py-3">
-          <div className="flex shrink-0 items-center gap-2">
-            <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
-            <span className="text-sm font-semibold">{t('title')}</span>
-          </div>
-          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {visibleTabs.map((item) => (
-              <Link
-                key={item.id}
-                to={prefix || '/'}
-                search={{ tab: item.id }}
-                className={cn(
-                  buttonVariants({
-                    variant: tab === item.id ? 'secondary' : 'ghost',
-                    size: 'sm',
-                  }),
-                  'shrink-0',
-                )}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  {t(`tabs.${item.key}`)}
-                  {item.id === 'pending' ? (
-                    <NotificationBadge badge={friendRequestBadge} />
-                  ) : null}
-                </span>
-              </Link>
-            ))}
-          </nav>
+    if (tab !== 'pending') return null
+    const incoming = user.relationship === 'Incoming'
+    return (
+      <>
+        {incoming ? (
           <Button
             type="button"
             size="sm"
-            className="shrink-0"
-            onClick={() => setAddOpen((open) => !open)}
+            onClick={() => {
+              Effect.runFork(acceptIncomingFriendRequest(token, user._id, tf).pipe(Effect.ignore))
+            }}
           >
-            <UserPlusIcon className="size-4" data-icon="inline-start" />
-            {t('add')}
+            {t('accept')}
           </Button>
-        </header>
-
-        {addOpen ? (
-          <div className="border-b border-shell-divider bg-muted/20 px-4 py-3">
-            <form
-              className="flex max-w-md gap-2"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void handleSendRequest()
-              }}
-            >
-              <Input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder={t('usernamePlaceholder')}
-                disabled={sending}
-              />
-              <Button type="submit" disabled={sending}>
-                {t('send')}
-              </Button>
-            </form>
-          </div>
         ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            const action = incoming ? declineIncomingFriendRequest : cancelOutgoingFriendRequest
+            Effect.runFork(action(token, user._id, tf).pipe(Effect.ignore))
+          }}
+        >
+          {incoming ? t('decline') : t('cancel')}
+        </Button>
+      </>
+    )
+  }
 
-        <div className="border-b border-shell-divider px-4 py-2">
-          <Input
-            value={friendSearch}
-            onChange={(event) => setFriendSearch(event.target.value)}
+  const heading = t(`${tab}Count`, { count: visibleUsers.length })
+  const emptyTitle = t(`empty.${tab}`)
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="px-6 pt-4 pb-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder={t('searchPlaceholder')}
-            className="h-9 max-w-md"
+            aria-label={t('searchPlaceholder')}
           />
-        </div>
-
-        <p className="px-4 py-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {sectionTitle}
-        </p>
-
-        <ScrollArea className="flex-1">
-          {visibleUsers.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted-foreground">
-              {tab === 'online'
-                ? t('emptyOnline')
-                : tab === 'pending'
-                  ? t('emptyPending')
-                  : t('emptyAll')}
-            </p>
-          ) : (
-            <div>
-              {visibleUsers.map((user) => {
-                const isIncoming = incoming.some((u) => u._id === user._id)
-                const isOutgoing = outgoing.some((u) => u._id === user._id)
-
-                return (
-                  <HomeFriendRow
-                    key={user._id}
-                    user={user}
-                    token={token}
-                    onOpen={
-                      isOutgoing ? undefined : () => void openDm(user._id)
-                    }
-                    onMessage={
-                      isOutgoing ? undefined : () => void openDm(user._id)
-                    }
-                    actions={
-                      tab === 'pending' && token ? (
-                        <>
-                          {isIncoming ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                Effect.runFork(
-                                  acceptIncomingFriendRequest(
-                                    token,
-                                    user._id,
-                                    tf,
-                                  ).pipe(Effect.ignore),
-                                )
-                              }}
-                            >
-                              {t('accept')}
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (isIncoming) {
-                                Effect.runFork(
-                                  declineIncomingFriendRequest(
-                                    token,
-                                    user._id,
-                                    tf,
-                                  ).pipe(Effect.ignore),
-                                )
-                                return
-                              }
-
-                              Effect.runFork(
-                                cancelOutgoingFriendRequest(
-                                  token,
-                                  user._id,
-                                  tf,
-                                ).pipe(Effect.ignore),
-                              )
-                            }}
-                          >
-                            {isOutgoing ? t('cancel') : t('decline')}
-                          </Button>
-                        </>
-                      ) : null
-                    }
-                  />
-                )
-              })}
-            </div>
-          )}
-        </ScrollArea>
+        </InputGroup>
       </div>
 
+      {visibleUsers.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>{emptyTitle}</EmptyTitle>
+            {query ? <EmptyDescription>{t('emptySearch')}</EmptyDescription> : null}
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <section aria-labelledby={headingId} className="flex flex-col gap-2 px-4 pb-4">
+            <h2
+              id={headingId}
+              className="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+            >
+              {heading}
+            </h2>
+            <ul className="flex flex-col">
+              {visibleUsers.map((user) => (
+                <HomeFriendRow
+                  key={user._id}
+                  user={user}
+                  token={token}
+                  onOpen={
+                    user.relationship === 'Outgoing' || user.relationship === 'Blocked'
+                      ? undefined
+                      : () => void openDm(user._id)
+                  }
+                  actions={rowActions(user)}
+                />
+              ))}
+            </ul>
+          </section>
+        </ScrollArea>
+      )}
+    </div>
+  )
+}
+
+export function HomeView({ tab }: { tab: HomeTab }) {
+  const t = useTranslations('home.friends')
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className={cn(shellColumnHeaderClass, 'px-4')}>
+          <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
+          <h1 className="text-base font-semibold">{t('title')}</h1>
+          <div className="mx-2 flex h-6">
+            <Separator orientation="vertical" />
+          </div>
+          <HomeTabsNav tab={tab} />
+        </header>
+        {tab === 'add' ? <AddFriendPanel /> : <FriendsList tab={tab} />}
+      </div>
       <ActiveNowPanel />
     </div>
   )
