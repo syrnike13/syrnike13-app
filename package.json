@@ -51,6 +51,10 @@
     "windows-media:test:debug": "pnpm --filter @syrnike13/windows-media-engine test:debug",
     "windows-media:verify": "pnpm --filter @syrnike13/windows-media-engine verify",
     "platform:build": "pnpm --filter @syrnike13/platform build",
+    "activity-sdk:test": "pnpm --filter @syrnike13/activity-sdk test",
+    "activity-sdk:build": "pnpm --filter @syrnike13/activity-sdk build",
+    "activity-lab:dev": "pnpm --filter @syrnike13/activity-lab dev",
+    "activity-lab:build": "pnpm --filter @syrnike13/activity-lab build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
     "livekit:check": "cd services/livekit-server && go test ./..."
   },
