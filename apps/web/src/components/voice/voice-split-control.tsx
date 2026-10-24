@@ -60,7 +60,15 @@ export function VoiceSplitControl({
     <TooltipProvider delay={300}>
       <SplitButton
         size={surface === 'stage' ? 'lg' : 'default'}
-        variant={danger ? 'destructive' : success ? 'success' : 'default'}
+        variant={
+          danger
+            ? 'destructive'
+            : success
+              ? 'success'
+              : surface === 'stage'
+                ? 'media'
+                : 'default'
+        }
       >
         <Tooltip>
           <TooltipTrigger

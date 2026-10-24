@@ -20,14 +20,17 @@ const splitButtonSegmentVariants = cva(
   {
     variants: {
       // Rounding by role, not :first/:last: an open popover inserts focus
-      // guards next to its trigger.
+      // guards next to its trigger. A main segment without a chevron is last
+      // and rounds both sides.
       segment: {
-        main: "rounded-l-lg",
+        main: "rounded-l-lg last:rounded-r-lg",
         chevron: "rounded-r-lg",
       },
       size: {
         default: "",
         lg: "",
+        // Voice stage leave button: the height of a control group (48px + ring).
+        xl: "",
       },
       variant: {
         default:
@@ -36,6 +39,12 @@ const splitButtonSegmentVariants = cva(
           "bg-destructive/20 text-destructive group-hover/split:bg-destructive/25 hover:bg-destructive/30 data-popup-open:bg-destructive/30",
         success:
           "bg-success/20 text-success group-hover/split:bg-success/25 hover:bg-success/30 data-popup-open:bg-success/30",
+        // Voice stage: no fill at rest, like the default variant, in on-media colours.
+        media:
+          "text-on-media/80 group-hover/split:bg-on-media/5 group-hover/split:text-on-media hover:bg-on-media/10 data-popup-open:bg-on-media/10 data-popup-open:text-on-media",
+        // Solid red: leave the call.
+        danger:
+          "bg-destructive text-destructive-foreground group-hover/split:bg-destructive/90 hover:bg-destructive/80 data-popup-open:bg-destructive/80",
       },
     },
     compoundVariants: [
@@ -58,6 +67,16 @@ const splitButtonSegmentVariants = cva(
         segment: "chevron",
         size: "lg",
         class: "h-9 w-7 [&_svg:not([class*='size-'])]:size-3.5",
+      },
+      {
+        segment: "main",
+        size: "xl",
+        class: "h-12.5 min-w-20 px-3 [&_svg:not([class*='size-'])]:size-6",
+      },
+      {
+        segment: "chevron",
+        size: "xl",
+        class: "h-12.5 w-8 [&_svg:not([class*='size-'])]:size-4",
       },
     ],
     defaultVariants: {

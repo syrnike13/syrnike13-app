@@ -778,9 +778,8 @@ export function VoiceStageView({
         {onClose ? (
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0"
+            variant="media"
+            size="icon-lg"
             aria-label={t('actions.minimize')}
             title={t('actions.minimize')}
             onClick={onClose}
@@ -798,7 +797,7 @@ export function VoiceStageView({
               presenceRingClassName="border-media-backdrop"
             />
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 text-sm font-semibold text-on-media">
+              <h1 className="min-w-0 text-base font-semibold text-on-media">
                 {dmHeader.onOpenProfile ? (
                   <button
                     type="button"
@@ -839,7 +838,7 @@ export function VoiceStageView({
               className="size-5 text-on-media/60"
             />
             <h1
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-base font-semibold"
               title={
                 focusedMediaHeader
                   ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
@@ -925,10 +924,10 @@ export function VoiceStageView({
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
             type="button"
-            variant={chatOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            className="size-9 shrink-0"
+            variant="media"
+            size="icon-lg"
             title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
+            aria-label={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
             aria-pressed={chatOpen}
             onClick={onToggleChat}
           >
@@ -975,7 +974,7 @@ export function VoiceStageView({
                 inCall={inThisVoiceCall}
                 connecting={connecting}
                 joinLabel={resolvedJoinLabel}
-                overlay
+
                 incomingCall={
                   voiceCallIncoming && voiceCall?.phase === 'ringing'
                 }

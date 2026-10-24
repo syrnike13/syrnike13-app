@@ -28,6 +28,10 @@ const buttonVariants = cva(
         // banner actions, media tiles) on the Prism media backdrop.
         overlay:
           'bg-media-backdrop/50 text-on-media backdrop-blur-sm hover:bg-media-backdrop/70 aria-expanded:bg-media-backdrop/70',
+        // Not in base-nova: call controls on the black voice stage. No fill
+        // at rest; hover and pressed (camera, screen share on) get one.
+        media:
+          'text-on-media/80 hover:bg-on-media/10 hover:text-on-media aria-expanded:bg-on-media/10 aria-expanded:text-on-media aria-pressed:bg-on-media/15 aria-pressed:text-on-media',
       },
       // Discord control metrics: sm 32px, default 38px, lg 44px. Icon sizes
       // keep base-nova values, which already match Discord.
@@ -43,6 +47,9 @@ const buttonVariants = cva(
         'icon-sm':
           'size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg',
         'icon-lg': 'size-9',
+        // Not in base-nova: wide call control (voice stage), 48×36.
+        'icon-wide':
+          "h-9 min-w-12 px-2 [&_svg:not([class*='size-'])]:size-5",
       },
       // Not in base-nova: Discord uses round icon buttons for row and banner
       // actions. Declared after `size` so it wins over size-specific radii.
