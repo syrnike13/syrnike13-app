@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import { ArrowUpIcon } from '#/components/icons'
+import { Button } from '@syrnike13/ui/primitives/button'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   addFeedbackVote,
@@ -10,16 +11,13 @@ import {
 } from '#/features/api/feedback-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
-import { cn } from '#/lib/utils'
 
 export function FeedbackVoteButton({
   suggestion,
   token,
-  compact = false,
 }: {
   suggestion: FeedbackSuggestion
   token: string
-  compact?: boolean
 }) {
   const t = useTranslations('feedback.vote')
   const { locale } = useLocale()
@@ -42,15 +40,10 @@ export function FeedbackVoteButton({
   })
 
   return (
-    <button
+    <Button
       type="button"
-      className={cn(
-        'gradient-surface-input group/vote flex shrink-0 items-center justify-center rounded-lg border text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        compact ? 'h-9 flex-row gap-1.5 px-3' : 'h-14 w-12 flex-col gap-0.5',
-        suggestion.voted
-          ? 'border-primary/45 bg-primary/10 text-primary'
-          : 'border-border bg-muted/20 text-muted-foreground hover:border-primary/35 hover:bg-primary/5 hover:text-foreground',
-      )}
+      size="sm"
+      variant={suggestion.voted ? 'default' : 'outline'}
       disabled={mutation.isPending}
       aria-pressed={suggestion.voted}
       aria-label={
@@ -61,17 +54,11 @@ export function FeedbackVoteButton({
       onClick={() => mutation.mutate()}
     >
       {mutation.isPending ? (
-        <Spinner className="size-4" aria-hidden />
+        <Spinner data-icon="inline-start" aria-hidden />
       ) : (
-        <ArrowUpIcon
-          className={cn(
-            'size-4 transition-transform group-hover/vote:-translate-y-0.5',
-            suggestion.voted && 'text-primary',
-          )}
-          aria-hidden
-        />
+        <ArrowUpIcon data-icon="inline-start" aria-hidden />
       )}
-      <span>{suggestion.vote_count.toLocaleString(locale)}</span>
-    </button>
+      {suggestion.vote_count.toLocaleString(locale)}
+    </Button>
   )
 }

@@ -18,6 +18,13 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Not in base-nova: status tints built like `destructive` on the
+        // Prism success, warning and chart-2 (informational) tokens.
+        success:
+          "bg-success/10 text-success dark:bg-success/20 [a]:hover:bg-success/20",
+        warning:
+          "bg-warning/10 text-warning dark:bg-warning/20 [a]:hover:bg-warning/20",
+        info: "bg-chart-2/10 text-chart-2 dark:bg-chart-2/20 [a]:hover:bg-chart-2/20",
       },
     },
     defaultVariants: {

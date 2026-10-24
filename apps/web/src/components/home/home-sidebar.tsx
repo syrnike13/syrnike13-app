@@ -81,6 +81,7 @@ export function HomeSidebar({
                   <Link
                     to={`${prefix}/feedback`}
                     search={{ view: 'all' }}
+                    activeOptions={{ includeSearch: false }}
                     activeProps={{ 'data-active': '' }}
                   />
                 }

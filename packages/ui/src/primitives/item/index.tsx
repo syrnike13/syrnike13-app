@@ -168,7 +168,8 @@ function ItemOverlay({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
-        type: "button",
+        // A rendered link must not get the button-only `type`.
+        type: render ? undefined : "button",
         className: cn("absolute inset-0 rounded-[inherit] outline-none", className),
       },
       props
