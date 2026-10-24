@@ -4,7 +4,7 @@ import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
-import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
+import { MessageSearch } from '#/components/chat/message-search'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { MessageComposer } from '#/components/chat/message-composer'
 import {
@@ -139,10 +139,11 @@ export function ChannelChatPanel({
               token={token}
               users={users}
             />
-            <ChannelSearchDialog
-              channelId={channelId}
+            <MessageSearch
+              scope={{ kind: 'channel', channelId }}
               token={token}
               users={users}
+              variant="icon"
             />
           </>
         ) : null}

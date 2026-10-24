@@ -241,8 +241,12 @@ vi.mock('#/components/chat/channel-pinned-dialog', () => ({
   ChannelPinnedDialog: () => null,
 }))
 
-vi.mock('#/components/chat/channel-search-dialog', () => ({
-  ChannelSearchDialog: () => null,
+vi.mock('#/components/chat/message-search', () => ({
+  MessageSearch: () => null,
+}))
+
+vi.mock('#/components/chat/group-member-sidebar', () => ({
+  GroupMemberSidebar: () => null,
 }))
 
 vi.mock('#/components/user/user-global-profile-dialog', () => ({
@@ -362,7 +366,7 @@ describe('ChannelView direct message header', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders avatar, presence dot, name, and mutual server aliases', () => {
+  it('renders avatar, presence dot and name', () => {
     const { container } = renderChannelView(
       <ChannelView channelId={CHANNEL_ID} />,
     )
@@ -373,9 +377,7 @@ describe('ChannelView direct message header', () => {
     expect(within(header!).getByText('T')).toBeTruthy()
     expect(within(header!).getByTitle('Не активен')).toBeTruthy()
     expect(within(header!).getByRole('heading', { name: 'test_isa' })).toBeTruthy()
-    expect(within(header!).getByText('AKA')).toBeTruthy()
-    expect(within(header!).getByText('Хан батый, Андрей')).toBeTruthy()
-    expect(within(header!).queryByText('не активен')).toBeNull()
+    expect(within(header!).queryByText('AKA')).toBeNull()
   })
 
   it('opens the direct message profile panel by default and toggles it from the header', () => {
@@ -411,16 +413,12 @@ describe('ChannelView direct message header', () => {
     expect(screen.getByRole('dialog')).toBeTruthy()
   })
 
-  it('opens the global profile dialog when the header name is clicked', () => {
-    const { container } = renderChannelView(
-      <ChannelView channelId={CHANNEL_ID} />,
-    )
-    const header = container.querySelector('header')
+  it('opens the global profile dialog from the profile panel button', () => {
+    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
-    expect(header).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
 
-    fireEvent.click(within(header!).getByRole('button', { name: 'test_isa' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Полный профиль' }))
 
     expect(screen.getByRole('dialog')).toBeTruthy()
     expect(screen.getByLabelText('Профиль пользователя')).toBeTruthy()
@@ -458,7 +456,6 @@ describe('ChannelView direct message header', () => {
     const header = container.querySelector('header')
 
     expect(header).toBeTruthy()
-    expect(within(header!).getByTitle('Групповой чат')).toBeTruthy()
     expect(within(header!).getByRole('heading', { name: 'Команда' })).toBeTruthy()
     expect(within(header!).queryByRole('button', { name: 'Профиль' })).toBeNull()
 

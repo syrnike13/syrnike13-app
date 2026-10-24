@@ -24,7 +24,6 @@ import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
 import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
 type ChannelPinnedDialogProps = {
@@ -77,18 +76,21 @@ export function ChannelPinnedDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'size-8',
-            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-            triggerClassName,
-          )}
-          title={t('pinnedTitle')} />}>
-          <PinIcon className="size-4" />
-        </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            // eslint-disable-next-line shadcn/require-static-classes -- voice-stage header passes its on-media colours
+            className={triggerClassName}
+            title={t('pinnedTitle')}
+            aria-label={t('pinnedTitle')}
+          />
+        }
+      >
+        <PinIcon className="size-5" />
+      </DialogTrigger>
       <DialogContent className="flex max-h-dialog-xs max-w-lg flex-col gap-4">
         <DialogHeader>
           <DialogTitle>{t('pinnedTitle')}</DialogTitle>

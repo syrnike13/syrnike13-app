@@ -2070,7 +2070,9 @@
       "one": "{name} печатает…",
       "two": "{first} и {second} печатают…",
       "many": "Несколько человек печатают…"
-    }
+    },
+    "groupMembers": "Участники — {count}",
+    "groupOwner": "Владелец группы"
   },
   "friends": {
     "accept": "Принять",
