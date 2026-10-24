@@ -17,8 +17,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
-import { voiceStagePopoverMicSettingsClass } from '#/components/voice/voice-stage-popover-styles'
-import { cn } from '#/lib/utils'
 
 export type VoiceSplitControlSurface = 'stage' | 'panel'
 
@@ -111,11 +109,7 @@ export function VoiceSplitControl({
             side="top"
             sideOffset={8}
             data-voice-stage-popover
-            className={cn(
-              // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
-              voiceStagePopoverMicSettingsClass,
-              surface === 'panel' && 'z-200',
-            )}
+            className={surface === 'panel' ? 'z-200 w-72' : 'z-420 w-72'}
           >
             {popoverContent}
           </PopoverContent>

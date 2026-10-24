@@ -30,9 +30,6 @@ import {
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
 import { ScreenShareQualitySections } from '#/components/voice/voice-screen-share-quality'
-import {
-  voiceStagePopoverContentClass,
-} from '#/components/voice/voice-stage-popover-styles'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useAuth } from '#/features/auth/auth-context'
@@ -196,11 +193,7 @@ function MiniStreamSettings({
         side="top"
         align="end"
         sideOffset={8}
-        className={cn(
-          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover surface class
-          voiceStagePopoverContentClass,
-          'z-510 max-h-voice-popover w-64 overflow-y-auto',
-        )}
+        className="z-510 max-h-voice-popover w-64 overflow-y-auto"
       >
         {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
         {remoteUserId && showOwnQuality ? (

@@ -48,10 +48,6 @@ import {
   useScreenShareQuality,
 } from '#/components/voice/voice-screen-share-quality'
 import {
-  voiceStagePopoverContentClass,
-} from '#/components/voice/voice-stage-popover-styles'
-import { cn } from '#/lib/utils'
-import {
   desktopScreenShareSourceLabel,
   rememberDesktopScreenShareBroadcastSource,
 } from '#/features/voice/voice-broadcast-source'
@@ -619,11 +615,7 @@ function ScreenSharePickerSettings({
         side="top"
         align="end"
         sideOffset={8}
-        className={cn(
-          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
-          voiceStagePopoverContentClass,
-          'w-64',
-        )}
+        className="z-420 w-64"
       >
         <div className="flex flex-col gap-0.5">
           <StreamSettingsSubmenu
