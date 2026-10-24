@@ -357,7 +357,7 @@ function AddFriendPanel() {
             disabled={sending}
           />
           <InputGroupAddon align="inline-end">
-            <InputGroupButton type="submit" variant="default" disabled={sending || !username.trim()}>
+            <InputGroupButton type="submit" size="sm" variant="default" disabled={sending || !username.trim()}>
               {t('send')}
             </InputGroupButton>
           </InputGroupAddon>
