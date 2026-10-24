@@ -279,7 +279,7 @@ function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
   )
 
   return (
-    <nav aria-label={t('tabsLabel')} className="flex min-w-0 items-center gap-2 overflow-x-auto">
+    <nav aria-label={t('tabsLabel')} className="flex min-w-0 items-center gap-2">
       {tabs.map((item) => (
         <Link
           key={item}

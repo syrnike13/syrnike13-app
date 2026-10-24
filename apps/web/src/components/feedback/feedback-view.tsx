@@ -229,7 +229,7 @@ export function FeedbackView({
             <LightbulbIcon className="size-5 shrink-0 text-primary" aria-hidden />
             <h1 className="text-sm font-semibold sm:text-base">{t('title')}</h1>
           </div>
-          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <nav className="flex min-w-0 flex-1 items-center gap-1">
             {MODE_TABS.map((item) => (
               <Button
                 key={item.id}
