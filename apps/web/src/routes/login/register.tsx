@@ -213,7 +213,6 @@ function RegisterPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="reg-email">{t('email')}</Label>
                   <Input
-                    className="auth-input"
                     id="reg-email"
                     type="email"
                     autoComplete="email"
@@ -292,7 +291,6 @@ function RegisterPage() {
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="reg-invite">{t('register.inviteCode')}</Label>
                     <Input
-                      className="auth-input"
                       id="reg-invite"
                       required
                       aria-invalid={Boolean(fieldErrors.invite)}
@@ -320,6 +318,7 @@ function RegisterPage() {
           <CardFooter className="flex flex-col gap-2">
             <Button
               type="submit"
+              size="lg"
               className="w-full"
               disabled={submitting || !configReady}
             >

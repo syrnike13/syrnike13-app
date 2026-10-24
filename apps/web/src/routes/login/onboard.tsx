@@ -110,7 +110,6 @@ function OnboardPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="onboard-username">{t('onboard.username')}</Label>
                   <Input
-                    className="auth-input"
                     id="onboard-username"
                     autoComplete="username"
                     autoCapitalize="none"
@@ -125,7 +124,7 @@ function OnboardPage() {
             </form.Field>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}

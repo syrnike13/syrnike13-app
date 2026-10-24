@@ -154,7 +154,6 @@ function ResendVerificationPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="resend-email">{t('email')}</Label>
                   <Input
-                    className="auth-input"
                     id="resend-email"
                     type="email"
                     autoComplete="email"
@@ -171,7 +170,7 @@ function ResendVerificationPage() {
             ) : null}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}

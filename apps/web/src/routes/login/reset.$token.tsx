@@ -113,7 +113,7 @@ function ResetConfirmPage() {
             </form.Field>
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}

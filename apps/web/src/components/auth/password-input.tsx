@@ -1,44 +1,42 @@
-import { useTranslations } from '@syrnike13/ui/i18n'
-import { EyeIcon, EyeOffIcon } from '#/components/icons'
-import { Input } from '@syrnike13/ui/primitives/input'
-import { cn } from '#/lib/utils'
 import { useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
+
+import { EyeIcon, EyeOffIcon } from '#/components/icons'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 
 type PasswordInputProps = Omit<
-  React.ComponentProps<typeof Input>,
+  React.ComponentProps<typeof InputGroupInput>,
   'type'
 >
 
-export function PasswordInput({
-  className,
-  disabled,
-  ...props
-}: PasswordInputProps) {
+/** Password field with a show/hide toggle at the end. */
+export function PasswordInput({ disabled, ...props }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
   const t = useTranslations('auth')
 
   return (
-    <div className="relative">
-      <Input
+    <InputGroup>
+      <InputGroupInput
         type={visible ? 'text' : 'password'}
-        className={cn('auth-input pr-12', className)}
         disabled={disabled}
         {...props}
       />
-      <button
-        type="button"
-        className="auth-password-toggle"
-        aria-label={visible ? t('password.hide') : t('password.show')}
-        aria-pressed={visible}
-        disabled={disabled}
-        onClick={() => setVisible((current) => !current)}
-      >
-        {visible ? (
-          <EyeOffIcon aria-hidden="true" />
-        ) : (
-          <EyeIcon aria-hidden="true" />
-        )}
-      </button>
-    </div>
+      <InputGroupAddon align="inline-end">
+        <InputGroupButton
+          size="icon-xs"
+          aria-label={visible ? t('password.hide') : t('password.show')}
+          aria-pressed={visible}
+          disabled={disabled}
+          onClick={() => setVisible((current) => !current)}
+        >
+          {visible ? <EyeOffIcon aria-hidden /> : <EyeIcon aria-hidden />}
+        </InputGroupButton>
+      </InputGroupAddon>
+    </InputGroup>
   )
 }
