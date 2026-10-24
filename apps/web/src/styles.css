@@ -750,8 +750,11 @@ html {
   overflow: visible;
 }
 
-.syrnik-float {
+.syrnik-overlay {
   color: var(--muted-foreground);
+}
+
+.syrnik-float {
   opacity: 0;
   animation: syrnik-float 3s steps(12, end) infinite;
 }

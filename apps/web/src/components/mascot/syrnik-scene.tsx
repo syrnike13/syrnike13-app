@@ -1,11 +1,12 @@
 import { CAKE_PIXELS } from '#/components/layout/cake-logo-data'
+import { cn } from '#/lib/utils'
 
 /**
  * Syrnik mascot scenes for empty states, drawn from the same 20 × 26 pixel
  * sprite as the logo. A scene swaps the eyes and adds a pixel overlay; new
  * scenes are a new entry in SCENES.
  */
-export type SyrnikSceneName = 'sleeping' | 'chilling'
+export type SyrnikSceneName = 'sleeping'
 
 type Pixel = readonly [x: number, y: number]
 
@@ -32,15 +33,11 @@ const Z_GLYPH: readonly Pixel[] = [
   [0, 0], [1, 0], [2, 0], [1, 1], [0, 2], [1, 2], [2, 2],
 ]
 
-/** 3 × 5 eighth note: head at the bottom left, stem and flag on the right. */
-const NOTE_GLYPH: readonly Pixel[] = [
-  [1, 0], [2, 0], [1, 1], [1, 2], [0, 3], [1, 3], [0, 4], [1, 4],
-]
-
 type Overlay = {
   pixels: readonly Pixel[]
   /** Offset in sprite pixels; overlays may sit in the padding (negative y). */
   at: Pixel
+  /** `syrnik-float` animates the overlay; without it the overlay is static. */
   className?: string
 }
 
@@ -50,13 +47,6 @@ type Scene = {
 }
 
 const SCENES: Record<SyrnikSceneName, Scene> = {
-  chilling: {
-    eyes: HAPPY_EYES,
-    overlays: [
-      { pixels: NOTE_GLYPH, at: [18, 1], className: 'syrnik-float syrnik-float-1' },
-      { pixels: NOTE_GLYPH, at: [23, -5], className: 'syrnik-float syrnik-float-2' },
-    ],
-  },
   sleeping: {
     eyes: SLEEPING_EYES,
     overlays: [
@@ -93,7 +83,7 @@ export function SyrnikScene({ scene }: { scene: SyrnikSceneName }) {
         <rect key={`eye-${x}:${y}`} x={x} y={y} width={1.02} height={1.02} fill={INK_FILL} />
       ))}
       {overlays.map((overlay, index) => (
-        <g key={index} className={overlay.className} fill="currentColor">
+        <g key={index} className={cn('syrnik-overlay', overlay.className)} fill="currentColor">
           {overlay.pixels.map(([x, y]) => (
             <rect
               key={`${x}:${y}`}
