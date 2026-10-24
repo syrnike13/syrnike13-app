@@ -249,7 +249,7 @@ function DropdownMenuCheckboxItem({
     >
       {/* Not in base-nova: a visible checkbox box, empty when unchecked. */}
       <span
-        className="pointer-events-none absolute right-2 flex size-4.5 items-center justify-center rounded-sm border border-input group-data-checked/checkbox-item:border-primary group-data-checked/checkbox-item:bg-primary [&_svg]:size-3.5 [&_svg]:text-primary-foreground! [&_svg]:opacity-100!"
+        className="pointer-events-none absolute right-2 flex size-4.5 items-center justify-center rounded-sm border border-input group-data-checked/checkbox-item:border-primary group-data-checked/checkbox-item:bg-primary [&_svg]:size-3.5 **:text-primary-foreground! [&_svg]:opacity-100!"
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <MenuPrimitive.CheckboxItemIndicator>
