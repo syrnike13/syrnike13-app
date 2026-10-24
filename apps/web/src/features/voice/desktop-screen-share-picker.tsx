@@ -34,6 +34,12 @@ import {
   TabsTrigger,
 } from '@syrnike13/ui/primitives/tabs'
 import { Separator } from '@syrnike13/ui/primitives/separator'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { usePlatform } from '#/platform/use-platform'
 import { apiErrorMessage } from '#/lib/api/error-message'
 import {
@@ -520,11 +526,11 @@ function DisplaySourceTile({
       <button
         type="button"
         aria-label={t('sharePicker.shareAria', { source: sourceLabel })}
-        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
+        className="group min-w-0 rounded-lg border border-border bg-card p-2 text-left transition-colors hover:border-primary hover:bg-hover disabled:pointer-events-none disabled:opacity-60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
         disabled={disabled}
         onClick={onShare}
       >
-        <div className="relative aspect-video overflow-hidden rounded bg-muted">
+        <div className="relative aspect-video overflow-hidden rounded-md bg-muted">
           {source.thumbnailDataUrl ? (
             <img
               src={source.thumbnailDataUrl}
@@ -539,7 +545,7 @@ function DisplaySourceTile({
               <FallbackIcon className="size-8" />
             </div>
           )}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-media-backdrop/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
             <span
               aria-hidden="true"
               className={buttonVariants({ size: 'sm', variant: 'secondary' })}
@@ -608,7 +614,7 @@ function ScreenSharePickerSettings({
           aria-label={t('sharePicker.streamSettings')}
           title={t('sharePicker.streamSettings')}
           disabled={disabled}
-          className="group/gear cursor-pointer disabled:cursor-not-allowed" />}>
+          className="group/gear" />}>
           <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[popup-open]/gear:rotate-90 motion-reduce:transition-none" />
         </PopoverTrigger>
       <PopoverContent
@@ -635,16 +641,20 @@ function ScreenSharePickerSettings({
           {audioSupported ? (
             <>
               <Separator className="my-0.5" />
-              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
-                <span>{t('sharePicker.muteAudio')}</span>
-                <Checkbox
-                  checked={!audioRequested}
-                  aria-label={t('sharePicker.muteAudio')}
-                  onCheckedChange={(checked) =>
-                    onAudioRequestedChange(checked !== true)
-                  }
-                />
-              </label>
+              <Item size="xs" render={<label />}>
+                <ItemContent>
+                  <ItemTitle>{t('sharePicker.muteAudio')}</ItemTitle>
+                </ItemContent>
+                <ItemActions>
+                  <Checkbox
+                    checked={!audioRequested}
+                    aria-label={t('sharePicker.muteAudio')}
+                    onCheckedChange={(checked) =>
+                      onAudioRequestedChange(checked !== true)
+                    }
+                  />
+                </ItemActions>
+              </Item>
             </>
           ) : null}
         </div>
