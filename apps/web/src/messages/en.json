@@ -275,7 +275,9 @@
       "addBanner": "Add banner",
       "editAvatar": "Change avatar",
       "removeAvatar": "Remove avatar",
-      "addAvatar": "Add avatar"
+      "addAvatar": "Add avatar",
+      "avatar": "Avatar",
+      "banner": "Banner"
     },
     "desktop": {
       "app": "Application",

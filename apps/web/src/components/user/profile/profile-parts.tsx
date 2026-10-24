@@ -65,8 +65,14 @@ export function ProfileHeader({
   onAvatarClick,
   avatarLabel,
   onStatusClick,
+  bannerSrc,
+  avatarSrc,
 }: {
   user: User
+  /** Preview (profile settings): unsaved banner; null shows the gradient. */
+  bannerSrc?: string | null
+  /** Preview (profile settings): unsaved avatar. */
+  avatarSrc?: string | null
   actions?: ReactNode
   onAvatarClick?: () => void
   avatarLabel?: string
@@ -76,14 +82,16 @@ export function ProfileHeader({
   const size = useContext(ProfileSizeContext)
   const lg = size === 'lg'
   const t = useTranslations('users')
-  const { bannerUrl } = useUserProfileData(user._id)
+  const { bannerUrl: savedBannerUrl } = useUserProfileData(user._id)
+  const bannerUrl = bannerSrc !== undefined ? bannerSrc : savedBannerUrl
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const showBanner = bannerUrl != null && failedUrl !== bannerUrl
   const status = user.status?.text?.trim()
 
   const avatar = (
     <UserAvatar
-      user={user}
+      user={avatarSrc === null ? { ...user, avatar: null } : user}
+      imageSrc={avatarSrc ?? undefined}
       className={lg ? 'size-30' : 'size-20'}
       fallbackClassName={lg ? 'size-30 text-3xl' : 'size-20 text-xl'}
       animated="always"

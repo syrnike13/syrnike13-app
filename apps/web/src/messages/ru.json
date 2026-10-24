@@ -275,7 +275,9 @@
       "addBanner": "Добавить баннер",
       "editAvatar": "Изменить аватар",
       "removeAvatar": "Удалить аватар",
-      "addAvatar": "Добавить аватар"
+      "addAvatar": "Добавить аватар",
+      "avatar": "Аватар",
+      "banner": "Баннер"
     },
     "desktop": {
       "app": "Приложение",
