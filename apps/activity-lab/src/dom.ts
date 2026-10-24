@@ -22,3 +22,12 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   }
   return element
 }
+
+/** `replaceChildren` that skips empty children like `h` does. */
+export function fill(target: Element, ...children: Child[]): void {
+  target.replaceChildren(
+    ...children
+      .filter((child) => child !== null && child !== undefined && child !== false)
+      .map((child) => (child instanceof Node ? child : String(child))),
+  )
+}

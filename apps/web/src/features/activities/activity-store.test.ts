@@ -1,7 +1,4 @@
-import type {
-  ActivityInstance,
-  GatewayServerEvent,
-} from '@syrnike13/api-types/gateway-schema'
+import type { GatewayServerEvent } from '@syrnike13/api-types/gateway-schema'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -51,6 +48,11 @@ class FakeGateway implements ActivityGateway {
     return String(event?.request_id)
   }
 }
+
+type ActivityInstance = Extract<
+  GatewayServerEvent,
+  { type: 'ActivityInstanceUpdate' }
+>['instance']
 
 function instance(overrides: Partial<ActivityInstance> = {}): ActivityInstance {
   return {

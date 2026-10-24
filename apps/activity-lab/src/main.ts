@@ -12,7 +12,7 @@ import {
   type SharedState,
 } from '@syrnike13/activity-sdk'
 
-import { h } from './dom'
+import { fill, h } from './dom'
 import { translator, type Translate } from './i18n'
 import { readLabState, toJson, type LabState, type RoundResult } from './lab-state'
 import { ReactionGame } from './reaction'
@@ -295,7 +295,7 @@ class Lab {
   private renderHeader(): void {
     const { activity, t } = this
     const online = activity.connection === 'connected'
-    this.header.replaceChildren(
+    fill(this.header,
       h('h1', {}, activity.context.application.name),
       h(
         'span',
@@ -309,7 +309,7 @@ class Lab {
 
   private renderParticipants(): void {
     const { activity, t } = this
-    this.participantsBox.replaceChildren(
+    fill(this.participantsBox,
       h('h2', {}, t('participants', { count: activity.participants.length })),
       h(
         'ul',
@@ -336,7 +336,7 @@ class Lab {
       activity
         .send({ type: 'ping', text: `ping from ${activity.user.displayName}` }, { to })
         .catch((error: unknown) => this.fail(error))
-    this.messagesBox.replaceChildren(
+    fill(this.messagesBox,
       h('h2', {}, t('messages')),
       h(
         'div',
@@ -386,7 +386,7 @@ class Lab {
   private renderState(): void {
     const { activity, t } = this
     const state = activity.state
-    this.stateTop.replaceChildren(
+    fill(this.stateTop,
       h('h2', {}, t('sharedState')),
       h(
         'p',
@@ -410,7 +410,7 @@ class Lab {
     const { activity, t } = this
     this.noteInput.placeholder = t('notePlaceholder')
     const newer = activity.state.version > this.noteBase.version
-    this.noteBox.replaceChildren(
+    fill(this.noteBox,
       h(
         'div',
         { class: 'row' },
@@ -452,7 +452,7 @@ class Lab {
           ? h('button', { class: 'stage primary', onclick: () => game.start() }, t('start'))
           : h('div', { class: 'stage muted' }, t('waitHost'))
     }
-    this.reactionBox.replaceChildren(
+    fill(this.reactionBox,
       h('h2', {}, t('reaction')),
       h('p', { class: 'muted hint' }, t('reactionHint')),
       stage,
@@ -513,7 +513,7 @@ class Lab {
             ),
       )
     }
-    this.boardsBox.replaceChildren(
+    fill(this.boardsBox,
       h(
         'div',
         { class: 'row' },
@@ -528,7 +528,7 @@ class Lab {
   private renderPlayer(): void {
     const { t } = this
     const data = this.player?.data ?? {}
-    this.playerBox.replaceChildren(
+    fill(this.playerBox,
       h(
         'div',
         { class: 'row' },
@@ -543,7 +543,7 @@ class Lab {
 
   private renderPlatform(): void {
     const { activity, t } = this
-    this.platformBox.replaceChildren(
+    fill(this.platformBox,
       h('h2', {}, t('platform')),
       h(
         'div',

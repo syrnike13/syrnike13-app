@@ -39,7 +39,7 @@ const ParticipantIds = Schema.Array(Schema.String).check(
 )
 
 /** Params schema per request method; anything else is `invalid_request`. */
-const PARAMS: { readonly [M in RequestMethod]: Schema.Top } = {
+const PARAMS: { readonly [M in RequestMethod]: Schema.Decoder<unknown> } = {
   ready: OptionalVoid,
   send: Schema.Struct({
     payload: Schema.Unknown,
