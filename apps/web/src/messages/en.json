@@ -951,7 +951,7 @@
       "title": "Invite friends to {server}",
       "membersJoin": "Members will join",
       "search": "Find friends",
-      "serverMembers": "Server members",
+      "friends": "Friends",
       "noFriends": "No friends found",
       "invite": "Invite",
       "invited": "Sent",

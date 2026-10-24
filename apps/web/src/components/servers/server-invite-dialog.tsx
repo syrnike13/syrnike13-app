@@ -19,7 +19,11 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
-import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
   NativeSelect,
@@ -152,10 +156,17 @@ export function ServerInviteDialog({
   const activeChannelName =
     textChannels.find((channel) => channel._id === activeChannelId)?.name ??
     t('channelFallback')
-  const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
-      (user) => !user.bot,
-    ),
+  const members = useSyncStore((s) => s.members)
+  const allFriends = useSyncStore((s) =>
+    listUsersByRelationship(s, 'Friend', auth.user?._id),
+  )
+  /** Friends who are not on the server yet. */
+  const friends = useMemo(
+    () =>
+      allFriends.filter(
+        (user) => !user.bot && !members[`${serverId}:${user._id}`],
+      ),
+    [allFriends, members, serverId],
   )
   const visibleFriends = useMemo(() => {
     const query = friendSearch.trim().toLocaleLowerCase('ru-RU')
@@ -356,20 +367,22 @@ export function ServerInviteDialog({
         </DialogHeader>
 
         <div className="px-5 pb-4">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
               value={friendSearch}
               onChange={(event) => setFriendSearch(event.target.value)}
               placeholder={t('search')}
-              className="h-10 pl-9"
+              aria-label={t('search')}
             />
-          </div>
+          </InputGroup>
         </div>
 
         <div className="min-h-48 px-4 pb-4">
           <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
-            {t('serverMembers')}
+            {t('friends')}
           </p>
           {visibleFriends.length === 0 ? (
             <Empty>
