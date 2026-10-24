@@ -32,12 +32,21 @@ export type MentionSuggestionItem =
       label: string
       description: string
     }
+  | {
+      kind: 'emoji'
+      /** `:shortcode:` shown in the row. */
+      label: string
+      unicode?: string
+      customId?: string
+    }
 
 export type MentionSuggestionConfig = {
   items: (props: { query: string }) => MentionSuggestionItem[]
   render: SuggestionOptions<MentionSuggestionItem>['render']
-  char?: '@' | '#'
+  char?: '@' | '#' | ':'
   name?: string
+  /** Rows shown at most (mentions: 6). */
+  limit?: number
 }
 
 export function createMentionSuggestionExtension(
@@ -54,11 +63,15 @@ export function createMentionSuggestionExtension(
           char: config.char ?? '@',
           allowSpaces: false,
           items: ({ query }) =>
-            config.items({ query }).slice(0, MAX_MENTION_SUGGESTION_ITEMS),
+            config.items({ query }).slice(0, config.limit ?? MAX_MENTION_SUGGESTION_ITEMS),
           render: config.render,
           command: ({ editor, range, props }) => {
             const mention =
-              props.kind === 'everyone' || props.kind === 'online'
+              props.kind === 'emoji'
+                ? props.customId
+                  ? { type: 'customEmoji', attrs: { id: props.customId } }
+                  : { type: 'text', text: props.unicode ?? '' }
+                : props.kind === 'everyone' || props.kind === 'online'
                 ? { type: 'massMention', attrs: { kind: props.kind } }
                 : props.kind === 'role'
                   ? { type: 'roleMention', attrs: { id: props.id } }

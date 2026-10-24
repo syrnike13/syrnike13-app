@@ -1914,6 +1914,7 @@
     "mentions": "Mentions",
     "members": "Members",
     "otherMentions": "Other mentions",
+    "emojiMatching": "Emoji matching {query}",
     "searchFailed": "Search failed",
     "searchMessages": "Search messages",
     "searchMessagesPlaceholder": "Search messages…",

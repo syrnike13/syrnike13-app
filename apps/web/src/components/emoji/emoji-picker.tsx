@@ -58,6 +58,7 @@ import {
 } from '@syrnike13/ui/primitives/tooltip'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
+  emojiSearchRank,
   loadEmojiCatalog,
   readFrequentEmoji,
   recordEmojiUse,
@@ -485,14 +486,14 @@ function EmojiGlyph({
   )
 }
 
-/** 0: name starts with the query, 1: a word does, 2: substring; null: no match. */
 function searchRank(item: PickerItem, query: string): number | null {
   if (item.kind === 'raw') return null
-  const name = item.kind === 'custom' ? item.emoji.name.toLowerCase() : item.emoji.shortcode
-  const haystack = item.kind === 'custom' ? name : item.emoji.search
-  if (name.startsWith(query)) return 0
-  if (haystack.split(/[\s_]+/).some((word) => word.startsWith(query))) return 1
-  return haystack.includes(query) ? 2 : null
+  return emojiSearchRank(
+    item.kind === 'custom'
+      ? { kind: 'custom', id: item.emoji._id, name: item.emoji.name }
+      : item,
+    query,
+  )
 }
 
 function itemKey(item: PickerItem) {

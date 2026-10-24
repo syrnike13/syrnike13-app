@@ -1914,6 +1914,7 @@
     "mentions": "Упоминания",
     "members": "Участники",
     "otherMentions": "Другие упоминания",
+    "emojiMatching": "Эмодзи, названия которых содержат {query}",
     "searchFailed": "Поиск не удался",
     "searchMessages": "Поиск по сообщениям",
     "searchMessagesPlaceholder": "Поиск по сообщениям…",

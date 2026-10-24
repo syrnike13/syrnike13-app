@@ -10,6 +10,10 @@ import {
   createMentionSuggestionExtension,
   type MentionSuggestionConfig,
 } from '#/lib/message-format/extensions/mention-suggestion'
+import {
+  createEmojiShortcodeExtension,
+  type EmojiShortcodeResolver,
+} from '#/lib/message-format/extensions/emoji-shortcode'
 import { RoleMentionNode } from '#/lib/message-format/extensions/role-mention'
 import { createSpoilerMark } from '#/lib/message-format/extensions/spoiler'
 import { UserMentionNode } from '#/lib/message-format/extensions/user-mention'
@@ -19,6 +23,8 @@ export type CreateMessageExtensionsOptions = {
   spoilerTitle?: string
   mentionSuggestion?: MentionSuggestionConfig
   channelSuggestion?: MentionSuggestionConfig
+  emojiSuggestion?: MentionSuggestionConfig
+  resolveEmojiShortcode?: EmojiShortcodeResolver
 }
 
 export function createMessageExtensions(
@@ -63,6 +69,12 @@ export function createMessageExtensions(
   }
   if (options.channelSuggestion) {
     extensions.push(createMentionSuggestionExtension(options.channelSuggestion))
+  }
+  if (options.emojiSuggestion) {
+    extensions.push(createMentionSuggestionExtension(options.emojiSuggestion))
+  }
+  if (options.resolveEmojiShortcode) {
+    extensions.push(createEmojiShortcodeExtension(options.resolveEmojiShortcode))
   }
 
   return extensions

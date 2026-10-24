@@ -8,7 +8,8 @@ import {
 } from 'react'
 import { randomUuid } from '#/lib/random-uuid'
 import type { Message } from '@syrnike13/api-types'
-import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
+import { useLocale, useTranslations, type Translator } from '@syrnike13/ui/i18n'
+import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { ArrowUpIcon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
@@ -28,6 +29,7 @@ import {
 import { apiErrorMessage } from '#/lib/api/error-message'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
+import { loadEmojiCatalog, searchEmoji } from '#/lib/emoji-catalog'
 import {
   MAX_MENTION_SUGGESTION_ITEMS,
   type MentionSuggestionItem,
@@ -411,6 +413,59 @@ export function MessageComposer({
     [channels, serverId, t],
   )
 
+  const { locale } = useLocale()
+  const emojiCatalog = useQuery({
+    queryKey: ['emoji-catalog', locale],
+    queryFn: () => loadEmojiCatalog(locale),
+    staleTime: Infinity,
+  }).data
+  const servers = useSyncStore((s) => s.servers)
+  const customEmojis = useSyncStore((s) => s.emojis)
+  /** Emoji of every joined server, the current one first. */
+  const usableCustomEmojis = useMemo(
+    () =>
+      Object.values(customEmojis)
+        .filter(
+          (emoji) => emoji.parent.type === 'Server' && servers[emoji.parent.id],
+        )
+        .map((emoji) => ({
+          id: emoji._id,
+          name: emoji.name,
+          serverId: emoji.parent.type === 'Server' ? emoji.parent.id : undefined,
+        }))
+        .sort((a, b) =>
+          a.serverId === serverId ? -1 : b.serverId === serverId ? 1 : 0,
+        ),
+    [customEmojis, serverId, servers],
+  )
+
+  const buildEmojiItems = useMemo(
+    () =>
+      (query: string): MentionSuggestionItem[] =>
+        searchEmoji(emojiCatalog, usableCustomEmojis, query, 10).map((match) =>
+          match.kind === 'custom'
+            ? { kind: 'emoji', label: `:${match.name}:`, customId: match.id }
+            : {
+                kind: 'emoji',
+                label: `:${match.emoji.shortcode}:`,
+                unicode: match.emoji.unicode,
+              },
+        ),
+    [emojiCatalog, usableCustomEmojis],
+  )
+
+  const resolveEmoji = useMemo(
+    () => (name: string) => {
+      const custom = usableCustomEmojis.find(
+        (emoji) => emoji.name.toLowerCase() === name,
+      )
+      if (custom) return { customId: custom.id }
+      const unicode = emojiCatalog?.byShortcode.get(name)
+      return unicode ? { unicode: unicode.unicode } : null
+    },
+    [emojiCatalog, usableCustomEmojis],
+  )
+
   function appendFiles(fileList: FileList | File[]) {
     if (isEditing || !canUploadFiles) return
     appendPendingFiles(fileList)
@@ -656,6 +711,8 @@ export function MessageComposer({
           formatContext={formatContext}
           mentionItems={buildMentionItems}
           channelItems={buildChannelItems}
+          emojiItems={buildEmojiItems}
+          resolveEmoji={resolveEmoji}
           menuAnchorRef={composerInputRowRef}
           menuSurfaceClassName="bg-secondary text-secondary-foreground"
           className="min-h-14 min-w-0 flex-1"

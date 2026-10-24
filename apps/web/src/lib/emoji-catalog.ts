@@ -19,6 +19,8 @@ export type UnicodeEmoji = {
   unicode: string
   label: string
   shortcode: string
+  /** Every iamcal shortcode, e.g. `+1` and `thumbsup`. */
+  shortcodes: string[]
   /** Lowercased label, tags and shortcodes for search. */
   search: string
   /** Skin tone variants, light to dark. */
@@ -28,6 +30,7 @@ export type UnicodeEmoji = {
 export type EmojiCatalog = {
   categories: { id: EmojiCategoryId; emojis: UnicodeEmoji[] }[]
   byUnicode: Map<string, UnicodeEmoji>
+  byShortcode: Map<string, UnicodeEmoji>
 }
 
 type CompactEmoji = {
@@ -100,6 +103,7 @@ async function buildCatalog(locale: string): Promise<EmojiCatalog> {
 
   const buckets = new Map<EmojiCategoryId, (UnicodeEmoji & { order: number })[]>()
   const byUnicode = new Map<string, UnicodeEmoji>()
+  const byShortcode = new Map<string, UnicodeEmoji>()
 
   for (const entry of compact) {
     const category = entry.group == null ? undefined : GROUP_CATEGORY[entry.group]
@@ -116,11 +120,13 @@ async function buildCatalog(locale: string): Promise<EmojiCatalog> {
       unicode: entry.unicode,
       label: entry.label,
       shortcode,
+      shortcodes: names.length > 0 ? names : [shortcode],
       search: [entry.label, ...(entry.tags ?? []), ...names].join(' ').toLowerCase(),
       skins: skins?.length === 5 ? skins : undefined,
       order: entry.order ?? 0,
     }
     byUnicode.set(entry.unicode, emoji)
+    for (const name of emoji.shortcodes) byShortcode.set(name, emoji)
     const bucket = buckets.get(category) ?? []
     bucket.push(emoji)
     buckets.set(category, bucket)
@@ -132,7 +138,50 @@ async function buildCatalog(locale: string): Promise<EmojiCatalog> {
       emojis: (buckets.get(id) ?? []).sort((a, b) => a.order - b.order),
     })),
     byUnicode,
+    byShortcode,
   }
+}
+
+/** A picker or autocomplete entry: Unicode from the catalog or a server emoji. */
+export type EmojiMatch =
+  | { kind: 'unicode'; emoji: UnicodeEmoji }
+  | { kind: 'custom'; id: string; name: string; serverId?: string }
+
+/** 0: name starts with the query, 1: a word does, 2: substring; null: no match. */
+export function emojiSearchRank(match: EmojiMatch, query: string): number | null {
+  const name = match.kind === 'custom' ? match.name.toLowerCase() : match.emoji.shortcode
+  const haystack = match.kind === 'custom' ? name : match.emoji.search
+  if (name.startsWith(query)) return 0
+  if (haystack.split(/[\s_]+/).some((word) => word.startsWith(query))) return 1
+  return haystack.includes(query) ? 2 : null
+}
+
+/** Ranked matches: custom emoji first within a rank, as Discord does. */
+export function searchEmoji(
+  catalog: EmojiCatalog | undefined,
+  custom: { id: string; name: string; serverId?: string }[],
+  query: string,
+  limit = Infinity,
+): EmojiMatch[] {
+  const search = query.trim().toLowerCase()
+  if (!search) return []
+  const ranked: { match: EmojiMatch; rank: number }[] = []
+  for (const emoji of custom) {
+    const match: EmojiMatch = { kind: 'custom', ...emoji }
+    const rank = emojiSearchRank(match, search)
+    if (rank !== null) ranked.push({ match, rank })
+  }
+  for (const category of catalog?.categories ?? []) {
+    for (const emoji of category.emojis) {
+      const match: EmojiMatch = { kind: 'unicode', emoji }
+      const rank = emojiSearchRank(match, search)
+      if (rank !== null) ranked.push({ match, rank })
+    }
+  }
+  return ranked
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, limit)
+    .map(({ match }) => match)
 }
 
 const FREQUENT_KEY = 'syrnike.emoji.frequent'
