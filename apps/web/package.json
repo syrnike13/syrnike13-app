@@ -50,6 +50,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "effect": "4.0.0-beta.103",
+    "emojibase-data": "16.0.3",
     "iconoir-react": "^7.11.0",
     "livekit-client": "^2.15.13",
     "lucide-react": "^1.27.0",

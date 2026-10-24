@@ -6,7 +6,8 @@ type CustomEmojiProps = {
   emojiId: string
   name?: string
   className?: string
-  size?: 'sm' | 'md'
+  /** sm 16px, md 20px, lg 28px (picker grid), xl 40px (picker preview). */
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 export function CustomEmoji({
@@ -15,7 +16,7 @@ export function CustomEmoji({
   className,
   size = 'md',
 }: CustomEmojiProps) {
-  const px = size === 'sm' ? 'size-4' : 'size-5'
+  const px = { sm: 'size-4', md: 'size-5', lg: 'size-7', xl: 'size-10' }[size]
 
   return (
     <FxImage
