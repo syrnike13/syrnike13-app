@@ -7,10 +7,7 @@ import { CommandPaletteTrigger } from '#/components/command-palette/command-pale
 import { DmChannelList } from '#/components/home/dm-channel-list'
 import { NewConversationButton } from '#/components/home/new-conversation-button'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
-import {
-  shellColumnHeaderClass,
-  shellNavSurface,
-} from '#/components/layout/shell-chrome'
+import { shellNavSurface } from '#/components/layout/shell-chrome'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   SidebarMenu,
@@ -51,7 +48,7 @@ export function HomeSidebar({
           : undefined
       }
     >
-      <header className={cn(shellColumnHeaderClass, 'px-2')}>
+      <header className="flex h-12.25 shrink-0 items-center px-2">
         <CommandPaletteTrigger />
       </header>
 

@@ -9,7 +9,7 @@ import {
   UsersIcon,
   XIcon,
 } from '#/components/icons'
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
@@ -237,10 +237,7 @@ function useRelationshipUsers(
   )
 }
 
-function usersForTab(
-  tab: ListTab,
-  lists: Record<'Friend' | 'Incoming' | 'Outgoing' | 'Blocked', User[]>,
-): User[] {
+function usersForTab(tab: ListTab, lists: RelationshipLists): User[] {
   switch (tab) {
     case 'online':
       return lists.Friend.filter((user) => isUserOnline(user))
@@ -253,7 +250,27 @@ function usersForTab(
   }
 }
 
-function HomeTabsNav({ tab }: { tab: HomeTab }) {
+type RelationshipLists = Record<'Friend' | 'Incoming' | 'Outgoing' | 'Blocked', User[]>
+
+function useRelationshipLists(): RelationshipLists {
+  return {
+    Friend: useRelationshipUsers('Friend'),
+    Incoming: useRelationshipUsers('Incoming'),
+    Outgoing: useRelationshipUsers('Outgoing'),
+    Blocked: useRelationshipUsers('Blocked'),
+  }
+}
+
+/** Pending and Blocked exist only while they have someone in them. */
+function visibleListTabs(lists: RelationshipLists): ListTab[] {
+  return LIST_TABS.filter((item) => {
+    if (item === 'pending') return lists.Incoming.length + lists.Outgoing.length > 0
+    if (item === 'blocked') return lists.Blocked.length > 0
+    return true
+  })
+}
+
+function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
   const t = useTranslations('home.friends')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
@@ -263,7 +280,7 @@ function HomeTabsNav({ tab }: { tab: HomeTab }) {
 
   return (
     <nav aria-label={t('tabsLabel')} className="flex min-w-0 items-center gap-2 overflow-x-auto">
-      {LIST_TABS.map((item) => (
+      {tabs.map((item) => (
         <Link
           key={item}
           to={prefix || '/'}
@@ -348,7 +365,7 @@ function AddFriendPanel() {
   )
 }
 
-function FriendsList({ tab }: { tab: ListTab }) {
+function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists }) {
   const t = useTranslations('home.friends')
   const tf = useTranslations('friends')
   const tu = useTranslations('users')
@@ -358,13 +375,6 @@ function FriendsList({ tab }: { tab: ListTab }) {
   const token = auth.session?.token
   const [search, setSearch] = useState('')
   const headingId = useId()
-
-  const lists = {
-    Friend: useRelationshipUsers('Friend'),
-    Incoming: useRelationshipUsers('Incoming'),
-    Outgoing: useRelationshipUsers('Outgoing'),
-    Blocked: useRelationshipUsers('Blocked'),
-  }
 
   const query = search.trim().toLowerCase()
   const visibleUsers = usersForTab(tab, lists).filter(
@@ -497,21 +507,35 @@ function FriendsList({ tab }: { tab: ListTab }) {
 
 export function HomeView({ tab }: { tab: HomeTab }) {
   const t = useTranslations('home.friends')
+  const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
+  const lists = useRelationshipLists()
+  const tabs = visibleListTabs(lists)
+  const tabHidden = tab !== 'add' && !tabs.includes(tab)
+
+  useEffect(() => {
+    if (!tabHidden) return
+    void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
+  }, [tabHidden, navigate, prefix])
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className={cn(shellColumnHeaderClass, 'px-4')}>
-          <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
-          <h1 className="text-base font-semibold">{t('title')}</h1>
-          <div className="mx-2 flex h-6">
-            <Separator orientation="vertical" />
-          </div>
-          <HomeTabsNav tab={tab} />
-        </header>
-        {tab === 'add' ? <AddFriendPanel /> : <FriendsList tab={tab} />}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className={cn(shellColumnHeaderClass, 'px-4')}>
+        <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
+        <h1 className="text-base font-semibold">{t('title')}</h1>
+        <div className="mx-2 flex h-6">
+          <Separator orientation="vertical" />
+        </div>
+        <HomeTabsNav tab={tab} tabs={tabs} />
+      </header>
+      <div className="flex min-h-0 flex-1">
+        {tab === 'add' ? (
+          <AddFriendPanel />
+        ) : (
+          <FriendsList tab={tabHidden ? 'online' : tab} lists={lists} />
+        )}
+        <ActiveNowPanel />
       </div>
-      <ActiveNowPanel />
     </div>
   )
 }
