@@ -2,8 +2,13 @@ import type { User } from '@syrnike13/api-types'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
-import { UserProfileHeader } from '#/components/user/user-profile-header'
-import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import {
+  ProfileBody,
+  ProfileHeader,
+  ProfileName,
+  ProfileSection,
+  ProfileSurface,
+} from '#/components/user/profile/profile-parts'
 import { useUserMutuals } from '#/components/user/use-user-mutuals'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -70,26 +75,30 @@ export function DirectMessageProfilePanel({
       >
         <div className="flex h-full min-h-0 flex-col">
           <ScrollArea className="min-h-0 flex-1">
-            <UserProfileHeader user={user} variant="panel" onAvatarClick={onOpenProfile} />
-            <div className="flex flex-col gap-4 px-4 pt-1 pb-4">
-              <div className="flex flex-col gap-2">
-                <UserProfileIdentity user={user} />
-                {mutuals.length > 0 ? (
-                  <p className="text-sm text-muted-foreground">{mutuals.join(' • ')}</p>
+            <ProfileSurface surface="secondary">
+              <ProfileHeader user={user} onAvatarClick={onOpenProfile} />
+              <ProfileBody>
+                <div className="flex flex-col gap-2">
+                  <ProfileName user={user} />
+                  {mutuals.length > 0 ? (
+                    <p className="text-sm text-muted-foreground">{mutuals.join(' • ')}</p>
+                  ) : null}
+                </div>
+                {bio ? (
+                  <ProfileSection title={tu('aboutMe')}>
+                    <p className="whitespace-pre-wrap">{bio}</p>
+                  </ProfileSection>
                 ) : null}
-              </div>
-              {bio ? <p className="text-sm whitespace-pre-wrap">{bio}</p> : null}
-              {aliases.length > 0 ? (
-                <section className="flex flex-col gap-1">
-                  <h3 className="text-xs font-semibold">{tu('aka')}</h3>
-                  <p className="truncate text-sm">{aliases.join(', ')}</p>
-                </section>
-              ) : null}
-              <section className="flex flex-col gap-1">
-                <h3 className="text-xs font-semibold">{tu('memberSince')}</h3>
-                <p className="text-sm">{memberSince}</p>
-              </section>
-            </div>
+                {aliases.length > 0 ? (
+                  <ProfileSection title={tu('aka')}>
+                    <p className="truncate">{aliases.join(', ')}</p>
+                  </ProfileSection>
+                ) : null}
+                <ProfileSection title={tu('accountCreated')}>
+                  <p>{memberSince}</p>
+                </ProfileSection>
+              </ProfileBody>
+            </ProfileSurface>
           </ScrollArea>
           {onOpenProfile ? (
             <div className="p-4 pt-2">

@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: the profile skeleton mirrors the card's banner, avatar, pills and text lines
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import {
@@ -11,15 +10,18 @@ import {
   UserIcon,
   UserPlusIcon,
 } from '#/components/icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { Skeleton } from '@syrnike13/ui/primitives/skeleton'
 
 import { UserBlockDialog } from '#/components/user/user-block-dialog'
-import { UserProfileHeader } from '#/components/user/user-profile-header'
-import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import {
+  ProfileBody,
+  ProfileHeader,
+  ProfileName,
+  ProfileSurface,
+} from '#/components/user/profile/profile-parts'
 import { UserProfileMutuals } from '#/components/user/user-profile-mutuals'
 import { UserProfileRoleList } from '#/components/user/user-profile-role-list'
 import { useUserMutuals } from '#/components/user/use-user-mutuals'
@@ -32,7 +34,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
-import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
@@ -44,7 +51,6 @@ import {
 } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { cn } from '#/lib/utils'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
   canMessageUser,
@@ -59,35 +65,6 @@ export type UserProfileCardProps = {
   roles?: MemberRoleEntry[]
   onClose?: () => void
   onOpenGlobalProfile?: () => void
-}
-
-function UserProfileCardSkeleton() {
-  return (
-    <div
-      className="absolute inset-0 z-10 flex flex-col gap-2 overflow-hidden bg-popover"
-      aria-hidden="true"
-    >
-      <div className="relative h-38 shrink-0">
-        <Skeleton className="h-26.25 w-full rounded-none" />
-        <Skeleton className="absolute top-15.25 left-4 size-20 rounded-full ring-6 ring-popover" />
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-1 pb-3">
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-5 w-20 rounded-full" />
-          <Skeleton className="h-5 w-14 rounded-full" />
-        </div>
-        <div className="mt-1 space-y-2">
-          <Skeleton className="h-3.5 w-full" />
-          <Skeleton className="h-3.5 w-4/5" />
-        </div>
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -112,27 +89,10 @@ export function UserProfileCard({
   const [busy, setBusy] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
-  const [headerLoading, setHeaderLoading] = useState(true)
 
-  const { bio, isPending } = useUserProfileData(profile._id)
-  const {
-    mutualFriends,
-    mutualFriendsCount,
-    mutualServersCount,
-    loading: mutualsLoading,
-  } = useUserMutuals(profile._id)
-
-  const handleHeaderLoadingChange = useCallback(
-    (loading: boolean) => setHeaderLoading(loading),
-    [],
-  )
-  const loading = isPending || headerLoading || mutualsLoading
-
-  useEffect(() => {
-    if (!loading) return
-    const timer = window.setTimeout(() => setHeaderLoading(false), 10_000)
-    return () => window.clearTimeout(timer)
-  }, [loading])
+  const { bio } = useUserProfileData(profile._id)
+  const { mutualFriends, mutualFriendsCount, mutualServersCount } =
+    useUserMutuals(profile._id)
 
   const isSelf = profile._id === auth.user?._id
   const canMessage =
@@ -244,39 +204,18 @@ export function UserProfileCard({
       {canAddFriend ? (
         <Button
           type="button"
-          variant="secondary"
+          variant="overlay"
           size="icon"
+          shape="circle"
           disabled={busy}
           title={t('addFriend')}
           aria-label={t('addFriend')}
-          className="size-8"
           onClick={(event) => {
             event.stopPropagation()
             void handleAddFriend()
           }}
         >
-          {busy ? (
-            <Spinner className="size-4" />
-          ) : (
-            <UserPlusIcon className="size-4" />
-          )}
-        </Button>
-      ) : null}
-      {canMessage ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon"
-          disabled={busy}
-          title={t('message')}
-          aria-label={t('message')}
-          className="size-8"
-          onClick={(event) => {
-            event.stopPropagation()
-            void openDm()
-          }}
-        >
-          <MessageCircleIcon className="size-4" />
+          {busy ? <Spinner /> : <UserPlusIcon />}
         </Button>
       ) : null}
       <UserProfileCardBannerMenu
@@ -297,116 +236,104 @@ export function UserProfileCard({
   ) : undefined
 
   return (
-    <div className="relative min-w-0">
-      <div
-        className={cn(
-          'flex max-h-profile-popover min-w-0 flex-col gap-2',
-          loading && 'pointer-events-none opacity-0',
-        )}
-        aria-busy={loading || undefined}
-        inert={loading}
-      >
-        <UserProfileHeader
-          user={profile}
-          variant="popover"
-          bannerActions={bannerActions}
-          onAvatarClick={canViewProfile ? handleViewProfile : undefined}
-          onMediaLoadingChange={handleHeaderLoadingChange}
-        />
+    <ProfileSurface
+      surface="popover"
+      className="max-h-profile-popover overflow-y-auto"
+    >
+      <ProfileHeader
+        user={profile}
+        actions={bannerActions}
+        onAvatarClick={canViewProfile ? handleViewProfile : undefined}
+      />
 
-        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2">
-          <UserProfileIdentity user={profile} />
+      <ProfileBody>
+        <div className="flex flex-col gap-2">
+          <ProfileName user={profile} />
           <UserProfileMutuals
             mutualFriends={mutualFriends}
             mutualFriendsCount={mutualFriendsCount}
             mutualServersCount={mutualServersCount}
           />
-          {bio ? (
-            <div className="min-w-0">
-              <p className="line-clamp-3 text-sm leading-4.5 whitespace-pre-wrap text-foreground">
-                {bio}
-              </p>
-              {canViewProfile ? (
-                <button
-                  type="button"
-                  className="mt-1 text-xs leading-4 text-muted-foreground transition-colors hover:text-foreground hover:underline"
-                  onClick={handleViewProfile}
-                >
-                  {t('viewFullProfile')}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          <UserProfileRoleList
-            user={profile}
-            serverId={serverId}
-            roles={roles}
-            maxVisible={6}
-          />
         </div>
 
-        {isSelf ? (
-          <div className="px-4 pb-3">
-            <Button
-              type="button"
-              size="default"
-              className="h-8 w-full"
-              onClick={() => {
-                dismiss()
-                openSettings('profile')
-              }}
-            >
-              <PencilFillIcon className="size-4" aria-hidden />
-              {t('editProfile')}
-            </Button>
+        {bio ? (
+          <div className="flex min-w-0 flex-col items-start gap-1">
+            <p className="line-clamp-3 text-sm leading-4.5 whitespace-pre-wrap text-foreground">
+              {bio}
+            </p>
+            {canViewProfile ? (
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                className="px-0 text-muted-foreground"
+                onClick={handleViewProfile}
+              >
+                {t('viewFullProfile')}
+              </Button>
+            ) : null}
           </div>
+        ) : null}
+
+        <UserProfileRoleList
+          user={profile}
+          serverId={serverId}
+          roles={roles}
+          maxVisible={6}
+        />
+
+        {isSelf ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              dismiss()
+              openSettings('profile')
+            }}
+          >
+            <PencilFillIcon />
+            {t('editProfile')}
+          </Button>
         ) : canMessage ? (
           <form
-            className="px-4 pb-3"
             onSubmit={(event) => {
               event.preventDefault()
               void openDm(messageDraft)
             }}
           >
-            <div className="relative">
-              <Input
+            <InputGroup>
+              <InputGroupInput
                 value={messageDraft}
                 disabled={busy}
                 placeholder={t('messagePlaceholder', {
                   username: profile.username,
                 })}
-                className="h-11.5 pr-11 text-base leading-5.5 md:text-base"
                 onChange={(event) => setMessageDraft(event.target.value)}
               />
-              <Button
-                type="submit"
-                variant="ghost"
-                size="icon"
-                disabled={busy}
-                className="absolute top-1/2 right-1.5 size-8 -translate-y-1/2"
-                title={t('openDm')}
-                aria-label={t('openDm')}
-              >
-                {busy ? (
-                  <Spinner className="size-4" />
-                ) : (
-                  <MessageCircleIcon className="size-4" />
-                )}
-              </Button>
-            </div>
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  type="submit"
+                  size="icon-xs"
+                  disabled={busy}
+                  title={t('openDm')}
+                  aria-label={t('openDm')}
+                >
+                  {busy ? <Spinner /> : <MessageCircleIcon />}
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
           </form>
         ) : null}
+      </ProfileBody>
 
-        <UserBlockDialog
-          user={profile}
-          open={blockOpen}
-          busy={busy}
-          onOpenChange={setBlockOpen}
-          onConfirm={() => void handleBlock()}
-        />
-      </div>
-      {loading ? <UserProfileCardSkeleton /> : null}
-    </div>
+      <UserBlockDialog
+        user={profile}
+        open={blockOpen}
+        busy={busy}
+        onOpenChange={setBlockOpen}
+        onConfirm={() => void handleBlock()}
+      />
+    </ProfileSurface>
   )
 }
 
@@ -441,17 +368,17 @@ function UserProfileCardBannerMenu({
         render={
           <Button
             type="button"
-            variant="secondary"
+            variant="overlay"
             size="icon"
+            shape="circle"
             disabled={disabled}
             title={t('more')}
             aria-label={t('profileActions')}
-            className="size-8"
             onClick={(event) => event.stopPropagation()}
           />
         }
       >
-        <MoreHorizontalIcon className="size-4" />
+        <MoreHorizontalIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         side="bottom"

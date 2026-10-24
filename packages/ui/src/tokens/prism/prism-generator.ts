@@ -17,7 +17,7 @@ import type { PrismAnchors, PrismTokens } from './types.js'
  */
 const SURFACE_MIX = {
   card: 8,
-  popover: 12,
+  popover: 10,
   secondary: 14,
   muted: 9,
   input: 8,

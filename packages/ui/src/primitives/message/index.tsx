@@ -47,7 +47,7 @@ function Message({
       data-highlighted={highlighted || undefined}
       data-mentioned={mentioned || undefined}
       className={cn(
-        "group/message relative flex w-full min-w-0 py-0.5 pr-12 pl-18 transition-colors duration-500 before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-hover data-group-start:mt-4.25 data-group-start:has-data-[slot=message-avatar]:min-h-11 data-mentioned:bg-warning/10 data-mentioned:before:bg-warning data-highlighted:bg-primary/10 data-highlighted:before:bg-primary",
+        "group/message relative flex w-full min-w-0 py-0.5 pr-12 pl-18 before:absolute before:inset-y-0 before:left-0 before:w-0.5 hover:bg-hover data-group-start:mt-4.25 data-group-start:has-data-[slot=message-avatar]:min-h-11 data-mentioned:bg-warning/10 data-mentioned:before:bg-warning data-highlighted:bg-primary/10 data-highlighted:before:bg-primary",
         className
       )}
       {...props}

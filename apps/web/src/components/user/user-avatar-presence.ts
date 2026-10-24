@@ -122,14 +122,17 @@ export function resolveAvatarSizePx(
     if (!tokens) continue
 
     const key = tokens[tokens.length - 1]!.replace('size-', '')
-    const px = TAILWIND_SIZE_PX[key]
-    if (px !== undefined) return px
+    const px = TAILWIND_SIZE_PX[key] ?? Number(key) * 4
+    if (Number.isFinite(px)) return px
   }
 
   return 32
 }
 
 export function presenceRingColorVar(presenceRingClassName: string) {
+  // `border-(--profile-surface)`: the ring follows a surface variable.
+  const variable = presenceRingClassName.match(/^border-\((--[\w-]+)\)$/)
+  if (variable) return `var(${variable[1]})`
   switch (presenceRingClassName) {
     case 'border-muted':
       return 'var(--muted)'

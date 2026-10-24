@@ -24,6 +24,10 @@ const buttonVariants = cva(
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline',
+        // Not in base-nova: controls over images and banners (profile
+        // banner actions, media tiles) on the Prism media backdrop.
+        overlay:
+          'bg-media-backdrop/50 text-on-media backdrop-blur-sm hover:bg-media-backdrop/70 aria-expanded:bg-media-backdrop/70',
       },
       // Discord control metrics: sm 32px, default 38px, lg 44px. Icon sizes
       // keep base-nova values, which already match Discord.

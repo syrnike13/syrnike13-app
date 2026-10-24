@@ -10,6 +10,8 @@
 @source '../../../packages/ui/src';
 
 :root {
+  /* Profile cards override it so cut-outs match their surface. */
+  --profile-surface: var(--popover);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;

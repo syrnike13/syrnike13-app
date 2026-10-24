@@ -9,8 +9,7 @@ import {
   DrawerTitle,
 } from '@syrnike13/ui/primitives/drawer'
 import { PresencePickerList } from '#/components/user/presence-picker-list'
-import { profileMenuRowClass } from '#/components/user/profile-menu-row'
-import { cn } from '#/lib/utils'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 
 type MobilePresenceDrawerProps = {
   open: boolean
@@ -41,22 +40,18 @@ export function MobilePresenceDrawer({
         <PresencePickerList onSelected={() => onOpenChange(false)} />
 
         <div className="mt-1 border-t border-shell-divider p-2">
-          <button
-            type="button"
-            className={cn(
-              profileMenuRowClass,
-              'h-11 rounded-lg px-3 text-base text-foreground',
-            )}
+          <SidebarMenuButton
+            size="lg"
             onClick={() => {
               onOpenChange(false)
               onEditCustomStatus()
             }}
           >
-            <PlusIcon className="size-4 shrink-0 opacity-70" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-left">
+            <PlusIcon aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-foreground">
               {statusLabel ? `«${statusLabel}»` : t('customStatus')}
             </span>
-          </button>
+          </SidebarMenuButton>
         </div>
       </DrawerContent>
     </Drawer>

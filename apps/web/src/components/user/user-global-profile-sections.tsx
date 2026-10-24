@@ -1,8 +1,19 @@
-import { ServerIcon } from '#/components/icons'
 import type { Server, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
+import { serverAcronym } from '#/components/servers/server-avatar'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@syrnike13/ui/primitives/avatar'
+import { serverIconUrl } from '#/lib/media'
 import { UserAvatar } from '#/components/user/user-avatar'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@syrnike13/ui/primitives/sidebar'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Tabs,
@@ -54,25 +65,28 @@ export function UserGlobalProfileSections({
             <EmptyDescription>{t('noMutualServers')}</EmptyDescription>
           </Empty>
         ) : (
-          <ul className="flex flex-col gap-0.5">
+          <SidebarMenu>
             {mutualServers.map((server) => (
-              <li key={server._id}>
-                <button
-                  type="button"
+              <SidebarMenuItem key={server._id}>
+                <SidebarMenuButton
+                  size="lg"
                   disabled={busy}
-                  className="flex min-h-10.5 w-full min-w-0 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
                   onClick={() => onServerSelect(server._id)}
                 >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                    <ServerIcon className="size-4" />
-                  </span>
-                  <span className="min-w-0 truncate text-base leading-5 font-medium">
-                    {server.name}
-                  </span>
-                </button>
-              </li>
+                  <Avatar className="size-8">
+                    {serverIconUrl(server.icon, { animated: false }) ? (
+                      <AvatarImage
+                        src={serverIconUrl(server.icon, { animated: false })!}
+                        alt=""
+                      />
+                    ) : null}
+                    <AvatarFallback>{serverAcronym(server.name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-foreground">{server.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             ))}
-          </ul>
+          </SidebarMenu>
         )}
       </TabsContent>
 
