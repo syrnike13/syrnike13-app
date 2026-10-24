@@ -37,6 +37,7 @@ import {
   UserIcon,
   WindowsIcon,
 } from '#/components/icons'
+import { ChoiceCardGroup } from '#/components/ui/choice-card-group'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
@@ -289,45 +290,17 @@ export function FeedbackCreateDialog({
               <>
                 <section className="space-y-3" aria-labelledby="feedback-category-label">
                   <Label id="feedback-category-label">{t('category')}</Label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {FEEDBACK_CATEGORIES.map((item) => {
-                      const selected = category === item.value
-                      const Icon = item.value === 'bug' ? BugIcon : LightbulbIcon
-                      return (
-                        <button
-                          key={item.value}
-                          type="button"
-                          className={cn(
-                            'gradient-surface-input flex min-h-20 items-center gap-3 rounded-lg border px-4 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                            selected
-                              ? 'border-primary/55 bg-primary/10 text-foreground'
-                              : 'border-shell-divider bg-muted/10 text-muted-foreground hover:border-primary/30 hover:bg-muted/20 hover:text-foreground',
-                          )}
-                          aria-pressed={selected}
-                          onClick={() => setCategory(item.value)}
-                        >
-                          <span
-                            className={cn(
-                              'flex size-10 shrink-0 items-center justify-center rounded-lg border',
-                              selected
-                                ? 'border-primary/35 bg-primary/12 text-primary'
-                                : 'border-shell-divider bg-background/30',
-                            )}
-                          >
-                            <Icon className="size-5" aria-hidden />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-sm font-semibold">
-                              {tm(item.labelKey)}
-                            </span>
-                            <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                              {tm(item.descriptionKey)}
-                            </span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <ChoiceCardGroup
+                    label={t('category')}
+                    value={category}
+                    onValueChange={setCategory}
+                    options={FEEDBACK_CATEGORIES.map((item) => ({
+                      value: item.value,
+                      label: tm(item.labelKey),
+                      description: tm(item.descriptionKey),
+                      icon: item.value === 'bug' ? BugIcon : LightbulbIcon,
+                    }))}
+                  />
                 </section>
               </>
             ) : null}
@@ -443,7 +416,7 @@ export function FeedbackCreateDialog({
                             key={suggestion._id}
                             to={`${prefix}/feedback/$feedbackId`}
                             params={{ feedbackId: suggestion._id }}
-                            className="flex items-center gap-3 border-b border-shell-divider p-3 outline-none transition-colors last:border-b-0 hover:bg-muted/25 focus-visible:bg-muted/25"
+                            className="flex items-center gap-3 border-b border-shell-divider p-3 outline-none transition-colors last:border-b-0 hover:bg-hover focus-visible:bg-hover"
                             onClick={() => onOpenChange(false)}
                           >
                             <span className="flex size-14 shrink-0 flex-col items-center justify-center rounded-md border border-primary/25 bg-primary/5 text-xs font-semibold text-primary">
@@ -522,47 +495,27 @@ export function FeedbackCreateDialog({
                       {t('authorHint')}
                     </p>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {([
+                  <ChoiceCardGroup
+                    label={t('authorLabel')}
+                    value={anonymous ? 'anonymous' : 'me'}
+                    onValueChange={(next) => setAnonymous(next === 'anonymous')}
+                    options={[
                       {
-                        value: false,
+                        value: 'me',
                         icon: UserIcon,
                         label: auth.user?.username
                           ? `@${auth.user.username}`
                           : t('asMe'),
-                        hint: t('asMeHint'),
+                        description: t('asMeHint'),
                       },
                       {
-                        value: true,
+                        value: 'anonymous',
                         icon: EyeOffIcon,
                         label: t('anonymous'),
-                        hint: t('anonymousHint'),
+                        description: t('anonymousHint'),
                       },
-                    ] as const).map((option) => {
-                      const selected = anonymous === option.value
-                      const Icon = option.icon
-                      return (
-                        <button
-                          key={option.label}
-                          type="button"
-                          className={cn(
-                            'gradient-surface-input flex items-center gap-3 rounded-lg border px-4 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                            selected
-                              ? 'border-primary/55 bg-primary/10 text-foreground'
-                              : 'border-shell-divider bg-muted/10 text-muted-foreground hover:border-primary/30 hover:bg-muted/20 hover:text-foreground',
-                          )}
-                          aria-pressed={selected}
-                          onClick={() => setAnonymous(option.value)}
-                        >
-                          <Icon className={cn('size-5 shrink-0', selected && 'text-primary')} aria-hidden />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold">{option.label}</span>
-                            <span className="block text-xs text-muted-foreground">{option.hint}</span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                    ]}
+                  />
                 </section>
               </>
             ) : null}
