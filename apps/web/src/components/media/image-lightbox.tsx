@@ -28,6 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
+import { Button, buttonVariants } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { attachmentOriginalUrl, attachmentPreviewUrl } from '#/lib/media'
 import { useMessageTimestamp } from '#/lib/use-message-time'
@@ -66,17 +67,9 @@ const MAX_ZOOM = 4
 const BUTTON_ZOOM = 2
 const PAN_DRAG_THRESHOLD_PX = 3
 
-const lightboxActionClass =
-  'inline-flex size-9 items-center justify-center rounded-lg text-on-media transition-colors hover:bg-on-media/10 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none'
-
 const lightboxChromeClass =
   'rounded-xl bg-media-backdrop/95 text-on-media shadow-2xl'
 
-const lightboxNavClass = cn(
-  'absolute top-1/2 z-10 inline-flex size-10 -translate-y-1/2 items-center justify-center',
-  lightboxChromeClass,
-  'transition-colors hover:bg-on-media/15 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none',
-)
 
 function stopBubble(event: { stopPropagation: () => void }) {
   event.stopPropagation()
@@ -290,11 +283,12 @@ export function ImageLightbox({
             <LightboxTooltip
               label={zoomed ? t('resetZoom') : t('zoomIn')}
             >
-              <button
+              <Button
                 type="button"
+                variant="media"
+                size="icon-lg"
                 aria-label={zoomed ? t('resetZoom') : t('zoomInImage')}
                 aria-pressed={zoomed}
-                className={lightboxActionClass}
                 onClick={() => {
                   if (zoomed) {
                     resetView()
@@ -303,17 +297,17 @@ export function ImageLightbox({
                   setZoom(BUTTON_ZOOM)
                 }}
               >
-                <SearchIcon className="size-4" aria-hidden />
-              </button>
+                <SearchIcon aria-hidden />
+              </Button>
             </LightboxTooltip>
             <LightboxTooltip label={t('download')}>
               <a
                 href={src}
                 download={file.filename ?? 'image'}
                 aria-label={t('downloadImage')}
-                className={lightboxActionClass}
+                className={buttonVariants({ variant: 'media', size: 'icon-lg' })}
               >
-                <DownloadIcon className="size-4" aria-hidden />
+                <DownloadIcon aria-hidden />
               </a>
             </LightboxTooltip>
             <LightboxTooltip label={t('openOriginal')}>
@@ -322,53 +316,62 @@ export function ImageLightbox({
                 target="_blank"
                 rel="noreferrer noopener"
                 aria-label={t('openOriginal')}
-                className={lightboxActionClass}
+                className={buttonVariants({ variant: 'media', size: 'icon-lg' })}
               >
-                <ExternalLinkIcon className="size-4" aria-hidden />
+                <ExternalLinkIcon aria-hidden />
               </a>
             </LightboxTooltip>
           </div>
 
-          <DialogClose render={<button
-              type="button"
-              aria-label={t('closeViewer')}
-              className={cn(
-                // design-allow restyle-shared: fullscreen media viewer surface
-                'absolute top-5 right-4 z-10 inline-flex size-10 items-center justify-center',
-                lightboxChromeClass,
-                'transition-colors hover:bg-on-media/15 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none',
-              )}
-              onClick={stopBubble} />}>
-              <XIcon className="size-5" aria-hidden />
-            </DialogClose>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="overlay"
+                size="icon-lg"
+                shape="circle"
+                aria-label={t('closeViewer')}
+                className="absolute top-5 right-4 z-10"
+                onClick={stopBubble}
+              />
+            }
+          >
+            <XIcon aria-hidden />
+          </DialogClose>
 
           {hasGallery ? (
             <>
               <LightboxTooltip label={t('previous')} side="right">
-                <button
+                <Button
                   type="button"
+                  variant="overlay"
+                  size="icon-lg"
+                  shape="circle"
                   aria-label={t('previousImage')}
-                  className={cn(lightboxNavClass, 'left-4')}
+                  className="absolute top-1/2 left-4 z-10 -translate-y-1/2"
                   onClick={(event) => {
                     stopBubble(event)
                     onIndexChange((index - 1 + files.length) % files.length)
                   }}
                 >
-                  <ChevronLeftIcon className="size-5" aria-hidden />
-                </button>
+                  <ChevronLeftIcon aria-hidden />
+                </Button>
               </LightboxTooltip>
               <LightboxTooltip label={t('next')} side="left">
-                <button
+                <Button
                   type="button"
+                  variant="overlay"
+                  size="icon-lg"
+                  shape="circle"
                   aria-label={t('nextImage')}
-                  className={cn(lightboxNavClass, 'right-4')}
+                  className="absolute top-1/2 right-4 z-10 -translate-y-1/2"
                   onClick={(event) => {
                     stopBubble(event)
                     onIndexChange((index + 1) % files.length)
                   }}
                 >
-                  <ChevronRightIcon className="size-5" aria-hidden />
-                </button>
+                  <ChevronRightIcon aria-hidden />
+                </Button>
               </LightboxTooltip>
             </>
           ) : null}
