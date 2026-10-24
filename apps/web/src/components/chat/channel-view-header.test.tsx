@@ -387,7 +387,7 @@ describe('ChannelView direct message header', () => {
     expect(
       within(panel).getByRole('heading', { name: 'test_isa' }),
     ).toBeTruthy()
-    expect(within(panel).getByText('Общие серверы — 2')).toBeTruthy()
+    expect(within(panel).getByText('2 общих сервера')).toBeTruthy()
     expect(within(panel).getByText('Хан батый, Андрей')).toBeTruthy()
 
     const profileButton = screen.getByRole('button', { name: 'Скрыть профиль' })

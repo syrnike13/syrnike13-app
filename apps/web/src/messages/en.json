@@ -1144,7 +1144,9 @@
       "muteSound": "Mute sound",
       "moveTo": "Move to",
       "disconnectAction": "Disconnect from the voice channel"
-    }
+    },
+    "mutualFriendsShort": "{count, plural, one {# mutual friend} other {# mutual friends}}",
+    "mutualServersShort": "{count, plural, one {# mutual server} other {# mutual servers}}"
   },
   "notifications": {
     "count": "{count, plural, one {# notification} other {# notifications}}",

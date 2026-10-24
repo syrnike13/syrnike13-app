@@ -1144,7 +1144,9 @@
       "muteSound": "Отключить звук",
       "moveTo": "Переместить в",
       "disconnectAction": "Отключить от голосового канала"
-    }
+    },
+    "mutualFriendsShort": "{count, plural, one {# общий друг} few {# общих друга} many {# общих друзей} other {# общих друга}}",
+    "mutualServersShort": "{count, plural, one {# общий сервер} few {# общих сервера} many {# общих серверов} other {# общих сервера}}"
   },
   "notifications": {
     "count": "{count, plural, one {# уведомление} few {# уведомления} many {# уведомлений} other {# уведомления}}",
