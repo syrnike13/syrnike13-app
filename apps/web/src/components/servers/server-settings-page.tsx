@@ -9,7 +9,6 @@ import {
   SmileFillIcon,
   Trash2Icon,
   UsersFillIcon,
-  XIcon,
 } from '#/components/icons'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Effect } from 'effect'
@@ -32,13 +31,10 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarSeparator,
-} from '@syrnike13/ui/primitives/sidebar'
+  SettingsNavItem,
+  SettingsNavSection,
+  SettingsPageShell,
+} from '#/components/settings/settings-page-shell'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -60,21 +56,6 @@ type ServerSettingsPageProps = {
 }
 
 
-function NavSection({
-  title,
-  children,
-}: {
-  title?: string
-  children: ReactNode
-}) {
-  return (
-    <SidebarGroup>
-      {title ? <SidebarGroupLabel>{title}</SidebarGroupLabel> : null}
-      <SidebarMenu>{children}</SidebarMenu>
-    </SidebarGroup>
-  )
-}
-
 function SettingsNavLink({
   serverId,
   tab,
@@ -90,22 +71,18 @@ function SettingsNavLink({
 }) {
   const prefix = useAppRoutePrefix()
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        size="lg"
-        isActive={activeTab === tab}
-        render={
-          <Link
-            to={`${prefix}/servers/$serverId/settings`}
-            params={{ serverId }}
-            search={{ tab }}
-          />
-        }
-      >
-        {icon}
-        <span>{label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+    <SettingsNavItem
+      active={activeTab === tab}
+      icon={icon}
+      label={label}
+      render={
+        <Link
+          to={`${prefix}/servers/$serverId/settings`}
+          params={{ serverId }}
+          search={{ tab }}
+        />
+      }
+    />
   )
 }
 
@@ -241,18 +218,13 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const canViewAdminSection = canViewTab('invites') || canViewTab('audit')
 
   return (
-    <div className="gradient-surface-content settings-page-grid relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground">
-      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
-        <div className="ml-auto flex h-full w-54.5 min-w-0 flex-col">
-          <div className="border-b border-border px-4 py-4">
-            <h2 className="truncate text-base font-semibold text-foreground">
-              {server.name}
-            </h2>
-          </div>
-
-          <ScrollArea className="min-h-0 flex-1">
-            <nav className="flex flex-col">
-              <NavSection>
+    <SettingsPageShell
+      title={server.name}
+      closeLabel={t('close')}
+      onClose={closeSettings}
+      nav={
+        <>
+              <SettingsNavSection>
                 {canViewTab('overview') ? (
                   <SettingsNavLink
                     serverId={serverId}
@@ -271,10 +243,10 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                     label={t(SERVER_SETTINGS_TAB_LABEL_KEYS.engagement)}
                   />
                 ) : null}
-              </NavSection>
+              </SettingsNavSection>
 
               {canViewTab('emoji') ? (
-                <NavSection title={t('navExpression')}>
+                <SettingsNavSection title={t('navExpression')}>
                   <SettingsNavLink
                     serverId={serverId}
                     tab="emoji"
@@ -282,11 +254,11 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                     icon={<SmileFillIcon />}
                     label={t(SERVER_SETTINGS_TAB_LABEL_KEYS.emoji)}
                   />
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
 
               {canViewMembersSection ? (
-                <NavSection title={t('navMembers')}>
+                <SettingsNavSection title={t('navMembers')}>
                   {canViewTab('roles') ? (
                     <SettingsNavLink
                       serverId={serverId}
@@ -314,11 +286,11 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                       label={t(SERVER_SETTINGS_TAB_LABEL_KEYS.bans)}
                     />
                   ) : null}
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
 
               {canViewAdminSection ? (
-                <NavSection title={t('navAdministration')}>
+                <SettingsNavSection title={t('navAdministration')}>
                   {canViewTab('invites') ? (
                     <SettingsNavLink
                       serverId={serverId}
@@ -337,33 +309,23 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                       label={t(SERVER_SETTINGS_TAB_LABEL_KEYS.audit)}
                     />
                   ) : null}
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
 
               {server.owner === auth.user?._id ? (
-                <>
-                  <SidebarSeparator />
-                  <SidebarMenu className="p-2">
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        size="lg"
-                        variant="destructive"
-                        disabled={deletingServer}
-                        onClick={() => setDeleteDialogOpen(true)}
-                      >
-                        <Trash2Icon />
-                        <span>{t('deleteServer')}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </>
+                <SettingsNavSection>
+                  <SettingsNavItem
+                    destructive
+                    disabled={deletingServer}
+                    icon={<Trash2Icon />}
+                    label={t('deleteServer')}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  />
+                </SettingsNavSection>
               ) : null}
-            </nav>
-          </ScrollArea>
-        </div>
-      </aside>
-
-      <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        </>
+      }
+    >
         <DraftProvider>
           {tab === 'roles' ? (
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -382,26 +344,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           )}
           <UnsavedChangesBar />
         </DraftProvider>
-      </div>
-
-      <div aria-hidden className="min-w-0" />
-
-      <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 sm:right-6 lg:right-8">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-lg"
-          shape="circle"
-          onClick={closeSettings}
-        >
-          <XIcon />
-          <span className="sr-only">{t('close')}</span>
-        </Button>
-        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          esc
-        </span>
-      </div>
-
       <Dialog
         open={deleteDialogOpen}
         onOpenChange={(open) => {
@@ -435,6 +377,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </SettingsPageShell>
   )
 }

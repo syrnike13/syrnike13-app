@@ -72,13 +72,14 @@ export function SettingsBlock({
   description,
   children,
 }: {
-  title: string
+  /** Omit for a section of a single self-describing row. */
+  title?: string
   description?: string
   children: ReactNode
 }) {
   return (
     <FieldSet className="border-b border-border py-6 last:border-b-0">
-      <FieldLegend>{title}</FieldLegend>
+      {title ? <FieldLegend>{title}</FieldLegend> : null}
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       <FieldGroup>{children}</FieldGroup>
     </FieldSet>

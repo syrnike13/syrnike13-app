@@ -1,11 +1,17 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
 import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@syrnike13/ui/primitives/alert'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
@@ -26,7 +32,10 @@ import {
 } from '@syrnike13/ui/primitives/select'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { PresetSlider } from '#/components/ui/preset-slider'
-import { SettingsToggleRow } from '#/components/settings/settings-panels'
+import {
+  SettingsBlock,
+  SettingsToggleRow,
+} from '#/components/settings/settings-panels'
 import {
   useDraftRegistration,
   type DraftController,
@@ -51,7 +60,6 @@ import {
   type ServerChannel,
 } from '#/lib/channel-voice'
 import { syncStore } from '#/features/sync/sync-store'
-import { cn } from '#/lib/utils'
 
 const SLOWMODE_OPTIONS = [
   { value: 0, key: 'off' },
@@ -84,35 +92,6 @@ const BITRATE_STOPS = [
 ] as const
 
 const USER_LIMIT_STOPS = [{ value: 0 }, { value: 99 }] as const
-
-function SettingsField({
-  label,
-  description,
-  children,
-  className,
-}: {
-  label: string
-  description?: string
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <section
-      className={cn(
-        'border-b border-border py-6 last:border-b-0',
-        className,
-      )}
-    >
-      <div className="mb-4">
-        <h3 className="text-base font-semibold">{label}</h3>
-        {description ? (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      <div>{children}</div>
-    </section>
-  )
-}
 
 export function ChannelSettingsOverviewPanel({
   channel,
@@ -346,7 +325,7 @@ export function ChannelSettingsOverviewPanel({
       </div>
 
       <div>
-        <SettingsField label={t('name')}>
+        <SettingsBlock title={t('name')}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="channel-rename" className="sr-only">
               {t('name')}
@@ -358,11 +337,11 @@ export function ChannelSettingsOverviewPanel({
               onChange={(event) => setName(event.target.value)}
             />
           </div>
-        </SettingsField>
+        </SettingsBlock>
 
         {textChannel ? (
-          <SettingsField
-            label={t('topicLabel')}
+          <SettingsBlock
+            title={t('topicLabel')}
             description={t('topicDescription')}
           >
             <div className="flex flex-col gap-2">
@@ -378,11 +357,11 @@ export function ChannelSettingsOverviewPanel({
                 onChange={(event) => setTopic(event.target.value)}
               />
             </div>
-          </SettingsField>
+          </SettingsBlock>
         ) : null}
 
         {textChannel ? (
-          <SettingsField label={t('slowMode')}>
+          <SettingsBlock title={t('slowMode')}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="channel-slowmode" className="sr-only">
                 {t('slowMode')}
@@ -407,23 +386,23 @@ export function ChannelSettingsOverviewPanel({
                 </SelectContent>
               </Select>
             </div>
-          </SettingsField>
+          </SettingsBlock>
         ) : null}
 
         {textChannel ? (
-          <SettingsField label={t('ageRestricted')}>
+          <SettingsBlock>
             <SettingsToggleRow
               label={t('ageRestricted')}
               hint={t('ageRestrictedHint')}
               checked={nsfw}
               onCheckedChange={setNsfw}
             />
-          </SettingsField>
+          </SettingsBlock>
         ) : null}
 
         {voiceChannel ? (
-          <SettingsField
-            label={t('bitrate')}
+          <SettingsBlock
+            title={t('bitrate')}
             description={t('bitrateDescription')}
           >
             <PresetSlider
@@ -437,12 +416,12 @@ export function ChannelSettingsOverviewPanel({
               formatValue={(value) => `${value} kbps`}
               aria-label={t('bitrate')}
             />
-          </SettingsField>
+          </SettingsBlock>
         ) : null}
 
         {voiceChannel ? (
-          <SettingsField
-            label={t('userLimit')}
+          <SettingsBlock
+            title={t('userLimit')}
             description={t('userLimitDescription')}
           >
             <PresetSlider
@@ -460,32 +439,30 @@ export function ChannelSettingsOverviewPanel({
               }
               aria-label={t('userLimit')}
             />
-          </SettingsField>
+          </SettingsBlock>
         ) : null}
 
-        <SettingsField
-          label={t('dangerZone')}
+        <SettingsBlock
+          title={t('dangerZone')}
           description={t('dangerDescription')}
-          className="mt-6"
         >
-          <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="font-medium text-destructive">{t('deleteChannel')}</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t('deleteDescription')}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={saving || deletingChannel}
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <Trash2Icon className="size-4" />
-              {t('deleteChannel')}
-            </Button>
-          </div>
-        </SettingsField>
+          <Alert variant="destructive">
+            <Trash2Icon />
+            <AlertTitle>{t('deleteChannel')}</AlertTitle>
+            <AlertDescription>{t('deleteDescription')}</AlertDescription>
+            <AlertAction>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={saving || deletingChannel}
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                {t('deleteChannel')}
+              </Button>
+            </AlertAction>
+          </Alert>
+        </SettingsBlock>
       </div>
       </div>
       <Dialog
