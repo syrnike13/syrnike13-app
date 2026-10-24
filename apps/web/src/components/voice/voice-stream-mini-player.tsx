@@ -16,6 +16,7 @@ import {
   VolumeXIcon,
 } from '#/components/icons'
 import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
@@ -80,9 +81,6 @@ function readWidth() {
   }
 }
 
-const miniIconButtonClass =
-  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-on-media/80 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring data-[popup-open]:bg-on-media/15 data-[popup-open]:text-on-media'
-
 function MiniControl({
   label,
   children,
@@ -96,11 +94,13 @@ function MiniControl({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             type="button"
+            variant="media"
+            size="icon"
             data-mini-control
             aria-label={label}
-            className={miniIconButtonClass}
+            className="pointer-events-auto"
             onClick={onClick}
           />
         }
@@ -178,13 +178,20 @@ function MiniStreamSettings({
     <Popover onOpenChange={onOpenChange}>
       <Tooltip>
         <TooltipTrigger render={<span />}>
-          <PopoverTrigger render={<button
-              type="button"
-              data-mini-control
-              aria-label={t('stream.settings')}
-              className={miniIconButtonClass} />}>
-              <Settings2Icon className="size-4.5" />
-            </PopoverTrigger>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="media"
+                size="icon"
+                data-mini-control
+                aria-label={t('stream.settings')}
+                className="pointer-events-auto"
+              />
+            }
+          >
+            <Settings2Icon />
+          </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>{t('stream.settings')}</TooltipContent>
       </Tooltip>
@@ -231,17 +238,19 @@ function MiniActivityContent({
   return (
     <div className="flex size-full flex-col">
       <div className="flex h-9 shrink-0 cursor-grab items-center gap-1 px-1 text-on-media">
-        <button
+        <Button
           type="button"
+          variant="media"
+          size="sm"
           data-mini-control
           aria-label={t('miniPlayer.back')}
           title={channelName}
-          className="flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-on-media/90 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring"
+          className="min-w-0 pl-1"
           onClick={onReturn}
         >
-          <ChevronLeftIcon className="size-5 shrink-0" />
+          <ChevronLeftIcon />
           <span className="truncate">{channelName}</span>
-        </button>
+        </Button>
         <span className="min-w-0 flex-1 truncate text-xs text-on-media/70">
           {application.name}
         </span>
@@ -471,17 +480,19 @@ export function VoiceStreamMiniPlayer() {
                 'top-0 h-16 items-start bg-linear-to-b from-media-backdrop/75 via-media-backdrop/35 to-transparent pt-1.5',
               )}
             >
-              <button
+              <Button
                 type="button"
+                variant="media"
+                size="sm"
                 data-mini-control
                 aria-label={t('miniPlayer.back')}
                 title={channelName}
-                className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-on-media/90 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring"
+                className="pointer-events-auto min-w-0 pl-1"
                 onClick={returnToChannel}
               >
-                <ChevronLeftIcon className="size-5 shrink-0" />
+                <ChevronLeftIcon />
                 <span className="truncate">{channelName}</span>
-              </button>
+              </Button>
             </div>
 
             {/* Низ: тень снизу рассеивается вверх, ник и управление. */}
