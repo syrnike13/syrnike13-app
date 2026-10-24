@@ -378,3 +378,13 @@ export function canManageChannelWebhooks(
       channelHas(channel, ChannelPermission.ManageWebhooks),
   )
 }
+
+/** Starting Activities in a voice channel (ADR-0011). */
+export function canUseActivities(channel: { _id: string } | string | undefined) {
+  return channelHas(channel, ChannelPermission.UseActivities)
+}
+
+/** Ending an Activity for everyone besides its host. */
+export function canEndActivities(channel: { _id: string } | string | undefined) {
+  return channelHas(channel, ChannelPermission.ManageChannel)
+}

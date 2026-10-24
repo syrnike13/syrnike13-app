@@ -6,6 +6,7 @@ WORKDIR /build
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
 COPY apps/web/package.json apps/web/
+COPY packages/activity-sdk/package.json packages/activity-sdk/
 COPY packages/api-types/package.json packages/api-types/
 COPY packages/platform/package.json packages/platform/
 COPY packages/ui/package.json packages/ui/
@@ -13,6 +14,7 @@ COPY packages/ui/package.json packages/ui/
 RUN pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
+COPY packages/activity-sdk packages/activity-sdk
 COPY packages/api-types packages/api-types
 COPY packages/platform packages/platform
 COPY packages/ui packages/ui
