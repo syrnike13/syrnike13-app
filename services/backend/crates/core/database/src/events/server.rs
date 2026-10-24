@@ -33,15 +33,48 @@ pub enum VoiceStateUpdateRequest {
     },
 }
 
+/// Activity gateway request (ADR-0011). Every request is answered with
+/// `EventV1::ActivityResponse` carrying the same `request_id`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "action", rename_all = "snake_case")]
-pub enum ChannelActivityRequest {
-    Sync,
-    Start { application_id: String },
-    Join { instance_id: String },
-    Leave { instance_id: String },
-    Command { instance_id: String, command: Value },
-    Close { instance_id: String },
+pub enum ActivityRequest {
+    Start {
+        channel_id: String,
+        application_id: String,
+    },
+    Join {
+        channel_id: String,
+        instance_id: String,
+    },
+    Leave {
+        channel_id: String,
+        instance_id: String,
+    },
+    /// End for everyone; allowed for the host and members with ManageChannel.
+    End {
+        channel_id: String,
+        instance_id: String,
+    },
+    /// Relay `payload` to `to` (participant ids) or to every other participant.
+    Send {
+        channel_id: String,
+        instance_id: String,
+        payload: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<Vec<String>>,
+    },
+    /// Compare-and-set the shared state.
+    SetState {
+        channel_id: String,
+        instance_id: String,
+        expected_version: u64,
+        data: Value,
+    },
+    /// Fetch the instance and shared state (after reconnect or frame reload).
+    Sync {
+        channel_id: String,
+        instance_id: String,
+    },
 }
 
 impl VoiceStateUpdateRequest {
@@ -86,10 +119,9 @@ pub enum ClientMessage {
         suppress_call_notifications: Option<bool>,
         request: VoiceStateUpdateRequest,
     },
-    ChannelActivity {
+    Activity {
         request_id: String,
-        channel_id: String,
-        request: ChannelActivityRequest,
+        request: ActivityRequest,
     },
     /// Screen shares the user watches in its current voice channel
     VoiceWatchUpdate {
@@ -110,7 +142,7 @@ pub enum VoiceMediaSource {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChannelActivityRequest, ClientMessage, VoiceStateUpdateRequest};
+    use super::{ClientMessage, VoiceStateUpdateRequest};
 
     #[test]
     fn voice_media_stopped_deserializes() {
@@ -173,32 +205,5 @@ mod tests {
             panic!("expected VoiceWatchUpdate");
         };
         assert_eq!(watching, vec!["owner-1".to_string()]);
-    }
-
-    #[test]
-    fn channel_activity_command_deserializes_typed_request() {
-        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
-            "type": "ChannelActivity",
-            "request_id": "request-1",
-            "channel_id": "channel-1",
-            "request": {
-                "action": "command",
-                "instance_id": "activity-1",
-                "command": { "type": "increment" }
-            }
-        }))
-        .expect("channel activity command deserializes");
-
-        let ClientMessage::ChannelActivity { request, .. } = message else {
-            panic!("expected ChannelActivity");
-        };
-
-        assert_eq!(
-            request,
-            ChannelActivityRequest::Command {
-                instance_id: "activity-1".to_string(),
-                command: serde_json::json!({ "type": "increment" }),
-            }
-        );
     }
 }

@@ -1,3 +1,4 @@
+mod activities;
 mod badges;
 mod bots;
 mod channel_invites;
@@ -18,6 +19,7 @@ mod servers;
 mod user_settings;
 mod users;
 
+pub use activities::*;
 pub use badges::*;
 pub use bots::*;
 pub use channel_invites::*;

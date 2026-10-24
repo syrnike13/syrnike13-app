@@ -14,6 +14,11 @@ import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { serverChannelServerId } from '#/lib/channel-voice'
+import { ActivityApplicationIcon } from '#/features/activities/activity-application-icon'
+import {
+  useActivityApplication,
+  useActivityInstance,
+} from '#/features/activities/use-activities'
 /** Начало аватарки = начало названия канала: px-2 + icon 16px + gap-2 − px-2 строки */
 const VOICE_PREVIEW_TEXT_INSET = 'pl-6' as const
 
@@ -23,6 +28,7 @@ type VoiceChannelPreviewProps = {
 
 export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const t = useTranslations('voice')
+  const tA = useTranslations('activities')
   const auth = useAuth()
   const voice = useVoiceSession()
   const users = useSyncStore((s) => s.users)
@@ -47,12 +53,39 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
     inThisChannel ? voice.deafened : undefined,
   )
 
+  const activityInstance = useActivityInstance(channelId)
+  const activityApplication = useActivityApplication(
+    activityInstance?.application_id,
+  )
+  const activityParticipantIds = new Set(
+    activityInstance?.participants.map((participant) => participant.user_id),
+  )
+
   if (participants.length === 0) return null
 
   return (
     <div
       className={`mb-1 flex flex-col gap-0.5 ${VOICE_PREVIEW_TEXT_INSET}`}
     >
+      {activityInstance ? (
+        <div
+          data-testid="voice-channel-activity"
+          className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-xs"
+        >
+          <ActivityApplicationIcon
+            application={activityApplication}
+            className="size-6"
+          />
+          <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+            {activityApplication?.name ?? tA('unknownApplication')}
+          </span>
+          <span className="shrink-0 text-muted-foreground tabular-nums">
+            {tA('sidebarParticipants', {
+              count: activityInstance.participants.length,
+            })}
+          </span>
+        </div>
+      ) : null}
       {participants.map((participant) => {
         const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id ?? null)
         const user = users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
@@ -80,6 +113,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
               inThisChannel && voice.speakingUserIds.has(participant.id)
             }
             compact
+            inActivity={activityParticipantIds.has(participant.id)}
             serverId={serverId}
             serverName={server?.name}
             roles={

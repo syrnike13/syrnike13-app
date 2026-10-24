@@ -14,6 +14,7 @@ declare -A ROLLOUT_PORTS=(
   [autumn]=14704
   [january]=14705
   [gifbox]=14706
+  [activity-proxy]=14707
   [voice-ingress]=8500
   [landing]=5000
   [web]=5000

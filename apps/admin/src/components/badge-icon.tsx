@@ -16,7 +16,7 @@ export function BadgeIcon({
   size = 'md',
   className,
 }: {
-  badge: Pick<Badge, 'icon'>
+  badge: { readonly icon?: Pick<NonNullable<Badge['icon']>, '_id' | 'tag'> | null }
   previewUrl?: string | null
   size?: keyof typeof sizeMap
   className?: string

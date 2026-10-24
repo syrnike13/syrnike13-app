@@ -32,7 +32,12 @@ The compose file expects these GHCR images:
 - `ghcr.io/syrnike13/file-server`
 - `ghcr.io/syrnike13/proxy`
 - `ghcr.io/syrnike13/gifbox`
+- `ghcr.io/syrnike13/app-activity-proxy`
 - `ghcr.io/syrnike13/crond`
 - `ghcr.io/syrnike13/pushd`
 - `ghcr.io/syrnike13/voice-ingress`
 - `ghcr.io/syrnike13/livekit-server`
+
+Channel Activities (`activity-proxy`, on-demand TLS for
+`*.activities.syrnike13.ru`, configuration and local development) are described
+in [`docs/deployment.md`](docs/deployment.md#channel-activities).

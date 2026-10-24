@@ -1,0 +1,274 @@
+/* Colours come only from the client theme via `activity.applyTheme()`. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--syrnike-background);
+  color: var(--syrnike-foreground);
+  font:
+    14px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+h1 {
+  font-size: 16px;
+}
+h2 {
+  font-size: 14px;
+}
+h3 {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--syrnike-muted-foreground);
+}
+p {
+  margin: 6px 0;
+}
+pre {
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  max-height: 200px;
+  border-radius: 6px;
+  background: var(--syrnike-muted);
+  font-size: 12px;
+}
+ol,
+ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--syrnike-border);
+  border-radius: 6px;
+  background: var(--syrnike-card);
+}
+button {
+  min-height: 32px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: var(--syrnike-muted);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.primary {
+  border-color: var(--syrnike-primary);
+  background: var(--syrnike-primary);
+  color: var(--syrnike-primary-foreground);
+}
+button.danger {
+  border-color: var(--syrnike-destructive);
+  color: var(--syrnike-destructive);
+}
+select {
+  min-height: 32px;
+  padding: 4px 8px;
+}
+textarea {
+  width: 100%;
+  padding: 8px;
+  resize: vertical;
+}
+
+.screen {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--syrnike-border);
+  background: var(--syrnike-background);
+}
+.header h1 {
+  flex: 1;
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+.card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--syrnike-border);
+  border-radius: 8px;
+  background: var(--syrnike-card);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row h2 {
+  margin: 0;
+}
+.wrap {
+  flex-wrap: wrap;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.muted {
+  color: var(--syrnike-muted-foreground);
+}
+.danger {
+  color: var(--syrnike-destructive);
+}
+.status {
+  word-break: break-all;
+}
+
+.pill {
+  padding: 1px 8px;
+  border: 1px solid var(--syrnike-border);
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pill.ok {
+  color: var(--syrnike-chart-2);
+}
+.pill.warn {
+  color: var(--syrnike-destructive);
+}
+.pill.accent {
+  border-color: var(--syrnike-primary);
+  background: var(--syrnike-primary);
+  color: var(--syrnike-primary-foreground);
+}
+
+.people,
+.board {
+  display: grid;
+  gap: 6px;
+}
+.people {
+  padding: 0;
+  list-style: none;
+}
+.people li,
+.board li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.board li.own {
+  font-weight: 600;
+}
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--syrnike-muted);
+  font-weight: 600;
+}
+
+.log {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+  word-break: break-all;
+}
+.counter {
+  min-width: 3ch;
+  font-size: 20px;
+  text-align: center;
+}
+
+.reaction {
+  grid-column: 1 / -1;
+}
+.stage {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 96px;
+  margin: 8px 0;
+  border: 1px solid var(--syrnike-border);
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  user-select: none;
+  touch-action: manipulation;
+}
+.stage.wait {
+  background: var(--syrnike-muted);
+}
+.stage.go {
+  border-color: var(--syrnike-chart-2);
+  background: var(--syrnike-chart-2);
+  color: var(--syrnike-background);
+}
+.result ol {
+  margin: 4px 0;
+}
+
+/* Mini-player and tiny tiles: only the header and the game. */
+body[data-layout='mini'] .header .pill:not(.accent),
+body[data-layout='mini'] .card:not(.reaction),
+body[data-layout='mini'] .hint,
+body[data-layout='mini'] .result ol {
+  display: none;
+}
+body[data-layout='mini'] .grid {
+  padding: 6px;
+}
+body[data-layout='mini'] .stage {
+  min-height: 56px;
+  font-size: 15px;
+}
+@media (max-height: 260px) {
+  .card:not(.reaction),
+  .hint {
+    display: none;
+  }
+}

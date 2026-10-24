@@ -37,6 +37,7 @@ export const ServerPermission = {
   Listen: permissionBit(36),
   MentionEveryone: permissionBit(37),
   MentionRoles: permissionBit(38),
+  UseActivities: permissionBit(41),
 } as const
 
 export const GlobalPermission = {

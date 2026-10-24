@@ -16,6 +16,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '#': path.resolve(root, 'src'),
+      '@syrnike13/activity-sdk/protocol': path.resolve(
+        root,
+        '../../packages/activity-sdk/src/protocol.ts',
+      ),
       '@syrnike13/api-types/effect-schema': path.resolve(
         root,
         '../../packages/api-types/src/effect-schema.ts',

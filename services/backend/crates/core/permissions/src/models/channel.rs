@@ -104,8 +104,12 @@ pub enum ChannelPermission {
     /// Mention roles
     MentionRoles = 1 << 38,
 
+    // * Activity permissions
+    /// Start Activities in a voice channel
+    UseActivities = 1 << 41,
+
     // * Misc. permissions
-    // % Bits 41 to 52: free area
+    // % Bits 42 to 52: free area
     // % Bits 53 to 64: do not use
 
     // * Grant all permissions
@@ -140,7 +144,8 @@ pub static DEFAULT_PERMISSION: Lazy<u64> = Lazy::new(|| {
             + ChannelPermission::Connect
             + ChannelPermission::Speak
             + ChannelPermission::Listen
-            + ChannelPermission::Video,
+            + ChannelPermission::Video
+            + ChannelPermission::UseActivities,
     )
 });
 

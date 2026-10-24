@@ -18,6 +18,11 @@ const apiTypesGatewaySchemaEntry = path.resolve(
   webRoot,
   '../../packages/api-types/src/gateway-schema.ts',
 )
+// The SDK's frame protocol is consumed from source; its dist is built separately.
+const activitySdkProtocolEntry = path.resolve(
+  webRoot,
+  '../../packages/activity-sdk/src/protocol.ts',
+)
 const platformEntry = path.resolve(webRoot, '../../packages/platform/src/index.ts')
 const uiEntry = path.resolve(webRoot, '../../packages/ui/src')
 /** Пакет помечен `type:module`, но `main` указывает на CJS `dist/index.js`. */
@@ -42,6 +47,7 @@ const config = defineConfig({
   ssr: {
     /** Workspace TS package — bundle in SSR, do not treat as external Node dep. */
     noExternal: [
+      '@syrnike13/activity-sdk',
       '@syrnike13/api-types',
       '@syrnike13/platform',
       '@syrnike13/ui',
@@ -50,6 +56,7 @@ const config = defineConfig({
   },
   resolve: {
     alias: {
+      '@syrnike13/activity-sdk/protocol': activitySdkProtocolEntry,
       '@syrnike13/api-types/effect-schema': apiTypesEffectSchemaEntry,
       '@syrnike13/api-types/gateway-schema': apiTypesGatewaySchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,

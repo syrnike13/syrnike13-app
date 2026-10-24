@@ -4,10 +4,10 @@ use futures::lock::Mutex;
 use iso8601_timestamp::Timestamp;
 
 use crate::{
-    Badge, Bot, Channel, ChannelCompositeKey, ChannelUnread, DiagnosticReport, Emoji,
-    FeedbackStore, File, FileHash, Invite, Member, MemberCompositeKey, Message, PolicyChange,
-    RatelimitEvent, Report, Server, ServerAuditLogEntry, ServerBan, Snapshot, User,
-    UserBadgeAssignment, UserSettings, Webhook,
+    ActivityApplication, ActivityPlayerData, ActivityScore, Badge, Bot, Channel,
+    ChannelCompositeKey, ChannelUnread, DiagnosticReport, Emoji, FeedbackStore, File, FileHash,
+    Invite, Member, MemberCompositeKey, Message, PolicyChange, RatelimitEvent, Report, Server,
+    ServerAuditLogEntry, ServerBan, Snapshot, User, UserBadgeAssignment, UserSettings, Webhook,
 };
 
 #[derive(Clone, Debug)]
@@ -20,6 +20,9 @@ database_derived!(
     /// Reference implementation
     #[derive(Default, Debug)]
     pub struct ReferenceDb {
+        pub activity_applications: Arc<Mutex<HashMap<String, ActivityApplication>>>,
+        pub activity_player_data: Arc<Mutex<HashMap<(String, String, String), ActivityPlayerData>>>,
+        pub activity_scores: Arc<Mutex<HashMap<(String, String, String, String), ActivityScore>>>,
         pub bots: Arc<Mutex<HashMap<String, Bot>>>,
         pub badges: Arc<Mutex<HashMap<String, Badge>>>,
         pub channels: Arc<Mutex<HashMap<String, Channel>>>,

@@ -51,7 +51,8 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 
 ## Channel activities and authorization
 
-- A **Channel Activity** is a first-party app scoped to one voice channel. The backend owns its instance, participant set, revision, expiry, and state.
-- The embedded activity runs in a sandboxed iframe, receives no session token or desktop preload API, and sends bounded commands through the trusted host.
+- An **Activity Application** is a registered web app (first-party or external) served only from its own **Activity Origin** through the activity proxy. An **Activity Instance** runs it in one voice channel (ADR-0011).
+- The backend owns the instance lifecycle, participants, Activity Host, relayed messages, versioned shared state, and per-server player data, but never interprets application payloads.
+- Applications talk to the platform only through `@syrnike13/activity-sdk` over one MessagePort; they never receive session tokens, gateway access, or desktop preload APIs.
 - The backend produces revisioned **Effective Permissions** by authorization scope. Only the client authorization module converts them into named UI capabilities.
 - Permission editing uses hypothetical drafts; drafts never authorize current-account actions.

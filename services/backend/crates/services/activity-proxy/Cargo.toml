@@ -1,0 +1,47 @@
+[package]
+name = "syrnike-activity-proxy"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+# Core crates
+syrnike-config = { workspace = true }
+# `voice` only because the database crate does not build without it.
+syrnike-database = { workspace = true, features = ["voice"] }
+syrnike-result = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = [
+    "macros",
+    "rt-multi-thread",
+    "net",
+    "time",
+    "io-util",
+] }
+
+# HTTP
+axum = { workspace = true }
+hyper = { version = "1.9.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.20", features = [
+    "client-legacy",
+    "http1",
+    "tokio",
+] }
+hyper-rustls = { version = "0.27.7", default-features = false, features = [
+    "http1",
+    "native-tokio",
+    "ring",
+    "tls12",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+tower = { version = "0.5", features = ["util"] }
+
+# Utility
+moka = { workspace = true, features = ["future"] }
+log = { workspace = true }
