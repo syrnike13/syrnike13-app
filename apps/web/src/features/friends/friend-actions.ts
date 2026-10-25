@@ -29,7 +29,7 @@ const defaultDeps: FriendActionDeps = {
 }
 
 function friendRequestUsername(user: User) {
-  return `${user.username}#${user.discriminator}`
+  return user.username
 }
 
 const runFriendAction = Effect.fn('friends.runAction')(

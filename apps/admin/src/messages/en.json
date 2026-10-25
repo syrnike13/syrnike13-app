@@ -91,7 +91,7 @@
   },
   "users": {
     "title": "Users",
-    "searchPlaceholder": "id, username or username#0001",
+    "searchPlaceholder": "id or username",
     "find": "Find",
     "noSession": "No session",
     "notFound": "Not found",
@@ -201,8 +201,8 @@
       "cancel": "Cancel",
       "assign": "Assign",
       "assignTitle": "Assign badge",
-      "assignDescription": "User id or username#0001",
-      "assignPlaceholder": "user id or username#0001"
+      "assignDescription": "User id or username",
+      "assignPlaceholder": "user id or username"
     }
   },
   "activities": {

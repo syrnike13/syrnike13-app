@@ -1,12 +1,11 @@
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
-use crate::{events::client::EventV1, Database, File, RatelimitEvent, AMQP};
+use crate::{events::client::EventV1, Database, File, AMQP};
 
 use authifier::config::{EmailVerificationConfig, Template};
 use futures::future::join_all;
 use iso8601_timestamp::Timestamp;
 use once_cell::sync::Lazy;
-use rand::seq::SliceRandom;
 use regex::{Regex, RegexBuilder};
 use serde_json::json;
 use syrnike_config::{config, FeaturesLimits};
@@ -266,6 +265,10 @@ impl Presence {
     }
 }
 
+/// Discriminator stored for every new user. Usernames are unique on their own;
+/// the field only remains because existing clients require it.
+pub const LEGACY_DISCRIMINATOR: &str = "0";
+
 pub static DISCRIMINATOR_SEARCH_SPACE: Lazy<HashSet<String>> = Lazy::new(|| {
     let mut set = (2..9999)
         .map(|v| format!("{:0>4}", v))
@@ -324,10 +327,11 @@ impl User {
     {
         let new_username = User::sanitise_username(&username).await?;
         User::validate_username(&new_username)?;
+        User::ensure_username_available(db, &new_username, None).await?;
 
         let mut user = User {
             id: account_id.into().unwrap_or_else(|| Ulid::new().to_string()),
-            discriminator: User::find_discriminator(db, &new_username, None).await?,
+            discriminator: LEGACY_DISCRIMINATOR.to_string(),
             username: new_username.clone(),
             last_acknowledged_policy_change: Timestamp::now_utc(),
             ..Default::default()
@@ -489,92 +493,40 @@ impl User {
         )
     }
 
-    /// Find a free discriminator for a given username
-    pub async fn find_discriminator(
+    /// Usernames are unique regardless of case, like on Discord
+    pub async fn ensure_username_available(
         db: &Database,
         username: &str,
-        preferred: Option<(String, String)>,
-    ) -> Result<String> {
-        let search_space: &HashSet<String> = &DISCRIMINATOR_SEARCH_SPACE;
-        let used_discriminators: HashSet<String> = db
-            .fetch_discriminators_in_use(username)
-            .await?
-            .into_iter()
-            .collect();
-
-        let available_discriminators: Vec<&String> =
-            search_space.difference(&used_discriminators).collect();
-
-        if available_discriminators.is_empty() {
-            return Err(create_error!(UsernameTaken));
-        }
-
-        if let Some((preferred, target_id)) = preferred {
-            if available_discriminators.contains(&&preferred) {
-                return Ok(preferred);
-            } else {
-                if db
-                    .has_ratelimited(
-                        &target_id,
-                        crate::RatelimitEventType::DiscriminatorChange,
-                        Duration::from_secs(60 * 60 * 24),
-                        1,
-                    )
-                    .await?
-                {
-                    return Err(create_error!(DiscriminatorChangeRatelimited));
-                }
-
-                RatelimitEvent::create(
-                    db,
-                    target_id,
-                    crate::RatelimitEventType::DiscriminatorChange,
-                )
-                .await?;
+        except_user_id: Option<&str>,
+    ) -> Result<()> {
+        match db.fetch_user_by_username(username).await {
+            Ok(user) if Some(user.id.as_str()) != except_user_id => {
+                Err(create_error!(UsernameTaken))
             }
+            _ => Ok(()),
         }
-
-        let mut rng = rand::thread_rng();
-        Ok(available_discriminators
-            .choose(&mut rng)
-            .expect("we can assert this has an element")
-            .to_string())
     }
 
     /// Update a user's username
     pub async fn update_username(&mut self, db: &Database, username: String) -> Result<()> {
         let new_username = User::sanitise_username(&username).await?;
         User::validate_username(&new_username)?;
+        User::ensure_username_available(db, &new_username, Some(&self.id)).await?;
 
-        if self.username.to_lowercase() == new_username.to_lowercase() {
-            self.update(
-                db,
-                PartialUser {
-                    username: Some(new_username),
-                    ..Default::default()
-                },
-                vec![],
-            )
-            .await
-        } else {
-            self.update(
-                db,
-                PartialUser {
-                    discriminator: Some(
-                        User::find_discriminator(
-                            db,
-                            &new_username,
-                            Some((self.discriminator.to_string(), self.id.clone())),
-                        )
-                        .await?,
-                    ),
-                    username: Some(new_username),
-                    ..Default::default()
-                },
-                vec![],
-            )
-            .await
-        }
+        // Picking a name clears the prompt left by the unique username migration.
+        let flags = self.flags.unwrap_or_default();
+        let reset_flag = v0::UserFlags::UsernameReset as i32;
+
+        self.update(
+            db,
+            PartialUser {
+                username: Some(new_username),
+                flags: (flags & reset_flag != 0).then_some(flags & !reset_flag),
+                ..Default::default()
+            },
+            vec![],
+        )
+        .await
     }
 
     /// Set a relationship to another user
@@ -1257,6 +1209,64 @@ mod relationship_tests {
         .await;
         let owner = db.fetch_user(&owner.id).await.expect("owner stored");
         assert!(!Box::pin(can_message(db.clone(), member, owner)).await);
+    }
+
+    #[async_std::test]
+    async fn usernames_are_unique_regardless_of_case() {
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let mut first = crate::User::create(&db, "Kate".to_string(), Option::None, Option::None)
+            .await
+            .expect("first user");
+        assert!(
+            crate::User::create(&db, "kate".to_string(), Option::None, Option::None)
+                .await
+                .is_err()
+        );
+
+        let mut second = crate::User::create(&db, "Nick".to_string(), Option::None, Option::None)
+            .await
+            .expect("second user");
+        assert!(second
+            .update_username(&db, "KATE".to_string())
+            .await
+            .is_err());
+
+        // Changing your own name's case is allowed.
+        first
+            .update_username(&db, "kate".to_string())
+            .await
+            .expect("own name");
+        assert_eq!(first.username, "kate");
+    }
+
+    #[async_std::test]
+    async fn picking_a_username_clears_the_migration_prompt() {
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let reset = syrnike_models::v0::UserFlags::UsernameReset as i32;
+        let mut user = crate::User::create(
+            &db,
+            "Renamed_1234".to_string(),
+            Option::None,
+            Some(crate::PartialUser {
+                flags: Some(reset),
+                ..Default::default()
+            }),
+        )
+        .await
+        .expect("user");
+
+        user.update_username(&db, "Chosen".to_string())
+            .await
+            .expect("renamed");
+
+        let user = db.fetch_user(&user.id).await.expect("user stored");
+        assert_eq!(user.flags.unwrap_or_default() & reset, 0);
     }
 
     #[async_std::test]

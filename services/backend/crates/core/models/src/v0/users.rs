@@ -30,7 +30,7 @@ auto_derived_partial!(
         pub id: String,
         /// Username
         pub username: String,
-        /// Discriminator
+        /// Legacy discriminator; usernames are unique on their own
         pub discriminator: String,
         /// Display name
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -218,6 +218,9 @@ auto_derived!(
         Banned = 4,
         /// User was marked as spam and removed from platform
         Spam = 8,
+        /// Username was changed automatically when usernames became unique;
+        /// the user is asked to pick a new one
+        UsernameReset = 16,
     }
 
     /// New user profile data
@@ -293,7 +296,7 @@ auto_derived!(
 
     /// User lookup information
     pub struct DataSendFriendRequest {
-        /// Username and discriminator combo separated by #
+        /// Unique username, case does not matter
         pub username: String,
     }
 );

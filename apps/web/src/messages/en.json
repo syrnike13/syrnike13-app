@@ -94,6 +94,7 @@
       "friendRequestsServerMembers": "Server members"
     },
     "account": {
+      "changeUsername": "Change",
       "accountInfo": "Account information",
       "username": "Username",
       "displayName": "Display name",
@@ -1088,6 +1089,18 @@
     }
   },
   "users": {
+    "changeUsername": {
+      "title": "Change username",
+      "description": "Usernames are unique. Enter your password to confirm.",
+      "resetTitle": "Pick your username",
+      "resetDescription": "Usernames are now unique, and yours was taken by an older account, so it was changed to @{username}. Pick a new one or keep it.",
+      "username": "Username",
+      "password": "Current password",
+      "failed": "Could not change the username: it is taken or the password is wrong.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "later": "Later"
+    },
     "selectStatus": "Choose status",
     "openProfile": "Open profile",
     "addStatus": "Add status",
