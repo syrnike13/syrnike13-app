@@ -11,6 +11,7 @@ import {
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
 import { Field, FieldTitle } from '@syrnike13/ui/primitives/field'
 import { PresetSlider } from '#/components/ui/preset-slider'
+import { selectableDevices } from '#/components/voice/voice-device-list'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import {
@@ -76,16 +77,16 @@ function DeviceSelectField({
   onChange: (deviceId: string) => void
 }) {
   const ts = useTranslations('settings.voice')
-  const selectableDevices = devices.filter((device) => device.deviceId.length > 0)
+  const options = selectableDevices(devices)
   const selectValue = value.length > 0 ? value : 'default'
   const unavailable = selectValue !== 'default' &&
-    !selectableDevices.some((device) => device.deviceId === selectValue)
+    !options.some((device) => device.deviceId === selectValue)
   const items = [
     { value: 'default', label: ts('defaultOption') },
     ...(unavailable
       ? [{ value: selectValue, label: ts('deviceUnavailable') }]
       : []),
-    ...selectableDevices.map((device) => ({
+    ...options.map((device) => ({
       value: device.deviceId,
       label: device.label || ts('device'),
     })),
@@ -112,7 +113,7 @@ function DeviceSelectField({
                 {ts('deviceUnavailable')}
               </SelectItem>
             ) : null}
-            {selectableDevices.map((device) => (
+            {options.map((device) => (
               <SelectItem key={device.deviceId} value={device.deviceId}>
                 {device.label || ts('device')}
               </SelectItem>

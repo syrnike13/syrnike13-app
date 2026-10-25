@@ -21,7 +21,11 @@ import {
 import { Slider } from '@syrnike13/ui/primitives/slider'
 import { VoicePopoverRow } from '#/components/voice/voice-popover-rows'
 import { Separator } from '@syrnike13/ui/primitives/separator'
-import { deviceLabel, selectableDevices } from '#/components/voice/voice-device-list'
+import {
+  deviceLabel,
+  selectableDevices,
+  systemDefaultDevice,
+} from '#/components/voice/voice-device-list'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
@@ -44,14 +48,15 @@ function resolveSelectedDeviceLabel(
   preferredId: string | undefined,
   t: Translator,
 ) {
-  const selectable = selectableDevices(devices)
   if (!preferredId) {
-    const first = selectable[0]
-    return first
-      ? t('devices.defaultDevice', { name: deviceLabel(first, t) })
+    const fallback = systemDefaultDevice(devices)
+    return fallback
+      ? t('devices.defaultDevice', { name: deviceLabel(fallback, t) })
       : t('devices.default')
   }
-  const match = selectable.find((device) => device.deviceId === preferredId)
+  const match = selectableDevices(devices).find(
+    (device) => device.deviceId === preferredId,
+  )
   return match ? deviceLabel(match, t) : t('devices.device')
 }
 
