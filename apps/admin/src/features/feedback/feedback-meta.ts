@@ -12,30 +12,30 @@ export type PublicFeedbackProductStatus = Exclude<
 >
 
 export const FEEDBACK_PRODUCT_STATUSES = [
-  { value: 'under_consideration', labelKey: 'meta.status.under_consideration' },
-  { value: 'planned', labelKey: 'meta.status.planned' },
-  { value: 'in_progress', labelKey: 'meta.status.in_progress' },
-  { value: 'released', labelKey: 'meta.status.released' },
-  { value: 'not_planned', labelKey: 'meta.status.not_planned' },
+  { value: 'under_consideration', labelKey: 'status.under_consideration' },
+  { value: 'planned', labelKey: 'status.planned' },
+  { value: 'in_progress', labelKey: 'status.in_progress' },
+  { value: 'released', labelKey: 'status.released' },
+  { value: 'not_planned', labelKey: 'status.not_planned' },
 ] satisfies {
   value: PublicFeedbackProductStatus
   labelKey: string
 }[]
 
 const CATEGORY_LABEL_KEYS: Record<FeedbackCategory, string> = {
-  bug: 'meta.category.bug',
-  idea: 'meta.category.idea',
+  bug: 'category.bug',
+  idea: 'category.idea',
 }
 
 const AREA_LABEL_KEYS: Record<FeedbackArea, string> = {
-  navigation: 'meta.area.navigation',
-  voice_video: 'meta.area.voice_video',
-  community: 'meta.area.community',
-  messages: 'meta.area.messages',
-  moderation: 'meta.area.moderation',
-  desktop: 'meta.area.desktop',
-  activities: 'meta.area.activities',
-  other: 'meta.area.other',
+  navigation: 'area.navigation',
+  voice_video: 'area.voice_video',
+  community: 'area.community',
+  messages: 'area.messages',
+  moderation: 'area.moderation',
+  desktop: 'area.desktop',
+  activities: 'area.activities',
+  other: 'area.other',
 }
 
 const PLATFORM_LABELS: Record<FeedbackPlatform, string> = {
