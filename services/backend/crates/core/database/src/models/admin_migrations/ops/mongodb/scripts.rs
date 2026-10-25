@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 60; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 61; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1683,8 +1683,171 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .expect("Failed to add UseActivities to default_permissions.");
     };
 
+    if revision <= 60 {
+        info!("Running migration [revision 60 / 25-10-2026]: Split audit log, pin and screen share permissions; make server roles allow-only.");
+
+        migrate_split_permissions(db).await;
+    };
+
     // Reminder to update LATEST_REVISION when adding new migrations.
     LATEST_REVISION.max(revision)
+}
+
+/// Permissions that used to be covered by another permission: wherever the
+/// old permission is granted or denied, the new one is granted or denied too.
+const SPLIT_PERMISSIONS: [(ChannelPermission, ChannelPermission); 3] = [
+    (ChannelPermission::Video, ChannelPermission::ScreenShare),
+    (
+        ChannelPermission::ManageMessages,
+        ChannelPermission::PinMessages,
+    ),
+    (
+        ChannelPermission::ManageServer,
+        ChannelPermission::ViewAuditLog,
+    ),
+];
+
+fn with_split_permissions(value: i64) -> i64 {
+    SPLIT_PERMISSIONS
+        .iter()
+        .filter(|(old, _)| value & *old as i64 != 0)
+        .fold(value, |value, (_, new)| value | *new as i64)
+}
+
+fn bson_permission(value: Option<&Bson>) -> Option<i64> {
+    match value? {
+        Bson::Int32(value) => Some(*value as i64),
+        Bson::Int64(value) => Some(*value),
+        Bson::Double(value) => Some(*value as i64),
+        _ => None,
+    }
+}
+
+/// Apply [`with_split_permissions`] to both sides of an `{ a, d }` override.
+fn split_override(field: &str, value: Option<&Bson>, set: &mut Document) {
+    let Some(Bson::Document(value)) = value else {
+        return;
+    };
+    for side in ["a", "d"] {
+        if let Some(bits) = bson_permission(value.get(side)) {
+            let next = with_split_permissions(bits);
+            if next != bits {
+                set.insert(format!("{field}.{side}"), next);
+            }
+        }
+    }
+}
+
+async fn migrate_split_permissions(db: &MongoDb) {
+    let mut servers = db
+        .col::<Document>("servers")
+        .find(doc! {})
+        .await
+        .expect("Failed to fetch servers.");
+
+    while let Some(server) = servers.next().await {
+        let server = server.expect("Failed to read server.");
+        let Ok(id) = server.get_str("_id") else {
+            continue;
+        };
+        let mut set = doc! {};
+
+        if let Some(bits) = bson_permission(server.get("default_permissions")) {
+            set.insert("default_permissions", with_split_permissions(bits));
+        }
+
+        if let Ok(roles) = server.get_document("roles") {
+            for (role_id, role) in roles {
+                let Some(permissions) = role
+                    .as_document()
+                    .and_then(|role| role.get_document("permissions").ok())
+                else {
+                    continue;
+                };
+                let allow = bson_permission(permissions.get("a")).unwrap_or_default();
+                set.insert(
+                    format!("roles.{role_id}.permissions.a"),
+                    with_split_permissions(allow),
+                );
+                set.insert(format!("roles.{role_id}.permissions.d"), 0_i64);
+            }
+        }
+
+        if !set.is_empty() {
+            db.col::<Document>("servers")
+                .update_one(doc! { "_id": id }, doc! { "$set": set })
+                .await
+                .expect("Failed to update server permissions.");
+        }
+    }
+
+    let mut channels = db
+        .col::<Document>("channels")
+        .find(doc! { "channel_type": { "$in": ["TextChannel", "Group"] } })
+        .await
+        .expect("Failed to fetch channels.");
+
+    while let Some(channel) = channels.next().await {
+        let channel = channel.expect("Failed to read channel.");
+        let Ok(id) = channel.get_str("_id") else {
+            continue;
+        };
+        let mut set = doc! {};
+
+        if let Some(bits) = bson_permission(channel.get("permissions")) {
+            let next = with_split_permissions(bits);
+            if next != bits {
+                set.insert("permissions", next);
+            }
+        }
+
+        split_override(
+            "default_permissions",
+            channel.get("default_permissions"),
+            &mut set,
+        );
+
+        for field in ["role_permissions", "user_permissions"] {
+            if let Ok(overrides) = channel.get_document(field) {
+                for (key, value) in overrides {
+                    split_override(&format!("{field}.{key}"), Some(value), &mut set);
+                }
+            }
+        }
+
+        if !set.is_empty() {
+            db.col::<Document>("channels")
+                .update_one(doc! { "_id": id }, doc! { "$set": set })
+                .await
+                .expect("Failed to update channel permissions.");
+        }
+    }
+}
+
+#[cfg(test)]
+mod split_permission_tests {
+    use syrnike_permissions::ChannelPermission;
+
+    use super::with_split_permissions;
+
+    #[test]
+    fn split_permissions_follow_the_permission_they_came_from() {
+        let video = ChannelPermission::Video as i64;
+        assert_eq!(
+            with_split_permissions(video),
+            video | ChannelPermission::ScreenShare as i64
+        );
+
+        let manage =
+            ChannelPermission::ManageMessages as i64 | ChannelPermission::ManageServer as i64;
+        assert_eq!(
+            with_split_permissions(manage),
+            manage | ChannelPermission::PinMessages as i64 | ChannelPermission::ViewAuditLog as i64
+        );
+
+        let speak = ChannelPermission::Speak as i64;
+        assert_eq!(with_split_permissions(speak), speak);
+    }
 }
 
 /// Activity collections, indexes and the first-party `lab` application

@@ -403,11 +403,11 @@ fn get_allowed_track_sources(
     };
 
     if permissions.has(ChannelPermission::Video as u64) && limits.video {
-        allowed_sources.extend([
-            TrackSource::Camera,
-            TrackSource::ScreenShare,
-            TrackSource::ScreenShareAudio,
-        ]);
+        allowed_sources.push(TrackSource::Camera);
+    };
+
+    if permissions.has(ChannelPermission::ScreenShare as u64) && limits.video {
+        allowed_sources.extend([TrackSource::ScreenShare, TrackSource::ScreenShareAudio]);
     };
 
     allowed_sources
@@ -1981,7 +1981,9 @@ mod tests {
     fn server_mute_revokes_only_microphone_publication() {
         let limits = video_limits();
         let permissions = PermissionValue::from(
-            ChannelPermission::Listen as u64 | ChannelPermission::Video as u64,
+            ChannelPermission::Listen as u64
+                | ChannelPermission::Video as u64
+                | ChannelPermission::ScreenShare as u64,
         );
 
         let permission = livekit_participant_permission(&limits, permissions);
@@ -1992,6 +1994,27 @@ mod tests {
             permission.can_publish_sources,
             vec![
                 TrackSource::Camera as i32,
+                TrackSource::ScreenShare as i32,
+                TrackSource::ScreenShareAudio as i32,
+            ]
+        );
+    }
+
+    #[test]
+    fn camera_and_screen_share_have_separate_permissions() {
+        let limits = video_limits();
+        let sources = |permission: ChannelPermission| {
+            livekit_participant_permission(&limits, PermissionValue::from(permission as u64))
+                .can_publish_sources
+        };
+
+        assert_eq!(
+            sources(ChannelPermission::Video),
+            vec![TrackSource::Camera as i32]
+        );
+        assert_eq!(
+            sources(ChannelPermission::ScreenShare),
+            vec![
                 TrackSource::ScreenShare as i32,
                 TrackSource::ScreenShareAudio as i32,
             ]

@@ -288,7 +288,7 @@ export function getServerSettingsAccess(
       has(ChannelPermission.ManageServer),
     bans: has(ChannelPermission.BanMembers),
     invites: has(ChannelPermission.ManageServer),
-    audit: has(ChannelPermission.ManageServer),
+    audit: has(ChannelPermission.ViewAuditLog),
   }
 }
 

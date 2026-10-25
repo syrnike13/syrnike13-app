@@ -67,9 +67,7 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
 
     let mut permissions: PermissionValue = query.get_default_server_permissions().await.into();
 
-    for role_override in query.get_our_server_role_overrides().await {
-        permissions.apply(role_override);
-    }
+    permissions.allow(query.get_our_server_role_permissions().await);
 
     let is_administrator =
         permissions.has_channel_permission(ChannelPermission::Administrator);

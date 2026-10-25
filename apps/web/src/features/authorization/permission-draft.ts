@@ -70,13 +70,14 @@ export function serverPermissionDraft(
   if (server.owner === userId) return GRANT_ALL_SAFE
   if (!member) return 0
 
+  // Server roles only grant permissions; denying happens in channel overrides.
   let permissions = maskPermissionBits(server.default_permissions)
-  const roles = (member.roles ?? [])
-    .map((roleId) => server.roles?.[roleId])
-    .filter((role): role is NonNullable<typeof role> => Boolean(role))
-    .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
-  for (const role of roles) {
-    permissions = applyPermissionDraftOverride(permissions, role.permissions)
+  for (const roleId of member.roles ?? []) {
+    const role = server.roles?.[roleId]
+    if (role) permissions = permissionOr(permissions, maskPermissionBits(role.permissions.a))
+  }
+  if (hasPermissionBit(permissions, ServerPermission.Administrator)) {
+    return GRANT_ALL_SAFE
   }
   if (member.timeout && new Date(member.timeout) > new Date()) {
     permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)

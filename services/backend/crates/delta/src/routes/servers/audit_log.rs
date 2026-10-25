@@ -55,7 +55,7 @@ pub async fn fetch_audit_log(
     let mut permission_query = DatabasePermissionQuery::new(db, &user).server(&server);
     calculate_server_permissions(&mut permission_query)
         .await
-        .throw_if_lacking_channel_permission(ChannelPermission::ManageServer)?;
+        .throw_if_lacking_channel_permission(ChannelPermission::ViewAuditLog)?;
 
     let entries = db
         .fetch_server_audit_logs(
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[rocket::async_test]
-    async fn audit_log_requires_manage_server() {
+    async fn audit_log_requires_view_audit_log() {
         let context = AuditLogTestContext::new().await;
 
         fixture!(context.db, "server_with_many_roles",

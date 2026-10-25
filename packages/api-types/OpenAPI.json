@@ -13482,12 +13482,10 @@
         ],
         "properties": {
           "permissions": {
-            "description": "Allow / deny values for the role in this server.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Override"
-              }
-            ]
+            "description": "Permissions granted by this role; server roles cannot deny permissions.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
           }
         }
       },

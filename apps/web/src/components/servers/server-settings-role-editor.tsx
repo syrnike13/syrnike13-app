@@ -39,13 +39,10 @@ import {
 } from '#/features/authorization/authorization'
 import {
   ADMINISTRATOR_PERMISSION,
-  getAllowedPermissionTriStates,
-  getPermissionTriState,
-  overrideFieldFromRole,
-  overrideFieldToApi,
+  hasServerPermission,
+  rolePermissions,
   SERVER_PERMISSION_GROUPS,
-  setPermissionTriState,
-  type PermissionOverrideField,
+  toggleServerPermission,
 } from '#/lib/server-permissions'
 
 import { PermissionStateButton } from '#/components/servers/permission-state-button'
@@ -111,8 +108,8 @@ export function ServerSettingsRoleEditor({
   const [colour, setColour] = useState(role.colour ?? '')
   const [hoist, setHoist] = useState(Boolean(role.hoist))
   const [mentionable, setMentionable] = useState(role.mentionable !== false)
-  const [permissions, setPermissions] = useState<PermissionOverrideField>(() =>
-    overrideFieldFromRole(role.permissions),
+  const [permissions, setPermissions] = useState(() =>
+    rolePermissions(role.permissions),
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
   const iconInputRef = useRef<HTMLInputElement>(null)
@@ -120,9 +117,10 @@ export function ServerSettingsRoleEditor({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const administratorEnabled =
-    getPermissionTriState(permissions, ADMINISTRATOR_PERMISSION.flag) ===
-    'allow'
+  const administratorEnabled = hasServerPermission(
+    permissions,
+    ADMINISTRATOR_PERMISSION.flag,
+  )
   const canGrantAdministrator = canGrantServerPermission(
     server,
     ADMINISTRATOR_PERMISSION.flag,
@@ -161,7 +159,7 @@ export function ServerSettingsRoleEditor({
     setColour(role.colour ?? '')
     setHoist(Boolean(role.hoist))
     setMentionable(role.mentionable !== false)
-    setPermissions(overrideFieldFromRole(role.permissions))
+    setPermissions(rolePermissions(role.permissions))
     setIconFile(null)
     setRemoveIcon(false)
     setActiveTab('display')
@@ -197,11 +195,7 @@ export function ServerSettingsRoleEditor({
 
   const isPermissionsDirty = useMemo(() => {
     if (!canEditPermissions) return false
-    const currentPermissions = overrideFieldFromRole(role.permissions)
-    return (
-      permissions.a !== currentPermissions.a ||
-      permissions.d !== currentPermissions.d
-    )
+    return permissions !== rolePermissions(role.permissions)
   }, [canEditPermissions, permissions, role.permissions])
 
   const isDirty = isRoleMetaDirty || isPermissionsDirty
@@ -211,7 +205,7 @@ export function ServerSettingsRoleEditor({
     setColour(role.colour ?? '')
     setHoist(Boolean(role.hoist))
     setMentionable(role.mentionable !== false)
-    setPermissions(overrideFieldFromRole(role.permissions))
+    setPermissions(rolePermissions(role.permissions))
     setIconFile(null)
     setRemoveIcon(false)
     return true
@@ -278,10 +272,8 @@ export function ServerSettingsRoleEditor({
           })
         }
 
-        const currentPermissions = overrideFieldFromRole(role.permissions)
         const permissionsChanged =
-          permissions.a !== currentPermissions.a ||
-          permissions.d !== currentPermissions.d
+          permissions !== rolePermissions(role.permissions)
 
         if (permissionsChanged && canEditPermissions) {
           const serverAfterPermissions =
@@ -289,7 +281,7 @@ export function ServerSettingsRoleEditor({
               token,
               serverId,
               role._id,
-              { permissions: overrideFieldToApi(permissions) },
+              { permissions },
             )
           yield* Effect.sync(() =>
             syncStore.upsertServer(serverAfterPermissions),
@@ -522,10 +514,10 @@ export function ServerSettingsRoleEditor({
               }
               onCheckedChange={(enabled) =>
                 setPermissions((current) =>
-                  setPermissionTriState(
+                  toggleServerPermission(
                     current,
                     ADMINISTRATOR_PERMISSION.flag,
-                    enabled ? 'allow' : 'neutral',
+                    enabled,
                   ),
                 )
               }
@@ -539,9 +531,12 @@ export function ServerSettingsRoleEditor({
               </h4>
               <ul className="space-y-1">
                 {group.permissions.map((permission) => {
-                  const allowedStates = getAllowedPermissionTriStates(
-                    role.permissions,
-                    canGrantServerPermission(server, permission.flag),
+                  const enabled = hasServerPermission(
+                    permissions,
+                    permission.flag,
+                  )
+                  const actorHasPermission = canGrantServerPermission(
+                    server,
                     permission.flag,
                   )
                   return (
@@ -552,18 +547,19 @@ export function ServerSettingsRoleEditor({
                       <span className="text-sm">{tp(permission.labelKey)}</span>
                       <PermissionStateButton
                         label={tp(permission.labelKey)}
-                        state={getPermissionTriState(
-                          permissions,
-                          permission.flag,
-                        )}
-                        allowedStates={allowedStates}
-                        disabled={!canEditPermissions}
+                        state={enabled ? 'allow' : 'neutral'}
+                        allowedStates={['neutral', 'allow']}
+                        mode="switch"
+                        disabled={
+                          !canEditPermissions ||
+                          (!actorHasPermission && !enabled)
+                        }
                         onChange={(next) =>
                           setPermissions((current) =>
-                            setPermissionTriState(
+                            toggleServerPermission(
                               current,
                               permission.flag,
-                              next,
+                              next === 'allow',
                             ),
                           )
                         }

@@ -28,7 +28,7 @@ pub async fn message_unpin(
     let required_permission = if matches!(&channel, Channel::DirectMessage { .. }) {
         ChannelPermission::ViewChannel
     } else {
-        ChannelPermission::ManageMessages
+        ChannelPermission::PinMessages
     };
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
