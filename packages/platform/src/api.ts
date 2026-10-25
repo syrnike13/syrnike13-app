@@ -15,6 +15,7 @@ import type {
   RendererDiagnosticIncident,
 } from './diagnostics'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
+import type { DesktopSystemInfo } from './system'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 import type { VoiceRtcTelemetrySnapshot } from './voice/voice-telemetry'
 
@@ -302,6 +303,9 @@ export interface SyrnikeDesktopApi {
   readonly runtime: 'desktop'
   readonly platform: DesktopPlatformInfo
   getVersions(): Promise<DesktopVersions>
+  system: {
+    getInfo(): Promise<DesktopSystemInfo>
+  }
   clipboard: {
     writeText(text: string): Promise<void>
   }

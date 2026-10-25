@@ -152,6 +152,9 @@ pub async fn create(
         suggestion.attachments = Some(attachments);
     }
 
+    suggestion.system = data.system;
+    suggestion.peripherals = data.peripherals;
+
     db.insert_feedback_suggestion(&suggestion).await?;
 
     Ok(Json(view_into_api(
@@ -412,8 +415,96 @@ fn normalise_create_data(
 ) -> Result<v0::DataCreateFeedbackSuggestion> {
     data.title = normalise_required(data.title, "title")?;
     data.description = normalise_required(data.description, "description")?;
+    data.system = normalise_system(data.system)?;
+    data.peripherals = normalise_peripherals(data.peripherals)?;
     data.validate().map_err(validation_from)?;
     Ok(data)
+}
+
+/// Upper bound for one hardware line; long enough for a full model name.
+const MAX_SYSTEM_FIELD_LENGTH: usize = 120;
+/// 4 TiB, far above any consumer machine.
+const MAX_SYSTEM_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024 * 1024;
+const MAX_SYSTEM_CPU_THREADS: u16 = 1024;
+const MAX_PERIPHERAL_DEVICE_LENGTH: usize = 80;
+const MAX_PERIPHERALS: usize = 8;
+
+/// Trim the hardware summary and drop the blanks a client may send.
+fn normalise_system(system: Option<v0::FeedbackSystem>) -> Result<Option<v0::FeedbackSystem>> {
+    let Some(system) = system else {
+        return Ok(None);
+    };
+
+    let system = v0::FeedbackSystem {
+        os: normalise_system_line(system.os, "os")?,
+        cpu: normalise_system_line(system.cpu, "cpu")?,
+        cpu_threads: system.cpu_threads.filter(|threads| *threads > 0),
+        gpu: normalise_system_line(system.gpu, "gpu")?,
+        memory_bytes: system.memory_bytes.filter(|bytes| *bytes > 0),
+        display: normalise_system_line(system.display, "display")?,
+    };
+
+    if system
+        .cpu_threads
+        .is_some_and(|threads| threads > MAX_SYSTEM_CPU_THREADS)
+    {
+        return validation_error("system.cpu_threads is too large");
+    }
+    if system
+        .memory_bytes
+        .is_some_and(|bytes| bytes > MAX_SYSTEM_MEMORY_BYTES)
+    {
+        return validation_error("system.memory_bytes is too large");
+    }
+
+    let empty = system.os.is_none()
+        && system.cpu.is_none()
+        && system.cpu_threads.is_none()
+        && system.gpu.is_none()
+        && system.memory_bytes.is_none()
+        && system.display.is_none();
+    Ok((!empty).then_some(system))
+}
+
+fn normalise_system_line(value: Option<String>, name: &str) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    // Clients send empty strings for fields they could not read; drop them.
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.chars().count() > MAX_SYSTEM_FIELD_LENGTH {
+        return validation_error(&format!("system.{name} is too long"));
+    }
+    Ok(Some(value.to_string()))
+}
+
+/// Trim the free-form device list and reject entries the UI does not allow.
+fn normalise_peripherals(
+    peripherals: Option<Vec<v0::FeedbackPeripheral>>,
+) -> Result<Option<Vec<v0::FeedbackPeripheral>>> {
+    let Some(peripherals) = peripherals else {
+        return Ok(None);
+    };
+    if peripherals.len() > MAX_PERIPHERALS {
+        return validation_error("peripherals must contain at most 8 devices");
+    }
+
+    let mut normalised = Vec::with_capacity(peripherals.len());
+    for peripheral in peripherals {
+        let device = normalise_required(peripheral.device, "peripherals.device")?;
+        if device.chars().count() > MAX_PERIPHERAL_DEVICE_LENGTH {
+            return validation_error("peripherals.device is too long");
+        }
+        normalised.push(v0::FeedbackPeripheral {
+            device,
+            connection: peripheral.connection,
+        });
+    }
+
+    Ok((!normalised.is_empty()).then_some(normalised))
 }
 
 fn normalise_search(search: Option<String>) -> Result<Option<String>> {
@@ -891,5 +982,133 @@ mod tests {
         )
         .await;
         assert_eq!(rejected.status(), Status::BadRequest);
+    }
+
+    fn bug_body(value: serde_json::Value) -> String {
+        let mut body = serde_json::json!({
+            "title": "Screen share freezes",
+            "description": "Screen share freezes after a few minutes.",
+            "category": "bug",
+            "platform": "windows",
+        });
+        body.as_object_mut()
+            .expect("object body")
+            .extend(value.as_object().cloned().unwrap_or_default());
+        body.to_string()
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_keeps_system_and_peripherals() {
+        let context = FeedbackTestContext::new().await;
+        let (_, author_session) = context.user(false).await;
+
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": {
+                        "os": "  Windows 11 24H2  ",
+                        "cpu": "AMD Ryzen 7 5800X3D",
+                        "cpu_threads": 16,
+                        "gpu": "NVIDIA GeForce RTX 3070",
+                        "memory_bytes": 34_359_738_368_u64,
+                        "display": "2560x1440 @ 165 Hz",
+                        "cpu_cores": 8,
+                    },
+                    "peripherals": [
+                        { "device": " HyperX Cloud II ", "connection": "wireless_2_4_ghz" },
+                        { "device": "Keychron K8", "connection": "bluetooth" },
+                        { "device": "Focusrite Scarlett", "connection": "audio_card" },
+                    ],
+                }))),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+
+        let suggestion: v0::FeedbackSuggestion =
+            created.into_json().await.expect("response body");
+        let system = suggestion.system.expect("system");
+        assert_eq!(system.os.as_deref(), Some("Windows 11 24H2"));
+        assert_eq!(system.cpu.as_deref(), Some("AMD Ryzen 7 5800X3D"));
+        assert_eq!(system.cpu_threads, Some(16));
+        assert_eq!(system.memory_bytes, Some(34_359_738_368));
+        assert_eq!(system.display.as_deref(), Some("2560x1440 @ 165 Hz"));
+
+        let peripherals = suggestion.peripherals.expect("peripherals");
+        assert_eq!(peripherals.len(), 3);
+        assert_eq!(peripherals[0].device, "HyperX Cloud II");
+        assert_eq!(
+            peripherals[0].connection,
+            v0::FeedbackPeripheralConnection::Wireless24Ghz
+        );
+        assert_eq!(
+            peripherals[2].connection,
+            v0::FeedbackPeripheralConnection::AudioCard
+        );
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_drops_blank_system_and_rejects_invalid_peripherals() {
+        let context = FeedbackTestContext::new().await;
+        let (_, author_session) = context.user(false).await;
+
+        let blank = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": { "os": "   ", "cpu": null, "cpu_threads": 0 },
+                    "peripherals": [],
+                }))),
+        )
+        .await;
+        assert_eq!(blank.status(), Status::Ok);
+        let suggestion: v0::FeedbackSuggestion =
+            blank.into_json().await.expect("response body");
+        assert!(suggestion.system.is_none(), "blank system must be dropped");
+        assert!(suggestion.peripherals.is_none(), "empty list must be dropped");
+
+        let too_long_device = "g".repeat(81);
+        for invalid in [
+            serde_json::json!([{ "device": "  ", "connection": "wired" }]),
+            serde_json::json!([{ "device": too_long_device, "connection": "wired" }]),
+            serde_json::json!(
+                (0..9)
+                    .map(|index| serde_json::json!({
+                        "device": format!("device {index}"),
+                        "connection": "wired",
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+        ] {
+            let rejected = FeedbackTestContext::request_with_session(
+                &author_session,
+                context
+                    .client
+                    .post("/feedback")
+                    .header(ContentType::JSON)
+                    .body(bug_body(serde_json::json!({ "peripherals": invalid }))),
+            )
+            .await;
+            assert_eq!(rejected.status(), Status::BadRequest);
+        }
+
+        let huge_memory = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": { "memory_bytes": 5_000_000_000_000_u64 },
+                }))),
+        )
+        .await;
+        assert_eq!(huge_memory.status(), Status::BadRequest);
     }
 }

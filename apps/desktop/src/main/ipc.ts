@@ -68,6 +68,7 @@ import {
 } from './native-runtime/diagnostic-incidents'
 import { recordRendererDiagnosticMetrics } from './native-runtime/anonymous-metrics'
 import { decodeIpcInput } from './ipc-schema'
+import { collectDesktopSystemInfo } from './system-info'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -146,6 +147,8 @@ export function registerDesktopIpc(
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+
+  ipcMain.handle(IPC.systemGetInfo, () => collectDesktopSystemInfo())
 
   ipcMain.handle(IPC.clipboardWriteText, (_event, input: unknown) => {
     const text = decodeIpcInput(

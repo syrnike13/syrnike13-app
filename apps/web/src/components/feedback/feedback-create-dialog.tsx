@@ -1,7 +1,9 @@
 import type {
   FeedbackArea,
   FeedbackCategory,
+  FeedbackPeripheral,
   FeedbackPlatform,
+  FeedbackSystem,
 } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Option, Schema } from 'effect'
@@ -21,6 +23,13 @@ import {
   FeedbackCategoryBadge,
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
+import {
+  FeedbackPeripheralsSummary,
+  FeedbackSystemFields,
+  FeedbackSystemSummary,
+  PERIPHERALS_MAX,
+  type EditablePeripheral,
+} from '#/components/feedback/feedback-system'
 import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
 import {
   AndroidIcon,
@@ -76,6 +85,14 @@ import {
 } from '#/features/api/feedback-api'
 import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import {
+  collectFeedbackSystem,
+  hasSystemDetails,
+} from '#/features/feedback/system-info'
+import {
+  readSystemProfile,
+  writeSystemProfile,
+} from '#/features/feedback/system-profile'
 import { queryKeys } from '#/lib/api/query-keys'
 import { cn } from '#/lib/utils'
 
@@ -85,6 +102,14 @@ const DESCRIPTION_MAX = 2_000
 const ATTACHMENTS_MAX = 10
 /** Used until `GET /` reports the configured `feedback` upload limit. */
 const FALLBACK_ATTACHMENT_MAX_BYTES = 200_000_000
+
+let peripheralKeySeed = 0
+
+/** Stable React key for an editable device row. */
+function nextPeripheralKey() {
+  peripheralKeySeed += 1
+  return `peripheral-${peripheralKeySeed}`
+}
 
 class FeedbackAttachmentsError extends Error {}
 
@@ -173,6 +198,11 @@ export function FeedbackCreateDialog({
   } = useComposerAttachments(undefined, { tag: 'feedback' })
   const fileCountRef = useRef(files.length)
   fileCountRef.current = files.length
+  const [system, setSystem] = useState<FeedbackSystem | null>(null)
+  const [systemBusy, setSystemBusy] = useState(false)
+  const [systemError, setSystemError] = useState<string | null>(null)
+  const [peripherals, setPeripherals] = useState<EditablePeripheral[]>([])
+  const [profileSaved, setProfileSaved] = useState(false)
   const limits = useSyrnikeConfig().data?.features.limits
   const attachmentMaxBytes = limits
     ? Math.min(
@@ -237,7 +267,99 @@ export function FeedbackCreateDialog({
     setAnonymous(false)
     setAttachmentNotice(null)
     setSubmitError(null)
+    setSystem(null)
+    setSystemError(null)
+    setSystemBusy(false)
+    setPeripherals([])
+    setProfileSaved(false)
     resetFiles()
+  }
+
+  /** Devices the author actually named; blank rows are never submitted. */
+  function namedPeripherals(): FeedbackPeripheral[] {
+    return peripherals
+      .map(({ device, connection }) => ({ device: device.trim(), connection }))
+      .filter((peripheral) => peripheral.device.length > 0)
+      .slice(0, PERIPHERALS_MAX)
+  }
+
+  const submittedSystem = category === 'bug' ? system : null
+  const submittedPeripherals = category === 'bug' ? namedPeripherals() : []
+  const canSaveProfile = Boolean(system) || namedPeripherals().length > 0
+
+  // Prefill the machine profile saved by an earlier report on this device.
+  useEffect(() => {
+    if (!open) return
+
+    const saved = readSystemProfile()
+    if (!saved) return
+
+    setSystem((current) => current ?? saved.system)
+    setPeripherals((current) =>
+      current.length > 0
+        ? current
+        : saved.peripherals.map((peripheral) => ({
+            ...peripheral,
+            key: nextPeripheralKey(),
+          })),
+    )
+    setProfileSaved(Boolean(saved.system) || saved.peripherals.length > 0)
+  }, [open])
+
+  async function collectSystem() {
+    setSystemBusy(true)
+    setSystemError(null)
+    setProfileSaved(false)
+
+    try {
+      const collected = await collectFeedbackSystem()
+      if (!hasSystemDetails(collected)) {
+        setSystem(null)
+        setSystemError(t('systemFailed'))
+        return
+      }
+      setSystem(collected)
+    } catch {
+      setSystemError(t('systemFailed'))
+    } finally {
+      setSystemBusy(false)
+    }
+  }
+
+  function saveProfile() {
+    const saved = writeSystemProfile({
+      system,
+      peripherals: namedPeripherals(),
+    })
+    setProfileSaved(saved)
+    setSystemError(saved ? null : t('systemSaveFailed'))
+  }
+
+  function addPeripheral() {
+    setPeripherals((current) =>
+      current.length >= PERIPHERALS_MAX
+        ? current
+        : [...current, { key: nextPeripheralKey(), device: '', connection: 'wired' }],
+    )
+  }
+
+  function changePeripheral(
+    key: string,
+    patch: Partial<Omit<EditablePeripheral, 'key'>>,
+  ) {
+    setProfileSaved(false)
+    setPeripherals((current) =>
+      current.map((peripheral) =>
+        peripheral.key === key ? { ...peripheral, ...patch } : peripheral,
+      ),
+    )
+  }
+
+  function removePeripheral(key: string) {
+    setProfileSaved(false)
+    setPeripherals((current) =>
+      current.filter((peripheral) => peripheral.key !== key),
+    )
   }
 
   function addFiles(fileList: FileList | File[]) {
@@ -293,6 +415,9 @@ export function FeedbackCreateDialog({
         area: area || undefined,
         platform,
         attachments: attachments.length > 0 ? attachments : undefined,
+        system: submittedSystem ?? undefined,
+        peripherals:
+          submittedPeripherals.length > 0 ? submittedPeripherals : undefined,
         anonymous: isAnonymous,
       })
     },
@@ -614,6 +739,27 @@ export function FeedbackCreateDialog({
                   ) : null}
                   <FieldError>{attachmentNotice}</FieldError>
                 </section>
+
+                {category === 'bug' ? (
+                  <FeedbackSystemFields
+                    system={system}
+                    busy={systemBusy}
+                    error={systemError}
+                    peripherals={peripherals}
+                    profileSaved={profileSaved}
+                    canSaveProfile={canSaveProfile}
+                    onCollect={() => void collectSystem()}
+                    onClear={() => {
+                      setSystem(null)
+                      setSystemError(null)
+                      setProfileSaved(false)
+                    }}
+                    onAddPeripheral={addPeripheral}
+                    onChangePeripheral={changePeripheral}
+                    onRemovePeripheral={removePeripheral}
+                    onSaveProfile={saveProfile}
+                  />
+                ) : null}
               </>
             ) : null}
 
@@ -654,6 +800,24 @@ export function FeedbackCreateDialog({
                           files={files}
                           sending={createMutation.isPending}
                           onRemove={removeFile}
+                        />
+                      </dd>
+                    </div>
+                  ) : null}
+                  {submittedSystem ? (
+                    <div>
+                      <dt className="text-muted-foreground">{t('systemSummary')}</dt>
+                      <dd className="mt-1">
+                        <FeedbackSystemSummary system={submittedSystem} />
+                      </dd>
+                    </div>
+                  ) : null}
+                  {submittedPeripherals.length > 0 ? (
+                    <div>
+                      <dt className="text-muted-foreground">{t('peripheralsTitle')}</dt>
+                      <dd className="mt-1">
+                        <FeedbackPeripheralsSummary
+                          peripherals={submittedPeripherals}
                         />
                       </dd>
                     </div>

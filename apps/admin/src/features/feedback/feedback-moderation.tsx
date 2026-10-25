@@ -1,4 +1,10 @@
-import type { FeedbackSuggestion, File } from '@syrnike13/api-types'
+import type {
+  FeedbackPeripheral,
+  FeedbackPeripheralConnection,
+  FeedbackSuggestion,
+  FeedbackSystem,
+  File,
+} from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import {
   useInfiniteQuery,
@@ -641,6 +647,13 @@ function FeedbackInspector({
           <FeedbackAttachments attachments={suggestion.attachments} />
         ) : null}
 
+        {suggestion.system || suggestion.peripherals?.length ? (
+          <FeedbackSystemCard
+            system={suggestion.system ?? null}
+            peripherals={suggestion.peripherals ?? []}
+          />
+        ) : null}
+
         {mode === 'pending' ? (
           <DuplicatePicker
             source={suggestion}
@@ -1236,6 +1249,94 @@ function FeedbackAttachments({ attachments }: { attachments: File[] }) {
           )
         })}
       </div>
+    </section>
+  )
+}
+
+const CONNECTION_KEYS: Record<
+  FeedbackPeripheralConnection,
+  `connection.${FeedbackPeripheralConnection}`
+> = {
+  wireless_2_4_ghz: 'connection.wireless_2_4_ghz',
+  bluetooth: 'connection.bluetooth',
+  wired: 'connection.wired',
+  audio_card: 'connection.audio_card',
+  other: 'connection.other',
+}
+
+function FeedbackSystemCard({
+  system,
+  peripherals,
+}: {
+  system: FeedbackSystem | null
+  peripherals: FeedbackPeripheral[]
+}) {
+  const t = useTranslations('feedback.moderation')
+
+  const rows: Array<{ label: string; value: string }> = []
+  if (system?.os) rows.push({ label: t('os'), value: system.os })
+  if (system?.cpu) {
+    rows.push({
+      label: t('cpu'),
+      value: system.cpu_threads
+        ? `${system.cpu} · ${t('threadsValue', { count: system.cpu_threads })}`
+        : system.cpu,
+    })
+  } else if (system?.cpu_threads) {
+    rows.push({
+      label: t('cpu'),
+      value: t('threadsValue', { count: system.cpu_threads }),
+    })
+  }
+  if (system?.gpu) rows.push({ label: t('gpu'), value: system.gpu })
+  if (system?.memory_bytes) {
+    rows.push({
+      label: t('memory'),
+      value: t('memoryValue', {
+        gb: Math.max(1, Math.round(system.memory_bytes / 1024 ** 3)),
+      }),
+    })
+  }
+  if (system?.display) rows.push({ label: t('display'), value: system.display })
+
+  return (
+    <section className="flex flex-col gap-2" aria-label={t('systemTitle')}>
+      {rows.length > 0 ? (
+        <>
+          <div className="text-sm font-medium text-muted-foreground">
+            {t('systemTitle')}
+          </div>
+          <dl className="grid gap-1.5 rounded-md border border-border bg-muted/20 p-3 text-sm">
+            {rows.map((row) => (
+              <div key={row.label} className="flex min-w-0 items-baseline gap-3">
+                <dt className="shrink-0 text-muted-foreground">{row.label}</dt>
+                <dd className="min-w-0 break-words">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      ) : null}
+
+      {peripherals.length > 0 ? (
+        <>
+          <div className="text-sm font-medium text-muted-foreground">
+            {t('peripheralsTitle')}
+          </div>
+          <ul className="flex flex-col gap-1 text-sm">
+            {peripherals.map((peripheral, index) => (
+              <li
+                key={`${peripheral.device}-${peripheral.connection}-${index}`}
+                className="flex min-w-0 items-baseline gap-3"
+              >
+                <span className="min-w-0 break-words">{peripheral.device}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {t(CONNECTION_KEYS[peripheral.connection])}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </section>
   )
 }

@@ -6,6 +6,7 @@ import {
   DesktopDisplayMediaSourceSchema,
   DesktopOverlayStateSchema,
   DesktopStoredSessionSchema,
+  DesktopSystemInfoSchema,
   DesktopUpdateStateSchema,
   DesktopVersionsSchema,
   DesktopWindowPreferencesSchema,
@@ -256,6 +257,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   platform,
   getVersions() {
     return invokeDecoded(IPC.versions, DesktopVersionsSchema)
+  },
+  system: {
+    getInfo() {
+      return invokeDecoded(IPC.systemGetInfo, DesktopSystemInfoSchema)
+    },
   },
   clipboard: {
     writeText(text: string) {

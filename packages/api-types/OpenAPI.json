@@ -16314,6 +16314,32 @@
         "type": "string",
         "enum": ["popular", "new"]
       },
+      "FeedbackPeripheralConnection": {
+        "description": "How a peripheral is connected to the computer that produced the report.",
+        "type": "string",
+        "enum": ["wireless_2_4_ghz", "bluetooth", "wired", "audio_card", "other"]
+      },
+      "FeedbackSystem": {
+        "description": "Hardware summary the author chose to attach to a bug report.",
+        "type": "object",
+        "properties": {
+          "os": {"description": "Operating system name and version, for example `Windows 11 24H2`.", "type": "string", "nullable": true},
+          "cpu": {"description": "Processor model.", "type": "string", "nullable": true},
+          "cpu_threads": {"description": "Logical processor count.", "type": "integer", "format": "uint16", "minimum": 0, "maximum": 65535, "nullable": true},
+          "gpu": {"description": "Graphics card model.", "type": "string", "nullable": true},
+          "memory_bytes": {"description": "Total memory in bytes.", "type": "integer", "format": "uint64", "minimum": 0, "nullable": true},
+          "display": {"description": "Primary display, for example `2560x1440 @ 165 Hz`.", "type": "string", "nullable": true}
+        }
+      },
+      "FeedbackPeripheral": {
+        "description": "Peripheral the author uses together with the reported bug.",
+        "type": "object",
+        "required": ["device", "connection"],
+        "properties": {
+          "device": {"description": "Free-form device name, for example `HyperX Cloud II`.", "type": "string"},
+          "connection": {"description": "How the device is connected to the computer.", "$ref": "#/components/schemas/FeedbackPeripheralConnection"}
+        }
+      },
       "FeedbackSuggestion": {
         "description": "A product feedback suggestion visible to the requesting user.",
         "type": "object",
@@ -16329,6 +16355,8 @@
           "area": {"$ref": "#/components/schemas/FeedbackArea"},
           "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
           "attachments": {"description": "Files, screenshots and videos attached by the author.", "type": "array", "items": {"$ref": "#/components/schemas/File"}, "nullable": true},
+          "system": {"description": "Hardware summary the author attached to a bug report.", "allOf": [{"$ref": "#/components/schemas/FeedbackSystem"}], "nullable": true},
+          "peripherals": {"description": "Peripherals the author uses together with the affected feature.", "type": "array", "items": {"$ref": "#/components/schemas/FeedbackPeripheral"}, "nullable": true},
           "moderation_status": {"$ref": "#/components/schemas/FeedbackModerationStatus"},
           "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
           "team_response": {"type": "string", "nullable": true},
@@ -16363,6 +16391,8 @@
           "area": {"$ref": "#/components/schemas/FeedbackArea"},
           "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
           "attachments": {"description": "Ids of files uploaded to the `feedback` tag.", "type": "array", "items": {"type": "string"}, "maxItems": 10, "nullable": true},
+          "system": {"description": "Hardware summary the author chose to attach to a bug report.", "allOf": [{"$ref": "#/components/schemas/FeedbackSystem"}], "nullable": true},
+          "peripherals": {"description": "Peripherals the author uses together with the affected feature.", "type": "array", "items": {"$ref": "#/components/schemas/FeedbackPeripheral"}, "maxItems": 8, "nullable": true},
           "anonymous": {"type": "boolean", "default": false}
         }
       },

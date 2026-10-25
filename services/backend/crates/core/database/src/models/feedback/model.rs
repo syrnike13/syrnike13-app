@@ -25,6 +25,10 @@ auto_derived!(
         pub platform: Option<v0::FeedbackPlatform>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub attachments: Option<Vec<File>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub system: Option<v0::FeedbackSystem>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub peripherals: Option<Vec<v0::FeedbackPeripheral>>,
         pub moderation_status: v0::FeedbackModerationStatus,
         pub product_status: v0::FeedbackProductStatus,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,6 +133,8 @@ impl FeedbackSuggestion {
             area,
             platform: Some(platform),
             attachments: None,
+            system: None,
+            peripherals: None,
             moderation_status: v0::FeedbackModerationStatus::Pending,
             product_status: v0::FeedbackProductStatus::Collecting,
             team_response: None,
@@ -173,6 +179,8 @@ impl FeedbackSuggestion {
             attachments: self
                 .attachments
                 .map(|files| files.into_iter().map(Into::into).collect()),
+            system: self.system,
+            peripherals: self.peripherals,
             moderation_status: self.moderation_status,
             status: self.product_status,
             team_response: self.team_response,

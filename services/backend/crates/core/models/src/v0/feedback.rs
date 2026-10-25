@@ -64,6 +64,49 @@ auto_derived!(
         New,
     }
 
+    /// How a peripheral is connected to the computer that produced the report.
+    #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+    pub enum FeedbackPeripheralConnection {
+        /// Wireless receiver (USB dongle) running on 2.4 GHz.
+        #[cfg_attr(feature = "serde", serde(rename = "wireless_2_4_ghz"))]
+        Wireless24Ghz,
+        Bluetooth,
+        Wired,
+        /// Routed through a dedicated sound card instead of onboard audio.
+        AudioCard,
+        Other,
+    }
+
+    /// Hardware summary the author chose to attach to a bug report.
+    pub struct FeedbackSystem {
+        /// Operating system name and version, for example `Windows 11 24H2`.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub os: Option<String>,
+        /// Processor model.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub cpu: Option<String>,
+        /// Logical processor count.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub cpu_threads: Option<u16>,
+        /// Graphics card model.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub gpu: Option<String>,
+        /// Total memory in bytes.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub memory_bytes: Option<u64>,
+        /// Primary display, for example `2560x1440 @ 165 Hz`.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub display: Option<String>,
+    }
+
+    /// Peripheral the author uses together with the reported bug.
+    pub struct FeedbackPeripheral {
+        /// Free-form device name, for example `HyperX Cloud II`.
+        pub device: String,
+        /// How the device is connected to the computer.
+        pub connection: FeedbackPeripheralConnection,
+    }
+
     /// A product feedback suggestion visible to the requesting user.
     pub struct FeedbackSuggestion {
         /// Unique suggestion id.
@@ -92,6 +135,12 @@ auto_derived!(
         /// Files, screenshots and videos attached by the author.
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub attachments: Option<Vec<File>>,
+        /// Hardware summary the author attached to a bug report.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub system: Option<FeedbackSystem>,
+        /// Peripherals the author uses together with the affected feature.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub peripherals: Option<Vec<FeedbackPeripheral>>,
         /// Moderation visibility state.
         pub moderation_status: FeedbackModerationStatus,
         /// Product delivery state.
@@ -141,6 +190,13 @@ auto_derived!(
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         #[cfg_attr(feature = "validator", validate(length(max = 10)))]
         pub attachments: Option<Vec<String>>,
+        /// Hardware summary the author chose to attach to a bug report.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub system: Option<FeedbackSystem>,
+        /// Peripherals the author uses together with the affected feature.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        #[cfg_attr(feature = "validator", validate(length(max = 8)))]
+        pub peripherals: Option<Vec<FeedbackPeripheral>>,
         /// Publish without exposing the author to other users. Moderators still see the author.
         #[cfg_attr(feature = "serde", serde(default))]
         pub anonymous: bool,
