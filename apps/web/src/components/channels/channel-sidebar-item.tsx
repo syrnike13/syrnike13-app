@@ -445,7 +445,13 @@ export function ChannelSidebarItem({
       onDragLeave={handleVoiceDragLeave}
       onDrop={(event) => void handleVoiceDrop(event)}
     >
-      <div data-avatar-hover-scope="" className="relative">
+      {/* A menu item for the sidebar primitive: the row stays hovered while
+          its own action buttons are hovered. */}
+      <div
+        data-sidebar="menu-item"
+        data-avatar-hover-scope=""
+        className="relative"
+      >
         {!active && notificationBadge.hasUnread ? (
           <RailUnreadIndicator className="-left-2" />
         ) : null}
