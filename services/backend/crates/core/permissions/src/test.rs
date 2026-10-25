@@ -55,7 +55,7 @@ async fn validate_user_permissions() {
             unreachable!()
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
             unreachable!()
         }
 
@@ -156,7 +156,7 @@ async fn validate_group_permissions() {
             unreachable!()
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
             unreachable!()
         }
 
@@ -217,7 +217,7 @@ async fn validate_group_permissions() {
 async fn validate_server_permissions() {
     /// Scenario in which we are in a server channel where:
     /// - the server grants reading history and sending messages by default
-    /// - we have a role that allows us to upload files and react but denies reading history
+    /// - we have a role that allows us to upload files and react
     /// - however the channel disallows sending messages
     /// - and removes our role specific react permission
     struct Scenario {}
@@ -227,7 +227,9 @@ async fn validate_server_permissions() {
     let value: u64 = perms.into();
     assert_eq!(
         value,
-        ChannelPermission::ViewChannel as u64 | ChannelPermission::UploadFiles as u64
+        ChannelPermission::ViewChannel as u64
+            | ChannelPermission::ReadMessageHistory as u64
+            | ChannelPermission::UploadFiles as u64
     );
 
     #[async_trait]
@@ -266,11 +268,8 @@ async fn validate_server_permissions() {
                 | ChannelPermission::ReadMessageHistory as u64
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-            vec![Override {
-                allow: ChannelPermission::UploadFiles as u64 | ChannelPermission::React as u64,
-                deny: ChannelPermission::ReadMessageHistory as u64,
-            }]
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
+            ChannelPermission::UploadFiles as u64 | ChannelPermission::React as u64
         }
 
         async fn are_we_timed_out(&mut self) -> bool {
@@ -374,8 +373,8 @@ async fn channel_role_override_allow_wins_over_other_role_deny() {
             ChannelPermission::ViewChannel as u64
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-            vec![]
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
+            0
         }
 
         async fn are_we_timed_out(&mut self) -> bool {
@@ -481,8 +480,8 @@ async fn channel_user_override_applies_after_role_overrides() {
             ChannelPermission::ViewChannel as u64
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-            vec![]
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
+            0
         }
 
         async fn are_we_timed_out(&mut self) -> bool {
@@ -585,8 +584,8 @@ async fn validate_timed_out_member() {
             *DEFAULT_PERMISSION_SERVER
         }
 
-        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-            vec![]
+        async fn get_our_server_role_permissions(&mut self) -> u64 {
+            0
         }
 
         async fn are_we_timed_out(&mut self) -> bool {
@@ -701,7 +700,7 @@ impl PermissionQuery for AccessAdminWithoutMembership {
         unreachable!()
     }
 
-    async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+    async fn get_our_server_role_permissions(&mut self) -> u64 {
         unreachable!()
     }
 
@@ -756,7 +755,7 @@ impl PermissionQuery for AccessAdminWithoutMembership {
 
 struct ServerChannelAccessScenario {
     server_permissions: u64,
-    role_permissions: Override,
+    role_permissions: u64,
     channel_permissions: Override,
     voice_membership: bool,
     server_owner: bool,
@@ -798,8 +797,8 @@ impl PermissionQuery for ServerChannelAccessScenario {
         self.server_permissions
     }
 
-    async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-        vec![self.role_permissions.clone()]
+    async fn get_our_server_role_permissions(&mut self) -> u64 {
+        self.role_permissions
     }
 
     async fn are_we_timed_out(&mut self) -> bool {
@@ -853,10 +852,7 @@ impl PermissionQuery for ServerChannelAccessScenario {
 async fn administrator_grants_all_regular_permissions_and_bypasses_channel_denies() {
     let mut query = ServerChannelAccessScenario {
         server_permissions: 0,
-        role_permissions: Override {
-            allow: ChannelPermission::Administrator as u64,
-            deny: 0,
-        },
+        role_permissions: ChannelPermission::Administrator as u64,
         channel_permissions: Override {
             allow: 0,
             deny: ChannelPermission::GrantAllSafe as u64,
@@ -881,7 +877,7 @@ async fn administrator_grants_all_regular_permissions_and_bypasses_channel_denie
 async fn active_voice_membership_only_bypasses_view_and_connect_denies() {
     let mut query = ServerChannelAccessScenario {
         server_permissions: ChannelPermission::Speak as u64 | ChannelPermission::Listen as u64,
-        role_permissions: Override::default(),
+        role_permissions: 0,
         channel_permissions: Override {
             allow: 0,
             deny: ChannelPermission::ViewChannel as u64
@@ -909,13 +905,10 @@ async fn voice_moderation_preserves_video_and_overrides_channel_grants() {
                 | ChannelPermission::Speak as u64
                 | ChannelPermission::Listen as u64
                 | ChannelPermission::Video as u64,
-            role_permissions: Override {
-                allow: if administrator {
-                    ChannelPermission::Administrator as u64
-                } else {
-                    0
-                },
-                deny: 0,
+            role_permissions: if administrator {
+                ChannelPermission::Administrator as u64
+            } else {
+                0
             },
             channel_permissions: Override {
                 allow: ChannelPermission::Speak as u64 | ChannelPermission::Listen as u64,

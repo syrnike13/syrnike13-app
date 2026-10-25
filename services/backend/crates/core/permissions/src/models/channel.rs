@@ -87,7 +87,7 @@ pub enum ChannelPermission {
     Connect = 1 << 30,
     /// Speak in a voice call
     Speak = 1 << 31,
-    /// Share video in a voice call
+    /// Share camera video in a voice call
     Video = 1 << 32,
     /// Mute other members with lower ranking in a voice call
     MuteMembers = 1 << 33,
@@ -108,8 +108,15 @@ pub enum ChannelPermission {
     /// Start Activities in a voice channel
     UseActivities = 1 << 41,
 
+    /// View the server audit log
+    ViewAuditLog = 1 << 42,
+    /// Pin and unpin messages in a channel
+    PinMessages = 1 << 43,
+    /// Share a screen in a voice call
+    ScreenShare = 1 << 44,
+
     // * Misc. permissions
-    // % Bits 42 to 52: free area
+    // % Bits 45 to 52: free area
     // % Bits 53 to 64: do not use
 
     // * Grant all permissions
@@ -145,6 +152,7 @@ pub static DEFAULT_PERMISSION: Lazy<u64> = Lazy::new(|| {
             + ChannelPermission::Speak
             + ChannelPermission::Listen
             + ChannelPermission::Video
+            + ChannelPermission::ScreenShare
             + ChannelPermission::UseActivities,
     )
 });

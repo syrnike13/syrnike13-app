@@ -41,8 +41,14 @@ pub async fn set_role_permission(
     hierarchy_policy::ensure_role_below_actor(&user, &server, query.get_member_rank(), rank)?;
 
     // Ensure we have access to grant these permissions forwards
-    let current_value: Override = current_value.into();
-    let requested_permissions = data.permissions.clone();
+    let current_value = Override {
+        allow: current_value.a as u64,
+        deny: 0,
+    };
+    let requested_permissions = Override {
+        allow: data.permissions,
+        deny: 0,
+    };
     permissions
         .throw_permission_override(current_value.clone(), &requested_permissions)
         .await?;
@@ -177,15 +183,7 @@ mod test {
             .client
             .put(format!("/servers/{}/permissions/{}", server.id, role.id))
             .header(ContentType::JSON)
-            .body(
-                json!({
-                    "permissions": {
-                        "allow": 1048576,
-                        "deny": 0
-                    }
-                })
-                .to_string(),
-            )
+            .body(json!({ "permissions": 1048576 }).to_string())
             .header(Header::new(
                 "x-session-token",
                 owner_session.token.to_string(),

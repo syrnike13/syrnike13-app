@@ -1,7 +1,7 @@
 use super::{Channel, File, Member, RE_COLOUR};
 
 use std::collections::HashMap;
-use syrnike_permissions::{Override, OverrideField};
+use syrnike_permissions::OverrideField;
 
 #[cfg(feature = "validator")]
 use validator::Validate;
@@ -307,8 +307,8 @@ auto_derived!(
 
     /// New role permissions
     pub struct DataSetServerRolePermission {
-        /// Allow / deny values for the role in this server.
-        pub permissions: Override,
+        /// Permissions granted by this role; server roles cannot deny permissions.
+        pub permissions: u64,
     }
 
     /// Options when leaving a server

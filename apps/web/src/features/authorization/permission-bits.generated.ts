@@ -38,6 +38,9 @@ export const ServerPermission = {
   MentionEveryone: permissionBit(37),
   MentionRoles: permissionBit(38),
   UseActivities: permissionBit(41),
+  ViewAuditLog: permissionBit(42),
+  PinMessages: permissionBit(43),
+  ScreenShare: permissionBit(44),
 } as const
 
 export const GlobalPermission = {

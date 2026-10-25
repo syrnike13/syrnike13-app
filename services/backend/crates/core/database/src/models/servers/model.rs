@@ -243,6 +243,16 @@ impl Server {
         }
     }
 
+    /// Permissions granted by the given roles; server roles only grant, never deny
+    pub fn role_permissions(&self, role_ids: &[String]) -> u64 {
+        role_ids
+            .iter()
+            .filter_map(|id| self.roles.get(id))
+            .fold(0, |permissions, role| {
+                permissions | role.permissions.a as u64
+            })
+    }
+
     /// Ordered roles list
     pub fn ordered_roles(&self) -> Vec<(String, Role)> {
         let mut ordered_roles = self.roles.clone().into_iter().collect::<Vec<_>>();

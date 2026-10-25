@@ -43,6 +43,7 @@ export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { flag: ServerPermission.ManageChannel, labelKey: 'labels.manageChannel' },
       { flag: ServerPermission.ManageServer, labelKey: 'labels.manageServer' },
+      { flag: ServerPermission.ViewAuditLog, labelKey: 'labels.viewAuditLog' },
       {
         flag: ServerPermission.ManagePermissions,
         labelKey: 'labels.managePermissions',
@@ -77,6 +78,7 @@ export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
       },
       { flag: ServerPermission.SendMessage, labelKey: 'labels.sendMessage' },
       { flag: ServerPermission.ManageMessages, labelKey: 'labels.manageMessages' },
+      { flag: ServerPermission.PinMessages, labelKey: 'labels.pinMessages' },
       { flag: ServerPermission.ManageWebhooks, labelKey: 'labels.manageWebhooks' },
       { flag: ServerPermission.InviteOthers, labelKey: 'labels.inviteOthers' },
       { flag: ServerPermission.SendEmbeds, labelKey: 'labels.sendEmbeds' },
@@ -94,6 +96,7 @@ export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
       { flag: ServerPermission.Connect, labelKey: 'labels.connect' },
       { flag: ServerPermission.Speak, labelKey: 'labels.speak' },
       { flag: ServerPermission.Video, labelKey: 'labels.video' },
+      { flag: ServerPermission.ScreenShare, labelKey: 'labels.screenShare' },
       { flag: ServerPermission.Listen, labelKey: 'labels.listen' },
       { flag: ServerPermission.MuteMembers, labelKey: 'labels.muteMembers' },
       { flag: ServerPermission.DeafenMembers, labelKey: 'labels.deafenMembers' },
@@ -179,6 +182,13 @@ export function overrideFieldToApi(
     allow: maskPermissionBits(override.a),
     deny: maskPermissionBits(override.d),
   }
+}
+
+/** Permissions granted by a server role; server roles never deny. */
+export function rolePermissions(
+  override: PermissionOverrideField | null | undefined,
+): number {
+  return maskPermissionBits(override?.a ?? 0)
 }
 
 export function overrideFieldFromRole(

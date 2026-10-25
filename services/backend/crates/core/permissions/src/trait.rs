@@ -30,8 +30,9 @@ pub trait PermissionQuery {
     /// Get default server permission
     async fn get_default_server_permissions(&mut self) -> u64;
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this server
-    async fn get_our_server_role_overrides(&mut self) -> Vec<Override>;
+    /// Get the permissions granted by all of this member's roles in this server.
+    /// Server roles only grant permissions; denying is done with channel overrides.
+    async fn get_our_server_role_permissions(&mut self) -> u64;
 
     /// Is our perspective user timed out on this server?
     async fn are_we_timed_out(&mut self) -> bool;

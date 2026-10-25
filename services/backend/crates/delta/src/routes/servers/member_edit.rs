@@ -213,10 +213,6 @@ pub async fn edit(
 
     if data.roles.is_some() || data.remove.contains(&v0::FieldsMember::Roles) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::AssignRoles)?;
-
-        if user.id != server.owner && member.id.user == user.id {
-            return Err(create_error!(NotElevated));
-        }
     }
 
     if data.timeout.is_some() || data.remove.contains(&v0::FieldsMember::Timeout) {
@@ -225,7 +221,8 @@ pub async fn edit(
                 return Err(create_error!(CannotTimeoutYourself));
             }
 
-            if target_permissions.has_channel_permission(ChannelPermission::TimeoutMembers) {
+            // Like Discord, only administrators (and the owner) cannot be timed out.
+            if target_permissions.has_channel_permission(ChannelPermission::Administrator) {
                 return Err(create_error!(IsElevated));
             }
         }
@@ -897,6 +894,59 @@ mod test {
     }
 
     #[rocket::async_test]
+    async fn only_administrators_are_immune_to_timeouts() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            moderator user 1
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let timeout_moderator = || {
+            context
+                .client
+                .patch(format!("/servers/{}/members/{}", server.id, moderator.id))
+                .header(ContentType::JSON)
+                .body(serde_json::json!({ "timeout": "2030-01-01T00:00:00+0000" }).to_string())
+                .header(Header::new(
+                    "x-session-token",
+                    owner_session.token.to_string(),
+                ))
+                .dispatch()
+        };
+
+        for (permission, expected) in [
+            (ChannelPermission::TimeoutMembers, Status::Ok),
+            (ChannelPermission::Administrator, Status::Forbidden),
+        ] {
+            moderator_role
+                .update(
+                    &context.db,
+                    &server.id,
+                    PartialRole {
+                        permissions: Some(OverrideField {
+                            a: permission as i64,
+                            d: 0,
+                        }),
+                        ..Default::default()
+                    },
+                    vec![],
+                )
+                .await
+                .expect("moderator role updated");
+
+            assert_eq!(timeout_moderator().await.status(), expected, "{permission}");
+        }
+    }
+
+    #[rocket::async_test]
     async fn member_cannot_remove_their_own_top_role() {
         let context = MemberEditTestContext::new().await;
 
@@ -951,7 +1001,7 @@ mod test {
     }
 
     #[rocket::async_test]
-    async fn member_cannot_assign_their_own_lower_role() {
+    async fn member_can_assign_their_own_lower_role() {
         let context = MemberEditTestContext::new().await;
 
         fixture!(context.db, "server_with_many_roles",
@@ -1004,7 +1054,7 @@ mod test {
             .dispatch()
             .await;
 
-        assert_eq!(response.status(), Status::Forbidden);
+        assert_eq!(response.status(), Status::Ok);
 
         let updated = context
             .db
@@ -1012,7 +1062,7 @@ mod test {
             .await
             .expect("member fetched");
 
-        assert_eq!(updated.roles, vec![moderator_role.id]);
+        assert_eq!(updated.roles, vec![moderator_role.id, lower_role.id]);
     }
 
     #[rocket::async_test]

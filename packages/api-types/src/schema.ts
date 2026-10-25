@@ -2563,8 +2563,11 @@ export interface components {
     FieldsRole: "Colour" | "Icon";
     /** @description New role permissions */
     DataSetServerRolePermission: {
-      /** @description Allow / deny values for the role in this server. */
-      permissions: components["schemas"]["Override"];
+      /**
+       * Format: uint64
+       * @description Permissions granted by this role; server roles cannot deny permissions.
+       */
+      permissions: number;
     };
     /** @description Data permissions Value - contains allow */
     DataPermissionsValue: {

@@ -148,28 +148,11 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this server
-    async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
-        if let Some(server) = &self.server {
-            let member_roles = self
-                .validated_member()
-                .map(|member| member.roles.clone())
-                .unwrap_or_default();
-
-            let mut roles = server
-                .roles
-                .iter()
-                .filter(|(id, _)| member_roles.contains(id))
-                .map(|(_, role)| {
-                    let v: Override = role.permissions.into();
-                    (role.rank, v)
-                })
-                .collect::<Vec<(i64, Override)>>();
-
-            roles.sort_by(|a, b| b.0.cmp(&a.0));
-            roles.into_iter().map(|(_, v)| v).collect()
-        } else {
-            vec![]
+    /// Get the permissions granted by all of this member's roles in this server
+    async fn get_our_server_role_permissions(&mut self) -> u64 {
+        match (self.server.as_deref(), self.validated_member()) {
+            (Some(server), Some(member)) => server.role_permissions(&member.roles),
+            _ => 0,
         }
     }
 
