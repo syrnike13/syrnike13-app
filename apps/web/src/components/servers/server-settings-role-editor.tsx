@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   FieldsRole,
   Member,
@@ -7,24 +7,23 @@ import type {
 } from '@syrnike13/api-types'
 import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
 import { FxImage } from '#/components/ui/fx-image'
-import {
-  Button,
-  buttonVariants,
-} from '@syrnike13/ui/primitives/button'
+import { useImageCropper } from '#/components/media/image-crop-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
@@ -48,7 +47,6 @@ import {
   setPermissionTriState,
   type PermissionOverrideField,
 } from '#/lib/server-permissions'
-import { cn } from '#/lib/utils'
 
 import { PermissionStateButton } from '#/components/servers/permission-state-button'
 import {
@@ -61,15 +59,6 @@ type RoleEditorTab = 'display' | 'permissions' | 'members'
 function normalizeRoleColour(value: string | null | undefined): string | null {
   const trimmed = (value ?? '').trim()
   return trimmed || null
-}
-
-function roleEditorTabClass(active: boolean) {
-  return cn(
-    'relative shrink-0 pb-3 text-sm font-medium transition-colors',
-    active
-      ? 'text-primary'
-      : 'text-muted-foreground hover:text-foreground',
-  )
 }
 
 function upsertServerRole(serverId: string, role: Role) {
@@ -126,6 +115,8 @@ export function ServerSettingsRoleEditor({
     overrideFieldFromRole(role.permissions),
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
+  const iconInputRef = useRef<HTMLInputElement>(null)
+  const { cropImage, cropDialog } = useImageCropper()
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -229,7 +220,6 @@ export function ServerSettingsRoleEditor({
   const save = useCallback(async (): Promise<boolean> => {
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error(t('nameRequired'))
       return false
     }
 
@@ -310,7 +300,6 @@ export function ServerSettingsRoleEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[role-editor] save failed', error)
-            toast.error(t('saveError'))
             return false
           }),
         ),
@@ -352,57 +341,46 @@ export function ServerSettingsRoleEditor({
             {t('editTitle', { name: headerRoleName })}
           </h2>
           {canEditRole ? (
-            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <PopoverTrigger render={<Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title={t('roleActions')} />}>
-                  <MoreHorizontalIcon className="size-4" />
-                </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="end">
-                <Button
-                  type="button"
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-muted-foreground"
+                    title={t('roleActions', { name: headerRoleName })}
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48" align="end">
+                <DropdownMenuItem
                   variant="destructive"
-                  className="h-9 w-full justify-start px-2 font-normal"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onDeleteRequested()
-                  }}
+                  onClick={() => onDeleteRequested()}
                 >
-                  <Trash2Icon className="size-4" />
+                  <Trash2Icon />
                   {t('deleteRole')}
-                </Button>
-              </PopoverContent>
-            </Popover>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
 
-        <nav
-          className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-b border-border"
-          aria-label={t('sectionsAria')}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+          className="mt-4"
         >
-          {roleEditorTabs.map((tab) => {
-            const active = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                className={roleEditorTabClass(active)}
-                onClick={() => setActiveTab(tab.id)}
-              >
+          <TabsList variant="line" aria-label={t('sectionsAria')}>
+            {roleEditorTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
-                {active ? (
-                  <span
-                    className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary"
-                    aria-hidden
-                  />
-                ) : null}
-              </button>
-            )
-          })}
-        </nav>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {activeTab === 'display' ? (
@@ -452,29 +430,32 @@ export function ServerSettingsRoleEditor({
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <label
-                  className={cn(
-                    buttonVariants({ variant: 'secondary', size: 'sm' }),
-                    'cursor-pointer',
-                    (!canEditRole || saving) &&
-                      'pointer-events-none opacity-50',
-                  )}
+                <input
+                  ref={iconInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={!canEditRole || saving}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (!file) return
+                    cropImage(file, { kind: 'rect', aspect: 1 }, (cropped) => {
+                      setIconFile(cropped)
+                      setRemoveIcon(false)
+                    })
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!canEditRole || saving}
+                  onClick={() => iconInputRef.current?.click()}
                 >
                   {t('upload')}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    disabled={!canEditRole || saving}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (!file) return
-                      setIconFile(file)
-                      setRemoveIcon(false)
-                      event.target.value = ''
-                    }}
-                  />
-                </label>
+                </Button>
+                {cropDialog}
                 {previewIconUrl ? (
                   <Button
                     type="button"
@@ -566,7 +547,7 @@ export function ServerSettingsRoleEditor({
                   return (
                     <li
                       key={permission.flag}
-                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-hover"
                     >
                       <span className="text-sm">{tp(permission.labelKey)}</span>
                       <PermissionStateButton

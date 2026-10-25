@@ -7,53 +7,27 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   FEEDBACK_MODERATION_KEYS,
-  feedbackCategoryClass,
   feedbackCategoryLabel,
-  feedbackModerationClass,
+  feedbackCategoryVariant,
+  feedbackModerationVariant,
   feedbackProductStatusLabel,
-  feedbackStatusClass,
+  feedbackStatusVariant,
 } from '#/components/feedback/feedback-meta'
-import { cn } from '#/lib/utils'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 
-const statusBaseClass =
-  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-xs font-semibold'
-
-export function FeedbackProductStatus({
-  status,
-}: {
-  status: FeedbackProductStatus
-}) {
+export function FeedbackProductStatus({ status }: { status: FeedbackProductStatus }) {
   const t = useTranslations('feedback.meta')
   const label = feedbackProductStatusLabel(status, t)
   if (!label) return null
-
-  return (
-    <span className={cn(statusBaseClass, feedbackStatusClass(status))}>
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      {label}
-    </span>
-  )
+  return <Badge variant={feedbackStatusVariant(status)}>{label}</Badge>
 }
 
 export function FeedbackCategoryBadge({ category }: { category: FeedbackCategory }) {
   const t = useTranslations('feedback.meta')
-  return (
-    <span className={cn(statusBaseClass, feedbackCategoryClass(category))}>
-      {feedbackCategoryLabel(category, t)}
-    </span>
-  )
+  return <Badge variant={feedbackCategoryVariant(category)}>{feedbackCategoryLabel(category, t)}</Badge>
 }
 
-export function FeedbackModerationStatus({
-  status,
-}: {
-  status: FeedbackModerationStatus
-}) {
+export function FeedbackModerationStatus({ status }: { status: FeedbackModerationStatus }) {
   const t = useTranslations('feedback.meta')
-  return (
-    <span className={cn(statusBaseClass, feedbackModerationClass(status))}>
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      {t(FEEDBACK_MODERATION_KEYS[status])}
-    </span>
-  )
+  return <Badge variant={feedbackModerationVariant(status)}>{t(FEEDBACK_MODERATION_KEYS[status])}</Badge>
 }

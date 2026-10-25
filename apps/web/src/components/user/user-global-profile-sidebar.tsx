@@ -5,7 +5,7 @@ import {
   MessageCircleIcon,
   MoreHorizontalIcon,
   ServerIcon,
-  SettingsIcon,
+  PencilFillIcon,
   UserCheckIcon,
   UserPlusIcon,
   XIcon,
@@ -13,8 +13,13 @@ import {
 import type { User } from '@syrnike13/api-types'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
-import { UserProfileHeader } from '#/components/user/user-profile-header'
-import { UserProfileIdentity } from '#/components/user/user-profile-identity'
+import {
+  ProfileBody,
+  ProfileHeader,
+  ProfileName,
+  ProfileSection,
+  ProfileSurface,
+} from '#/components/user/profile/profile-parts'
 import { UserProfileRoleList } from '#/components/user/user-profile-role-list'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -35,6 +40,7 @@ import {
 } from '#/features/friends/friend-actions'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { canMessageUser } from '#/features/authorization/authorization'
+import { ulidToDate } from '#/lib/ulid'
 
 type UserGlobalProfileSidebarProps = {
   user: User
@@ -51,12 +57,10 @@ type UserGlobalProfileSidebarProps = {
 function formatDate(iso: string, locale: string) {
   return new Date(iso).toLocaleDateString(locale, {
     day: 'numeric',
-    month: 'long',
+    month: 'short',
     year: 'numeric',
   })
 }
-
-const profileIconActionClass = 'size-8 shrink-0 text-muted-foreground'
 
 /**
  * Левая карточка полного профиля: 400px, баннер 140px,
@@ -74,7 +78,6 @@ export function UserGlobalProfileSidebar({
   onEditProfile,
 }: UserGlobalProfileSidebarProps) {
   const t = useTranslations('users')
-  const tf = useTranslations('friends')
   const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
@@ -101,23 +104,33 @@ export function UserGlobalProfileSidebar({
     })
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-secondary sm:rounded-t-xl">
-      <UserProfileHeader user={user} variant="modal" />
+  const memberSince = ulidToDate(user._id).toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-8 pt-1 pr-6 pb-8">
-        <UserProfileIdentity user={user} variant="modal" />
+  return (
+    <ProfileSurface
+      size="lg"
+      surface="secondary"
+      className="min-h-0 flex-1 overflow-y-auto rounded-xl bg-secondary"
+    >
+      <ProfileHeader user={user} />
+
+      <ProfileBody>
+        <ProfileName user={user} />
 
         <div className="flex flex-wrap items-center gap-2">
           {isSelf ? (
             <Button
               type="button"
-              size="default"
+              variant="outline"
+              size="sm"
               disabled={busy}
-              className="h-8 gap-1.5"
               onClick={onEditProfile}
             >
-              <SettingsIcon className="size-4" />
+              <PencilFillIcon />
               {t('editProfile')}
             </Button>
           ) : (
@@ -125,67 +138,46 @@ export function UserGlobalProfileSidebar({
               {showAcceptFriend ? (
                 <Button
                   type="button"
-                  size="default"
+                  size="sm"
                   disabled={actionsDisabled}
-                  className="h-8 gap-1.5"
                   onClick={() =>
                     void runFriendAction(() =>
-                      acceptIncomingFriendRequest(token!, user._id, tf),
+                      acceptIncomingFriendRequest(token!, user._id),
                     )
                   }
                 >
-                  <UserCheckIcon className="size-4" />
-                  <span className="truncate">{t('accept')}</span>
+                  <UserCheckIcon />
+                  {t('accept')}
                 </Button>
               ) : null}
               {canDirectMessage ? (
                 <Button
                   type="button"
-                  variant={showAcceptFriend ? 'secondary' : 'default'}
-                  size="default"
+                  variant={showAcceptFriend ? 'outline' : 'default'}
+                  size="sm"
                   disabled={actionsDisabled}
-                  className="h-8 gap-1.5"
                   onClick={onOpenDm}
                 >
-                  {busy ? (
-                    <Spinner className="size-4" />
-                  ) : (
-                    <MessageCircleIcon className="size-4" />
-                  )}
-                  <span className="truncate">{t('message')}</span>
-                </Button>
-              ) : showAddFriend ? (
-                <Button
-                  type="button"
-                  size="default"
-                  disabled={actionsDisabled}
-                  className="h-8 gap-1.5"
-                  onClick={() =>
-                    void runFriendAction(() =>
-                      sendFriendRequestToUser(token!, user, tf),
-                    )
-                  }
-                >
-                  <UserPlusIcon className="size-4" />
-                  <span className="truncate">{t('addFriend')}</span>
+                  {busy ? <Spinner /> : <MessageCircleIcon />}
+                  {t('message')}
                 </Button>
               ) : null}
-              {showAddFriend && canDirectMessage ? (
+              {showAddFriend ? (
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
+                  variant={canDirectMessage ? 'outline' : 'default'}
+                  size={canDirectMessage ? 'icon' : 'sm'}
                   disabled={actionsDisabled}
-                  className={profileIconActionClass}
                   title={t('addFriend')}
                   aria-label={t('addFriend')}
                   onClick={() =>
                     void runFriendAction(() =>
-                      sendFriendRequestToUser(token!, user, tf),
+                      sendFriendRequestToUser(token!, user),
                     )
                   }
                 >
-                  <UserPlusIcon className="size-4" />
+                  <UserPlusIcon />
+                  {canDirectMessage ? null : t('addFriend')}
                 </Button>
               ) : null}
               <DropdownMenu>
@@ -193,16 +185,15 @@ export function UserGlobalProfileSidebar({
                   render={
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="icon"
-                      className={profileIconActionClass}
                       disabled={actionsDisabled}
                       title={t('more')}
                       aria-label={t('more')}
                     />
                   }
                 >
-                  <MoreHorizontalIcon className="size-4" />
+                  <MoreHorizontalIcon />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="bottom"
@@ -213,7 +204,7 @@ export function UserGlobalProfileSidebar({
                     <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          declineIncomingFriendRequest(token!, user._id, tf),
+                          declineIncomingFriendRequest(token!, user._id),
                         )
                       }
                     >
@@ -225,7 +216,7 @@ export function UserGlobalProfileSidebar({
                     <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          cancelOutgoingFriendRequest(token!, user._id, tf),
+                          cancelOutgoingFriendRequest(token!, user._id),
                         )
                       }
                     >
@@ -256,29 +247,36 @@ export function UserGlobalProfileSidebar({
         </div>
 
         {bio ? (
-          <p className="text-sm leading-4.5 whitespace-pre-wrap text-foreground">
-            {bio}
+          <ProfileSection title={t('aboutMe')}>
+            <p className="whitespace-pre-wrap">{bio}</p>
+          </ProfileSection>
+        ) : null}
+
+        <ProfileSection title={t('accountCreated')}>
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+            <span>{memberSince}</span>
+            {server && member?.joined_at ? (
+              <>
+                <span aria-hidden className="text-muted-foreground">
+                  •
+                </span>
+                <span
+                  className="flex min-w-0 items-center gap-1.5"
+                  title={t('memberSince')}
+                >
+                  <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{server.name}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {formatDate(member.joined_at, locale)}
+                  </span>
+                </span>
+              </>
+            ) : null}
           </p>
-        ) : null}
+        </ProfileSection>
 
-        {server && member?.joined_at ? (
-          <section>
-            <h3 className="text-xs leading-4 font-medium text-muted-foreground">
-              {t('memberSince')}
-            </h3>
-            <p className="mt-2 flex min-w-0 items-center gap-1.5 text-sm leading-4.5 text-foreground">
-              <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{server.name}</span>
-              <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground/50" />
-              <span className="shrink-0 text-muted-foreground">
-                {formatDate(member.joined_at, locale)}
-              </span>
-            </p>
-          </section>
-        ) : null}
-
-        <UserProfileRoleList user={user} serverId={serverId} heading />
-      </div>
-    </div>
+        <UserProfileRoleList user={user} serverId={serverId} title={t('roles')} />
+      </ProfileBody>
+    </ProfileSurface>
   )
 }

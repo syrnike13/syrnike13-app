@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   executeHcaptcha,
@@ -37,7 +36,6 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 const REGISTER_FIELD_NAMES = [
   'email',
@@ -88,7 +86,6 @@ function RegisterPage() {
     defaultValues: { email: '', password: '', confirm: '', invite: '' },
     onSubmit: async ({ value }) => {
       if (!configReady) {
-        toast.error(t('register.waitConfig'))
         return
       }
 
@@ -120,7 +117,6 @@ function RegisterPage() {
       setFieldErrors({})
 
       if (captchaRequired && !siteKey) {
-        toast.error(t('register.captchaNotConfigured'))
         return
       }
 
@@ -149,7 +145,6 @@ function RegisterPage() {
           if (emailVerification) {
             yield* Effect.sync(() => {
               setPendingVerifyEmail(parsed.data.email)
-              toast.success(t('register.verifyEmail'))
             })
             yield* Effect.tryPromise({
               try: () => navigate({ to: '/login/check', replace: true }),
@@ -162,7 +157,7 @@ function RegisterPage() {
             email: parsed.data.email,
             password: parsed.data.password,
           })
-          yield* Effect.sync(() => toast.success(t('register.created')))
+          yield* Effect.sync(() => {})
           yield* Effect.tryPromise({
             try: () =>
               navigate({
@@ -172,11 +167,8 @@ function RegisterPage() {
             catch: (cause) => cause,
           })
         }).pipe(
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('register.error')),
-              )
             }),
           ),
           Effect.ensuring(Effect.sync(() => setSubmitting(false))),
@@ -213,7 +205,6 @@ function RegisterPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="reg-email">{t('email')}</Label>
                   <Input
-                    className="auth-input"
                     id="reg-email"
                     type="email"
                     autoComplete="email"
@@ -292,7 +283,6 @@ function RegisterPage() {
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="reg-invite">{t('register.inviteCode')}</Label>
                     <Input
-                      className="auth-input"
                       id="reg-invite"
                       required
                       aria-invalid={Boolean(fieldErrors.invite)}
@@ -320,6 +310,7 @@ function RegisterPage() {
           <CardFooter className="flex flex-col gap-2">
             <Button
               type="submit"
+              size="lg"
               className="w-full"
               disabled={submitting || !configReady}
             >

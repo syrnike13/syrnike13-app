@@ -1,3 +1,5 @@
+mod activity_applications;
+mod activity_storage;
 mod admin_migrations;
 mod badges;
 mod bots;
@@ -22,6 +24,8 @@ mod servers;
 mod user_settings;
 mod users;
 
+pub use activity_applications::*;
+pub use activity_storage::*;
 pub use admin_migrations::*;
 pub use badges::*;
 pub use bots::*;
@@ -54,6 +58,8 @@ use crate::MongoDb;
 pub trait AbstractDatabase:
     Sync
     + Send
+    + activity_applications::AbstractActivityApplications
+    + activity_storage::AbstractActivityStorage
     + admin_migrations::AbstractMigrations
     + badges::AbstractBadges
     + bots::AbstractBots

@@ -53,14 +53,19 @@
 | Текст сообщения | 16px / 22px, weight 400 |
 | Timestamp | 12px / 22px, weight 500, margin-left 4px |
 | Reply-превью | 14px / 18px |
-| Hover-панель | кнопка 28×28px (24px + 2px padding), radius 6px |
+| Hover-панель | `top: -16px`, `right: 14px`, padding 2px, radius 8px; кнопка 28×28px |
+| Цитата ответа | 14px / 18px, отступ снизу 4px; уголок от центра аватара; аватар опускается на 22px |
+| Упоминание / подсветка | фон с оттенком `warning` / `primary` и полоса 2px слева |
+| Реакция | высота 26px, radius 8px, padding 0 6px; своя — рамка и оттенок `primary` |
+| Эмбед | max-width 432px, radius 4px, полоса слева 4px, padding 8px 16px 8px 12px, текст 14px / 18px |
+| Начало канала | иконка 68px (DM — аватар 80px), заголовок 30px / 40px w700 |
 | Композер | область 1264×58px, radius 8px, border 1px, inset 8px |
 | Редактор | min-height 56px, 16px / 22px, вертикальные padding 17px; текст с отступа 64px |
 | Кнопки композера | 32×32px, иконки 20px, внутренний inset 12px |
 | Разделитель даты | margin 24px 14px 8px 16px |
 | Группировка сообщений | один автор, разрыв после 7 минут |
-| Вложение-картинка | максимум 550×350px, radius 8px, mosaic gap 4px |
-| Разделитель новых сообщений | красная линия с подписью перед первым непрочитанным |
+| Вложение-картинка | максимум 550×350px, radius 8px без рамки, mosaic gap 4px |
+| Разделитель новых сообщений | красная линия и метка «Новые» у правого края перед первым непрочитанным |
 | Кнопка «К последним» | появляется при прокрутке вверх |
 
 ## Профили
@@ -103,7 +108,7 @@ Shell выровнен по живым метрикам эталона:
   264px контент был ровно 1280px);
 - шапка колонки 49px, padding 8px, имя сервера 16/20 w600;
 - строка канала 32px, шаг 34px, padding 4/8, radius 8px, icon 20px, текст 16/24,
-  w500 у всех каналов;
+  w400, у выбранного — w500;
 - категория: блок 40px, текст 14/18 w500, отступ 16px, шеврон 12px справа,
   без принудительного uppercase; отступ между категориями даёт сама категория;
 - баннер сервера 130px, шапка 49px поверх, при скролле уезжает на 90px и
@@ -127,29 +132,28 @@ Shell выровнен по живым метрикам эталона:
   аватаром 120px, именем 24/32 w600 и секциями 12/16 w500; общие друзья
   и серверы, «Полный профиль», меню действий и подтверждение блокировки.
 
+- примитивы: радиусы 4/8/12/16/24px; Button sm/default/lg 32/38/44px,
+  иконочные 24/28/32/36px, `shape="circle"` для круглых; поля Input,
+  InputGroup, Select, NativeSelect 40px с текстом 16px (sm 32px), Textarea
+  min-height 56px; у полей в фокусе одна рамка 1px без ореола.
+
 ### Осознанные отличия
 
 | Параметр | syrnike13 | Эталон | Причина |
 | --- | --- | --- | --- |
 | Основной шрифт | Nunito Sans | Проприетарный шрифт эталона | Не используем чужой файл шрифта |
-| Вес названия канала | 500 у всех | 400, у выбранного — 500 | По решению продукта вес не меняется от активности |
 | Трекинг подписей | -0.025em (`tracking-tight`) | normal | Nunito Sans шире шрифта эталона; так ширина строк совпадает |
 | Иконка сервера в шапке | нет | 18px | По решению продукта |
 | Glyph рельса | 18px | 24px | Кнопка 40px совпадает, глиф меньше |
 | Ширина колонки | 304px | 303px | Ровные 1280px контента |
 | Разделитель системных групп | нет | 1px после закреплённых/системных пунктов | Системного блока пока нет; между категориями линии нет и в эталоне |
 | Виртуализация ленты | `MessageScroller` + `content-visibility` | DOM-виртуализация | Проще скролл-якоря; история грузится страницами |
-| Кнопки (primitives) | 32 default, 28 sm, 36 lg | 32 sm, 38 md, 44 lg, 50 xl | В нашем наборе примитивов нет md/lg/xl |
-| Input primitive | 32px, radius 10px | 40px control, radius 8px | Композер использует свой editor |
-| Textarea primitive | min-height 64px, radius 10px | min-height 56px, radius 8px | Композер использует свой editor |
-| Радиусы (общая шкала) | 6/8/10/14px | 4/8/12/16/24px | Shell использует 12px и 8px |
 | Правый блок композера | emoji + send, 32px | ~192px (gift/GIF/sticker/emoji/send) | GIF/стикеров нет в API |
 | Форма плавающих панелей | Squircle smoothing 1 | CSS round 8px | Радиус совпадает, форма мягче |
 | Секции профиля | activity, widgets, wishlist, connections, note | bio, роли, общие друзья/серверы, дата входа | В API нет активности, виджетов, вишлиста, подключений и заметок |
 
 ### Что осталось из старых различий
 
-- Общая шкала радиусов примитивов и размеры Button/Input/Textarea.
 - Правый блок кнопок композера.
 - Glyph рельса 18 vs 24.
 - Разделитель после системного блока (появится вместе с ним).
@@ -163,35 +167,9 @@ user panel, лента сообщений, композер и профили в
 
 ## Линтер
 
-`@shadcn/lint` подключён в `eslint.config.mjs`, команда — `pnpm lint:design`.
+Правила дизайна, их назначение и исключения описаны в `packages/ui/AGENTS.md`
+(раздел «Линтер дизайна»); команда — `pnpm lint:design`, без baseline.
 
-- Проверяются `apps/web/src` и `apps/admin/src`.
-- `packages/ui/src/primitives` исключён из `restyle-shared`: это literal
-  shadcn base-nova sources, а не call sites.
-- `no-restyle` выключен: точную политику репозитория (layout + текстовые
-  токены) проверяет `tooling/scripts/check-ui.mjs`.
-- `check:ui` покрывает не только `Button`/`Input`/`Badge`, но и
-  surface-owning контейнеры: `PopoverContent`, `DialogContent`,
-  `AlertDialogContent`, `SheetContent`, `DrawerContent`,
-  `DropdownMenuContent`, `ContextMenuContent`, `Command`, `Card`,
-  `TabsList`, `Avatar*`, `Skeleton`, `Empty`, `Attachment`, `Message`,
-  `MessageScroller`, `TooltipContent`.
-- Чекер разворачивает локальные `const`-классы (`className={panelClass}`,
-  `cn(itemClass, …)`), поэтому переопределения через класс-мэпы больше не
-  проходят незамеченными.
-- Baseline `tooling/ui-baseline.json` пуст; осознанные исключения — только
-  `design-allow`/`design-allow-file restyle-shared` с причиной.
-- Точечные исключения: dev-галерея, Prism tuning, Tiptap mention-listbox
-  (фокус управляется редактором), fullscreen media viewer, voice/media-
-  поверхности, desktop overlay HUD, Squircle-рельс, landing pill CTA,
-  мобильный settings sheet, presence-точка аватара, подсветка сообщений и
-  destructive-фокус голосовых действий.
-- Включены `no-arbitrary-values`, `no-raw-colors`, `no-unknown-classes`,
-  `require-static-classes`, `no-inline-styles`.
-- Существующие нарушения зафиксированы в `eslint-suppressions.json`; новые
-  нарушения валят команду. После миграции baseline удалён: `pnpm lint:design`
-  должен проходить с 0 находок. `--suppress-all` не использовать; осознанное
-  исключение — точечный `eslint-disable-next-line <rule> -- <причина>`.
 - Алиас `tv` для `useTranslations` переименован в `tValidation`/`tVoice`:
   `tv` — встроенная функция tailwind-variants, и линтер принимал ключи
   переводов за классы.

@@ -27,6 +27,7 @@ export function VoiceMicSplitControl({
   onToggleMic: () => void
 }) {
   const t = useTranslations('voice.media')
+  const tVoice = useTranslations('voice')
   const voiceMedia = useVoiceMedia()
   const { disabled, title } = microphoneMediaControlState(
     {
@@ -44,7 +45,7 @@ export function VoiceMicSplitControl({
       danger={micMuted}
       disabled={disabled}
       mainTitle={title}
-      chevronTitle={t('micSettings')}
+      chevronTitle={tVoice('actions.micSettings')}
       onMainClick={onToggleMic}
       popoverContent={
         surface === 'panel' ? (

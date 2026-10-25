@@ -21,6 +21,8 @@ const testState = vi.hoisted(() => ({
   session: { status: 'connected', channelId: 'voice-a' },
   navigate: vi.fn(() => Promise.resolve()),
   uiFeatures: { channelActivities: true },
+  activitiesAllowed: true,
+  activityRunning: false,
   stage: {
     activityLauncherOpen: false,
     focusedMediaId: null as string | null,
@@ -63,10 +65,24 @@ vi.mock('#/lib/ui-feature-flags', () => ({
   uiFeatureFlags: testState.uiFeatures,
 }))
 
+vi.mock('#/features/authorization/authorization', () => ({
+  canUseActivities: () => testState.activitiesAllowed,
+}))
+
+vi.mock('#/features/sync/sync-store', () => ({
+  useSyncStore: (selector: (state: unknown) => unknown) => selector({}),
+}))
+
+vi.mock('#/features/activities/use-activities', () => ({
+  useActivityInstance: () => (testState.activityRunning ? {} : null),
+}))
+
 describe('VoicePanelMediaBar Activities button', () => {
   beforeEach(() => {
     testState.session.status = 'connected'
     testState.uiFeatures.channelActivities = true
+    testState.activitiesAllowed = true
+    testState.activityRunning = false
     testState.stage.activityLauncherOpen = false
     testState.stage.focusedMediaId = null
     testState.stage.setActivityLauncherOpen.mockReset()
@@ -97,6 +113,32 @@ describe('VoicePanelMediaBar Activities button', () => {
         .getByRole('button', { name: 'Активности' })
         .getAttribute('aria-pressed'),
     ).toBe('true')
+  })
+
+  it('disables Activities without the UseActivities permission', () => {
+    testState.activitiesAllowed = false
+
+    render(<VoicePanelMediaBar />)
+
+    const button = screen.getByRole('button', {
+      name: 'Активности: нет права на запуск',
+    })
+    expect(button.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(button)
+    expect(testState.navigate).not.toHaveBeenCalled()
+  })
+
+  it('keeps Activities available to join a running one without the permission', () => {
+    testState.activitiesAllowed = false
+    testState.activityRunning = true
+
+    render(<VoicePanelMediaBar />)
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Активности' })
+        .getAttribute('aria-disabled'),
+    ).not.toBe('true')
   })
 
   it('hides Activities outside nightly builds', () => {

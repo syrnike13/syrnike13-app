@@ -58,16 +58,23 @@ vi.mock('@syrnike13/ui/primitives/avatar', () => ({
   AvatarBadge: ({
     children,
     className,
+    count,
     title,
     'aria-label': ariaLabel,
   }: {
     children?: ReactNode
     className?: string
+    count?: string
     title?: string
     'aria-label'?: string
   }) => (
-    <span className={className} title={title} aria-label={ariaLabel}>
-      {children}
+    <span
+      className={className}
+      data-count={count != null ? '' : undefined}
+      title={title}
+      aria-label={ariaLabel}
+    >
+      {count ?? children}
     </span>
   ),
 }))
@@ -229,7 +236,7 @@ describe('UserAvatar notification badge', () => {
 
     const badge = screen.getByLabelText('3 уведомления')
     expect(badge.textContent).toBe('3')
-    expect(badge.className).toContain('bg-destructive-contrast')
+    expect(badge.hasAttribute('data-count')).toBe(true)
   })
 
   it('hides presence when a notification badge is shown', () => {

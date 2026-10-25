@@ -125,7 +125,7 @@ describe('AddRoleMembersDialog', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), {
+    fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'wizard' },
     })
 

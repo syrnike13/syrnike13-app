@@ -1,4 +1,4 @@
-// design-allow-file restyle-shared: Tiptap suggestion listbox owns keyboard/focus through the
+// Tiptap suggestion listbox owns keyboard/focus through the
 // contenteditable (aria-activedescendant; Enter/Tab/Escape handled by the editor). A focusable
 // Popover/Command would steal focus and cmdk would capture arrow/Enter, while the shared
 // PopoverContent positioner cannot anchor to the caret rect here — so the caret-anchored
@@ -9,6 +9,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { usePortalContainer } from '@syrnike13/ui/primitives/portal-container'
 import type { SuggestionProps } from '@tiptap/suggestion'
 
+import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
 import type { CSSVars } from '#/lib/css-vars'
@@ -49,6 +50,7 @@ function MentionSuggestionRow({
         : undefined
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- listbox option driven by the editor's keyboard, not a focusable button
     <button
       ref={buttonRef}
       id={id}
@@ -58,9 +60,7 @@ function MentionSuggestionRow({
       tabIndex={-1}
       className={cn(
         'flex h-10 w-full items-center gap-3 rounded-md px-3 text-left transition-colors',
-        selected
-          ? 'bg-accent text-accent-foreground'
-          : 'hover:bg-accent/70',
+        selected ? 'bg-hover text-foreground' : 'hover:bg-hover',
       )}
       onMouseEnter={onHighlight}
       onMouseDown={(event) => {
@@ -68,12 +68,19 @@ function MentionSuggestionRow({
         onSelect()
       }}
     >
+      {item.kind === 'emoji' ? (
+        item.customId ? (
+          <CustomEmoji emojiId={item.customId} name={item.label} size="md" />
+        ) : (
+          <span className="text-xl leading-none">{item.unicode}</span>
+        )
+      ) : null}
+
       {item.kind === 'user' ? (
         <UserAvatar
           user={item.user}
           className="size-8"
           showPresence
-          presenceRingClassName="border-popover"
         />
       ) : null}
 
@@ -92,9 +99,11 @@ function MentionSuggestionRow({
         {item.kind === 'user' ? item.serverName : item.label}
       </span>
 
-      <span className="ml-4 max-w-55/100 shrink-0 truncate text-right text-xs text-muted-foreground">
-        {item.kind === 'user' ? `@${item.username}` : item.description}
-      </span>
+      {item.kind === 'emoji' ? null : (
+        <span className="ml-4 max-w-55/100 shrink-0 truncate text-right text-xs text-muted-foreground">
+          {item.kind === 'user' ? `@${item.username}` : item.description}
+        </span>
+      )}
     </button>
   )
 }
@@ -152,6 +161,10 @@ export function MentionSuggestionMenu({
     item: MentionSuggestionItem
     index: number
   }> = []
+  const emojiEntries: Array<{
+    item: MentionSuggestionItem
+    index: number
+  }> = []
   const otherEntries: Array<{
     item: MentionSuggestionItem
     index: number
@@ -160,6 +173,7 @@ export function MentionSuggestionMenu({
   for (const [index, item] of suggestion.items.entries()) {
     const entry = { item, index }
     if (item.kind === 'user') participantEntries.push(entry)
+    else if (item.kind === 'emoji') emojiEntries.push(entry)
     else otherEntries.push(entry)
   }
 
@@ -171,7 +185,13 @@ export function MentionSuggestionMenu({
     index: number
   }) => (
     <MentionSuggestionRow
-      key={'id' in item ? `${item.kind}:${item.id}` : item.kind}
+      key={
+        'id' in item
+          ? `${item.kind}:${item.id}`
+          : item.kind === 'emoji'
+            ? `emoji:${item.label}`
+            : item.kind
+      }
       item={item}
       id={`${id}-option-${index}`}
       selected={index === suggestion.selectedIndex}
@@ -184,6 +204,7 @@ export function MentionSuggestionMenu({
   )
 
   return createPortal(
+    // eslint-disable-next-line design/no-lookalike -- mousedown only keeps focus in the editor
     <div
       ref={menuRef}
       id={id}
@@ -202,6 +223,18 @@ export function MentionSuggestionMenu({
       }
       onMouseDown={(event) => event.preventDefault()}
     >
+      {emojiEntries.length > 0 ? (
+        <div role="group" aria-label={t('emojiMatching', { query: `:${suggestion.query}` })}>
+          <div
+            role="presentation"
+            className="px-3 py-1.5 text-xs font-medium text-muted-foreground"
+          >
+            {t('emojiMatching', { query: `:${suggestion.query}` })}
+          </div>
+          {emojiEntries.map(renderEntry)}
+        </div>
+      ) : null}
+
       {participantEntries.length > 0 ? (
         <div role="group" aria-label={t('members')}>
           <div

@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useId } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { LightbulbIcon, UsersIcon } from '#/components/icons'
 
@@ -6,9 +7,16 @@ import { CommandPaletteTrigger } from '#/components/command-palette/command-pale
 import { DmChannelList } from '#/components/home/dm-channel-list'
 import { NewConversationButton } from '#/components/home/new-conversation-button'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
-import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
-import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import {
+  shellColumnHeaderClass,
+  shellNavSurface,
+} from '#/components/layout/shell-chrome'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@syrnike13/ui/primitives/sidebar'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
@@ -18,16 +26,6 @@ type HomeSidebarProps = {
   userPanelReservePx?: number
 }
 
-const navLinkClass = (className: string) =>
-  cn(
-    buttonVariants({ variant: 'ghost' }),
-    'text-muted-foreground hover:bg-accent hover:text-foreground dark:hover:bg-accent',
-    'aria-[current=page]:bg-secondary aria-[current=page]:text-foreground',
-    'aria-[current=page]:hover:bg-secondary aria-[current=page]:hover:text-foreground',
-    'dark:aria-[current=page]:hover:bg-secondary dark:aria-[current=page]:hover:text-foreground',
-    className,
-  )
-
 export function HomeSidebar({
   activeChannelId,
   reserveUserPanelSpace = true,
@@ -35,6 +33,8 @@ export function HomeSidebar({
 }: HomeSidebarProps) {
   const tFriends = useTranslations('home.friends')
   const tFeedback = useTranslations('feedback.view')
+  const tSidebar = useTranslations('home.sidebar')
+  const dmHeadingId = useId()
   const prefix = useAppRoutePrefix()
   return (
     <aside
@@ -51,40 +51,57 @@ export function HomeSidebar({
           : undefined
       }
     >
-      <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
+      <header className={cn(shellColumnHeaderClass, 'px-2')}>
         <CommandPaletteTrigger />
-        <Link
-          to={prefix || '/'}
-          search={{ tab: 'online' }}
-          activeOptions={{ exact: true }}
-          className={navLinkClass(
-            'h-9 w-full justify-start gap-2 px-2 font-medium',
-          )}
-        >
-          <UsersIcon className="size-4 shrink-0" />
-          {tFriends('title')}
-        </Link>
-        <Link
-          to={`${prefix}/feedback`}
-          search={{ view: 'all' }}
-          className={navLinkClass(
-            'h-9 w-full justify-start gap-2 px-2 font-medium',
-          )}
-        >
-          <LightbulbIcon className="size-4 shrink-0" />
-          {tFeedback('title')}
-        </Link>
-      </div>
+      </header>
 
-      <div className="flex items-center justify-between px-3 py-2">
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Личные сообщения
-        </p>
-        <NewConversationButton />
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <nav aria-label={tSidebar('navigation')} className="p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="lg"
+                render={
+                  <Link
+                    to={prefix || '/'}
+                    search={{ tab: 'online' }}
+                    activeOptions={{ exact: true, includeSearch: false }}
+                    activeProps={{ 'data-active': '' }}
+                  />
+                }
+              >
+                <UsersIcon />
+                <span>{tFriends('title')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="lg"
+                render={
+                  <Link
+                    to={`${prefix}/feedback`}
+                    search={{ view: 'all' }}
+                    activeOptions={{ includeSearch: false }}
+                    activeProps={{ 'data-active': '' }}
+                  />
+                }
+              >
+                <LightbulbIcon />
+                <span>{tFeedback('title')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </nav>
 
-      <ScrollArea className="min-h-0 flex-1 px-2">
-        <DmChannelList activeChannelId={activeChannelId} />
+        <section aria-labelledby={dmHeadingId} className="px-2 pb-2">
+          <div className="flex items-center justify-between pt-2 pr-1 pb-1 pl-2">
+            <h2 id={dmHeadingId} className="text-sm font-medium text-muted-foreground">
+              {tSidebar('directMessages')}
+            </h2>
+            <NewConversationButton />
+          </div>
+          <DmChannelList activeChannelId={activeChannelId} />
+        </section>
       </ScrollArea>
     </aside>
   )

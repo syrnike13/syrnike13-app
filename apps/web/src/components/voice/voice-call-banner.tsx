@@ -34,7 +34,7 @@ export function VoiceCallBanner({
           type="button"
           size="sm"
           variant="default"
-          className="h-8 shrink-0"
+          className="shrink-0"
           onClick={onJoin}
         >
           <HeadphonesIcon className="size-4" />
@@ -44,7 +44,7 @@ export function VoiceCallBanner({
           type="button"
           size="sm"
           variant="ghost"
-          className="h-8 shrink-0 text-muted-foreground hover:text-foreground"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
           onClick={onDismiss}
         >
           <PhoneOffIcon className="size-4" />

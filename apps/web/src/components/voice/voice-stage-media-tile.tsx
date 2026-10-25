@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: media-overlay controls use on-media surfaces.
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
@@ -15,13 +14,11 @@ import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
-  ContextMenuGroup,
   ContextMenuItem,
-  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@syrnike13/ui/primitives/context-menu'
-import { Slider } from '@syrnike13/ui/primitives/slider'
+import { ContextMenuVolume } from '#/components/voice/context-menu-volume'
 import { UserAvatar } from '#/components/user/user-avatar'
 import {
   VoiceOnAirBadge,
@@ -63,9 +60,6 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 
 /** Нейтральный серый фон превью стрима, без палитры аватара. */
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
-
-const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-border bg-card font-medium text-card-foreground shadow-sm transition-colors hover:bg-hover'
 
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-media-inset-lg items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
@@ -119,12 +113,8 @@ function UnsubscribedScreenStreamTile({
       >
         <Button
           type="button"
-          size="sm"
-          variant="secondary"
-          className={cn(
-            unsubscribedStreamButtonClass,
-            variant === 'strip' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm',
-          )}
+          size={variant === 'strip' ? 'xs' : 'default'}
+          variant="outline"
           onClick={(event) => {
             event.stopPropagation()
             onSubscribe()
@@ -457,7 +447,7 @@ export function StageMediaTile({
           !isScreenPlaceholder ? (
             <div
               className={cn(
-                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-media-backdrop/60 font-medium text-on-media',
+                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded-md bg-media-backdrop/60 font-medium text-on-media',
                 variant === 'strip'
                   ? 'bottom-1.5 left-1 max-w-media-inset-sm px-1.5 py-0.5 text-xs leading-tight'
                   : 'bottom-2 left-2 max-w-media-inset-xl px-2 py-1 text-xs',
@@ -478,7 +468,7 @@ export function StageMediaTile({
             </div>
           ) : null}
         </ContextMenuTrigger>
-      <ContextMenuContent className="z-420 min-w-64 border-on-media/10">
+      <ContextMenuContent className="z-420 min-w-64">
         <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
           {t('actions.focus')}
@@ -511,41 +501,23 @@ export function StageMediaTile({
         >
           {isScreen ? t('actions.muteStream') : t('actions.muteVoice')}
         </ContextMenuCheckboxItem>
-        <div
-          className="px-2 py-2"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <ContextMenuGroup>
-            <ContextMenuLabel className="px-0 pb-2 text-xs text-on-media/70">
-              {isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
-            </ContextMenuLabel>
-          </ContextMenuGroup>
-          <div className="flex items-center gap-2">
-            <Slider
-              className="flex-1"
-              min={0}
-              max={isScreen ? VOICE_VOLUME_PERCENT_MAX : VOICE_USER_VOLUME_MAX}
-              step={isScreen ? 1 : 0.1}
-              value={[isScreen ? streamVolumeToPercent(volume) : volume]}
-              onValueChange={(value) => {
-                const next = typeof value === 'number' ? value : value[0]
-                if (next == null) return
-                if (isScreen) {
-                  voiceListenerStore.setStreamVolume(
-                    item.userId,
-                    streamVolumeFromPercent(next),
-                  )
-                } else {
-                  voiceListenerStore.setUserVolume(item.userId, next)
-                }
-              }}
-            />
-            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-on-media/70">
-              {formatUserVolumeLabel(volume)}
-            </span>
-          </div>
-        </div>
+        <ContextMenuVolume
+          label={isScreen ? t('actions.streamVolume') : t('actions.voiceVolume')}
+          value={isScreen ? streamVolumeToPercent(volume) : volume}
+          max={isScreen ? VOICE_VOLUME_PERCENT_MAX : VOICE_USER_VOLUME_MAX}
+          step={isScreen ? 1 : 0.1}
+          valueLabel={formatUserVolumeLabel(volume)}
+          onValueChange={(next) => {
+            if (isScreen) {
+              voiceListenerStore.setStreamVolume(
+                item.userId,
+                streamVolumeFromPercent(next),
+              )
+            } else {
+              voiceListenerStore.setUserVolume(item.userId, next)
+            }
+          }}
+        />
       </ContextMenuContent>
     </ContextMenu>
   )

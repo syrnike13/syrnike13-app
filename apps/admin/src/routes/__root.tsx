@@ -44,7 +44,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { title: config.appTitle },
       {
         name: 'description',
-        // design-allow hardcoded-string: document metadata is resolved before LocaleProvider mounts
         content: 'Админка syrnike13',
       },
     ],

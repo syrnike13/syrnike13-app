@@ -50,6 +50,10 @@ vi.mock('#/platform/use-platform', () => ({
 vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
   recordDiagnosticEvent: vi.fn(),
 }))
+vi.mock('#/features/activities/use-activities', () => ({
+  useActivityInstance: () => null,
+  useActivityApplication: () => null,
+}))
 import { VoiceStreamMiniPlayer } from './voice-stream-mini-player'
 import {
   MINI_PLAYER_CORNER_KEY,

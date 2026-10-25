@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
@@ -20,7 +19,6 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { confirmPasswordResetEffect } from '#/features/api/account-api'
 import { resetPasswordSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/reset/$token')({
   beforeLoad: () => {
@@ -33,7 +31,6 @@ export const Route = createFileRoute('/login/reset/$token')({
 
 function ResetConfirmPage() {
   const t = useTranslations('auth')
-  const tValidation = useTranslations('validation')
   const { token } = Route.useParams()
   const [submitting, setSubmitting] = useState(false)
 
@@ -42,7 +39,6 @@ function ResetConfirmPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -50,13 +46,10 @@ function ResetConfirmPage() {
       await Effect.runPromise(
         confirmPasswordResetEffect(token, parsed.data.password, true).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success(t('reset.updated'))),
+            Effect.sync(() => {}),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('reset.updateError')),
-              )
             }),
           ),
           Effect.ensuring(Effect.sync(() => setSubmitting(false))),
@@ -113,7 +106,7 @@ function ResetConfirmPage() {
             </form.Field>
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}

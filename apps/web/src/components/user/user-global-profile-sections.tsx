@@ -1,8 +1,19 @@
-import { ServerIcon } from '#/components/icons'
 import type { Server, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
+import { serverAcronym } from '#/components/servers/server-avatar'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@syrnike13/ui/primitives/avatar'
+import { serverIconUrl } from '#/lib/media'
 import { UserAvatar } from '#/components/user/user-avatar'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@syrnike13/ui/primitives/sidebar'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Tabs,
@@ -29,56 +40,53 @@ export function UserGlobalProfileSections({
   const t = useTranslations('users')
 
   return (
-    <Tabs defaultValue="servers" className="min-h-0 flex-1 gap-0">
+    <Tabs defaultValue="servers" className="min-h-0 flex-1 gap-5">
       <TabsList
         variant="line"
-        className="w-full shrink-0 justify-start gap-6"
+        className="w-full shrink-0 justify-start"
       >
-        <TabsTrigger
-          value="servers"
-          className="flex-none px-0 text-base font-medium"
-        >
+        <TabsTrigger value="servers">
           {t('mutualServersCount', { count: mutualServers.length })}
         </TabsTrigger>
-        <TabsTrigger
-          value="friends"
-          className="flex-none px-0 text-base font-medium"
-        >
+        <TabsTrigger value="friends">
           {t('mutualFriendsCount', { count: mutualFriendsCount })}
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="servers" className="min-h-0 flex-1 overflow-y-auto pt-5">
+      <TabsContent value="servers" className="min-h-0 flex-1 overflow-y-auto">
         {mutualServers.length === 0 ? (
-          <Empty className="items-start p-0 text-left">
+          <Empty size="inline">
             <EmptyDescription>{t('noMutualServers')}</EmptyDescription>
           </Empty>
         ) : (
-          <ul className="flex flex-col gap-0.5">
+          <SidebarMenu>
             {mutualServers.map((server) => (
-              <li key={server._id}>
-                <button
-                  type="button"
+              <SidebarMenuItem key={server._id}>
+                <SidebarMenuButton
+                  size="lg"
                   disabled={busy}
-                  className="flex min-h-10.5 w-full min-w-0 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
                   onClick={() => onServerSelect(server._id)}
                 >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                    <ServerIcon className="size-4" />
-                  </span>
-                  <span className="min-w-0 truncate text-base leading-5 font-medium">
-                    {server.name}
-                  </span>
-                </button>
-              </li>
+                  <Avatar>
+                    {serverIconUrl(server.icon, { animated: false }) ? (
+                      <AvatarImage
+                        src={serverIconUrl(server.icon, { animated: false })!}
+                        alt=""
+                      />
+                    ) : null}
+                    <AvatarFallback>{serverAcronym(server.name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-foreground">{server.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             ))}
-          </ul>
+          </SidebarMenu>
         )}
       </TabsContent>
 
-      <TabsContent value="friends" className="min-h-0 flex-1 overflow-y-auto pt-5">
+      <TabsContent value="friends" className="min-h-0 flex-1 overflow-y-auto">
         {mutualFriendsCount === 0 ? (
-          <Empty className="items-start p-0 text-left">
+          <Empty size="inline">
             <EmptyDescription>{t('noMutualFriends')}</EmptyDescription>
           </Empty>
         ) : mutualFriends.length === 0 ? (

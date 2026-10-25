@@ -144,6 +144,8 @@ pub struct Hosts {
     pub events: String,
     pub autumn: String,
     pub january: String,
+    /// Activity Origin template; `{id}` is replaced by the application id (ADR-0011).
+    pub activities: String,
     pub livekit: HashMap<String, String>,
 }
 
@@ -309,6 +311,20 @@ impl Pushd {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct Activities {
+    /// Space separated client origins allowed to embed Activity Origins
+    /// (CSP `frame-ancestors`).
+    pub client_origins: String,
+    /// Address the activity proxy listens on.
+    pub proxy_listen: String,
+    /// Host suffix (e.g. `.activities.beta.syrnike13.ru`) whose on-demand TLS
+    /// questions this proxy forwards to `ask_delegate_url`; empty disables it.
+    pub ask_delegate_suffix: String,
+    /// Ask endpoint of the proxy that owns `ask_delegate_suffix`.
+    pub ask_delegate_url: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct January {
     pub blocked_domains: Vec<String>,
 }
@@ -436,6 +452,7 @@ pub struct Sentry {
     pub pushd: String,
     pub crond: String,
     pub gifbox: String,
+    pub activity_proxy: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -446,6 +463,7 @@ pub struct Settings {
     pub api: Api,
     pub pushd: Pushd,
     pub january: January,
+    pub activities: Activities,
     pub files: Files,
     pub features: Features,
     pub sentry: Sentry,

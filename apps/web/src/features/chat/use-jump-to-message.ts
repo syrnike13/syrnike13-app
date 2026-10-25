@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import {
@@ -9,9 +8,6 @@ import {
   MESSAGE_PAGE_SIZE,
 } from '#/features/api/messages-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
-
-const HIGHLIGHT_CLASS = 'ring-2 ring-primary ring-offset-2 ring-offset-background'
 
 export function useJumpToMessage(
   channelId: string,
@@ -24,16 +20,10 @@ export function useJumpToMessage(
   useEffect(() => {
     if (!messageId || !token || lastJumped.current === messageId) return
 
-    const scrollTo = () => {
-      const element = document.querySelector<HTMLElement>(
-        `[data-message-id="${messageId}"]`,
-      )
-      if (!element) return false
-      element.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      element.classList.add(HIGHLIGHT_CLASS)
-      window.setTimeout(() => element.classList.remove(HIGHLIGHT_CLASS), 2500)
-      return true
-    }
+    // Прокрутку и подсветку делает MessageList; здесь только догружаем
+    // сообщение и историю перед ним, если их ещё нет в ленте.
+    const isRendered = () =>
+      document.querySelector(`[data-message-id="${messageId}"]`) != null
 
     const nextAnimationFrame = Effect.callback<void>((resume) => {
       const frame = requestAnimationFrame(() => resume(Effect.void))
@@ -42,7 +32,7 @@ export function useJumpToMessage(
 
     const fiber = Effect.runFork(
       Effect.gen(function*() {
-        if (scrollTo()) {
+        if (isRendered()) {
           lastJumped.current = messageId
           return
         }
@@ -79,18 +69,14 @@ export function useJumpToMessage(
 
         yield* nextAnimationFrame
         yield* Effect.sync(() => {
-          if (!scrollTo()) {
-            toast.error(t('messageNotFound'))
+          if (!isRendered()) {
           } else {
             lastJumped.current = messageId
           }
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('openMessageError')),
-            )
           }),
         ),
       ),

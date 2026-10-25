@@ -11,7 +11,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { queryKeys } from '#/lib/api/query-keys'
 import {
@@ -105,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               user_id: response.user_id,
             }).pipe(
               Effect.tap(() =>
-                Effect.sync(() => toast.success(t('loggedIn'))),
+                Effect.sync(() => {}),
               ),
             )
           }
@@ -116,11 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ticket: response.ticket,
                 allowedMethods: response.allowed_methods,
               })
-              toast.message(t('mfaRequired'))
             })
           }
 
-          return Effect.sync(() => toast.error(t('accountDisabled')))
+          return Effect.sync(() => {})
         }),
       ),
     [applySession, t],
@@ -137,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Effect.flatMap((response) => {
           if (!isLoginSuccess(response)) {
             return Effect.sync(() =>
-              toast.error(t('mfaError')),
+              {},
             )
           }
 
@@ -147,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user_id: response.user_id,
           }).pipe(
             Effect.tap(() =>
-              Effect.sync(() => toast.success(t('loggedIn'))),
+              Effect.sync(() => {}),
             ),
           )
         }),
@@ -169,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? logoutSessionEffect(token).pipe(
               Effect.catch(() =>
                 Effect.sync(() =>
-                  toast.error(t('sessionClearedLocally')),
+                  {},
                 ),
               ),
             )

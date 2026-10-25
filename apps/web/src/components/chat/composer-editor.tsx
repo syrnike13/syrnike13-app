@@ -21,6 +21,7 @@ import {
 } from '#/components/chat/mention-suggestion-menu'
 import { deserializeMessageContent } from '#/lib/message-format/deserialize'
 import { createMessageExtensions } from '#/lib/message-format/extensions'
+import type { EmojiShortcodeResolver } from '#/lib/message-format/extensions/emoji-shortcode'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
 import { MessageFormatProvider } from '#/lib/message-format/message-format-context'
 import { serializeMessageContent } from '#/lib/message-format/serialize'
@@ -43,6 +44,10 @@ type ComposerEditorProps = {
   formatContext: MessageFormatContext
   mentionItems: (query: string) => MentionSuggestionItem[]
   channelItems?: (query: string) => MentionSuggestionItem[]
+  /** `:query` autocomplete (Discord: from 2 characters). */
+  emojiItems?: (query: string) => MentionSuggestionItem[]
+  /** Completed `:shortcode:` to emoji. */
+  resolveEmoji?: EmojiShortcodeResolver
   onValueChange: (value: string) => void
   onPasteFiles?: (files: FileList) => void
   onKeyDown?: (event: ReactKeyboardEvent) => void
@@ -62,6 +67,8 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       formatContext,
       mentionItems,
       channelItems,
+      emojiItems,
+      resolveEmoji,
       onValueChange,
       onPasteFiles,
       onKeyDown,
@@ -78,12 +85,16 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
     const editorClassNameRef = useRef(editorClassName)
     const mentionItemsRef = useRef(mentionItems)
     const channelItemsRef = useRef(channelItems)
+    const emojiItemsRef = useRef(emojiItems)
+    const resolveEmojiRef = useRef(resolveEmoji)
     const onPasteFilesRef = useRef(onPasteFiles)
     const onValueChangeRef = useRef(onValueChange)
     const placeholderRef = useRef(placeholder)
     const valueRef = useRef(value)
     mentionItemsRef.current = mentionItems
     channelItemsRef.current = channelItems
+    emojiItemsRef.current = emojiItems
+    resolveEmojiRef.current = resolveEmoji
     editorClassNameRef.current = editorClassName
     onPasteFilesRef.current = onPasteFiles
     onValueChangeRef.current = onValueChange
@@ -182,6 +193,20 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
                 onKeyDown: ({ event }) => handleMentionKeyDown(event),
               }),
             },
+            emojiSuggestion: {
+              name: 'emojiSuggestion',
+              char: ':',
+              limit: 10,
+              items: ({ query }) =>
+                query.length >= 2 ? (emojiItemsRef.current?.(query) ?? []) : [],
+              render: () => ({
+                onStart: (props) => syncMentionSuggestion(props, 0),
+                onUpdate: (props) => syncMentionSuggestion(props, 0),
+                onExit: closeMentionSuggestion,
+                onKeyDown: ({ event }) => handleMentionKeyDown(event),
+              }),
+            },
+            resolveEmojiShortcode: (name) => resolveEmojiRef.current?.(name) ?? null,
             channelSuggestion: {
               name: 'channelSuggestion',
               char: '#',
@@ -251,6 +276,15 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
               view.state.tr.setSelection(TextSelection.atStart(view.state.doc)),
             )
             return true
+          }
+
+          if (
+            event.key === 'ArrowUp' &&
+            isEmptyDocument &&
+            onKeyDownRef.current
+          ) {
+            onKeyDownRef.current(event as unknown as ReactKeyboardEvent)
+            return event.defaultPrevented
           }
 
           if (event.key === 'Escape' && onKeyDownRef.current) {

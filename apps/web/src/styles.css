@@ -10,12 +10,14 @@
 @source '../../../packages/ui/src';
 
 :root {
+  /* Profile cards override it so cut-outs match their surface. */
+  --profile-surface: var(--popover);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --shadow-x: 0;
   --shadow-y: 1px;
   --shadow-blur: 3px;
@@ -102,10 +104,14 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
+  /* Discord radius scale: 4 / 8 / 12 / 16 / 24px. Controls, popovers and
+     list rows use 8px; dialogs 12–16px. */
   --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 16px);
 
   --shadow-2xs: var(--shadow-2xs);
   --shadow-xs: var(--shadow-xs);
@@ -164,7 +170,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -177,7 +182,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -189,7 +193,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -202,7 +205,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -214,7 +216,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -228,7 +229,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -240,7 +240,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -253,8 +252,7 @@ html {
 
   @media (prefers-reduced-motion: reduce) {
     :is(
-      [data-slot='scroll-area-viewport'],
-      .scrollbar-minimal,
+        .scrollbar-minimal,
       .scrollbar-overlay,
       .overflow-y-auto,
       .overflow-auto,
@@ -316,6 +314,17 @@ html {
 
 .theme-surface-solid {
   background: var(--theme-surface-solid, var(--popover));
+}
+
+/*
+ * Floating surfaces (user panel, composer, DM profile, toolbars) sit lighter
+ * than the columns, where the solid Prism hover fill nearly vanishes. Inside
+ * them the hover fill is a translucent wash of the text colour, so it reads
+ * on any surface in light and dark themes.
+ */
+.gradient-surface-floating {
+  --hover: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --sidebar-accent: var(--hover);
 }
 
 :root[data-theme-gradient]:not([data-theme-gradient='none']) body {
@@ -396,41 +405,6 @@ html {
   align-items: center;
 }
 
-.auth-home-link {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  gap: 0.5rem;
-  border-radius: 0.75rem;
-  padding-inline: 0.75rem;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  font-weight: 700;
-  transition:
-    color 160ms cubic-bezier(0.25, 1, 0.5, 1),
-    background-color 160ms cubic-bezier(0.25, 1, 0.5, 1),
-    transform 120ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.auth-home-link svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.auth-home-link:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.auth-home-link:active {
-  transform: translateY(1px);
-}
-
-.auth-home-link:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .auth-stage-content {
   display: flex;
   width: 100%;
@@ -473,130 +447,6 @@ html {
   color: var(--muted-foreground);
   font-size: 0.75rem;
   opacity: 0.78;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: none;
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--theme-surface-raised, var(--card));
-  padding-block: 2rem;
-  box-shadow: var(--shadow-sm);
-}
-
-.auth-card [data-slot='card-header'],
-.auth-card [data-slot='card-content'],
-.auth-card [data-slot='card-footer'] {
-  padding-inline: 2rem;
-}
-
-.auth-card [data-slot='card-footer'] {
-  border-top: 0;
-  background: transparent;
-  padding-block: 0;
-}
-
-.auth-card [data-slot='card-header'] {
-  gap: 0.75rem;
-}
-
-.auth-card [data-slot='card-title'] {
-  font-size: 1.625rem;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.025em;
-}
-
-.auth-card [data-slot='card-description'] {
-  max-width: 40ch;
-  color: var(--muted-foreground);
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.auth-card form [data-slot='card-content'],
-.auth-card > [data-slot='card-content'] {
-  margin-top: 1.5rem;
-}
-
-.auth-card form [data-slot='card-footer'],
-.auth-card > [data-slot='card-footer'] {
-  margin-top: 1.25rem;
-}
-
-.auth-card label {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.auth-card .auth-input {
-  min-height: 2.75rem;
-  border-radius: 0.625rem;
-  border-color: var(--border);
-  background: var(--theme-surface-input, var(--input));
-  padding-inline: 0.875rem;
-  color: var(--foreground);
-  font-size: 1rem;
-  box-shadow: none;
-  transition:
-    border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-    box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.auth-card .auth-input:focus-visible {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 0.1875rem
-    color-mix(in oklch, var(--ring) 22%, transparent);
-}
-
-.auth-card [data-slot='button'] {
-  min-height: 2.75rem;
-  border-radius: 0.625rem;
-  font-size: 0.9375rem;
-  font-weight: 700;
-}
-
-.auth-card [data-slot='button']:active {
-  transform: translateY(1px);
-}
-
-.auth-password-toggle {
-  position: absolute;
-  top: 50%;
-  right: 0.375rem;
-  display: inline-flex;
-  width: 2.25rem;
-  height: 2.25rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  color: var(--muted-foreground);
-  transform: translateY(-50%);
-  transition:
-    color 160ms cubic-bezier(0.25, 1, 0.5, 1),
-    background-color 160ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.auth-password-toggle:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.auth-password-toggle:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.auth-password-toggle:disabled {
-  pointer-events: none;
-  opacity: 0.5;
-}
-
-.auth-password-toggle svg {
-  width: 1.125rem;
-  height: 1.125rem;
 }
 
 .auth-secondary-action {
@@ -654,28 +504,9 @@ html {
     gap: 0.75rem;
   }
 
-  .auth-card {
-    border-radius: 0.875rem;
-    padding-block: 1.5rem;
-  }
-
-  .auth-card [data-slot='card-header'],
-  .auth-card [data-slot='card-content'],
-  .auth-card [data-slot='card-footer'] {
-    padding-inline: 1.25rem;
-  }
-
   .auth-secondary-action,
   .auth-support-links a {
     min-height: 2.75rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .auth-home-link,
-  .auth-card .auth-input,
-  .auth-password-toggle {
-    transition-duration: 0.01ms;
   }
 }
 
@@ -741,79 +572,162 @@ html {
   image-rendering: pixelated;
 }
 
-/* Halloween set dressing: the logo itself never changes in this scene. */
-.cake-halloween-decor,
-.cake-bat {
+/* Syrnik mascot scenes in empty states. */
+.syrnik-scene {
+  overflow: visible;
+}
+
+.syrnik-overlay {
+  color: var(--muted-foreground);
+}
+
+.syrnik-float {
+  opacity: 0;
+  animation: syrnik-float 3s steps(12, end) infinite;
+}
+
+.syrnik-float-2 {
+  animation-delay: 1s;
+}
+
+.syrnik-float-3 {
+  animation-delay: 2s;
+}
+
+@keyframes syrnik-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 2px);
+  }
+  25% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(1px, -2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .syrnik-float {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/*
+ * Holiday scenes around a whole logo. Every prop loops on its own CSS clock,
+ * so nothing restarts with the classic assembly.
+ */
+.cake-scene {
   pointer-events: none;
 }
 
-.cake-cobweb {
-  opacity: 0.55;
+/* Two-frame sprites (bat wings) swap every half of --frame. */
+.cake-frame-a,
+.cake-frame-b {
+  animation: cake-frame var(--frame, 260ms) steps(1, end) infinite;
 }
 
-.cake-spider-thread {
-  fill: var(--muted-foreground);
-  opacity: 0.4;
+.cake-frame-b {
+  animation-delay: calc(var(--frame, 260ms) / -2);
 }
 
-.cake-spider {
-  animation: cake-spider-drop 1200ms steps(9, end) 120ms both;
+@keyframes cake-frame {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
-@keyframes cake-spider-drop {
-  0% {
-    opacity: 0;
-    transform: translateY(-1px);
-  }
-  8% {
-    opacity: 1;
-  }
-  48% {
-    transform: translateY(6px);
-  }
-  76% {
-    transform: translateY(6px);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-1px);
-  }
+/* Halloween: moon, candle-lit pumpkin and bats. */
+.cake-moon {
+  opacity: 0.85;
+}
+
+.cake-lantern {
+  animation: cake-candle 2.6s steps(1, end) infinite;
+}
+
+@keyframes cake-candle {
+  0% { opacity: 1; }
+  18% { opacity: 0.7; }
+  24% { opacity: 1; }
+  52% { opacity: 0.85; }
+  58% { opacity: 0.6; }
+  64% { opacity: 1; }
+  88% { opacity: 0.8; }
 }
 
 .cake-bat {
-  animation: cake-bat-cross 900ms steps(10, end) 1500ms both;
+  --frame: 240ms;
+  opacity: 0;
+  animation: cake-bat 8s infinite both;
 }
 
-@keyframes cake-bat-cross {
-  0% {
-    opacity: 0;
-    transform: translate(0, 0);
+.cake-bat[data-flight='late'] {
+  animation-duration: 9s;
+  animation-delay: 4.2s;
+}
+
+@keyframes cake-bat {
+  0% { opacity: 0; transform: translate(33px, 3px); }
+  6% { opacity: 1; transform: translate(28px, 0); }
+  20% { transform: translate(18px, -3px); }
+  34% { transform: translate(6px, -3px); }
+  48% { opacity: 1; transform: translate(-5px, 0); }
+  56%, 100% { opacity: 0; transform: translate(-13px, -1px); }
+}
+
+/* New Year: blinking tree, twinkling star and snowfall. */
+.cake-star {
+  animation: cake-star 1.8s steps(1, end) infinite;
+}
+
+@keyframes cake-star {
+  0% { opacity: 1; }
+  40% { opacity: 0.6; }
+  55% { opacity: 1; }
+  70% { opacity: 0.8; }
+}
+
+.cake-light {
+  animation: cake-light 1.8s steps(1, end) infinite;
+}
+
+.cake-light[data-group='1'] { animation-delay: -0.6s; }
+.cake-light[data-group='2'] { animation-delay: -1.2s; }
+
+@keyframes cake-light {
+  0% { opacity: 1; }
+  66% { opacity: 0.3; }
+}
+
+.cake-snowflake {
+  animation: cake-snow-fall var(--snow-duration) linear var(--snow-delay)
+    infinite;
+}
+
+@keyframes cake-snow-fall {
+  0% { transform: translate(0, var(--snow-from)); }
+  50% {
+    transform: translate(1px, calc((var(--snow-from) + var(--snow-to)) / 2));
   }
-  10% {
-    opacity: 1;
-  }
-  45% {
-    transform: translate(-20px, -1px);
-  }
-  78% {
-    opacity: 1;
-  }
-  90%,
-  100% {
-    opacity: 0;
-    transform: translate(-44px, 0);
-  }
+  100% { transform: translate(0, var(--snow-to)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cake-logo:not([data-motion-preview]),
   .cake-logo:not([data-motion-preview]) .cake-logo-piece,
-  .cake-logo:not([data-motion-preview]) .cake-spider,
-  .cake-logo:not([data-motion-preview]) .cake-bat {
+  .cake-logo:not([data-motion-preview]) .cake-scene,
+  .cake-logo:not([data-motion-preview]) .cake-scene * {
     animation: none;
   }
 
-  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks {
+  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks,
+  .cake-logo:not([data-motion-preview]) .cake-frame-b,
+  .cake-logo:not([data-motion-preview]) .cake-bat {
     display: none;
   }
 }
@@ -1088,16 +1002,6 @@ html {
   margin: 0;
 }
 
-/*
- * Лента измеряет строки сразу. content-visibility подменяет высоту
- * невидимых строк оценкой 10rem; после первого рендера фактическая высота
- * меняется и MessageScroller теряет позицию «у конца».
- */
-[data-slot='message-scroller-item'] {
-  content-visibility: visible;
-  contain-intrinsic-size: none;
-}
-
 /* Mobile safe-area helpers. Require viewport-fit=cover in the meta viewport. */
 .safe-pt {
   padding-top: env(safe-area-inset-top);
@@ -1250,21 +1154,22 @@ html {
   transform: var(--lightbox-transform);
 }
 
+@utility crop-transform {
+  transform: var(--crop-transform);
+}
+
+/* Dims everything around the crop frame. */
+@utility crop-frame-mask {
+  box-shadow: 0 0 0 100vmax
+    color-mix(in oklch, var(--media-backdrop) 60%, transparent);
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
 }
 
-@utility rail-overflow-width {
+@utility w-rail-overflow {
   width: calc(100% + 0.25rem);
-}
-
-@utility avatar-badge {
-  font-size: var(--badge-font);
-  box-shadow: 0 0 0 var(--badge-ring) var(--badge-ring-color);
-}
-
-@utility presence-dot {
-  box-shadow: 0 0 0 var(--dot-ring) var(--dot-ring-color);
 }
 
 @utility motion-width {
@@ -1275,7 +1180,7 @@ html {
   transition-property: height;
 }
 
-@utility media-picker-rows {
+@utility grid-rows-media-picker {
   grid-template-rows: 1fr auto;
 }
 
@@ -1293,40 +1198,6 @@ html {
 }
 
 /* Viewport/surface constraints. */
-/* Settings modal sizing: full screen below 1280, then 92vw, then 55vw. */
-.settings-modal {
-  width: 100vw;
-  height: 100dvh;
-  transition:
-    opacity 120ms ease-out,
-    scale 120ms ease-out;
-}
-
-.settings-modal[data-starting-style],
-.settings-modal[data-ending-style] {
-  opacity: 0;
-  scale: 0.985;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-modal {
-    transition: none;
-  }
-}
-
-@media (min-width: 1280px) {
-  .settings-modal {
-    width: 92vw;
-    height: 88vh;
-  }
-}
-
-@media (min-width: 1920px) {
-  .settings-modal {
-    width: 55vw;
-  }
-}
-
 @utility h-profile-dialog {
   height: min(50rem, 90vh);
 }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
@@ -9,7 +8,6 @@ import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
 import { useAuth } from '#/features/auth/auth-context'
 import { sendDiagnosticReport } from '#/features/diagnostics/diagnostic-reporter'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import type {
   DesktopUpdateState,
   DesktopVersions,
@@ -122,12 +120,9 @@ export function SettingsDesktopPanel() {
         catch: (cause) => cause,
       }).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
               setUpdateState(null)
-              toast.error(
-                apiErrorMessage(error, t('checkError')),
-              )
             }),
           onSuccess: (state) =>
             Effect.sync(() => {
@@ -209,12 +204,9 @@ export function SettingsDesktopPanel() {
                   catch: (cause) => cause,
                 }).pipe(
                   Effect.matchEffect({
-                    onFailure: (error) =>
+                    onFailure: () =>
                       Effect.sync(() => {
                         setWindowPreferences(previous)
-                        toast.error(
-                          apiErrorMessage(error, t('saveLaunchError')),
-                        )
                       }),
                     onSuccess: (value) =>
                       Effect.sync(() => {
@@ -252,12 +244,9 @@ export function SettingsDesktopPanel() {
                   catch: (cause) => cause,
                 }).pipe(
                   Effect.matchEffect({
-                    onFailure: (error) =>
+                    onFailure: () =>
                       Effect.sync(() => {
                         setWindowPreferences(previous)
-                        toast.error(
-                          apiErrorMessage(error, t('saveWindowError')),
-                        )
                       }),
                     onSuccess: (value) =>
                       Effect.sync(() => {
@@ -348,16 +337,12 @@ export function SettingsDesktopPanel() {
                   description: 'Manual diagnostic report',
                 }).pipe(
                   Effect.matchEffect({
-                    onFailure: (error) =>
+                    onFailure: () =>
                       Effect.sync(() => {
-                        toast.error(
-                          apiErrorMessage(error, t('reportError')),
-                        )
                       }),
                     onSuccess: (report) =>
                       Effect.sync(() => {
                         if (report) {
-                          toast.success(t('reportSent', { id: report.id }))
                         }
                       }),
                   }),
@@ -394,12 +379,9 @@ export function SettingsDesktopPanel() {
         catch: (cause) => cause,
       }).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
               setObservability(previous)
-              toast.error(
-                apiErrorMessage(error, t('saveDiagnosticsError')),
-              )
             }),
           onSuccess: (settings) =>
             Effect.sync(() => {

@@ -12,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
-import { cn } from '#/lib/utils'
 
 type MessageActionsMenuProps = {
   message: Message
@@ -20,7 +19,6 @@ type MessageActionsMenuProps = {
   own: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  triggerClassName?: string
   onReply: () => void
   onEdit?: () => void
   onDelete?: () => void
@@ -35,7 +33,6 @@ export function MessageActionsMenu({
   own,
   open,
   onOpenChange,
-  triggerClassName,
   onReply,
   onEdit,
   onDelete,
@@ -63,17 +60,12 @@ export function MessageActionsMenu({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className={cn(
-              'size-7',
-              // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-              triggerClassName,
-            )}
+            size="icon-sm"
             aria-label={t('more')}
           />
         }
       >
-        <MoreHorizontalIcon className="size-4" />
+        <MoreHorizontalIcon className="size-4.5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-52" align="end" sideOffset={6}>
         {actions.map((action) => (

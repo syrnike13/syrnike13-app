@@ -96,10 +96,8 @@ export function AdminEmpty({
 }) {
   return (
     <Empty
-      className={cn(
-        'border border-dashed px-4 py-10 text-sm text-muted-foreground',
-        className,
-      )}
+      variant="outline"
+      className={cn('text-muted-foreground', className)}
     >
       {children}
     </Empty>

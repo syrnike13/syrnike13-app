@@ -94,7 +94,6 @@ export function ChannelSettingsDialog({
       type="button"
       variant="ghost"
       size="icon"
-      className="size-8"
       title={t('channelSettings')}
       onClick={openSettings}
     >

@@ -1,8 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { HomeView, type HomeTab } from '#/components/home/home-view'
-
-const HOME_TABS = ['online', 'all', 'pending'] as const satisfies readonly HomeTab[]
+import { HOME_TABS, HomeView, type HomeTab } from '#/components/home/home-view'
 
 function isHomeTab(value: unknown): value is HomeTab {
   return typeof value === 'string' && HOME_TABS.some((tab) => tab === value)

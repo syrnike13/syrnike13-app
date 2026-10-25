@@ -1,7 +1,6 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -16,7 +15,6 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { createCategoryId } from '#/lib/channel-sidebar-layout'
 
 type CreateCategoryDialogProps = {
@@ -59,16 +57,12 @@ export function CreateCategoryDialog({
         })
         yield* Effect.sync(() => {
           syncStore.upsertServer(updated)
-          toast.success(t('success', { title: trimmed }))
           onOpenChange(false)
           setTitle('')
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('error')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSaving(false))),

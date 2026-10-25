@@ -9,6 +9,14 @@ import {
 import { MonitorIcon, TagIcon } from '#/components/icons'
 import { Badge } from '@syrnike13/ui/primitives/badge'
 import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemOverlay,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
+import {
   feedbackAreaLabel,
   feedbackPlatformLabel,
 } from '#/components/feedback/feedback-meta'
@@ -53,61 +61,52 @@ export function FeedbackSuggestionRow({
   const publiclyApproved = suggestion.moderation_status === 'approved'
 
   return (
-    <article className="group/feedback-row relative flex flex-col gap-2 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5 transition-colors hover:border-border hover:bg-muted/30">
-      <Link
-        to={`${prefix}/feedback/$feedbackId`}
-        params={{ feedbackId: suggestion._id }}
+    <Item variant="outline" render={<li />}>
+      <ItemOverlay
+        render={
+          <Link
+            to={`${prefix}/feedback/$feedbackId`}
+            params={{ feedbackId: suggestion._id }}
+          />
+        }
         aria-label={t('row.openAria', { title: suggestion.title })}
-        className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        <FeedbackCategoryBadge category={suggestion.category} />
-        {publiclyApproved ? (
-          <FeedbackProductStatus status={suggestion.status} />
-        ) : (
-          <FeedbackModerationStatus status={suggestion.moderation_status} />
-        )}
-        {suggestion.area ? (
-          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
-            <TagIcon className="size-3" aria-hidden />
-            {feedbackAreaLabel(suggestion.area, tm)}
-          </Badge>
-        ) : null}
-        {suggestion.platform ? (
-          <Badge variant="secondary" className="min-h-6 gap-1 font-medium">
-            <MonitorIcon className="size-3" aria-hidden />
-            {feedbackPlatformLabel(suggestion.platform, tm)}
-          </Badge>
-        ) : null}
-        <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:block">
-          {authorLabel} · {formatFeedbackDate(suggestion.created_at, locale)}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-foreground transition-colors group-hover/feedback-row:text-primary">
-            {suggestion.title}
-          </h2>
-          <p className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
-            {suggestion.description}
-          </p>
-        </div>
-
-        <div className="relative z-10 shrink-0">
+      <ItemContent>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FeedbackCategoryBadge category={suggestion.category} />
           {publiclyApproved ? (
-            <FeedbackVoteButton suggestion={suggestion} token={token} compact />
+            <FeedbackProductStatus status={suggestion.status} />
           ) : (
-            <span
-              className="flex h-9 items-center rounded-lg border border-border bg-muted/20 px-3 text-xs font-semibold text-muted-foreground"
-              aria-label={t('votes', { count: suggestion.vote_count })}
-            >
-              {t('votes', { count: suggestion.vote_count })}
-            </span>
+            <FeedbackModerationStatus status={suggestion.moderation_status} />
           )}
+          {suggestion.area ? (
+            <Badge variant="outline">
+              <TagIcon data-icon="inline-start" aria-hidden />
+              {feedbackAreaLabel(suggestion.area, tm)}
+            </Badge>
+          ) : null}
+          {suggestion.platform ? (
+            <Badge variant="outline">
+              <MonitorIcon data-icon="inline-start" aria-hidden />
+              {feedbackPlatformLabel(suggestion.platform, tm)}
+            </Badge>
+          ) : null}
         </div>
-      </div>
-    </article>
+        <ItemTitle>
+          <h2>{suggestion.title}</h2>
+        </ItemTitle>
+        <ItemDescription>{suggestion.description}</ItemDescription>
+        <p className="text-xs text-muted-foreground">
+          {authorLabel} · {formatFeedbackDate(suggestion.created_at, locale)}
+        </p>
+      </ItemContent>
+      <ItemActions>
+        {publiclyApproved ? (
+          <FeedbackVoteButton suggestion={suggestion} token={token} />
+        ) : (
+          <Badge variant="secondary">{t('votes', { count: suggestion.vote_count })}</Badge>
+        )}
+      </ItemActions>
+    </Item>
   )
 }

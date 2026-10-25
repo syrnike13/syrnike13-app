@@ -4,8 +4,15 @@ import type { Channel } from '@syrnike13/api-types'
 import { HeadphonesIcon, UsersIcon } from '#/components/icons'
 import {
   AvatarNotificationBadge,
+  hasNotificationBadge,
+  notificationBadgeText,
   UserAvatar,
 } from '#/components/user/user-avatar'
+import {
+  resolveAvatarBadgeLayout,
+} from '#/components/user/user-avatar-presence'
+import { Avatar, AvatarFallback } from '@syrnike13/ui/primitives/avatar'
+import type { CSSVars } from '#/lib/css-vars'
 import { useAuth } from '#/features/auth/auth-context'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
@@ -23,7 +30,10 @@ import {
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
-import { railAvatarClass } from '#/components/layout/shell-chrome'
+import {
+  railAvatarClass,
+  railIconItemRowClass,
+} from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 type PeopleRailVariant = 'desktop' | 'mobile'
@@ -69,18 +79,15 @@ export function PeopleRailSection({
   return (
     <>
       {people.map((channel) => (
-        <PeopleRailButton
-          key={channel._id}
-          channel={channel}
-          variant={variant}
-          activeChannelId={activeChannelId}
-          currentUserId={auth.user?._id}
-        />
+        <li key={channel._id} className={railIconItemRowClass}>
+          <PeopleRailButton
+            channel={channel}
+            variant={variant}
+            activeChannelId={activeChannelId}
+            currentUserId={auth.user?._id}
+          />
+        </li>
       ))}
-      <div
-        aria-hidden="true"
-        className="my-0.5 h-0.5 w-9 shrink-0 rounded-full bg-border"
-      />
     </>
   )
 }
@@ -118,6 +125,10 @@ function PeopleRailButton({
   const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
+  const railBadge = resolveAvatarBadgeLayout(40, {
+    kind: 'count',
+    label: railNotificationBadge ? notificationBadgeText(railNotificationBadge) : '',
+  })
 
   return (
     <Link
@@ -140,25 +151,31 @@ function PeopleRailButton({
           fallbackClassName="size-10 text-xs"
           showPresence={false}
           notificationBadge={railNotificationBadge}
-          notificationRingClassName="border-background"
           animated="never"
         />
       ) : channel.channel_type === 'Group' ? (
-        <span className="relative shrink-0">
-          <span
-            className={cn(
-              'flex items-center justify-center rounded-full bg-muted text-muted-foreground',
-              railAvatarClass,
-            )}
+        <span
+          className="relative shrink-0"
+          style={
+            {
+              '--avatar-badge-size': `${railBadge.sizePx}px`,
+              '--avatar-badge-width': `${railBadge.widthPx}px`,
+              '--avatar-badge-gap': `${railBadge.gapPx}px`,
+              '--avatar-badge-font': `${railBadge.fontPx ?? 0}px`,
+            } as CSSVars
+          }
+        >
+          {/* `lg` is the 40px rail avatar size (railAvatarClass). */}
+          <Avatar
+            size="lg"
+            badgeCutout={hasNotificationBadge(railNotificationBadge)}
           >
-            <UsersIcon aria-hidden="true" className="size-5.5" />
-          </span>
+            <AvatarFallback>
+              <UsersIcon aria-hidden="true" className="size-5.5" />
+            </AvatarFallback>
+          </Avatar>
           {railNotificationBadge ? (
-            <AvatarNotificationBadge
-              badge={railNotificationBadge}
-              className={railAvatarClass}
-              ringClassName="border-background"
-            />
+            <AvatarNotificationBadge badge={railNotificationBadge} />
           ) : null}
         </span>
       ) : (

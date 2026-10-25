@@ -222,7 +222,7 @@ export function SettingsHotkeysPanel() {
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : bindings.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-4 py-8">
-            <Empty className="p-0">
+            <Empty size="inline">
               <EmptyDescription>{t('empty')}</EmptyDescription>
             </Empty>
           </div>
@@ -286,14 +286,11 @@ export function SettingsHotkeysPanel() {
                       <p className="text-xs font-semibold text-muted-foreground">
                         {t('combo')}
                       </p>
-                      <button
+                      <Button
                         type="button"
-                        className={cn(
-                          'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm transition-colors',
-                          recording
-                            ? 'border-primary ring-2 ring-primary/20'
-                            : 'hover:bg-accent/40',
-                        )}
+                        variant="outline"
+                        aria-pressed={recording}
+                        className="w-full justify-between"
                         onClick={() => startRecording(binding.id)}
                       >
                         <span
@@ -309,15 +306,15 @@ export function SettingsHotkeysPanel() {
                         <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                           {recording ? t('recording') : t('change')}
                         </span>
-                      </button>
+                      </Button>
                       <HotkeyStatusMessage status={status} t={t} />
                     </div>
 
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
-                      className="mt-5 size-9"
+                      size="icon-lg"
+                      className="mt-5"
                       onClick={() => removeBinding(binding.id)}
                     >
                       <Trash2Icon className="size-4" />

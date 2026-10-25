@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
@@ -15,7 +14,6 @@ import {
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import { usePlatform } from '#/platform/use-platform'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function overlayStateNeedsSettingsReload(
   previous: DesktopOverlayState | null,
@@ -59,9 +57,6 @@ export function SettingsOverlayPanel() {
                   error,
                 )
                 setSettings({ ...DEFAULT_DESKTOP_OVERLAY_SETTINGS })
-                toast.error(
-                  apiErrorMessage(error, t('loadError')),
-                )
               }),
             onSuccess: (value) =>
               Effect.sync(() => {
@@ -125,12 +120,9 @@ export function SettingsOverlayPanel() {
         catch: (cause) => cause,
       }).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
               setSettings(previous)
-              toast.error(
-                apiErrorMessage(error, t('saveError')),
-              )
             }),
           onSuccess: (value) =>
             Effect.sync(() => {
@@ -172,7 +164,7 @@ export function SettingsOverlayPanel() {
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : games.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-4 py-8">
-            <Empty className="p-0">
+            <Empty size="inline">
               <EmptyDescription>{t('noGames')}</EmptyDescription>
             </Empty>
           </div>

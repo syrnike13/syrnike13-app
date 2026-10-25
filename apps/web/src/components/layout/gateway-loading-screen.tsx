@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 
 import {
   CakeLogo,
-  HALLOWEEN_CAKE_VARIANT,
+  cakeLogoVariantForHoliday,
   type CakeLogoVariant,
 } from '#/components/layout/cake-logo'
 import type { GatewayState } from '#/features/events/gateway'
@@ -93,8 +93,7 @@ export function GatewayLoadingScreen({
   const [factKey, setFactKey] = useState<string>(INITIAL_FACT_KEY)
   const status = statusText ?? t(STATUS_BY_STATE[gatewayState])
   const fact = t(factKey)
-  const logoVariant =
-    holiday?.id === 'halloween' ? HALLOWEEN_CAKE_VARIANT : 'classic'
+  const logoVariant = cakeLogoVariantForHoliday(holiday?.id)
 
   useEffect(() => {
     setFactKey(pickGatewayLoadingFactKey())

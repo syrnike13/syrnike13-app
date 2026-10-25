@@ -5,13 +5,16 @@ function Card({
   className,
   size = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & {
+  /** `lg` (not in base-nova): a standalone card such as the sign-in form. */
+  size?: "default" | "sm" | "lg"
+}) {
   return (
     <div
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 data-[size=lg]:rounded-2xl data-[size=lg]:shadow-sm data-[size=lg]:[--card-spacing:--spacing(8)] *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         className
       )}
       {...props}
@@ -37,7 +40,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-title"
       className={cn(
-        "cn-font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+        "cn-font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm group-data-[size=lg]/card:text-2xl group-data-[size=lg]/card:leading-tight group-data-[size=lg]/card:font-bold group-data-[size=lg]/card:tracking-tight",
         className
       )}
       {...props}
@@ -49,7 +52,10 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn(
+        "text-sm text-muted-foreground group-data-[size=lg]/card:max-w-[40ch] group-data-[size=lg]/card:text-base",
+        className
+      )}
       {...props}
     />
   )
@@ -78,12 +84,13 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+// Not in base-nova: no top border or tint, the footer continues the card.
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)",
+        "flex items-center rounded-b-xl p-(--card-spacing)",
         className
       )}
       {...props}

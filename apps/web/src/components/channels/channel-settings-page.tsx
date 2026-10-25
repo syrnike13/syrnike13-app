@@ -1,11 +1,9 @@
-// design-allow-file restyle-shared: channel settings navigation owns its active/hover surface.
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   LayoutTemplateIcon,
   LinkIcon,
   ShieldFillIcon,
-  XIcon,
 } from '#/components/icons'
 import { useCallback, useEffect, type ReactNode } from 'react'
 
@@ -18,7 +16,11 @@ import {
   channelSettingsSearch,
   clearChannelSettingsSearch,
 } from '#/lib/channel-settings-navigation'
-import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  SettingsNavItem,
+  SettingsNavSection,
+  SettingsPageShell,
+} from '#/components/settings/settings-page-shell'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
@@ -34,7 +36,6 @@ import {
   canManageChannelPermissions,
   canManageChannelWebhooks,
 } from '#/features/authorization/authorization'
-import { cn } from '#/lib/utils'
 
 type ChannelSettingsPageProps = {
   channelId: string
@@ -43,34 +44,6 @@ type ChannelSettingsPageProps = {
   highlightMessageId?: string
 }
 
-
-function settingsNavItemClass(active: boolean) {
-  return cn(
-    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-    active
-      ? 'bg-accent font-medium text-accent-foreground'
-      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-  )
-}
-
-function NavSection({
-  title,
-  children,
-}: {
-  title?: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      {title ? (
-        <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {title}
-        </p>
-      ) : null}
-      {children}
-    </div>
-  )
-}
 
 function SettingsNavLink({
   hostChannelId,
@@ -91,19 +64,22 @@ function SettingsNavLink({
 }) {
   const prefix = useAppRoutePrefix()
   return (
-    <Link
-      to={`${prefix}/c/$channelId`}
-      params={{ channelId: hostChannelId }}
-      search={channelSettingsSearch({
-        settingsChannel: channelId,
-        settingsTab: tab,
-        m: highlightMessageId,
-      })}
-      className={settingsNavItemClass(activeTab === tab)}
-    >
-      {icon}
-      {label}
-    </Link>
+    <SettingsNavItem
+      active={activeTab === tab}
+      icon={icon}
+      label={label}
+      render={
+        <Link
+          to={`${prefix}/c/$channelId`}
+          params={{ channelId: hostChannelId }}
+          search={channelSettingsSearch({
+            settingsChannel: channelId,
+            settingsTab: tab,
+            m: highlightMessageId,
+          })}
+        />
+      }
+    />
   )
 }
 
@@ -252,64 +228,56 @@ export function ChannelSettingsPage({
   const channelLabel = `#${settingsChannel.name}`
 
   return (
-    <div className="gradient-surface-content settings-page-grid relative grid h-full min-h-0 w-full overflow-hidden bg-card text-card-foreground">
-      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-sidebar">
-        <div className="ml-auto flex h-full w-54.5 min-w-0 flex-col">
-          <div className="border-b border-border px-3 py-4">
-            <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              {channelLabel}
-            </p>
-          </div>
-
-          <ScrollArea className="min-h-0 flex-1">
-            <nav className="flex flex-col gap-3 p-2">
+    <SettingsPageShell
+      title={channelLabel}
+      closeLabel={t('close')}
+      onClose={closeSettings}
+      nav={
+        <>
               {canManage ? (
-                <NavSection>
+                <SettingsNavSection>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
                     tab="overview"
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
-                    icon={<LayoutTemplateIcon className="size-4 shrink-0" />}
+                    icon={<LayoutTemplateIcon />}
                     label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.overview}`)}
                   />
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
 
               {canManagePermissions ? (
-                <NavSection title={t('nav.access')}>
+                <SettingsNavSection title={t('nav.access')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
                     tab="permissions"
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
-                    icon={<ShieldFillIcon className="size-4 shrink-0" />}
+                    icon={<ShieldFillIcon />}
                     label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.permissions}`)}
                   />
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
 
               {canManageWebhooks ? (
-                <NavSection title={t('nav.tools')}>
+                <SettingsNavSection title={t('nav.tools')}>
                   <SettingsNavLink
                     hostChannelId={hostChannelId}
                     channelId={channelId}
                     tab="webhooks"
                     activeTab={effectiveTab}
                     highlightMessageId={highlightMessageId}
-                    icon={<LinkIcon className="size-4 shrink-0" />}
+                    icon={<LinkIcon />}
                     label={t(`tabs.${CHANNEL_SETTINGS_TAB_LABELS.webhooks}`)}
                   />
-                </NavSection>
+                </SettingsNavSection>
               ) : null}
-            </nav>
-          </ScrollArea>
-        </div>
-      </aside>
-
-      <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        </>
+      }
+    >
         <DraftProvider>
           {effectiveTab === 'permissions' ? (
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -337,25 +305,6 @@ export function ChannelSettingsPage({
             </div>
           )}
         </DraftProvider>
-      </div>
-
-      <div aria-hidden className="min-w-0" />
-
-      <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 sm:right-6 lg:right-8">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="size-9 rounded-full"
-          onClick={closeSettings}
-        >
-          <XIcon className="size-4" />
-          <span className="sr-only">{t('close')}</span>
-        </Button>
-        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          esc
-        </span>
-      </div>
-    </div>
+    </SettingsPageShell>
   )
 }

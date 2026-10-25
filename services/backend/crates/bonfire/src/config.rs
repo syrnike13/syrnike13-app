@@ -147,6 +147,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                 emojis: false,
                 voice_states: false,
                 voice_calls: false,
+                activities: false,
                 user_settings: Vec::new(),
                 channel_unreads: false,
                 policy_changes: false,
@@ -183,6 +184,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                                 "emojis" => ready_payload_fields.emojis = true,
                                 "voice_states" => ready_payload_fields.voice_states = true,
                                 "voice_calls" => ready_payload_fields.voice_calls = true,
+                                "activities" => ready_payload_fields.activities = true,
                                 "channel_unreads" => ready_payload_fields.channel_unreads = true,
                                 "user_settings" => {
                                     if let Some(subkey) = captures.get(1) {

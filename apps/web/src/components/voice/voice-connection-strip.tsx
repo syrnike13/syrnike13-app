@@ -106,6 +106,7 @@ export function VoiceConnectionStrip() {
             title={pingLabel}
             contentClassName={pingTooltipClass}
           >
+              {/* eslint-disable-next-line design/no-lookalike -- signal chip tinted by connection quality */}
               <PopoverTrigger render={<button
                   type="button"
                   className={cn(
@@ -158,7 +159,7 @@ export function VoiceConnectionStrip() {
           type="button"
           size="icon"
           variant="ghost"
-          className="size-8 shrink-0 text-destructive hover:text-destructive"
+          className="shrink-0 text-destructive hover:text-destructive"
           aria-label={t('disconnect')}
           onClick={voice.leave}
         >

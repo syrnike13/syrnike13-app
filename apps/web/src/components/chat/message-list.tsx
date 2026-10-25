@@ -5,19 +5,18 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
   type RefObject,
   type UIEvent,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { ChevronDownIcon, MessageSquareIcon } from '#/components/icons'
+import { ChevronDownIcon } from '#/components/icons'
 
-import { MessageDateDivider } from '#/components/chat/message-date-divider'
 import { MessageRow } from '#/components/chat/message-row'
-import { MessageUnreadDivider } from '#/components/chat/message-unread-divider'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@syrnike13/ui/primitives/empty'
+import { MessageDivider } from '@syrnike13/ui/primitives/message'
 import {
   MessageScroller,
   MessageScrollerContent,
@@ -50,8 +49,12 @@ type MessageListProps = {
   scrollPaddingBottom?: number
   /** На сколько пикселей поднять нижнюю границу overlay-скроллбара. */
   scrollbarInsetBottom?: number
-  /** Подсветить сообщение в ленте (ответ, deep link). */
+  /** Подсветить сообщение без прокрутки (цель ответа в композере). */
   highlightMessageId?: string
+  /** Прокрутить к сообщению и кратко подсветить его (deep link, цитата). */
+  jumpMessageId?: string
+  /** Начало истории канала: показывается над первым сообщением. */
+  intro?: ReactNode
   messages: Message[]
   users: Record<string, User>
   currentUserId?: string
@@ -213,6 +216,7 @@ function ChatScrollbar({
       }
       aria-hidden="true"
     >
+      {/* eslint-disable-next-line design/no-lookalike -- drag thumb of the custom chat scrollbar */}
       <div
         className="pointer-events-auto absolute right-0.5 top-(--chat-scroll-thumb-top) h-(--chat-scroll-thumb-height) w-1 cursor-grab rounded-full bg-foreground/25 transition-colors hover:bg-foreground/40 active:cursor-grabbing"
         style={
@@ -269,6 +273,8 @@ function MessageListBody({
   scrollPaddingBottom,
   scrollbarInsetBottom = 0,
   highlightMessageId,
+  jumpMessageId,
+  intro,
   messages,
   users,
   currentUserId,
@@ -329,19 +335,28 @@ function MessageListBody({
     [scroller],
   )
 
+  const [flashMessageId, setFlashMessageId] = useState<string | null>(null)
+  const jumpedRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (highlightMessageId == null) return
+    if (jumpMessageId == null) {
+      jumpedRef.current = null
+      return
+    }
+    if (jumpedRef.current === jumpMessageId) return
 
     let frame = 0
     let attempts = 0
 
     const run = () => {
       if (
-        scroller.scrollToMessage(highlightMessageId, {
+        scroller.scrollToMessage(jumpMessageId, {
           align: 'center',
           behavior: 'smooth',
         })
       ) {
+        jumpedRef.current = jumpMessageId
+        setFlashMessageId(jumpMessageId)
         return
       }
       attempts += 1
@@ -352,7 +367,13 @@ function MessageListBody({
 
     run()
     return () => cancelAnimationFrame(frame)
-  }, [highlightMessageId, messages.length, scroller])
+  }, [jumpMessageId, messages.length, scroller])
+
+  useEffect(() => {
+    if (flashMessageId == null) return
+    const timer = window.setTimeout(() => setFlashMessageId(null), 2000)
+    return () => window.clearTimeout(timer)
+  }, [flashMessageId])
 
   const loadOlderIfNeeded = useCallback(() => {
     if (loadGuardRef.current || loadingOlder || !hasOlder || messages.length === 0) {
@@ -408,38 +429,27 @@ function MessageListBody({
       : undefined,
   }
 
-  if (messages.length === 0) {
-    return (
-      <div
-        className="relative flex h-0 min-h-0 flex-1 flex-col"
-        style={scrollVars}
-      >
-        <Empty className="h-full pb-(--scroll-padding)">
-          <EmptyMedia variant="icon">
-            <MessageSquareIcon />
-          </EmptyMedia>
-          <EmptyTitle>{t('noMessages')}</EmptyTitle>
-          <EmptyDescription>{t('noMessagesHint')}</EmptyDescription>
-        </Empty>
-      </div>
-    )
-  }
-
   return (
     <TooltipProvider delay={300}>
       <MessageScroller className="min-h-0 flex-1" style={scrollVars}>
+        {/* eslint-disable-next-line design/no-restyle -- the feed hides the native scrollbar and draws its own overlay one */}
         <MessageScrollerViewport
           ref={viewportRef}
           aria-label={t('messagesLabel')}
           className="chat-feed-scroll"
           onScroll={handleScroll}
         >
-          <MessageScrollerContent className="flex flex-col gap-0 pt-4 pb-(--scroll-padding)">
+          <MessageScrollerContent className="pt-4 pb-(--scroll-padding)">
+            {intro && !hasOlder ? (
+              <MessageScrollerItem className="min-w-0">{intro}</MessageScrollerItem>
+            ) : null}
             {feedItems.map((item) => {
               if (item.type === 'date') {
                 return (
                   <MessageScrollerItem key={item.key} className="min-w-0">
-                    <MessageDateDivider label={item.dateLabel} />
+                    <MessageDivider aria-label={item.dateLabel}>
+                      {item.dateLabel}
+                    </MessageDivider>
                   </MessageScrollerItem>
                 )
               }
@@ -447,7 +457,9 @@ function MessageListBody({
               if (item.type === 'unread') {
                 return (
                   <MessageScrollerItem key={item.key} className="min-w-0">
-                    <MessageUnreadDivider label={t('newMessages')} />
+                    <MessageDivider variant="unread" aria-label={t('newMessages')}>
+                      {t('newMessagesShort')}
+                    </MessageDivider>
                   </MessageScrollerItem>
                 )
               }
@@ -463,8 +475,8 @@ function MessageListBody({
                     message={item.message}
                     compact={item.compact}
                     highlighted={
-                      highlightMessageId != null &&
-                      item.message._id === highlightMessageId
+                      item.message._id === highlightMessageId ||
+                      item.message._id === flashMessageId
                     }
                     {...rowProps}
                   />
@@ -504,7 +516,7 @@ function MessageJumpButton() {
   return (
     <div
       className={cn(
-        'absolute bottom-(--jump-offset) left-1/2 z-10 -translate-x-1/2 rounded-full shadow-md transition-all duration-200',
+        'absolute bottom-(--jump-offset) left-1/2 z-10 -translate-x-1/2 transition-all duration-200',
         end
           ? 'pointer-events-auto translate-y-0 opacity-100'
           : 'pointer-events-none translate-y-2 opacity-0',
@@ -515,11 +527,11 @@ function MessageJumpButton() {
         type="button"
         variant="secondary"
         size="sm"
-        className="gap-1 rounded-full px-3"
+        shape="circle"
         tabIndex={end ? 0 : -1}
         onClick={() => scroller.scrollToEnd({ behavior: 'smooth' })}
       >
-        <ChevronDownIcon className="size-4" />
+        <ChevronDownIcon />
         {t('jumpToPresent')}
       </Button>
     </div>

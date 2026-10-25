@@ -1,4 +1,6 @@
 import {
+  RiArrowLeftLine,
+  RiArrowRightLine,
   RiCheckDoubleLine,
   RiEmotionAddLine,
   RiEmotionHappyLine,
@@ -80,4 +82,15 @@ export const CheckCheckIcon = defineIcon(RiCheckDoubleLine, {
 export const PlayIcon = defineIcon(RiPlayFill, {
   pack: 'remixicon',
   name: 'RiPlayFill',
+})
+
+/** System rows: member joined / left. */
+export const ArrowRightIcon = defineIcon(RiArrowRightLine, {
+  pack: 'remixicon',
+  name: 'RiArrowRightLine',
+})
+
+export const ArrowLeftIcon = defineIcon(RiArrowLeftLine, {
+  pack: 'remixicon',
+  name: 'RiArrowLeftLine',
 })

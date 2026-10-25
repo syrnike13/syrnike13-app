@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { XIcon } from '#/components/icons'
 
@@ -47,7 +46,6 @@ export function UserGlobalProfileDialog({
   onOpenChange,
 }: UserGlobalProfileDialogProps) {
   const t = useTranslations('users')
-  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -91,7 +89,6 @@ export function UserGlobalProfileDialog({
               search: { m: undefined },
             })
           },
-          t,
         ),
       )
     } catch {
@@ -106,7 +103,7 @@ export function UserGlobalProfileDialog({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      await Effect.runPromise(blockUserRelationship(token, user._id))
       setBlockOpen(false)
       close()
     } catch {
@@ -121,7 +118,7 @@ export function UserGlobalProfileDialog({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await Effect.runPromise(unblockBlockedUser(token, user._id, tf))
+      await Effect.runPromise(unblockBlockedUser(token, user._id))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -132,9 +129,7 @@ export function UserGlobalProfileDialog({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success(t('idCopied'))
     } catch {
-      toast.error(t('copyError'))
     }
   }
 
@@ -172,15 +167,16 @@ export function UserGlobalProfileDialog({
               type="button"
               variant="secondary"
               size="icon"
-              className="absolute top-2 right-2 z-30 size-8"
+              shape="circle"
+              className="absolute top-3 right-3 z-30"
             />
           }
         >
-          <XIcon className="size-4" />
+          <XIcon />
           <span className="sr-only">{t('close')}</span>
         </DialogClose>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:flex-row sm:gap-0 sm:overflow-hidden sm:p-0 sm:pt-12 sm:pr-8 sm:pl-12">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:flex-row sm:gap-0 sm:overflow-hidden sm:p-8">
           <aside className="flex min-h-0 w-full shrink-0 flex-col sm:h-full sm:w-100">
             <UserGlobalProfileSidebar
               user={user}

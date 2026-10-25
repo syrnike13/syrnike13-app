@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Channel, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
-import { toast } from 'sonner'
 
 import { LogOutIcon, SettingsIcon, UserMinusIcon } from '#/components/icons'
 import {
@@ -12,11 +11,8 @@ import {
 } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { UserAvatar } from '#/components/user/user-avatar'
-import {
-  Button,
-  buttonVariants,
-} from '@syrnike13/ui/primitives/button'
-import { cn } from '#/lib/utils'
+import { useImageCropper } from '#/components/media/image-crop-dialog'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,7 +47,6 @@ import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 type GroupChannel = Extract<Channel, { channel_type: 'Group' }>
 
@@ -93,6 +88,18 @@ function GroupManagementDialogContent({
     channel.description ?? '',
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
+  const iconInputRef = useRef<HTMLInputElement>(null)
+  const { cropImage, cropDialog } = useImageCropper()
+  const [iconFilePreview, setIconFilePreview] = useState<string | null>(null)
+  useEffect(() => {
+    if (!iconFile) {
+      setIconFilePreview(null)
+      return
+    }
+    const url = URL.createObjectURL(iconFile)
+    setIconFilePreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [iconFile])
   const [removeIcon, setRemoveIcon] = useState(false)
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -124,11 +131,8 @@ function GroupManagementDialogContent({
           setMembers(found)
         }),
       ),
-      Effect.catch((error) =>
+      Effect.catch(() =>
         Effect.sync(() => {
-          toast.error(
-            apiErrorMessage(error, t('membersLoadError')),
-          )
         }),
       ),
       Effect.ensuring(
@@ -181,7 +185,6 @@ function GroupManagementDialogContent({
     if (!token) return false
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error(t('nameRequired'))
       return false
     }
 
@@ -222,14 +225,10 @@ function GroupManagementDialogContent({
           setSavedDescription(updated.description ?? '')
           setIconFile(null)
           setRemoveIcon(false)
-          toast.success(t('updated'))
         })
       }).pipe(
         Effect.match({
-          onFailure: (error) => {
-            toast.error(
-              apiErrorMessage(error, t('saveError')),
-            )
+          onFailure: () => {
             return false
           },
           onSuccess: () => true,
@@ -271,16 +270,11 @@ function GroupManagementDialogContent({
         })
         yield* refreshMembers()
         yield* Effect.sync(() =>
-          toast.success(
-            t('memberAdded', { name: user.display_name ?? user.username }),
-          ),
+          {},
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('addError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),
@@ -303,14 +297,10 @@ function GroupManagementDialogContent({
             setMembers((current) =>
               current.filter((item) => item._id !== user._id),
             )
-            toast.success(t('memberRemoved'))
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('removeError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),
@@ -326,14 +316,10 @@ function GroupManagementDialogContent({
         Effect.tap((updated) =>
           Effect.sync(() => {
             syncStore.upsertChannel(updated)
-            toast.success(t('ownerChanged'))
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('transferError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),
@@ -369,11 +355,8 @@ function GroupManagementDialogContent({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('leaveError')),
-            )
             setBusy(false)
           }),
         ),
@@ -391,7 +374,6 @@ function GroupManagementDialogContent({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-8"
           title={t('settings')}
           aria-label={t('settings')} />}>
           <SettingsIcon className="size-4" />
@@ -409,8 +391,8 @@ function GroupManagementDialogContent({
             <h3 className="text-sm font-semibold">{t('profile')}</h3>
             <div className="flex items-center gap-3">
               <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
-                {iconFile ? (
-                  <span className="px-2 text-center text-xs">{iconFile.name}</span>
+                {iconFilePreview ? (
+                  <img src={iconFilePreview} alt={t('iconAlt')} className="size-full object-cover" />
                 ) : currentIconUrl ? (
                   <img src={currentIconUrl} alt={t('iconAlt')} className="size-full object-cover" />
                 ) : (
@@ -418,24 +400,32 @@ function GroupManagementDialogContent({
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <label
-                  className={cn(
-                    buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'cursor-pointer',
-                  )}
+                <input
+                  ref={iconInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (!file) return
+                    cropImage(file, { kind: 'circle' }, (cropped) => {
+                      setIconFile(cropped)
+                      setRemoveIcon(false)
+                    })
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => iconInputRef.current?.click()}
                 >
                   {t('uploadIcon')}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    disabled={busy}
-                    onChange={(event) => {
-                      setIconFile(event.target.files?.[0] ?? null)
-                      setRemoveIcon(false)
-                    }}
-                  />
-                </label>
+                </Button>
+                {cropDialog}
                 {channel.icon || iconFile ? (
                   <Button
                     type="button"

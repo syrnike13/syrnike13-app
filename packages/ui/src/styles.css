@@ -23,3 +23,84 @@
   --color-on-media: var(--on-media);
   --color-media-backdrop: var(--media-backdrop);
 }
+
+/*
+ * Avatar badges (not in base-nova), like Discord: a status dot or an unread
+ * count sits in the avatar's corner with the right end of the badge centred
+ * at 85% of the avatar, and the avatar is cut out around the badge's pill, so
+ * the badge reads as part of the avatar on any background.
+ *
+ * Geometry comes from `--avatar-badge-size` (height), `--avatar-badge-width`
+ * (defaults to the height, a circle) and `--avatar-badge-gap`. The cutout is
+ * the union of the pill's two end circles and the band between them,
+ * subtracted from the avatar. Masks only use alpha: `currentColor` = opaque.
+ */
+@utility avatar-badge-cutout {
+  --avatar-badge-cut: calc(var(--avatar-badge-size) / 2 + var(--avatar-badge-gap));
+  --avatar-badge-span: calc(
+    var(--avatar-badge-width, var(--avatar-badge-size)) - var(--avatar-badge-size)
+  );
+  mask-image:
+    linear-gradient(currentColor 0 0),
+    radial-gradient(
+      circle at calc(85% - var(--avatar-badge-span)) 85%,
+      currentColor var(--avatar-badge-cut),
+      transparent calc(var(--avatar-badge-cut) + 0.5px)
+    ),
+    radial-gradient(
+      circle at 85% 85%,
+      currentColor var(--avatar-badge-cut),
+      transparent calc(var(--avatar-badge-cut) + 0.5px)
+    ),
+    linear-gradient(currentColor 0 0);
+  mask-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    var(--avatar-badge-span) calc(2 * var(--avatar-badge-cut));
+  /* A percentage offsets by (box - layer); these terms land the band between
+     the two end circles. */
+  mask-position:
+    0 0,
+    0 0,
+    0 0,
+    calc(85% - 0.15 * var(--avatar-badge-span))
+      calc(85% + 0.7 * var(--avatar-badge-cut));
+  mask-repeat: no-repeat;
+  mask-composite: exclude, add, add, add;
+}
+
+/* Badge box: right end centred at 85% of the avatar, growing to the left. */
+@utility avatar-badge-anchor {
+  right: calc(15% - var(--avatar-badge-size) / 2);
+  bottom: calc(15% - var(--avatar-badge-size) / 2);
+  width: var(--avatar-badge-width, var(--avatar-badge-size));
+  height: var(--avatar-badge-size);
+  font-size: var(--avatar-badge-font, inherit);
+}
+
+/* Status shapes carved out of the dot: moon, no-entry bar and hollow ring. */
+@utility avatar-presence-dot {
+  &[data-presence='idle'] {
+    mask-image: radial-gradient(
+      circle at 20% 20%,
+      transparent 37%,
+      currentColor 38%
+    );
+  }
+
+  &[data-presence='dnd'] {
+    mask-image:
+      linear-gradient(currentColor 0 0), linear-gradient(currentColor 0 0);
+    mask-size:
+      100% 100%,
+      62% 24%;
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-composite: exclude;
+  }
+
+  &[data-presence='offline'] {
+    mask-image: radial-gradient(circle, transparent 32%, currentColor 33%);
+  }
+}

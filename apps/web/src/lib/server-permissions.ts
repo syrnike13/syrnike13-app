@@ -5,6 +5,7 @@ import {
   permissionOr,
 } from '#/lib/permission-bits'
 import { ServerPermission } from '#/features/authorization/permission-bits.generated'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 
 export { ServerPermission }
 
@@ -97,6 +98,14 @@ export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
       { flag: ServerPermission.MuteMembers, labelKey: 'labels.muteMembers' },
       { flag: ServerPermission.DeafenMembers, labelKey: 'labels.deafenMembers' },
       { flag: ServerPermission.MoveMembers, labelKey: 'labels.moveMembers' },
+      ...(uiFeatureFlags.channelActivities
+        ? [
+            {
+              flag: ServerPermission.UseActivities,
+              labelKey: 'labels.useActivities',
+            },
+          ]
+        : []),
     ],
   },
 ]

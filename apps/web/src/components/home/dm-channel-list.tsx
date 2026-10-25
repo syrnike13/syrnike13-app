@@ -3,7 +3,11 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@syrnike13/ui/primitives/sidebar'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -17,6 +21,7 @@ import {
 } from '#/features/sync/voice-call-utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type DmChannelListProps = {
   activeChannelId?: string
@@ -28,6 +33,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   const tVoice = useTranslations('layout.voice')
   const tChannel = useTranslations('channels.channelItem')
   const tChat = useTranslations('chat')
+  const tSidebar = useTranslations('home.sidebar')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
   const syncState = useSyncStore((s) => s)
@@ -45,95 +51,98 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
 
   if (dmChannels.length === 0) {
     return (
-      <p className={cn('px-2 py-2 text-xs text-muted-foreground', className)}>
-        {t('empty')}
-      </p>
+      <Empty size="sm" className={className}>
+        <EmptyDescription>{t('empty')}</EmptyDescription>
+      </Empty>
     )
   }
 
   return (
-    <nav className={cn('flex flex-col gap-0.5', className)}>
-      {dmChannels.map((channel) => {
-        const label = getChannelLabel(channel, users, auth.user?._id, tChat)
-        const active = channel._id === activeChannelId
-        const notificationBadge = selectChannelNotificationBadge(
-          syncState,
-          channel,
-        )
-        const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
-        const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
-        const voiceCall = syncState.voiceCalls[channel._id]
-        const voiceCallRingingDismissed = isVoiceCallRingingDismissed(
-          voiceCall,
-          syncState.dismissedVoiceCallKeys,
-        )
-        const incomingVoiceCall =
-          !voiceCallRingingDismissed &&
-          isIncomingVoiceCall(voiceCall, auth.user?._id)
-        const voiceCallMarkerTitle =
-          voiceCall?.phase === 'active'
-            ? tVoice('activeCall')
-            : incomingVoiceCall
-              ? tVoice('incomingCall')
-              : null
-
-        return (
-          <Link
-            key={channel._id}
-            to={`${prefix}/c/$channelId`}
-            params={{ channelId: channel._id }}
-            search={{ m: undefined }}
-            data-avatar-hover-scope=""
-            className={cn(
-              buttonVariants({
-                variant: active ? 'secondary' : 'ghost',
-              }),
-              'h-11 justify-start gap-2.5 px-2.5 text-base font-normal',
-            )}
-          >
-              {dmUser ? (
-                <UserAvatar
-                  user={dmUser}
-                  className="size-8"
-                  fallbackClassName="size-8 text-xs"
-                  hoverScope="parent"
-                />
-              ) : channel.channel_type === 'Group' ? (
-                channel.icon ? (
-                  <img
-                    src={attachmentPreviewUrl(channel.icon)}
-                    alt=""
-                    className="size-8 shrink-0 rounded-md object-cover"
+    <nav aria-label={tSidebar('directMessages')} className={className}>
+      <SidebarMenu>
+        {dmChannels.map((channel) => {
+          const label = getChannelLabel(channel, users, auth.user?._id, tChat)
+          const active = channel._id === activeChannelId
+          const notificationBadge = selectChannelNotificationBadge(
+            syncState,
+            channel,
+          )
+          const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
+          const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
+          const voiceCall = syncState.voiceCalls[channel._id]
+          const voiceCallRingingDismissed = isVoiceCallRingingDismissed(
+            voiceCall,
+            syncState.dismissedVoiceCallKeys,
+          )
+          const incomingVoiceCall =
+            !voiceCallRingingDismissed &&
+            isIncomingVoiceCall(voiceCall, auth.user?._id)
+          const voiceCallMarkerTitle =
+            voiceCall?.phase === 'active'
+              ? tVoice('activeCall')
+              : incomingVoiceCall
+                ? tVoice('incomingCall')
+                : null
+  
+          return (
+            <SidebarMenuItem key={channel._id}>
+              <SidebarMenuButton
+                size="lg"
+                isActive={active}
+                data-avatar-hover-scope=""
+                render={
+                  <Link
+                    to={`${prefix}/c/$channelId`}
+                    params={{ channelId: channel._id }}
+                    search={{ m: undefined }}
                   />
+                }
+              >
+                {dmUser ? (
+                  <UserAvatar
+                    user={dmUser}
+                    className="size-8"
+                    fallbackClassName="size-8 text-xs"
+                    hoverScope="parent"
+                  />
+                ) : channel.channel_type === 'Group' ? (
+                  channel.icon ? (
+                    <img
+                      src={attachmentPreviewUrl(channel.icon)}
+                      alt=""
+                      className="size-8 shrink-0 rounded-md object-cover"
+                    />
+                  ) : (
+                    <span
+                      title={tChannel('groupChat')}
+                      className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
+                    >
+                      <UsersIcon aria-hidden="true" className="size-5" />
+                    </span>
+                  )
                 ) : (
+                  <HashIcon className="size-5 shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {voiceCallMarkerTitle ? (
                   <span
-                    title={tChannel('groupChat')}
-                    className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
+                    title={voiceCallMarkerTitle}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3"
                   >
-                    <UsersIcon aria-hidden="true" className="size-5" />
+                    <HeadphonesIcon aria-hidden="true" className="size-4" />
                   </span>
-                )
-              ) : (
-                <HashIcon className="size-5 shrink-0 text-muted-foreground" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{label}</span>
-              {voiceCallMarkerTitle ? (
-                <span
-                  title={voiceCallMarkerTitle}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3"
-                >
-                  <HeadphonesIcon aria-hidden="true" className="size-4" />
-                </span>
-              ) : null}
-              {!active ? (
-                <NotificationBadge
-                  badge={notificationBadge}
-                  mode={notificationBadge.urgent ? 'count' : 'dot'}
-                />
-              ) : null}
-            </Link>
-        )
-      })}
+                ) : null}
+                {!active ? (
+                  <NotificationBadge
+                    badge={notificationBadge}
+                    mode={notificationBadge.urgent ? 'count' : 'dot'}
+                  />
+                ) : null}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )
+        })}
+      </SidebarMenu>
     </nav>
   )
 }

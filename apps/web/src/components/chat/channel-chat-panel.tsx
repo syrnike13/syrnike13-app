@@ -4,8 +4,9 @@ import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { Effect } from 'effect'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
-import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
+import { MessageSearch } from '#/components/chat/message-search'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
+import { ChannelIntro } from '#/components/chat/channel-intro'
 import { MessageComposer } from '#/components/chat/message-composer'
 import {
   MessageList,
@@ -56,7 +57,6 @@ export function ChannelChatPanel({
   onClose,
 }: ChannelChatPanelProps) {
   const t = useTranslations('chat')
-  const tf = useTranslations('friends')
   const tu = useTranslations('users')
   const [composerHeight, setComposerHeight] = useState(56)
   const [blockUserId, setBlockUserId] = useState<string | null>(null)
@@ -85,7 +85,8 @@ export function ChannelChatPanel({
     jumpToMessage,
     replyTo,
     editingMessage,
-    listHighlightMessageId,
+    jumpMessageId,
+    editLastOwnMessage,
     notifyTyping,
     stopTyping,
   } = chat
@@ -94,11 +95,9 @@ export function ChannelChatPanel({
     return (
       <aside className="theme-surface-content gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider text-card-foreground">
         <PanelHeader title={t('panelChat')} onClose={onClose} />
-        <div className="flex flex-1 items-center justify-center px-6">
-          <Empty>
-            <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
-          </Empty>
-        </div>
+        <Empty size="page">
+          <EmptyDescription>{t('channelNotFound')}</EmptyDescription>
+        </Empty>
       </aside>
     )
   }
@@ -139,10 +138,11 @@ export function ChannelChatPanel({
               token={token}
               users={users}
             />
-            <ChannelSearchDialog
-              channelId={channelId}
+            <MessageSearch
+              scope={{ kind: 'channel', channelId }}
               token={token}
               users={users}
+              variant="icon"
             />
           </>
         ) : null}
@@ -164,7 +164,17 @@ export function ChannelChatPanel({
           scrollbarInsetBottom={
             composerHeight / 2 + FLOATING_BAR_BOTTOM_OFFSET_PX
           }
-          highlightMessageId={listHighlightMessageId}
+          highlightMessageId={replyTo?._id ?? editingMessage?._id}
+          jumpMessageId={jumpMessageId}
+          intro={
+            channel ? (
+              <ChannelIntro
+                channel={channel}
+                users={users}
+                currentUserId={auth.user?._id}
+              />
+            ) : null
+          }
           messages={messages}
           users={users}
           currentUserId={auth.user?._id}
@@ -236,7 +246,6 @@ export function ChannelChatPanel({
           <MessageComposer
             channel={channel}
             users={users}
-            floating
             onHeightChange={setComposerHeight}
             disabled={
               !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
@@ -246,6 +255,7 @@ export function ChannelChatPanel({
             replyTo={replyTo}
             editingMessage={editingMessage}
             onCancelAction={() => setComposerAction(null)}
+            onEditLast={editLastOwnMessage}
             onTyping={notifyTyping}
             onStopTyping={stopTyping}
             onSend={async (input) => {
@@ -299,7 +309,7 @@ export function ChannelChatPanel({
               const userId = blockUserId
               setBlockUserId(null)
               Effect.runFork(
-                blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+                blockUserRelationship(token, userId).pipe(Effect.ignore),
               )
             }}
           >
@@ -333,7 +343,7 @@ function PanelHeader({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-8 shrink-0"
+        className="shrink-0"
         title={t('closeChat')}
         onClick={onClose}
       >

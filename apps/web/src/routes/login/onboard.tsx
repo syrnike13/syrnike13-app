@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { useEffect, useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -21,7 +20,6 @@ import { useAuth } from '#/features/auth/auth-context'
 import { usernameSchema, validateForm } from '#/features/auth/schemas'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadPersistedSessionEffect } from '#/lib/session'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/onboard')({
   beforeLoad: async () => {
@@ -37,7 +35,6 @@ export const Route = createFileRoute('/login/onboard')({
 
 function OnboardPage() {
   const t = useTranslations('auth')
-  const tValidation = useTranslations('validation')
   const auth = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
@@ -65,7 +62,6 @@ function OnboardPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(usernameSchema, value.username)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'usernameMin'))
         return
       }
 
@@ -74,9 +70,6 @@ function OnboardPage() {
         await Effect.runPromise(auth.completeOnboarding(parsed.data))
         void navigate({ to: postLoginPath(false), replace: true })
       } catch (error) {
-        toast.error(
-          apiErrorMessage(error, t('onboard.error')),
-        )
       } finally {
         setSubmitting(false)
       }
@@ -110,7 +103,6 @@ function OnboardPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="onboard-username">{t('onboard.username')}</Label>
                   <Input
-                    className="auth-input"
                     id="onboard-username"
                     autoComplete="username"
                     autoCapitalize="none"
@@ -125,7 +117,7 @@ function OnboardPage() {
             </form.Field>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}

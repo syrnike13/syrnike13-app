@@ -56,7 +56,7 @@
   --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --shell-sidebar-width: 15rem;
   --page-padding-x: 1.25rem;
   --page-padding-y: 1.25rem;
@@ -95,6 +95,8 @@
   --color-surface-raised-foreground: var(--surface-raised-foreground);
   --color-disabled-foreground: var(--disabled-foreground);
   --color-ring: var(--ring);
+  --color-on-media: var(--on-media);
+  --color-media-backdrop: var(--media-backdrop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -108,10 +110,14 @@
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
+  /* Discord radius scale: 4 / 8 / 12 / 16 / 24px. Controls, popovers and
+     list rows use 8px; dialogs 12–16px. */
   --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 16px);
 }
 
 html,

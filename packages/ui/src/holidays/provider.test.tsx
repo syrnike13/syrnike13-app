@@ -59,7 +59,7 @@ it('ignores a stored dev preview when production does not provide a storage key'
 it('re-checks the date on the refresh interval', () => {
   vi.useFakeTimers()
 
-  let now = new Date(2026, 10, 1, 23, 59)
+  let now = new Date(2026, 10, 3, 23, 59)
   render(
     <HolidayProvider now={() => now} refreshIntervalMs={1000}>
       <ActiveHoliday />
@@ -68,7 +68,7 @@ it('re-checks the date on the refresh interval', () => {
 
   expect(screen.getByText('halloween')).not.toBeNull()
 
-  now = new Date(2026, 10, 2, 0, 1)
+  now = new Date(2026, 10, 4, 0, 1)
   act(() => {
     vi.advanceTimersByTime(1000)
   })

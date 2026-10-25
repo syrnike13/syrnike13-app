@@ -11,7 +11,6 @@ import {
   Trash2Icon,
   XIcon,
 } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -38,7 +37,6 @@ import {
   editWebhookEffect,
   fetchChannelWebhooksEffect,
 } from '#/features/api/channels-api'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { config } from '#/lib/config'
 
@@ -76,11 +74,8 @@ export function ChannelSettingsWebhooksPanel({
     const fiber = Effect.runFork(
       fetchChannelWebhooksEffect(sessionToken, channel._id).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('loadError')),
-              )
               setLoading(false)
             }),
           onSuccess: (nextWebhooks) =>
@@ -107,7 +102,6 @@ export function ChannelSettingsWebhooksPanel({
 
     const trimmedName = name.trim()
     if (!token || !trimmedName) {
-      toast.error(t('nameRequired'))
       return
     }
 
@@ -120,14 +114,10 @@ export function ChannelSettingsWebhooksPanel({
           Effect.sync(() => {
             setWebhooks((current) => [webhook, ...current])
             setName('')
-            toast.success(t('created'))
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setCreating(false))),
@@ -150,14 +140,10 @@ export function ChannelSettingsWebhooksPanel({
               ),
             )
             setWebhookPendingDeletion(null)
-            toast.success(t('deleted'))
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingId(null))),
@@ -183,7 +169,6 @@ export function ChannelSettingsWebhooksPanel({
 
     const trimmedName = editingName.trim()
     if (!token || !trimmedName) {
-      toast.error(t('nameRequired'))
       return
     }
 
@@ -209,14 +194,10 @@ export function ChannelSettingsWebhooksPanel({
               ),
             )
             cancelRename()
-            toast.success(t('updated'))
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('updateError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingId(null))),
@@ -231,14 +212,11 @@ export function ChannelSettingsWebhooksPanel({
     await Effect.runPromise(
       writeClipboardTextEffect(url).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('copyError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -287,7 +265,7 @@ export function ChannelSettingsWebhooksPanel({
         {loading ? (
           <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : sortedWebhooks.length === 0 ? (
-          <Empty className="py-6">
+          <Empty>
             <EmptyDescription>{t('empty')}</EmptyDescription>
           </Empty>
         ) : (

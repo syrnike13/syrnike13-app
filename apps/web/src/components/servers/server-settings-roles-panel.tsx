@@ -24,7 +24,6 @@ import {
   Trash2Icon,
 } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -74,16 +73,18 @@ import {
 import { roleIconUrl } from '#/lib/media'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 
 const ROLE_SIDEBAR_ROW_BASE =
-  'flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors'
+  'flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors'
 
 function roleSidebarRowStateClass(selected: boolean) {
   return selected
-    ? 'border-primary/40 bg-accent text-foreground'
-    : 'border-border text-foreground hover:bg-muted/40'
+    ? 'bg-selection text-selection-foreground'
+    : 'text-foreground hover:bg-hover'
 }
 
 type ServerSettingsRolesPanelProps = {
@@ -138,16 +139,17 @@ function SortableRoleListItem({
     disabled: !canDrag,
   })
 
-  /* eslint-disable shadcn/no-inline-styles */
-  // @dnd-kit owns the sortable transform, transition and z-index.
   const style = {
+    // eslint-disable-next-line shadcn/no-inline-styles -- @dnd-kit owns the sortable transform
     transform: CSS.Transform.toString(transform),
+    // eslint-disable-next-line shadcn/no-inline-styles -- @dnd-kit owns the drop transition
     transition,
+    // eslint-disable-next-line shadcn/no-inline-styles -- lifts the dragged row above its siblings
     zIndex: isDragging ? 1 : undefined,
   }
-  /* eslint-enable shadcn/no-inline-styles */
 
   const row = (
+    // eslint-disable-next-line design/no-lookalike -- sortable role row (role=button) owned by @dnd-kit
     <div
       ref={setNodeRef}
       style={style}
@@ -209,9 +211,10 @@ function SortableRoleListItem({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button
+              <Button
                 type="button"
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t('roleActions', { name: role.name })}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -387,7 +390,6 @@ function DefaultPermissionsEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] default permissions save failed', error)
-            toast.error(t('savePermissionsError'))
             return false
           }),
         ),
@@ -436,13 +438,14 @@ function DefaultPermissionsEditor({
                 return (
                   <li
                     key={permission.flag}
-                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-hover"
                   >
                     <span className="text-sm">{tp(permission.labelKey)}</span>
                     <PermissionStateButton
                       label={tp(permission.labelKey)}
                       state={enabled ? 'allow' : 'neutral'}
                       allowedStates={['neutral', 'allow']}
+                      mode="switch"
                       disabled={!canEdit || (!actorHasPermission && !enabled)}
                       onChange={(next) =>
                         setPermissions((current) => {
@@ -564,7 +567,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] create failed', error)
-            toast.error(t('createRoleError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setCreating(false))),
@@ -622,7 +624,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] delete failed', error)
-            toast.error(t('deleteRoleError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingRole(false))),
@@ -651,7 +652,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] reorder failed', error)
-            toast.error(t('reorderError'))
           }),
         ),
         Effect.ensuring(
@@ -675,7 +675,7 @@ export function ServerSettingsRolesPanel({
         {canCreateRoles ? (
           <Button
             type="button"
-            className="h-9 w-full shrink-0"
+            className="w-full shrink-0"
             disabled={creating || reordering}
             onClick={() => void createRole()}
           >
@@ -686,21 +686,18 @@ export function ServerSettingsRolesPanel({
 
         <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24 max-lg:max-h-56">
           <div className="space-y-2 pr-2">
-            <button
-              type="button"
-              className={cn(
-                ROLE_SIDEBAR_ROW_BASE,
-                roleSidebarRowStateClass(
-                  effectiveSelectedId === DEFAULT_PERMISSIONS_ID,
-                ),
-              )}
+            <SidebarMenuButton
+              size="lg"
+              isActive={effectiveSelectedId === DEFAULT_PERMISSIONS_ID}
               onClick={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
             >
               @everyone
-            </button>
+            </SidebarMenuButton>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
+              <Empty size="inline">
+                <EmptyDescription>{t('noRoles')}</EmptyDescription>
+              </Empty>
             ) : (
               <SortableRolesList
                 roles={roles}

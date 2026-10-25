@@ -1,17 +1,22 @@
 import type { Message, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
-import { Button } from '@syrnike13/ui/primitives/button'
+import { EmojiPicker } from '#/components/emoji/emoji-picker'
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
+import { SmilePlusIcon } from '#/components/icons'
+import {
+  MessageReaction,
+  MessageReactionAdd,
+  MessageReactions as MessageReactionsRow,
+} from '@syrnike13/ui/primitives/message'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { SmilePlusIcon } from '#/components/icons'
 
 type MessageReactionsProps = {
   message: Message
   users: Record<string, User>
   currentUserId?: string
+  serverId?: string
   onToggle: (emoji: string, active: boolean) => void
 }
 
@@ -26,7 +31,7 @@ function ReactionEmoji({
     return <CustomEmoji emojiId={emoji} name={emojiName} size="sm" />
   }
   if (emoji.length <= 8) {
-    return <span>{emoji}</span>
+    return <span className="text-base leading-none">{emoji}</span>
   }
   return <span>:{emojiName ?? emoji}:</span>
 }
@@ -35,62 +40,61 @@ export function MessageReactions({
   message,
   users,
   currentUserId,
+  serverId,
   onToggle,
 }: MessageReactionsProps) {
   const t = useTranslations('chat')
   const emojis = useSyncStore((s) => s.emojis)
-  const entries = Object.entries(message.reactions ?? {})
+  const entries = Object.entries(message.reactions ?? {}).filter(
+    ([, userIds]) => userIds.length > 0,
+  )
 
   if (entries.length === 0) {
     return null
   }
 
+  const reacted = (emoji: string) =>
+    currentUserId
+      ? (message.reactions?.[emoji] ?? []).includes(currentUserId)
+      : false
+
   return (
-    <div className="flex flex-wrap gap-1">
+    <MessageReactionsRow>
       {entries.map(([emoji, userIds]) => {
-        const active = currentUserId
-          ? userIds.includes(currentUserId)
-          : false
+        const active = reacted(emoji)
+        const names = userIds
+          .map((id) => users[id]?.display_name ?? users[id]?.username ?? id)
+          .join(', ')
 
         return (
-          <Button
+          <MessageReaction
             key={emoji}
-            type="button"
-            variant={active ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7.5 gap-1 px-1.5 text-sm"
-            onClick={() => onToggle(emoji, active)}
-            title={userIds
-              .map((id) => users[id]?.username ?? id)
-              .join(', ')}
+            pressed={active}
+            onPressedChange={() => onToggle(emoji, active)}
+            title={names}
+            aria-label={t('reactionLabel', {
+              emoji: emojis[emoji]?.name ?? emoji,
+              count: userIds.length,
+            })}
           >
             <ReactionEmoji emoji={emoji} emojiName={emojis[emoji]?.name} />
-            <span className="text-sm tabular-nums text-muted-foreground">
-              {userIds.length}
-            </span>
-          </Button>
+            {userIds.length}
+          </MessageReaction>
         )
       })}
-      <MessageReactionPicker
-        onPick={(emoji) => {
-          const active = currentUserId
-            ? (message.reactions?.[emoji] ?? []).includes(currentUserId)
-            : false
-          onToggle(emoji, active)
-        }}
+      <EmojiPicker
+        serverId={serverId}
         align="start"
+        onPick={(emoji) => onToggle(emoji, reacted(emoji))}
         trigger={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="size-7.5 px-0"
+          <MessageReactionAdd
             title={t('addReaction')}
+            aria-label={t('addReaction')}
           >
-            <SmilePlusIcon className="size-3.5" />
-          </Button>
+            <SmilePlusIcon />
+          </MessageReactionAdd>
         }
       />
-    </div>
+    </MessageReactionsRow>
   )
 }

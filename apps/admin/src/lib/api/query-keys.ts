@@ -4,6 +4,7 @@ export const queryKeys = {
   },
   admin: {
     badges: ['admin', 'badges'] as const,
+    activities: ['admin', 'activities'] as const,
     diagnostics: (filters: Record<string, string | undefined>) =>
       ['admin', 'diagnostics', filters] as const,
     diagnostic: (id: string) => ['admin', 'diagnostics', id] as const,

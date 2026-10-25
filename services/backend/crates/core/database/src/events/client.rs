@@ -134,33 +134,70 @@ pub struct VoiceCall {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ChannelActivityInstance {
+pub struct ActivityParticipant {
+    pub user_id: String,
+    pub joined_at: Timestamp,
+}
+
+/// Running Activity Application in one voice channel (ADR-0011).
+///
+/// Visible to everyone who can see the channel. Shared state and messages are
+/// delivered separately and only to participants.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ActivityInstance {
     pub id: String,
-    pub generation: u64,
     pub application_id: String,
     pub channel_id: String,
+    /// Server id for server channels; `None` for DM and group calls.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_id: Option<String>,
-    pub owner_id: String,
-    pub participant_ids: Vec<String>,
+    /// Increases on every participant or host change. Clients drop older updates.
     pub revision: u64,
-    pub state: Value,
-    pub created_at: Timestamp,
-    pub expires_at: u64,
+    pub host_id: String,
+    /// Ordered by join time; the first entry is the next host candidate.
+    pub participants: Vec<ActivityParticipant>,
+    pub started_by: String,
+    pub started_at: Timestamp,
+}
+
+/// Shared state document of an Activity Instance.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ActivitySharedState {
+    pub instance_id: String,
+    /// Starts at 0 (empty `data`), increases on every accepted write.
+    pub version: u64,
+    pub data: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ChannelActivityErrorCode {
+pub enum ActivityErrorCode {
+    InvalidRequest,
     NotInVoiceChannel,
+    MissingPermission,
     UnknownApplication,
     AlreadyRunning,
     InstanceNotFound,
     NotParticipant,
-    NotOwner,
-    InvalidCommand,
-    InvalidRequest,
+    Full,
+    NotAllowed,
+    PayloadTooLarge,
+    RateLimited,
+    VersionConflict,
     Internal,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityEndReason {
+    /// The host or a channel manager ended it for everyone.
+    Ended,
+    /// The last participant left.
+    Empty,
+    /// The application was disabled or removed from the registry.
+    ApplicationUnavailable,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -182,6 +219,7 @@ pub struct ReadyPayloadFields {
     pub emojis: bool,
     pub voice_states: bool,
     pub voice_calls: bool,
+    pub activities: bool,
     pub user_settings: Vec<String>,
     pub channel_unreads: bool,
     pub policy_changes: bool,
@@ -198,6 +236,7 @@ impl Default for ReadyPayloadFields {
             emojis: true,
             voice_states: true,
             voice_calls: true,
+            activities: true,
             user_settings: Vec::new(),
             channel_unreads: false,
             policy_changes: true,
@@ -246,6 +285,8 @@ pub enum EventV1 {
         voice_states: Option<Vec<ChannelVoiceState>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         voice_calls: Option<Vec<VoiceCall>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        activities: Option<Vec<ActivityInstance>>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
         user_settings: Option<UserSettings>,
@@ -579,27 +620,39 @@ pub enum EventV1 {
     VoiceAuthorityDisconnect {
         from: VoiceAuthorityMembershipClaim,
     },
-    ChannelActivitySnapshot {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-        instance: ChannelActivityInstance,
+    /// Activity Instance started or changed participants/host.
+    /// Published to the channel topic.
+    ActivityInstanceUpdate {
+        instance: ActivityInstance,
     },
-    ChannelActivityClosed {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
+    /// Activity Instance ended. Published to the channel topic.
+    ActivityInstanceEnd {
         channel_id: String,
         instance_id: String,
-        generation: u64,
+        reason: ActivityEndReason,
     },
-    ChannelActivityEmpty {
-        request_id: String,
-        channel_id: String,
-        generation: u64,
+    /// Relayed application message. Sent privately to target participants.
+    ActivityMessage {
+        instance_id: String,
+        from: String,
+        payload: Value,
     },
-    ChannelActivityError {
+    /// Shared state snapshot. Sent privately to participants after every
+    /// accepted write and to a participant after join or sync.
+    ActivityState {
+        state: ActivitySharedState,
+    },
+    /// Result of a `ClientMessage::Activity` request, sent only to the caller.
+    ActivityResponse {
         request_id: String,
-        channel_id: String,
-        code: ChannelActivityErrorCode,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<ActivityErrorCode>,
+        /// Present for `start`, `join` and `sync`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        instance: Option<ActivityInstance>,
+        /// Present for `join`, `sync`, accepted `set_state`, and `version_conflict`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        state: Option<ActivitySharedState>,
     },
     /// User's active slowmodes
     UserSlowmodes {

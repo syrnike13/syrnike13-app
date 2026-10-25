@@ -14,12 +14,12 @@ import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { RailUnreadIndicator } from '#/components/layout/rail-icon-button'
 import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -62,7 +62,6 @@ import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
@@ -163,7 +162,6 @@ export function ChannelSidebarItem({
         yield* deleteChannelEffect(token, channel._id)
         yield* Effect.sync(() => {
           syncStore.removeChannel(channel._id)
-          toast.success(t('deleted'))
           setDeleteDialogOpen(false)
         })
 
@@ -193,11 +191,8 @@ export function ChannelSidebarItem({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingChannel(false))),
@@ -244,11 +239,11 @@ export function ChannelSidebarItem({
         Effect.matchEffect({
           onFailure: () =>
             Effect.sync(() =>
-              toast.error(t('markReadError')),
+              {},
             ),
           onSuccess: () =>
             Effect.sync(() =>
-              toast.success(t('markedRead')),
+              {},
             ),
         }),
       ),
@@ -261,9 +256,9 @@ export function ChannelSidebarItem({
       writeClipboardTextEffect(url).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error(t('copyError'))),
+            Effect.sync(() => {}),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -281,13 +276,10 @@ export function ChannelSidebarItem({
         const code = '_id' in invite ? invite._id : ''
         if (!code) return
         yield* writeClipboardTextEffect(inviteUrl(code))
-        yield* Effect.sync(() => toast.success(t('inviteCopied')))
+        yield* Effect.sync(() => {})
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
       ),
@@ -400,7 +392,6 @@ export function ChannelSidebarItem({
       targetMember,
     )
     if (!mayMove) {
-      toast.error(t('moveNoPermission'))
       return
     }
 
@@ -413,22 +404,20 @@ export function ChannelSidebarItem({
         { voice_channel: channel._id },
       ).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('moveError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('moved'))),
+            Effect.sync(() => {}),
         }),
         Effect.ensuring(Effect.sync(() => setMovingVoiceMember(false))),
       ),
     )
   }
 
-  const channelActionButtonClassName =
-    'flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+  const hasActions = serverVoice || (canManage && isServerChannel)
+  const channelActionClassName =
+    'text-muted-foreground opacity-0 group-hover/channel:opacity-100 focus-visible:opacity-100'
 
   const row = (
     <div
@@ -443,32 +432,35 @@ export function ChannelSidebarItem({
       onDragLeave={handleVoiceDragLeave}
       onDrop={(event) => void handleVoiceDrop(event)}
     >
+      {/* A menu item for the sidebar primitive: the row stays hovered while
+          its own action buttons are hovered. */}
       <div
+        data-sidebar="menu-item"
         data-avatar-hover-scope=""
-        className={cn(
-          'relative flex h-8 min-w-0 items-stretch rounded-md text-base leading-6 font-medium tracking-tight transition-colors',
-          active
-            ? 'bg-secondary text-foreground'
-            : connectedVoice
-              ? 'text-foreground hover:bg-accent'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-        )}
+        className="relative"
       >
         {!active && notificationBadge.hasUnread ? (
           <RailUnreadIndicator className="-left-2" />
         ) : null}
-        <Link
-          to={channelPath}
-          params={{ channelId: channel._id }}
-          search={{ m: undefined }}
+        {/* eslint-disable-next-line design/no-restyle -- reserves room for the hover actions overlaid on the row */}
+        <SidebarMenuButton
+          isActive={active}
           className={cn(
-            'flex h-full min-w-0 flex-1 items-center gap-2 px-2',
+            connectedVoice && !active && 'text-foreground',
+            hasActions && 'group-hover/channel:pr-16',
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
           )}
-          onClick={serverVoice ? handleVoiceChannelClick : undefined}
-          {...(canManage && dragHandleProps ? dragHandleProps : {})}
+          render={
+            <Link
+              to={channelPath}
+              params={{ channelId: channel._id }}
+              search={{ m: undefined }}
+              onClick={serverVoice ? handleVoiceChannelClick : undefined}
+              {...(canManage && dragHandleProps ? dragHandleProps : {})}
+            />
+          }
         >
           {channel.channel_type === 'DirectMessage' && dmUser ? (
             <UserAvatar
@@ -517,33 +509,38 @@ export function ChannelSidebarItem({
               <HeadphonesIcon aria-hidden="true" className="size-3.5" />
             </span>
           ) : null}
-        </Link>
-        {serverVoice || (canManage && isServerChannel) ? (
-          <div className="mr-1 flex shrink-0 self-center items-center gap-0.5">
+        </SidebarMenuButton>
+        {hasActions ? (
+          <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
             {serverVoice ? (
-              <button
+              <Button
                 type="button"
-                className={channelActionButtonClassName}
+                variant="ghost"
+                size="icon-xs"
+                className={channelActionClassName}
                 title={t('openChat')}
                 aria-label={t('openChat')}
                 onClick={openVoiceChannelChat}
               >
-                <MessageSquareIcon className="size-3.5" />
-              </button>
+                <MessageSquareIcon />
+              </Button>
             ) : null}
             {canManage && isServerChannel ? (
-              <button
+              <Button
                 type="button"
-                className={channelActionButtonClassName}
+                variant="ghost"
+                size="icon-xs"
+                className={channelActionClassName}
                 title={t('channelSettings')}
+                aria-label={t('channelSettings')}
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
                   openChannelSettings()
                 }}
               >
-                <SettingsIcon className="size-3.5" />
-              </button>
+                <SettingsIcon />
+              </Button>
             ) : null}
           </div>
         ) : null}

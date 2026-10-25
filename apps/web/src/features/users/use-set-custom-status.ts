@@ -1,12 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { updateCurrentUserEffect } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore } from '#/features/sync/sync-store'
 
 export function useSetCustomStatus() {
@@ -36,10 +34,7 @@ export function useSetCustomStatus() {
       syncStore.upsertUser(updated)
       queryClient.setQueryData(queryKeys.auth.session, updated)
     },
-    onError: (error) => {
-      toast.error(
-        apiErrorMessage(error, t('statusUpdateError')),
-      )
+    onError: () => {
     },
   })
 

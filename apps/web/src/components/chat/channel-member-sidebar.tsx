@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import {
   flattenMemberListSections,
   groupServerMembersForSidebar,
@@ -19,6 +20,7 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ChannelMemberSidebarProps = {
   channel: Extract<Channel, { channel_type: 'TextChannel' }>
@@ -32,10 +34,10 @@ function MemberListSectionHeader({
   count: number
 }) {
   return (
-    <li className="list-none px-2 pt-5 pb-1 first:pt-2">
-      <p className="truncate text-sm leading-4.5 font-medium tracking-tight text-muted-foreground">
+    <li className="px-2 pt-5 pb-1 first:pt-2">
+      <h3 className="truncate text-sm leading-4.5 font-medium tracking-tight text-muted-foreground">
         {title} — {count}
-      </p>
+      </h3>
     </li>
   )
 }
@@ -74,13 +76,10 @@ function MemberSidebarRow({
         align="start"
         inVoice={inVoice}
       >
-        <button
-          type="button"
+        <SidebarMenuButton
+          size="lg"
           data-avatar-hover-scope=""
-          className={cn(
-            'flex min-h-10.5 w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[popup-open]:bg-accent',
-            dimmed && 'opacity-60',
-          )}
+          className={cn(dimmed && 'opacity-60')}
         >
           <UserAvatar
             user={user}
@@ -91,7 +90,7 @@ function MemberSidebarRow({
           <div className="min-w-0 flex-1">
             <p
               className={cn(
-                'truncate text-base leading-5 font-medium',
+                'truncate leading-5',
                 nameColour && 'text-(--member-name-color)',
               )}
               style={
@@ -108,7 +107,7 @@ function MemberSidebarRow({
               </p>
             ) : null}
           </div>
-        </button>
+        </SidebarMenuButton>
       </UserInteractiveShell>
     </li>
   )
@@ -172,8 +171,10 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
             ),
           )}
           {visibleMembers.length === 0 ? (
-            <li className="px-2 py-4 text-center text-xs text-muted-foreground">
-              {t('noMembers')}
+            <li>
+              <Empty size="sm">
+                <EmptyDescription>{t('noMembers')}</EmptyDescription>
+              </Empty>
             </li>
           ) : null}
         </ul>

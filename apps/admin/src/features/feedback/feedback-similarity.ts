@@ -1,4 +1,4 @@
-// design-allow-file hardcoded-string: Russian stemming stopwords and suffixes are language data, not UI copy.
+// Russian stemming stopwords and suffixes are language data, not UI copy.
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 
 export const FEEDBACK_SIMILARITY_THRESHOLD = 0.32

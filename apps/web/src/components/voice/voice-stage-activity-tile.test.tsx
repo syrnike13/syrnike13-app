@@ -1,151 +1,179 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ActivityInstance } from '@syrnike13/api-types/gateway-schema'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ChannelActivityViewState } from '#/features/activities/channel-activity-types'
+import type { ActivityApplication } from '#/features/activities/activity-api'
 import {
   VoiceStageActivityTile,
-  type VoiceStageActivityItem,
+  activityFrameLayout,
 } from './voice-stage-activity-tile'
 
-const client = vi.hoisted(() => ({
+const testState = vi.hoisted(() => ({
   join: vi.fn(),
   leave: vi.fn(),
-  command: vi.fn(),
+  end: vi.fn(),
+  connection: 'connected' as 'connected' | 'reconnecting',
 }))
 
-vi.mock('#/features/activities/channel-activity-client', () => ({
-  channelActivityClient: client,
+vi.mock('#/components/icons', () => ({
+  ActivityIcon: () => null,
+  EyeIcon: () => null,
+  LogOutIcon: () => null,
+  Maximize2Icon: () => null,
+  PowerIcon: () => null,
 }))
 
-vi.mock('#/features/activities/channel-activity-panel', () => ({
-  EmbeddedActivityFrame: ({ instance }: { instance: { id: string } }) => (
-    <div data-testid="embedded-activity">{instance.id}</div>
+vi.mock('#/features/activities/activity-store', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('#/features/activities/activity-store')>()
+  return {
+    ...actual,
+    activityStore: {
+      join: testState.join,
+      leave: testState.leave,
+      end: testState.end,
+    },
+  }
+})
+
+vi.mock('#/features/activities/use-activities', () => ({
+  useActivityConnectionStatus: () => testState.connection,
+  activityApplicationIconUrl: () => null,
+}))
+
+vi.mock('#/features/activities/activity-frame', () => ({
+  ActivityFrame: ({ layout }: { layout: string }) => (
+    <div data-testid="activity-frame" data-layout={layout} />
   ),
 }))
 
-const instance = {
-  id: 'activity-1',
-  generation: 1,
-  application_id: 'syrnike13.syrnik-race',
-  channel_id: 'voice-a',
-  owner_id: 'owner',
-  participant_ids: ['owner'],
-  revision: 1,
-  state: {},
-  created_at: '2026-07-20T00:00:00Z',
-  expires_at: Date.parse('2026-07-20T02:00:00Z'),
+const application: ActivityApplication = {
+  _id: 'chess',
+  name: 'Chess',
+  description: 'Play chess',
+  activity_url: 'https://chess.activities.syrnike13.ru',
+  max_participants: 2,
 }
 
-const item: VoiceStageActivityItem = {
-  id: 'channel-activity:activity-1',
-  kind: 'activity',
-  instance,
-}
-
-function activity(
-  participantIds = instance.participant_ids,
-): ChannelActivityViewState {
+function instance(participantIds: string[]): ActivityInstance {
   return {
-    instance: { ...instance, participant_ids: participantIds },
-    generation: instance.generation,
-    error: null,
-    transport: 'connected',
+    id: 'instance-1',
+    application_id: 'chess',
+    channel_id: 'voice-a',
+    server_id: 'server-1',
+    revision: 1,
+    host_id: participantIds[0] ?? 'alice',
+    participants: participantIds.map((userId) => ({
+      user_id: userId,
+      joined_at: '2026-10-24T10:00:00Z',
+    })),
+    started_by: 'alice',
+    started_at: '2026-10-24T10:00:00Z',
   }
+}
+
+function renderTile(
+  participantIds: string[],
+  options: { canEnd?: boolean; variant?: 'grid' | 'focus' | 'strip' } = {},
+) {
+  return render(
+    <VoiceStageActivityTile
+      item={{
+        id: 'activity:instance-1',
+        kind: 'activity',
+        instance: instance(participantIds),
+      }}
+      application={application}
+      currentUserId="local"
+      participants={participantIds.map((id) => ({ id, displayName: id }))}
+      canEnd={options.canEnd ?? false}
+      variant={options.variant ?? 'grid'}
+      onFocus={vi.fn()}
+    />,
+  )
 }
 
 describe('VoiceStageActivityTile', () => {
   beforeEach(() => {
-    client.join.mockReset()
-    client.leave.mockReset()
-    client.command.mockReset()
+    testState.join.mockReset()
+    testState.leave.mockReset()
+    testState.end.mockReset()
+    testState.connection = 'connected'
   })
 
   afterEach(cleanup)
 
-  it('shows a join tile to a voice participant who has not joined the Activity', () => {
-    const onFocus = vi.fn()
-    render(
-      <VoiceStageActivityTile
-        item={item}
-        activity={activity()}
-        currentUserId="guest"
-        variant="grid"
-        onFocus={onFocus}
-      />,
-    )
+  it('shows app info and joins instead of the frame for non-participants', async () => {
+    testState.join.mockResolvedValue(null)
+    renderTile(['alice'])
 
-    expect(
-      screen.getByRole('heading', { name: 'Сырниковая гонка' }),
-    ).toBeTruthy()
+    expect(screen.queryByTestId('activity-frame')).toBeNull()
+    expect(screen.getByText('Chess')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }))
-    expect(client.join).toHaveBeenCalledWith('voice-a', 'activity-1')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Сфокусировать' }))
-    expect(onFocus).toHaveBeenCalledWith('channel-activity:activity-1')
+    await waitFor(() =>
+      expect(testState.join).toHaveBeenCalledWith('voice-a', 'instance-1'),
+    )
   })
 
-  it('renders the embedded Activity after joining', async () => {
-    render(
-      <VoiceStageActivityTile
-        item={{
-          ...item,
-          instance: { ...instance, participant_ids: ['owner', 'guest'] },
-        }}
-        activity={activity(['owner', 'guest'])}
-        currentUserId="guest"
-        variant="focus"
-        onFocus={() => undefined}
-      />,
+  it('shows a localized error when joining fails', async () => {
+    const { ActivityRequestError } = await import(
+      '#/features/activities/activity-store'
     )
+    testState.join.mockRejectedValue(new ActivityRequestError('full'))
+    renderTile(['alice'])
 
-    expect(await screen.findByTestId('embedded-activity')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'В этой Активности нет мест.',
+    )
+  })
+
+  it('disables joining a full instance or while the gateway reconnects', () => {
+    renderTile(['alice', 'bob'])
+    expect(
+      (screen.getByRole('button', { name: 'Мест нет' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    cleanup()
+
+    testState.connection = 'reconnecting'
+    renderTile(['alice'])
+    expect(
+      (
+        screen.getByRole('button', { name: 'Присоединиться' }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+  })
+
+  it('renders the frame for participants with the stage layout', () => {
+    renderTile(['alice', 'local'], { variant: 'focus' })
+
+    expect(screen.getByTestId('activity-frame').dataset.layout).toBe('focus')
     expect(screen.queryByRole('button', { name: 'Присоединиться' })).toBeNull()
   })
 
-  it('allows joining again after realtime disconnects', () => {
-    const { rerender } = render(
-      <VoiceStageActivityTile
-        item={item}
-        activity={activity()}
-        currentUserId="guest"
-        variant="grid"
-        onFocus={() => undefined}
-      />,
-    )
+  it('offers leave to participants and end to hosts and channel managers', async () => {
+    testState.leave.mockResolvedValue(undefined)
+    testState.end.mockResolvedValue(undefined)
+    renderTile(['local'], { canEnd: true })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }))
-    expect(
-      (screen.getByRole('button', { name: 'Подключаем…' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+    fireEvent.contextMenu(screen.getByTestId('voice-stage-activity-tile'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Покинуть Активность' }))
+    expect(testState.leave).toHaveBeenCalledWith('voice-a', 'instance-1')
 
-    rerender(
-      <VoiceStageActivityTile
-        item={item}
-        activity={{ ...activity(), transport: 'reconnecting' }}
-        currentUserId="guest"
-        variant="grid"
-        onFocus={() => undefined}
-      />,
-    )
-    rerender(
-      <VoiceStageActivityTile
-        item={item}
-        activity={activity()}
-        currentUserId="guest"
-        variant="grid"
-        onFocus={() => undefined}
-      />,
-    )
+    fireEvent.contextMenu(screen.getByTestId('voice-stage-activity-tile'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Завершить для всех' }))
+    expect(testState.end).toHaveBeenCalledWith('voice-a', 'instance-1')
+  })
 
-    return waitFor(() =>
-      expect(
-        (screen.getByRole('button', {
-          name: 'Присоединиться',
-        }) as HTMLButtonElement).disabled,
-      ).toBe(false),
-    )
+  it('maps stage presentation to SDK layouts', () => {
+    expect(activityFrameLayout('grid', false)).toBe('grid')
+    expect(activityFrameLayout('focus', false)).toBe('focus')
+    expect(activityFrameLayout('fullscreen', false)).toBe('focus')
+    expect(activityFrameLayout('focus', true)).toBe('popout')
   })
 })

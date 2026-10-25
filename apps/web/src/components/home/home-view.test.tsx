@@ -73,14 +73,13 @@ describe('HomeView', () => {
   it('opens a direct message when clicking a friend row', async () => {
     render(<HomeView tab="all" />)
 
-    fireEvent.click(screen.getByText('Alice'))
+    fireEvent.click(screen.getByRole('button', { name: /Alice/ }))
 
     await waitFor(() => {
       expect(mocks.openDirectMessageChannel).toHaveBeenCalledWith(
         'session-token',
         'friend-1',
         expect.any(Function),
-        expect.anything(),
       )
     })
   })
@@ -108,7 +107,7 @@ describe('HomeView', () => {
     render(<HomeView tab="online" />)
 
     expect(
-      screen.getByRole('link', { name: /Заявки.*1 уведомление/ }),
+      screen.getByRole('link', { name: /Запросы.*1 уведомление/ }),
     ).toBeTruthy()
   })
 })

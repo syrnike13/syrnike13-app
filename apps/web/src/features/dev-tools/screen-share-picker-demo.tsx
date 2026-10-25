@@ -1,6 +1,4 @@
-// design-allow-file hardcoded-string: internal developer tools panel.
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { DesktopDisplayMediaSource } from '@syrnike13/platform'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -107,11 +105,8 @@ export function ScreenSharePickerDemoLauncher() {
         nativeVideo: true,
       },
       sources: DEMO_SOURCES,
-      onSelect: (source, audioRequested) => {
+      onSelect: () => {
         setOpen(false)
-        toast.success(
-          `Demo: ${source.name}${audioRequested ? '' : ' (muted)'}`,
-        )
       },
       onCancel: () => setOpen(false),
     }

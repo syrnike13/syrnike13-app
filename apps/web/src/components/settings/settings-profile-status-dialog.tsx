@@ -190,7 +190,6 @@ function ProfileStatusLivePreview({
             fallbackClassName="size-20 bg-card text-xl ring-5 ring-card"
             animated="always"
             showPresence
-            presenceRingClassName="border-card"
           />
         </div>
       </div>
@@ -215,6 +214,7 @@ export function ProfileStatusBubbleTrigger({
   const text = status.trim()
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- status bubble preview
     <button
       type="button"
       title={text ? t('edit') : t('add')}

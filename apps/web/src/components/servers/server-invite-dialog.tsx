@@ -9,7 +9,6 @@ import {
   HashIcon,
   SearchIcon,
 } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -19,14 +18,17 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
-import { Input } from '@syrnike13/ui/primitives/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
   NativeSelect,
   NativeSelectOption,
 } from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import { sendChannelMessageEffect } from '#/features/api/messages-api'
 import { fetchServerInvitesEffect } from '#/features/api/servers-api'
@@ -152,10 +154,17 @@ export function ServerInviteDialog({
   const activeChannelName =
     textChannels.find((channel) => channel._id === activeChannelId)?.name ??
     t('channelFallback')
-  const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
-      (user) => !user.bot,
-    ),
+  const members = useSyncStore((s) => s.members)
+  const allFriends = useSyncStore((s) =>
+    listUsersByRelationship(s, 'Friend', auth.user?._id),
+  )
+  /** Friends who are not on the server yet. */
+  const friends = useMemo(
+    () =>
+      allFriends.filter(
+        (user) => !user.bot && !members[`${serverId}:${user._id}`],
+      ),
+    [allFriends, members, serverId],
   )
   const visibleFriends = useMemo(() => {
     const query = friendSearch.trim().toLocaleLowerCase('ru-RU')
@@ -179,11 +188,8 @@ export function ServerInviteDialog({
         const loadedInvites = yield* fetchServerInvitesEffect(token, serverId)
         yield* Effect.sync(() => setInvites(loadedInvites))
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('loadError')),
-            )
           }),
         ),
       ),
@@ -287,14 +293,11 @@ export function ServerInviteDialog({
       ensureInviteLink().pipe(
         Effect.flatMap(writeClipboardTextEffect),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('copyError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -324,14 +327,10 @@ export function ServerInviteDialog({
           setSentUserIds((current) =>
             current.includes(user._id) ? current : [...current, user._id],
           )
-          toast.success(t('sent'))
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('inviteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusyUserId(null))),
@@ -356,23 +355,25 @@ export function ServerInviteDialog({
         </DialogHeader>
 
         <div className="px-5 pb-4">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
               value={friendSearch}
               onChange={(event) => setFriendSearch(event.target.value)}
               placeholder={t('search')}
-              className="h-10 pl-9"
+              aria-label={t('search')}
             />
-          </div>
+          </InputGroup>
         </div>
 
         <div className="min-h-48 px-4 pb-4">
           <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
-            {t('serverMembers')}
+            {t('friends')}
           </p>
           {visibleFriends.length === 0 ? (
-            <Empty className="py-8">
+            <Empty>
               <EmptyDescription>{t('noFriends')}</EmptyDescription>
             </Empty>
           ) : (
@@ -445,19 +446,22 @@ export function ServerInviteDialog({
               {t('copy')}
             </Button>
           </div>
-          <button
-            type="button"
-            className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            onClick={() => setSettingsOpen((current) => !current)}
-          >
-            {t('editLink')}
-            <ChevronDownIcon
-              className={cn(
-                'size-3.5 transition-transform',
-                settingsOpen && 'rotate-180',
-              )}
-            />
-          </button>
+          <p className="mt-2 text-xs">
+            <Button
+              type="button"
+              variant="link"
+              size="inline"
+              onClick={() => setSettingsOpen((current) => !current)}
+            >
+              {t('editLink')}
+              <ChevronDownIcon
+                className={cn(
+                  'size-3.5 transition-transform',
+                  settingsOpen && 'rotate-180',
+                )}
+              />
+            </Button>
+          </p>
 
           {settingsOpen ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

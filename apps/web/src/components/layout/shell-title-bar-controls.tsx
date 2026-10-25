@@ -12,11 +12,7 @@ import { usePlatform } from '#/platform/use-platform'
 import { config } from '#/lib/config'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
-
-const titleBarIconButtonClass =
-  'inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-35'
-
-const titleBarIconButtonDefaultClass = cn(titleBarIconButtonClass, 'size-7')
+import { Button } from '@syrnike13/ui/primitives/button'
 
 const titleBarWindowButtonClass =
   'shell-title-bar-window-button inline-flex h-(--titlebar-height) w-(--titlebar-button-width) shrink-0 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground'
@@ -37,10 +33,7 @@ export function ShellHistoryNavButtons({
   const isFullHeight = isMac || isWindows
   const isNightly = config.releaseChannel === 'nightly'
 
-  const fullHeightButtonClass = cn(
-    titleBarIconButtonClass,
-    'h-full w-7 shrink-0',
-  )
+  const navButtonClass = cn('text-muted-foreground', isFullHeight && 'h-full')
 
   return (
     <div
@@ -63,24 +56,28 @@ export function ShellHistoryNavButtons({
           : undefined
       }
     >
-      <button
+      <Button
         type="button"
-        className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
+        variant="ghost"
+        size="icon-sm"
+        className={navButtonClass}
         aria-label={t('back')}
         disabled={!canGoBack}
         onClick={goBack}
       >
-        <ChevronLeftIcon className="size-4" />
-      </button>
-      <button
+        <ChevronLeftIcon />
+      </Button>
+      <Button
         type="button"
-        className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
+        variant="ghost"
+        size="icon-sm"
+        className={navButtonClass}
         aria-label={t('forward')}
         disabled={!canGoForward}
         onClick={goForward}
       >
-        <ChevronRightIcon className="size-4" />
-      </button>
+        <ChevronRightIcon />
+      </Button>
       {isNightly ? (
         <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-xs font-medium leading-none text-chart-2">
           nightly
@@ -112,6 +109,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
         } as CSSVars
       }
     >
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={titleBarWindowButtonClass}
@@ -120,6 +118,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
       >
         <MinusIcon className="size-3.5" />
       </button>
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={titleBarWindowButtonClass}
@@ -128,6 +127,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
       >
         <SquareIcon className="size-3" />
       </button>
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={cn(

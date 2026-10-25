@@ -3,24 +3,23 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Settings2Icon, VideoIcon, VideoOffIcon } from '#/components/icons'
 import { Popover, PopoverContent } from '@syrnike13/ui/primitives/popover'
-import { RadioGroup, RadioGroupItem } from '@syrnike13/ui/primitives/radio-group'
+import { RadioGroup } from '@syrnike13/ui/primitives/radio-group'
+import {
+  VoicePopoverHint,
+  VoicePopoverRadioRow,
+  VoicePopoverRow,
+  VoicePopoverTitle,
+} from '#/components/voice/voice-popover-rows'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 import { deviceLabel, selectableDevices } from '#/components/voice/voice-device-list'
 import {
   VoiceSplitControl,
   type VoiceSplitControlSurface,
 } from '#/components/voice/voice-split-control'
-import {
-  voiceStagePopoverHintClass,
-  voiceStagePopoverMenuItemClass,
-  voiceStagePopoverMicSettingsClass,
-  voiceStagePopoverSectionTitleClass,
-} from '#/components/voice/voice-stage-popover-styles'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
-import { cn } from '#/lib/utils'
 
 const DEFAULT_DEVICE_VALUE = '__default__'
 
@@ -136,10 +135,7 @@ export function CameraDevicePickerAnchor({
           sideOffset={8}
           initialFocus={false}
           data-voice-stage-popover
-          className={
-            // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
-            voiceStagePopoverMicSettingsClass
-          }
+          className="z-420 w-72"
         >
           <VoiceCameraSettingsMenuContent onSelected={() => setOpen(false)} />
         </PopoverContent>
@@ -166,68 +162,41 @@ export function VoiceCameraSettingsMenuContent({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className={cn(voiceStagePopoverSectionTitleClass, 'px-2')}>
-        {t('devices.camera')}
-      </p>
+    <div className="flex flex-col gap-1">
+      <VoicePopoverTitle>{t('devices.camera')}</VoicePopoverTitle>
       {cameraDeviceFailed ? (
-        <p className={cn(voiceStagePopoverHintClass, 'px-2 text-destructive')}>
+        <VoicePopoverHint tone="destructive">
           {t('devices.cameraOpenFailed')}
-        </p>
+        </VoicePopoverHint>
       ) : null}
       {devices.length === 0 ? (
-        <p className={cn(voiceStagePopoverHintClass, 'px-2')}>
-          {t('devices.noCameras')}
-        </p>
+        <VoicePopoverHint>{t('devices.noCameras')}</VoicePopoverHint>
       ) : (
         <RadioGroup
           value={selectedId ?? DEFAULT_DEVICE_VALUE}
           aria-label={t('devices.camera')}
-          className="gap-0.5"
+          className="gap-0"
           onValueChange={select}
         >
-          <label
-            className={cn(
-              voiceStagePopoverMenuItemClass,
-              'h-8 cursor-pointer justify-between',
-            )}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {t('devices.default')}
-            </span>
-            <RadioGroupItem
-              value={DEFAULT_DEVICE_VALUE}
-              aria-label={t('devices.default')}
-            />
-          </label>
+          <VoicePopoverRadioRow
+            value={DEFAULT_DEVICE_VALUE}
+            label={t('devices.default')}
+          />
           {devices.map((device) => (
-            <label
+            <VoicePopoverRadioRow
               key={device.deviceId}
-              className={cn(
-                voiceStagePopoverMenuItemClass,
-                'h-8 cursor-pointer justify-between',
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">
-                {deviceLabel(device, t)}
-              </span>
-              <RadioGroupItem
-                value={device.deviceId}
-                aria-label={deviceLabel(device, t)}
-              />
-            </label>
+              value={device.deviceId}
+              label={deviceLabel(device, t)}
+            />
           ))}
         </RadioGroup>
       )}
-      <Separator className="my-0.5" />
-      <button
-        type="button"
-        className={cn(voiceStagePopoverMenuItemClass, 'justify-between')}
+      <Separator className="my-1" />
+      <VoicePopoverRow
+        label={t('devices.voiceSettings')}
+        trailing={<Settings2Icon />}
         onClick={() => openSettings('voice')}
-      >
-        <span>{t('devices.voiceSettings')}</span>
-        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      />
     </div>
   )
 }

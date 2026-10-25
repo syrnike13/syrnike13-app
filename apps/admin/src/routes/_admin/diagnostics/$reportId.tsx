@@ -3,7 +3,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect, Option, Schema } from 'effect'
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -66,10 +65,9 @@ function DiagnosticReportPage() {
     mutationFn: () => updateAdminDiagnosticReport(token!, reportId, { status, notes }),
     onSuccess: (value) => {
       queryClient.setQueryData(queryKeys.admin.diagnostic(reportId), value)
-      toast.success(t('updated'))
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : t('updateError')),
+    onError: () =>
+      {},
   })
 
   const download = async () => {
@@ -92,13 +90,8 @@ function DiagnosticReportPage() {
           Effect.ensuring(Effect.sync(() => URL.revokeObjectURL(url))),
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : t('downloadError'),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDownloading(false))),
@@ -183,7 +176,7 @@ function DiagnosticReportPage() {
 
         <AdminSection className="space-y-3 p-4">
           <Label
-            className="text-xs text-muted-foreground"
+            className="text-muted-foreground"
             htmlFor="diagnostic-status"
           >
             {t('statusLabel')}
@@ -210,7 +203,7 @@ function DiagnosticReportPage() {
             </NativeSelectOption>
           </NativeSelect>
           <Label
-            className="text-xs text-muted-foreground"
+            className="text-muted-foreground"
             htmlFor="diagnostic-notes"
           >
             {t('notes')}

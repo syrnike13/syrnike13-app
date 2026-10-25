@@ -5,10 +5,15 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+} from '@syrnike13/ui/primitives/item'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Dialog,
@@ -24,21 +29,21 @@ import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
 import { apiErrorMessage } from '#/lib/api/error-message'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
 type ChannelPinnedDialogProps = {
   channelId: string
   token: string
   users: Record<string, User>
-  triggerClassName?: string
+  /** `media` on the voice stage header. */
+  triggerVariant?: 'ghost' | 'media'
 }
 
 export function ChannelPinnedDialog({
   channelId,
   token,
   users,
-  triggerClassName,
+  triggerVariant = 'ghost',
 }: ChannelPinnedDialogProps) {
   const t = useTranslations('chat')
   const navigate = useNavigate()
@@ -77,18 +82,19 @@ export function ChannelPinnedDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'size-8',
-            // eslint-disable-next-line shadcn/require-static-classes -- caller-owned trigger styling
-            triggerClassName,
-          )}
-          title={t('pinnedTitle')} />}>
-          <PinIcon className="size-4" />
-        </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            variant={triggerVariant}
+            size="icon"
+            title={t('pinnedTitle')}
+            aria-label={t('pinnedTitle')}
+          />
+        }
+      >
+        <PinIcon className="size-5" />
+      </DialogTrigger>
       <DialogContent className="flex max-h-dialog-xs max-w-lg flex-col gap-4">
         <DialogHeader>
           <DialogTitle>{t('pinnedTitle')}</DialogTitle>
@@ -105,7 +111,7 @@ export function ChannelPinnedDialog({
           {!pinnedQuery.isFetching &&
           !pinnedQuery.isError &&
           messages.length === 0 ? (
-            <Empty className="py-8">
+            <Empty>
               <EmptyDescription>{t('noPinned')}</EmptyDescription>
             </Empty>
           ) : null}
@@ -115,69 +121,59 @@ export function ChannelPinnedDialog({
               author?.display_name ?? author?.username ?? t('unknownAuthor')
 
             return (
-              <article
-                key={message._id}
-                role="button"
-                tabIndex={0}
-                className="cursor-pointer rounded-lg border bg-muted/40 p-3 text-sm transition-colors hover:bg-muted/70"
-                onClick={() => {
-                  setOpen(false)
-                  void navigate({
-                    to: `${prefix}/c/$channelId`,
-                    params: { channelId },
-                    search: { m: message._id },
-                  })
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    setOpen(false)
-                    void navigate({
-                      to: `${prefix}/c/$channelId`,
-                      params: { channelId },
-                      search: { m: message._id },
-                    })
-                  }
-                }}
-              >
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  {name}
-                </p>
-                {message.content ? (
-                  <div className="select-text">
-                    {renderMessageContent(message.content, users, emojis, {
-                      channels,
-                      roles: server?.roles,
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground italic">{t('noText')}</p>
-                )}
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="mt-2 h-auto px-0"
-                  onClick={() => {
-                    Effect.runFork(
-                      writeClipboardTextEffect(message._id).pipe(
-                        Effect.matchEffect({
-                          onFailure: () =>
-                            Effect.sync(() => {
-                              toast.error(t('copyError'))
-                            }),
-                          onSuccess: () =>
-                            Effect.sync(() => {
-                              toast.success(t('idCopied'))
-                            }),
-                        }),
-                      ),
-                    )
-                  }}
-                >
-                  {t('copyId')}
-                </Button>
-              </article>
+              <Item key={message._id} variant="outline" render={<article />}>
+                <ItemContent>
+                  <ItemDescription>{name}</ItemDescription>
+                  {message.content ? (
+                    <div className="select-text">
+                      {renderMessageContent(message.content, users, emojis, {
+                        channels,
+                        roles: server?.roles,
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground italic">{t('noText')}</p>
+                  )}
+                </ItemContent>
+                <ItemActions>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      Effect.runFork(
+                        writeClipboardTextEffect(message._id).pipe(
+                          Effect.matchEffect({
+                            onFailure: () =>
+                              Effect.sync(() => {
+                              }),
+                            onSuccess: () =>
+                              Effect.sync(() => {
+                              }),
+                          }),
+                        ),
+                      )
+                    }}
+                  >
+                    {t('copyId')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setOpen(false)
+                      void navigate({
+                        to: `${prefix}/c/$channelId`,
+                        params: { channelId },
+                        search: { m: message._id },
+                      })
+                    }}
+                  >
+                    {t('jump')}
+                  </Button>
+                </ItemActions>
+              </Item>
             )
           })}
         </div>

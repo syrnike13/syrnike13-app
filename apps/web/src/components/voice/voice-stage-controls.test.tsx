@@ -62,7 +62,6 @@ describe('VoiceStageControls', () => {
         channelId="group-1"
         inCall={false}
         connecting={false}
-        overlay
         joinLabel="Присоединиться"
       />,
     )
@@ -87,7 +86,6 @@ describe('VoiceStageControls', () => {
         channelId="voice-1"
         inCall
         connecting={false}
-        overlay
         viewSessions={[streamSession]}
         focusedStageItemId="alice:screen"
         onExitViewSession={exitViewSession}
@@ -131,7 +129,6 @@ describe('VoiceStageControls', () => {
         channelId="voice-1"
         inCall
         connecting={false}
-        overlay
         viewSessions={[
           {
             id: 'stream:alice:screen',

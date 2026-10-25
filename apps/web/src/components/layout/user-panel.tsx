@@ -16,6 +16,7 @@ import {
   Button,
   buttonVariants,
 } from '@syrnike13/ui/primitives/button'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import {
   Popover,
   PopoverContent,
@@ -38,9 +39,6 @@ const gatewayStatusKeys = {
   disconnected: 'status.disconnected',
   reconnecting: 'status.reconnecting',
 } as const
-
-const userPanelControlButtonClass =
-  'size-8 shrink-0 text-muted-foreground'
 
 const TELEGRAM_CHANNEL_URL = 'https://t.me/+oF1TAWZ2yyQwMDcy'
 
@@ -162,10 +160,11 @@ export function UserPanel({
           >
             <PopoverTrigger
               render={
-                <button
-                  type="button"
+                // eslint-disable-next-line design/no-restyle -- the profile button's left inset is half the right one, so the avatar edge reads as even
+                <SidebarMenuButton
+                  size="lg"
                   data-avatar-hover-scope=""
-                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1.25 pr-1 text-left hover:bg-accent/60"
+                  className="min-w-0 flex-1 pl-1 text-foreground"
                 />
               }
             >
@@ -184,7 +183,7 @@ export function UserPanel({
                   <p
                     className={cn(
                       'truncate text-xs font-medium leading-3.25 transition duration-200 ease-out',
-                      'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
+                      'group-hover/menu-button:-translate-y-full group-hover/menu-button:opacity-0',
                       gatewayConnected
                         ? 'text-muted-foreground'
                         : gatewayReconnecting
@@ -198,7 +197,7 @@ export function UserPanel({
                     className={cn(
                       'absolute inset-x-0 top-0 truncate text-xs font-medium leading-3.25 text-muted-foreground',
                       'translate-y-full opacity-0 transition duration-200 ease-out',
-                      'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
+                      'group-hover/menu-button:translate-y-0 group-hover/menu-button:opacity-100',
                     )}
                   >
                     {usernameLabel}
@@ -227,11 +226,12 @@ export function UserPanel({
               <Button
                 variant="ghost"
                 size="icon"
-                className={userPanelControlButtonClass}
+                className="text-muted-foreground"
                 title={t('settings')}
+                aria-label={t('settings')}
                 onClick={() => openSettings('account')}
               >
-                <SettingsIcon className="size-4" />
+                <SettingsIcon className="size-5" />
               </Button>
             </div>
           </div>
@@ -273,6 +273,7 @@ export function UserPanel({
             'motion-reduce:transition-none',
           )}
         >
+          {/* eslint-disable-next-line design/no-lookalike -- promo banner card */}
           <button
             type="button"
             className="relative h-13 text-left outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -339,7 +340,7 @@ export function UserPanel({
                   variant="ghost"
                   size="sm"
                   tabIndex={telegramPromoOpen ? 0 : -1}
-                  className="min-w-0 flex-1 px-2 text-xs"
+                  className="min-w-0 flex-1"
                   onClick={onDismissTelegramPromo}
                 >
                   {t('telegram.dismiss')}
@@ -351,7 +352,7 @@ export function UserPanel({
                   tabIndex={telegramPromoOpen ? 0 : -1}
                   className={cn(
                     buttonVariants({ variant: 'secondary', size: 'sm' }),
-                    'min-w-0 flex-1 px-2 text-xs',
+                    'min-w-0 flex-1',
                   )}
                 >
                   {t('telegram.open')}

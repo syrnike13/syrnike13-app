@@ -16,8 +16,10 @@ describe('UserProfileStatusBubble', () => {
     )
 
     expect(screen.getByText('тест статус')).toBeTruthy()
-    expect(container.querySelectorAll('.gradient-surface-solid')).toHaveLength(3)
-    expect(container.querySelector('.gradient-surface-floating')).toBeNull()
+    // Bubble and both tail dots take the colour of the card they sit on.
+    expect(
+      container.querySelectorAll('[class*="bg-(--profile-surface)"]'),
+    ).toHaveLength(3)
   })
 
   it('renders nothing for empty or missing status', () => {

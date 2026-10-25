@@ -3,7 +3,9 @@
 import { act, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
-import { CakeLogo } from './cake-logo'
+import { resolveActiveHoliday, toMonthDay } from '@syrnike13/ui/holidays'
+
+import { CakeLogo, cakeLogoVariantForHoliday } from './cake-logo'
 import { CAKE_PIXELS, CAKE_TETROMINOES } from './cake-logo-data'
 
 afterEach(() => {
@@ -103,23 +105,26 @@ it('replays only Tetris and cleans up the timeline on unmount', () => {
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('keeps the logo whole in the Halloween witch skin and only animates set dressing', () => {
+it('keeps the whole logo on Halloween with pumpkins and bats', () => {
   vi.useFakeTimers()
-  const { container } = render(<CakeLogo previewMotion variant="witch" />)
+  const { container } = render(<CakeLogo previewMotion variant="halloween" />)
 
-  expect(container.querySelector('.cake-cobweb')).not.toBeNull()
-  expect(container.querySelector('.cake-spider')).not.toBeNull()
-  expect(container.querySelector('.cake-bat')).not.toBeNull()
-  expect(container.querySelectorAll('.cake-logo-piece')).toHaveLength(0)
-
-  act(() => vi.advanceTimersByTime(1500))
-  expect(container.querySelector('.cake-logo')?.getAttribute('data-phase')).toBe('still')
   expect(container.querySelector('image')?.getAttribute('mask')).toBeNull()
+  expect(container.querySelector('.cake-lantern')).not.toBeNull()
+  expect(container.querySelectorAll('.cake-bat')).toHaveLength(2)
   expect(container.querySelectorAll('.cake-logo-piece')).toHaveLength(0)
+  expect(vi.getTimerCount()).toBe(0)
+})
 
-  act(() => vi.advanceTimersByTime(1000))
-  expect(container.querySelector('.cake-logo')?.getAttribute('data-phase')).toBe('still')
+it('keeps the logo whole for New Year under snow with a fir tree', () => {
+  vi.useFakeTimers()
+  const { container } = render(<CakeLogo previewMotion variant="new-year" />)
+
+  expect(container.querySelector('image')?.getAttribute('mask')).toBeNull()
+  expect(container.querySelector('.cake-star')).not.toBeNull()
+  expect(container.querySelectorAll('.cake-snowflake').length).toBeGreaterThan(0)
   expect(container.querySelectorAll('.cake-logo-piece')).toHaveLength(0)
+  expect(vi.getTimerCount()).toBe(0)
 })
 
 it('keeps a complete static logo for reduced motion until preview playback is requested', () => {
@@ -148,4 +153,22 @@ it('keeps a complete static logo for reduced motion until preview playback is re
   expect(container.querySelectorAll('.cake-tetromino-blocks')).toHaveLength(0)
   expect(container.querySelector('image')?.getAttribute('mask')).toBeNull()
   expect(container.querySelector('.cake-logo')?.getAttribute('data-phase')).toBe('still')
+})
+
+it('picks the holiday scene from the real local date', () => {
+  const sceneOn = (year: number, month: number, day: number) =>
+    cakeLogoVariantForHoliday(
+      resolveActiveHoliday(toMonthDay(new Date(year, month - 1, day)))?.id,
+    )
+
+  expect(sceneOn(2026, 10, 16)).toBe('classic')
+  expect(sceneOn(2026, 10, 17)).toBe('halloween')
+  expect(sceneOn(2026, 10, 31)).toBe('halloween')
+  expect(sceneOn(2026, 11, 3)).toBe('halloween')
+  expect(sceneOn(2026, 11, 4)).toBe('classic')
+  expect(sceneOn(2026, 11, 30)).toBe('classic')
+  expect(sceneOn(2026, 12, 1)).toBe('new-year')
+  expect(sceneOn(2027, 1, 7)).toBe('new-year')
+  expect(sceneOn(2027, 1, 14)).toBe('new-year')
+  expect(sceneOn(2027, 1, 15)).toBe('classic')
 })

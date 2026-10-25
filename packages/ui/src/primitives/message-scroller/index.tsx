@@ -57,7 +57,7 @@ function MessageScrollerContent({
   return (
     <MessageScrollerPrimitive.Content
       data-slot="message-scroller-content"
-      className={cn("flex h-max min-h-full flex-col gap-6", className)}
+      className={cn("flex h-max min-h-full flex-col justify-end", className)}
       {...props}
     />
   )
@@ -72,10 +72,10 @@ function MessageScrollerItem({
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
-      className={cn(
-        "min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
-        className
-      )}
+      // No `content-visibility: auto` (upstream has it): the feed measures rows
+      // right away, and the 10rem estimate for off-screen rows made the
+      // scroller lose its "at the end" position after the first render.
+      className={cn("min-w-0 shrink-0", className)}
       {...props}
     />
   )

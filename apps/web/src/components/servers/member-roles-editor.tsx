@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Member, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -18,6 +17,7 @@ import { roleIconUrl } from '#/lib/media'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type MemberRolesEditorProps = {
   server: Server
@@ -136,7 +136,6 @@ export function MemberRolesEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[member-roles] update failed', error)
-            toast.error(t('updateRolesError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingRoleId(null))),
@@ -150,9 +149,9 @@ export function MemberRolesEditor({
 
   if (roles.length === 0) {
     return (
-      <p className={cn('text-sm text-muted-foreground', className)}>
-        {t('noRoles')}
-      </p>
+      <Empty size="inline" className={className}>
+        <EmptyDescription>{t('noRoles')}</EmptyDescription>
+      </Empty>
     )
   }
 
@@ -243,14 +242,11 @@ export function MemberRolesEditor({
         })}
       </ul>
       {filteredRoles.length === 0 ? (
-        <p
-          className={cn(
-            'px-2 text-center text-sm text-muted-foreground',
-            compact ? 'py-4' : 'py-6',
-          )}
-        >
-          {roleSearch.trim() ? t('noMatchingRoles') : t('noRoles')}
-        </p>
+        <Empty size={compact ? 'sm' : 'default'}>
+          <EmptyDescription>
+            {roleSearch.trim() ? t('noMatchingRoles') : t('noRoles')}
+          </EmptyDescription>
+        </Empty>
       ) : null}
     </div>
   )

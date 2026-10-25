@@ -13,7 +13,7 @@ extern crate log;
 pub mod config;
 pub mod events;
 
-mod channel_activity;
+mod activities;
 mod database;
 mod drain;
 mod voice;
@@ -36,7 +36,7 @@ async fn main() {
     database::connect().await;
     voice_client::init().await;
     let amqp = AMQP::new_auto().await;
-    async_std::task::spawn(channel_activity::run_expiration_sweeper());
+    async_std::task::spawn(activities::run_reconciler(database::get_db()));
 
     // Keep this process's presence region alive and clean up after gateways that are gone.
     mark_region_alive().await;

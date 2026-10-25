@@ -66,7 +66,6 @@ export function MobileUserPanel() {
               className="size-14 shrink-0"
               fallbackClassName="size-14 text-base"
               showPresence
-              presenceRingClassName="border-background"
             />
             <span className="min-w-0 flex-1 pl-2">
               <span className="flex min-w-0 items-center gap-0.5">
@@ -93,8 +92,9 @@ export function MobileUserPanel() {
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="absolute top-1/2 right-1 z-20 size-9 -translate-y-1/2 rounded-full"
+            size="icon-lg"
+            shape="circle"
+            className="absolute top-1/2 right-1 z-20 -translate-y-1/2"
             title={t('notifications')}
             aria-label={t('notifications')}
             onClick={() => openSettings('notifications')}

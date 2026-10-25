@@ -194,7 +194,9 @@ function SquircleLayers({
       cornerSmoothing={cornerSmoothing}
       pathWidth={pathWidth}
       pathHeight={pathHeight}
-      className={ring.className}
+      // Fills a stretched host so fluid panels can span their column; with a
+      // content-sized host this is still the content height.
+      className={cn('h-full', ring.className)}
       style={{ padding: ring.width }}
       data-squircle-ring=""
     >

@@ -5,6 +5,7 @@ import {
   shell,
 } from 'electron'
 
+import { activityResponseHeaders, isActivityOriginUrl } from './activity-origins'
 import { installMediaPermissions } from './media-permissions'
 import { resolveDesktopAsset, resolvePreloadScript } from './paths'
 import { desktopWindowIconAssetName } from './desktop-app-identity'
@@ -24,7 +25,8 @@ const desktopContentSecurityPolicy = [
   "img-src 'self' http://localhost:* http://127.0.0.1:* https: data: blob:",
   "media-src 'self' https: data: blob:",
   "connect-src 'self' http://localhost:* http://127.0.0.1:* https: ws: wss:",
-  "frame-src 'self' https://*.hcaptcha.com",
+  // Activity Origins (ADR-0011): production, nightly and the local stand.
+  "frame-src 'self' https://*.hcaptcha.com https://*.activities.syrnike13.ru https://*.activities.beta.syrnike13.ru http://*.activities.localhost:14707",
   "worker-src 'self' blob:",
 ].join('; ')
 
@@ -36,6 +38,11 @@ function installContentSecurityPolicy() {
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = details.responseHeaders ?? {}
+
+    if (isActivityOriginUrl(details.url)) {
+      callback({ responseHeaders: activityResponseHeaders(responseHeaders) })
+      return
+    }
 
     callback({
       responseHeaders: {

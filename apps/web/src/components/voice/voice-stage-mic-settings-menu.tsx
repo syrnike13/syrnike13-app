@@ -1,28 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronRightIcon, Settings2Icon } from '#/components/icons'
 import { Effect, Fiber } from 'effect'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from '@syrnike13/ui/primitives/radio-group'
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { Slider } from '@syrnike13/ui/primitives/slider'
+import { VoicePopoverRow } from '#/components/voice/voice-popover-rows'
 import { Separator } from '@syrnike13/ui/primitives/separator'
-import { deviceLabel, selectableDevices } from '#/components/voice/voice-device-list'
 import {
-  voiceStagePopoverContentClass,
-  voiceStagePopoverHintClass,
-  voiceStagePopoverMenuItemClass,
-  voiceStagePopoverNavRowClass,
-  voiceStagePopoverSectionTitleClass,
-} from '#/components/voice/voice-stage-popover-styles'
+  deviceLabel,
+  selectableDevices,
+  systemDefaultDevice,
+} from '#/components/voice/voice-device-list'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
@@ -45,14 +48,15 @@ function resolveSelectedDeviceLabel(
   preferredId: string | undefined,
   t: Translator,
 ) {
-  const selectable = selectableDevices(devices)
   if (!preferredId) {
-    const first = selectable[0]
-    return first
-      ? t('devices.defaultDevice', { name: deviceLabel(first, t) })
+    const fallback = systemDefaultDevice(devices)
+    return fallback
+      ? t('devices.defaultDevice', { name: deviceLabel(fallback, t) })
       : t('devices.default')
   }
-  const match = selectable.find((device) => device.deviceId === preferredId)
+  const match = selectableDevices(devices).find(
+    (device) => device.deviceId === preferredId,
+  )
   return match ? deviceLabel(match, t) : t('devices.device')
 }
 
@@ -155,11 +159,11 @@ function MicInputMeterSection({
 
   return (
     <section className="space-y-2 px-0.5">
-      <p className={voiceStagePopoverSectionTitleClass}>
+      <p className="text-xs font-semibold text-foreground">
         {t('devices.micLevel')}
       </p>
       <MicInputMeter levels={levels} />
-      <p className={voiceStagePopoverHintClass}>
+      <p className="text-xs text-muted-foreground">
         {t('devices.micLevelHint')}
       </p>
     </section>
@@ -182,17 +186,11 @@ export function VoicePanelMicSettingsMenuContent() {
 
       <MicSettingsSeparator />
 
-      <button
-        type="button"
-        className={cn(
-          voiceStagePopoverMenuItemClass,
-          'justify-between',
-        )}
+      <VoicePopoverRow
+        label={t('devices.voiceSettings')}
+        trailing={<Settings2Icon />}
         onClick={() => openSettings('voice')}
-      >
-        <span>{t('devices.voiceSettings')}</span>
-        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      />
     </div>
   )
 }
@@ -238,7 +236,7 @@ export function VoiceStageMicSettingsMenuContent() {
       <MicInputMeterSection levels={meterLevels} />
 
       <section className="space-y-2 px-0.5">
-        <p className={voiceStagePopoverSectionTitleClass}>
+        <p className="text-xs font-semibold text-foreground">
           {t('devices.inputVolume')}
         </p>
         <Slider
@@ -256,28 +254,24 @@ export function VoiceStageMicSettingsMenuContent() {
 
       <MicSettingsSeparator />
 
-      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
-        <span className={voiceStagePopoverSectionTitleClass}>
-          {t('devices.dontHear')}
-        </span>
-        <Checkbox
-          checked={prefs.deafened}
-          aria-label={t('devices.dontHear')}
-          onCheckedChange={() => voice.toggleDeafen()}
-        />
-      </label>
+      <Item size="xs" render={<label />}>
+        <ItemContent>
+          <ItemTitle>{t('devices.dontHear')}</ItemTitle>
+        </ItemContent>
+        <ItemActions>
+          <Checkbox
+            checked={prefs.deafened}
+            aria-label={t('devices.dontHear')}
+            onCheckedChange={() => voice.toggleDeafen()}
+          />
+        </ItemActions>
+      </Item>
 
-      <button
-        type="button"
-        className={cn(
-          voiceStagePopoverMenuItemClass,
-          'justify-between',
-        )}
+      <VoicePopoverRow
+        label={t('devices.voiceSettings')}
+        trailing={<Settings2Icon />}
         onClick={() => openSettings('voice')}
-      >
-        <span>{t('devices.voiceSettings')}</span>
-        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      />
     </div>
   )
 }
@@ -322,7 +316,7 @@ export function VoiceSoundSettingsMenuContent() {
       <MicSettingsSeparator />
 
       <section className="space-y-2 px-0.5">
-        <p className={voiceStagePopoverSectionTitleClass}>
+        <p className="text-xs font-semibold text-foreground">
           {t('devices.inputVolume')}
         </p>
         <Slider
@@ -340,17 +334,11 @@ export function VoiceSoundSettingsMenuContent() {
 
       <MicSettingsSeparator />
 
-      <button
-        type="button"
-        className={cn(
-          voiceStagePopoverMenuItemClass,
-          'justify-between',
-        )}
+      <VoicePopoverRow
+        label={t('devices.voiceSettings')}
+        trailing={<Settings2Icon />}
         onClick={() => openSettings('voice')}
-      >
-        <span>{t('devices.voiceSettings')}</span>
-        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      />
     </div>
   )
 }
@@ -361,6 +349,7 @@ function MicSettingsSeparator() {
 
 const DEFAULT_DEVICE_VALUE = '__default__'
 
+/** Device row: opens the device list on hover, like Discord. */
 function MicSettingsDeviceRow({
   title,
   subtitle,
@@ -376,103 +365,40 @@ function MicSettingsDeviceRow({
 }) {
   const t = useTranslations('voice')
   const selectable = selectableDevices(devices)
-  const [open, setOpen] = useState(false)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const cancelClose = () => {
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current)
-    closeTimer.current = null
-  }
-  const scheduleClose = () => {
-    cancelClose()
-    closeTimer.current = setTimeout(() => setOpen(false), 160)
-  }
-  useEffect(() => cancelClose, [])
-  const show = () => {
-    cancelClose()
-    setOpen(true)
-  }
-
-  function select(value: string) {
-    onSelect(value === DEFAULT_DEVICE_VALUE ? undefined : value)
-    setOpen(false)
-  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover row class
-              voiceStagePopoverNavRowClass,
-            )}
-            onPointerEnter={show}
-            onPointerLeave={scheduleClose}
-          />
-        }
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        openOnHover
+        delay={50}
+        render={<Item size="xs" render={<button type="button" />} />}
       >
-        <span className="min-w-0 flex-1">
-          <span className={voiceStagePopoverSectionTitleClass}>{title}</span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {subtitle}
-          </span>
-        </span>
-        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        className={cn(
-          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover class
-          voiceStagePopoverContentClass,
-          'w-56 p-1',
-        )}
-        onPointerEnter={cancelClose}
-        onPointerLeave={scheduleClose}
-      >
-        <RadioGroup
+        <ItemContent>
+          <ItemTitle>{title}</ItemTitle>
+          <ItemDescription className="truncate">{subtitle}</ItemDescription>
+        </ItemContent>
+        <ItemActions className="text-muted-foreground">
+          <ChevronRightIcon />
+        </ItemActions>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="right" align="start" sideOffset={6} className="z-420 w-60">
+        <DropdownMenuRadioGroup
           value={selectedId ?? DEFAULT_DEVICE_VALUE}
-          aria-label={title}
-          className="gap-0.5"
-          onValueChange={select}
+          onValueChange={(value) =>
+            onSelect(value === DEFAULT_DEVICE_VALUE ? undefined : value)
+          }
         >
-          <label
-            className={cn(
-              voiceStagePopoverMenuItemClass,
-              'h-8 cursor-pointer justify-between',
-            )}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {t('devices.default')}
-            </span>
-            <RadioGroupItem
-              value={DEFAULT_DEVICE_VALUE}
-              aria-label={t('devices.default')}
-            />
-          </label>
+          <DropdownMenuRadioItem value={DEFAULT_DEVICE_VALUE}>
+            {t('devices.default')}
+          </DropdownMenuRadioItem>
           {selectable.map((device) => (
-            <label
-              key={device.deviceId}
-              className={cn(
-                voiceStagePopoverMenuItemClass,
-                'h-8 cursor-pointer justify-between',
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">
-                {deviceLabel(device, t)}
-              </span>
-              <RadioGroupItem
-                value={device.deviceId}
-                aria-label={deviceLabel(device, t)}
-              />
-            </label>
+            <DropdownMenuRadioItem key={device.deviceId} value={device.deviceId}>
+              <span className="min-w-0 truncate">{deviceLabel(device, t)}</span>
+            </DropdownMenuRadioItem>
           ))}
-        </RadioGroup>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

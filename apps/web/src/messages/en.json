@@ -1,5 +1,6 @@
 {
   "common": {
+    "adminRedirect": "Opening the admin panel…",
     "appName": "Syrnike",
     "language": "Language",
     "notFound": {
@@ -275,7 +276,9 @@
       "addBanner": "Add banner",
       "editAvatar": "Change avatar",
       "removeAvatar": "Remove avatar",
-      "addAvatar": "Add avatar"
+      "addAvatar": "Add avatar",
+      "avatar": "Avatar",
+      "banner": "Banner"
     },
     "desktop": {
       "app": "Application",
@@ -323,6 +326,56 @@
       "description": "Choose the language used across the app",
       "en": "English",
       "ru": "Русский"
+    },
+    "permissions": {
+      "groups": {
+        "general": "General server permissions",
+        "members": "Members",
+        "textChannels": "Text channels",
+        "voiceChannels": "Voice channels",
+        "channelAccess": "Channel access"
+      },
+      "labels": {
+        "administrator": "Administrator",
+        "manageChannel": "Manage channels",
+        "manageServer": "Manage server",
+        "managePermissions": "Manage permissions",
+        "manageRole": "Manage roles",
+        "manageCustomisation": "Manage customisation",
+        "kickMembers": "Kick members",
+        "banMembers": "Ban members",
+        "timeoutMembers": "Timeout members",
+        "assignRoles": "Assign roles",
+        "changeNickname": "Change own nickname",
+        "manageNicknames": "Manage nicknames",
+        "changeAvatar": "Change own avatar",
+        "removeAvatars": "Remove avatars",
+        "viewChannels": "View channels",
+        "viewThisChannel": "View this channel",
+        "readMessageHistory": "Read message history",
+        "sendMessage": "Send messages",
+        "manageMessages": "Manage messages",
+        "manageWebhooks": "Manage webhooks",
+        "inviteOthers": "Invite people",
+        "sendEmbeds": "Embed content",
+        "uploadFiles": "Attach files",
+        "masquerade": "Masquerade",
+        "react": "Add reactions",
+        "mentionEveryone": "Mention @everyone",
+        "mentionRoles": "Mention roles",
+        "bypassSlowmode": "Bypass slowmode",
+        "connect": "Connect",
+        "speak": "Speak",
+        "video": "Video",
+        "listen": "Listen",
+        "muteMembers": "Mute members",
+        "deafenMembers": "Deafen members",
+        "moveMembers": "Move members",
+        "useActivities": "Use Activities"
+      },
+      "hints": {
+        "administrator": "Members with this permission receive all regular server permissions and bypass channel restrictions. Owner-only actions and role hierarchy still apply."
+      }
     }
   },
   "auth": {
@@ -440,9 +493,10 @@
       "preview": {
         "label": "Loading animation",
         "replay": "Replay",
-        "variants": "Halloween variants",
+        "variants": "Scenes",
         "variantClassic": "Classic",
-        "variantWitch": "Witch skin"
+        "variantHalloween": "Halloween",
+        "variantNewYear": "New Year"
       },
       "factTitle": "Did you know?",
       "status": {
@@ -480,7 +534,8 @@
       "unread": "Unread messages",
       "more": "More: {count}",
       "home": "Home",
-      "noServers": "No servers"
+      "noServers": "No servers",
+      "servers": "Servers"
     },
     "voice": {
       "activeCall": "Call in progress",
@@ -491,7 +546,8 @@
       "soundOff": "Sound off"
     },
     "channel": {
-      "directMessages": "Direct messages"
+      "directMessages": "Direct messages",
+      "noChannels": "No channels available"
     },
     "serverTooltip": {
       "voiceParticipants": "Voice channel participants",
@@ -514,55 +570,6 @@
         "headline": "Spoilers, announcements and.. Syrniki!",
         "dismiss": "I'm already following",
         "open": "Open Telegram"
-      }
-    },
-    "permissions": {
-      "groups": {
-        "general": "General server permissions",
-        "members": "Members",
-        "textChannels": "Text channels",
-        "voiceChannels": "Voice channels",
-        "channelAccess": "Channel access"
-      },
-      "labels": {
-        "administrator": "Administrator",
-        "manageChannel": "Manage channels",
-        "manageServer": "Manage server",
-        "managePermissions": "Manage permissions",
-        "manageRole": "Manage roles",
-        "manageCustomisation": "Manage customisation",
-        "kickMembers": "Kick members",
-        "banMembers": "Ban members",
-        "timeoutMembers": "Timeout members",
-        "assignRoles": "Assign roles",
-        "changeNickname": "Change own nickname",
-        "manageNicknames": "Manage nicknames",
-        "changeAvatar": "Change own avatar",
-        "removeAvatars": "Remove avatars",
-        "viewChannels": "View channels",
-        "viewThisChannel": "View this channel",
-        "readMessageHistory": "Read message history",
-        "sendMessage": "Send messages",
-        "manageMessages": "Manage messages",
-        "manageWebhooks": "Manage webhooks",
-        "inviteOthers": "Invite people",
-        "sendEmbeds": "Embed content",
-        "uploadFiles": "Attach files",
-        "masquerade": "Masquerade",
-        "react": "Add reactions",
-        "mentionEveryone": "Mention @everyone",
-        "mentionRoles": "Mention roles",
-        "bypassSlowmode": "Bypass slowmode",
-        "connect": "Connect",
-        "speak": "Speak",
-        "video": "Video",
-        "listen": "Listen",
-        "muteMembers": "Mute members",
-        "deafenMembers": "Deafen members",
-        "moveMembers": "Move members"
-      },
-      "hints": {
-        "administrator": "Members with this permission receive all regular server permissions and bypass channel restrictions. Owner-only actions and role hierarchy still apply."
       }
     }
   },
@@ -946,7 +953,7 @@
       "title": "Invite friends to {server}",
       "membersJoin": "Members will join",
       "search": "Find friends",
-      "serverMembers": "Server members",
+      "friends": "Friends",
       "noFriends": "No friends found",
       "invite": "Invite",
       "invited": "Sent",
@@ -1042,6 +1049,7 @@
       "addEmojiDescription": "Name — Latin letters, no spaces. File — an image.",
       "nameLabel": "Name",
       "fileLabel": "File",
+      "uploadEmoji": "Upload emoji",
       "serverEmoji": "Server emoji",
       "loading": "Loading…",
       "noEmoji": "No server emoji",
@@ -1053,6 +1061,7 @@
   "users": {
     "selectStatus": "Choose status",
     "openProfile": "Open profile",
+    "addStatus": "Add status",
     "editProfile": "Edit profile",
     "admin": "Admin",
     "status": "Status",
@@ -1077,6 +1086,7 @@
     "message": "Message",
     "removeRole": "Remove “{name}”",
     "editRoles": "Change roles",
+    "addRole": "Add role",
     "rolesUpdateError": "Could not update the roles",
     "kickSuccess": "Member kicked",
     "kickError": "Could not kick the member",
@@ -1105,6 +1115,8 @@
     "copyId": "Copy ID",
     "unblock": "Unblock",
     "memberSince": "Member since",
+    "aboutMe": "About me",
+    "accountCreated": "Member since",
     "roles": "Roles",
     "call": "Call",
     "answer": "Answer",
@@ -1141,7 +1153,9 @@
       "muteSound": "Mute sound",
       "moveTo": "Move to",
       "disconnectAction": "Disconnect from the voice channel"
-    }
+    },
+    "mutualFriendsShort": "{count, plural, one {# mutual friend} other {# mutual friends}}",
+    "mutualServersShort": "{count, plural, one {# mutual server} other {# mutual servers}}"
   },
   "notifications": {
     "count": "{count, plural, one {# notification} other {# notifications}}",
@@ -1387,11 +1401,11 @@
       "backToChannel": "Back to channel",
       "soon": "Coming soon",
       "activities": "Activities",
-      "soundboard": "Soundboard"
+      "soundboard": "Soundboard",
+      "activitiesNoPermission": "Activities: no permission to start"
     },
     "stage": {
       "activity": "Activity",
-      "unknownApp": "Unknown app",
       "loadingActivity": "Loading activity…",
       "otherStreams": "Other streams in the channel",
       "noOne": "No one is in the channel",
@@ -1420,15 +1434,8 @@
       "deafened": "Sound off",
       "micOff": "Microphone muted",
       "participantMuted": "You muted this participant",
-      "activityPlaying": "Voice channel members are already playing.",
-      "activityUpdateClient": "Update the client to open this app.",
-      "unsupportedActivity": "Unsupported activity",
-      "joinActivity": "Join",
-      "joiningActivity": "Connecting…",
-      "leaveActivity": "Leave activity",
       "exitActivity": "Leave {name}",
       "stopWatchingName": "Stop watching {name}",
-      "activityError": "Could not connect.",
       "popoutTitle": "Voice stage in a separate window",
       "goToWindow": "Go to window",
       "returnHere": "Bring back here"
@@ -1626,17 +1633,6 @@
       "inputVolume": "Incoming volume",
       "dontHear": "Don't hear"
     },
-    "activity": {
-      "unsupported": "Unsupported activity",
-      "playing": "Voice channel members are already playing.",
-      "updateClient": "Update the client to open this app.",
-      "join": "Join",
-      "joining": "Connecting…",
-      "joinError": "Could not connect.",
-      "leave": "Leave activity",
-      "loading": "Loading activity…",
-      "title": "Activity"
-    },
     "call": {
       "user": "User",
       "direct": "Direct call",
@@ -1707,6 +1703,13 @@
       "outputUnavailable": "The selected output device is unavailable. Using the default device.",
       "micFallback": "The selected microphone is unavailable. Using the default microphone.",
       "micUnavailableLabel": "Microphone unavailable"
+    },
+    "activityParticipant": "In the activity",
+    "activityParticipants": {
+      "count": "{count, plural, one {# player} other {# players}}",
+      "one": "{name} is playing",
+      "two": "{first} and {second} are playing",
+      "many": "Playing: {count}"
     }
   },
   "channels": {
@@ -1887,8 +1890,24 @@
     "video": "Video",
     "linkPreview": "Link preview",
     "addReaction": "Add reaction",
+    "reactionLabel": "{emoji}: {count, plural, one {# reaction} other {# reactions}}",
     "emoji": "Emoji",
     "serverEmojis": "Server emojis",
+    "emojiPicker": {
+      "search": "Find the perfect emoji",
+      "frequent": "Frequently used",
+      "results": "Results",
+      "noResults": "No emoji found",
+      "skinTone": "Skin tone",
+      "people": "People",
+      "nature": "Nature",
+      "food": "Food",
+      "activities": "Activities",
+      "travel": "Travel",
+      "objects": "Objects",
+      "symbols": "Symbols",
+      "flags": "Flags"
+    },
     "search": "Search",
     "searchServer": "Search the server",
     "searchServerPlaceholder": "Search the server…",
@@ -1897,9 +1916,11 @@
     "nothingFound": "Nothing found",
     "unknownAuthor": "Unknown",
     "noText": "[no text]",
+    "jump": "Jump",
     "mentions": "Mentions",
     "members": "Members",
     "otherMentions": "Other mentions",
+    "emojiMatching": "Emoji matching {query}",
     "searchFailed": "Search failed",
     "searchMessages": "Search messages",
     "searchMessagesPlaceholder": "Search messages…",
@@ -1962,9 +1983,16 @@
     "todayAt": "Today at {time}",
     "yesterdayAt": "Yesterday at {time}",
     "newMessages": "New messages",
+    "newMessagesShort": "New",
     "jumpToPresent": "Jump to present",
-    "noMessages": "No messages yet",
-    "noMessagesHint": "Be the first to write something.",
+    "intro": {
+      "channelTitle": "Welcome to #{name}!",
+      "channelText": "This is the start of the #{name} channel.",
+      "dmText": "This is the beginning of your direct message history with {name}.",
+      "groupTitle": "Welcome to {name}!",
+      "groupText": "This is the beginning of the {name} group.",
+      "savedText": "Notes, links and files you send here are visible only to you."
+    },
     "messagesLabel": "Messages",
     "showMembers": "Show member list",
     "hideMembers": "Hide member list",
@@ -2078,7 +2106,9 @@
       "one": "{name} is typing…",
       "two": "{first} and {second} are typing…",
       "many": "Several people are typing…"
-    }
+    },
+    "groupMembers": "Members — {count}",
+    "groupOwner": "Group owner"
   },
   "friends": {
     "accept": "Accept",
@@ -2107,7 +2137,7 @@
   "home": {
     "activeNow": {
       "title": "Active now",
-      "soon": "Coming soon",
+      "soon": "It's quiet for now",
       "description": "Games and friends' activities will appear here"
     },
     "dm": {
@@ -2118,7 +2148,9 @@
       "tabs": {
         "online": "Online",
         "all": "All",
-        "pending": "Requests"
+        "pending": "Pending",
+        "blocked": "Blocked",
+        "add": "Add friend"
       },
       "idCopied": "ID copied",
       "copyError": "Could not copy",
@@ -2134,16 +2166,25 @@
       "allCount": "All friends — {count}",
       "pendingCount": "Requests — {count}",
       "title": "Friends",
-      "add": "Add",
-      "send": "Send",
+      "send": "Send friend request",
       "usernamePlaceholder": "Username",
       "searchPlaceholder": "Search friends",
-      "emptyOnline": "No friends online",
-      "emptyPending": "No requests",
-      "emptyAll": "No friends yet",
       "accept": "Accept",
       "cancel": "Cancel",
-      "decline": "Decline"
+      "decline": "Decline",
+      "tabsLabel": "Friends",
+      "blockedCount": "Blocked — {count}",
+      "addTitle": "Add friend",
+      "addDescription": "You can add friends by their username.",
+      "openConversation": "Message {name}",
+      "unblock": "Unblock",
+      "emptySearch": "Nobody matches this search.",
+      "empty": {
+        "online": "No one is around right now",
+        "all": "No friends yet",
+        "pending": "No pending friend requests",
+        "blocked": "You haven't blocked anyone"
+      }
     },
     "newConversation": {
       "title": "New conversation",
@@ -2162,6 +2203,10 @@
       "noFriendsToAdd": "No friends to add",
       "cancel": "Cancel",
       "create": "Create"
+    },
+    "sidebar": {
+      "navigation": "Home navigation",
+      "directMessages": "Direct messages"
     }
   },
   "invite": {
@@ -2196,6 +2241,14 @@
     "profileNameMin": "Name must be at least 2 characters"
   },
   "media": {
+    "crop": {
+      "title": "Edit image",
+      "zoom": "Zoom",
+      "rotate": "Rotate",
+      "reset": "Reset",
+      "cancel": "Cancel",
+      "apply": "Apply"
+    },
     "imageFallback": "Image",
     "imageNumber": "Image {index}",
     "zoomIn": "Zoom in",
@@ -2230,17 +2283,55 @@
   },
   "activities": {
     "title": "Activities",
-    "description": "Start a shared app for everyone in this voice channel.",
-    "launchError": "Could not start the activity: {error}",
+    "description": "Start an app for everyone in this voice channel.",
+    "missingPermission": "You need the Use Activities permission to start an activity in this channel.",
+    "loading": "Loading apps…",
+    "loadError": "Could not load apps.",
+    "retry": "Try again",
+    "emptyTitle": "No apps yet",
+    "emptyDescription": "Apps will appear here once they are available.",
     "start": "Start",
     "back": "Back",
-    "syrnikRace": {
-      "title": "Syrnik Race",
-      "description": "Ready lobby, shared goal, competitive hits, points and round completion."
+    "unknownApplication": "Activity",
+    "leave": "Leave activity",
+    "endForEveryone": "End for everyone",
+    "join": "Join",
+    "joining": "Joining…",
+    "full": "Activity is full",
+    "applicationUnavailable": "This app is no longer available.",
+    "sidebarParticipants": "{count, plural, one {# player} other {# players}}",
+    "errors": {
+      "generic": "Something went wrong. Try again.",
+      "not_in_voice_channel": "Join the voice channel first.",
+      "missing_permission": "You do not have permission to start activities here.",
+      "unknown_application": "This app is not available.",
+      "already_running": "An activity is already running in this channel.",
+      "full": "This activity is full.",
+      "not_allowed": "You are not allowed to do that.",
+      "rate_limited": "Too many requests. Wait a moment.",
+      "disconnected": "No connection. Try again when you are back online.",
+      "timeout": "The server did not respond. Try again."
     },
-    "sharedCounter": {
-      "title": "Shared counter",
-      "description": "Minimal check of the shared server revision."
+    "frame": {
+      "loading": "Loading activity…",
+      "unavailable": "This activity cannot be opened."
+    },
+    "authorize": {
+      "title": "Allow {name} to access your account?",
+      "description": "{name} is asking for:",
+      "allow": "Allow",
+      "scopes": {
+        "identify": "Your username, display name and avatar",
+        "storage": "Your saved progress and scores in this app"
+      }
+    },
+    "externalLink": {
+      "title": "Open an external link?",
+      "description": "{name} wants to open this link outside syrnike13. Only continue if you trust it.",
+      "open": "Open link"
+    },
+    "dialog": {
+      "cancel": "Cancel"
     }
   },
   "nativeMedia": {

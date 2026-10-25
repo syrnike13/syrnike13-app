@@ -1,4 +1,3 @@
-// design-allow-file hardcoded-string: internal developer tools panel.
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 

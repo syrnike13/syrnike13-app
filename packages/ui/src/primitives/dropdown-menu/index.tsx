@@ -1,4 +1,3 @@
-// design-allow-file px-size: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"
@@ -230,26 +229,32 @@ function DropdownMenuCheckboxItem({
   checked,
   inset,
   description,
+  variant = "default",
   ...props
 }: MenuPrimitive.CheckboxItem.Props & {
   inset?: boolean
   /** Вторая строка под подписью пункта. */
   description?: React.ReactNode
+  /** Not in base-nova: red item, e.g. server mute in a member menu. */
+  variant?: "default" | "destructive"
 }) {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
+      data-variant={variant}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-2 pr-8 pl-1.5 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/checkbox-item relative flex cursor-default items-center gap-1.5 rounded-md py-2 pr-9 pl-1.5 text-sm font-bold outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&>svg]:opacity-70 focus:[&>svg]:opacity-100 data-highlighted:[&>svg]:opacity-100 focus:[&_[data-slot$='-item-content']_svg]:opacity-100 data-highlighted:[&_[data-slot$='-item-content']_svg]:opacity-100 focus:[&_[data-slot$='-item-description']]:text-muted-foreground data-highlighted:[&_[data-slot$='-item-description']]:text-muted-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         description != null && "py-1.5",
+        "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       checked={checked}
       {...props}
     >
+      {/* Not in base-nova: a visible checkbox box, empty when unchecked. */}
       <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
+        className="pointer-events-none absolute right-2 flex size-4.5 items-center justify-center rounded-sm border border-input group-data-checked/checkbox-item:border-primary group-data-checked/checkbox-item:bg-primary [&_svg]:size-3.5 **:text-primary-foreground! [&_svg]:opacity-100!"
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <MenuPrimitive.CheckboxItemIndicator>

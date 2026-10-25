@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   MessageSquareIcon,
@@ -41,13 +41,15 @@ import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
 import { useAuth } from '#/features/auth/auth-context'
-import { channelActivityClient } from '#/features/activities/channel-activity-client'
-import { channelActivityStageItemId } from '#/features/activities/channel-activity-stage'
+import { activityStageItemId } from '#/features/activities/activity-stage'
 import {
-  getFirstPartyChannelActivity,
-  type FirstPartyChannelActivity,
-} from '#/features/activities/channel-activity-catalog'
-import { useChannelActivity } from '#/features/activities/use-channel-activity'
+  activityStore,
+  isActivityParticipant,
+} from '#/features/activities/activity-store'
+import {
+  useActivityApplication,
+  useActivityInstance,
+} from '#/features/activities/use-activities'
 import {
   getChannelVoiceParticipants,
   sameVoiceParticipantList,
@@ -92,7 +94,10 @@ import {
   buildVoiceStageViewSessions,
   type VoiceStageViewSession,
 } from '#/features/voice/voice-stage-view-session'
-import { canInviteToChannel } from '#/features/authorization/authorization'
+import {
+  canEndActivities,
+  canInviteToChannel,
+} from '#/features/authorization/authorization'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
@@ -122,9 +127,9 @@ type VoiceStageViewProps = {
 }
 
 const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
-const ChannelActivityLauncher = lazy(() =>
-  import('#/features/activities/channel-activity-panel').then((module) => ({
-    default: module.ChannelActivityLauncher,
+const ActivityLauncher = lazy(() =>
+  import('#/features/activities/activity-launcher').then((module) => ({
+    default: module.ActivityLauncher,
   })),
 )
 
@@ -134,14 +139,6 @@ function isVoiceStageActivityItem(
   item: VoiceStageItem,
 ): item is VoiceStageActivityItem {
   return item.kind === 'activity'
-}
-
-function activityTitle(
-  application: FirstPartyChannelActivity | undefined,
-  tA: Translator,
-  t: Translator,
-) {
-  return application ? tA(application.titleKey) : t('stage.unknownApp')
 }
 
 export function VoiceStageView({
@@ -193,12 +190,17 @@ export function VoiceStageView({
     [devGhosts.users, syncedUsers],
   )
   const channelActivitiesEnabled = uiFeatureFlags.channelActivities
-  const channelActivity = useChannelActivity(
-    channelId,
-    channelActivitiesEnabled && inThisVoiceCall,
+  const activityInstance = useActivityInstance(
+    channelActivitiesEnabled && inThisVoiceCall ? channelId : null,
+  )
+  const activityApplication = useActivityApplication(
+    activityInstance?.application_id,
+  )
+  const activityTitle = activityApplication?.name ?? tA('unknownApplication')
+  const canEndChannelActivities = useSyncStore(() =>
+    canEndActivities(channelId),
   )
   const currentUserId = auth.user?._id
-  const currentActivityId = channelActivity.instance?.id ?? null
   const closeActivityLauncher = useCallback(() => {
     voiceStage.setActivityLauncherOpen(false)
   }, [voiceStage.setActivityLauncherOpen])
@@ -250,26 +252,6 @@ export function VoiceStageView({
         : realParticipants,
     [devGhosts.participants, realParticipants],
   )
-  const activityVoiceMembersKey = useMemo(
-    () =>
-      participants
-        .map((participant) => participant.id)
-        .sort()
-        .join(':'),
-    [participants],
-  )
-
-  useEffect(() => {
-    if (channelActivitiesEnabled && inThisVoiceCall && currentActivityId) {
-      channelActivityClient.sync(channelId)
-    }
-  }, [
-    activityVoiceMembersKey,
-    channelActivitiesEnabled,
-    channelId,
-    currentActivityId,
-    inThisVoiceCall,
-  ])
   const participantsById = useMemo(
     () =>
       new Map(participants.map((participant) => [participant.id, participant])),
@@ -305,14 +287,14 @@ export function VoiceStageView({
   )
   const activityStageItem = useMemo<VoiceStageActivityItem | null>(
     () =>
-      channelActivitiesEnabled && inThisVoiceCall && channelActivity.instance
+      activityInstance
         ? {
-            id: channelActivityStageItemId(channelActivity.instance.id),
+            id: activityStageItemId(activityInstance.id),
             kind: 'activity',
-            instance: channelActivity.instance,
+            instance: activityInstance,
           }
         : null,
-    [channelActivitiesEnabled, channelActivity.instance, inThisVoiceCall],
+    [activityInstance],
   )
   const stageItems = useMemo<readonly VoiceStageItem[]>(
     () =>
@@ -379,11 +361,7 @@ export function VoiceStageView({
       return {
         user: undefined,
         kindLabel: t('stage.activity'),
-        displayName: activityTitle(
-          getFirstPartyChannelActivity(focusedItem.instance.application_id),
-          tA,
-          t,
-        ),
+        displayName: activityTitle,
         showOnAir: false,
         showAvatar: false,
       }
@@ -413,7 +391,7 @@ export function VoiceStageView({
         focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
       showAvatar: true,
     }
-  }, [auth.user, focusedItem, participantsById, t, tA, users])
+  }, [activityTitle, auth.user, focusedItem, participantsById, t, users])
   const canToggleStageFullscreen =
     !mobileDrawer && (participants.length > 0 || stageItems.length > 0)
   const canInvite =
@@ -507,44 +485,55 @@ export function VoiceStageView({
     return viewersByOwner
   }, [auth.user, participants, resolveParticipantDisplayName, users])
 
+  const activityParticipants = useMemo<StreamViewer[]>(
+    () =>
+      activityInstance
+        ? activityInstance.participants.map(({ user_id: userId }) => ({
+            id: userId,
+            user:
+              users[userId] ??
+              (userId === auth.user?._id ? (auth.user ?? undefined) : undefined),
+            displayName: resolveParticipantDisplayName(userId),
+          }))
+        : [],
+    [activityInstance, auth.user, resolveParticipantDisplayName, users],
+  )
+
   const focusedViewers = useMemo(
     () =>
       focusedItem?.kind === 'screen'
         ? (streamViewersByOwner.get(focusedItem.userId) ?? [])
-        : [],
-    [focusedItem, streamViewersByOwner],
+        : focusedItem?.kind === 'activity'
+          ? activityParticipants
+          : [],
+    [activityParticipants, focusedItem, streamViewersByOwner],
   )
+  const focusedViewerLabels =
+    focusedItem?.kind === 'activity' ? 'activityParticipants' : 'viewers'
 
   const viewSessions = useMemo(
     () =>
       buildVoiceStageViewSessions({
         viewedRemoteScreenIds: voiceStage.viewedRemoteScreenIds,
         screenDisplayName: resolveParticipantDisplayName,
-        activity:
-          activityStageItem && currentUserId
-            ? {
-                stageItemId: activityStageItem.id,
-                instanceId: activityStageItem.instance.id,
-                channelId: activityStageItem.instance.channel_id,
-                label: activityTitle(
-                  getFirstPartyChannelActivity(
-                    activityStageItem.instance.application_id,
-                  ),
-                  tA,
-                  t,
-                ),
-                joined: activityStageItem.instance.participant_ids.includes(
-                  currentUserId,
-                ),
-              }
-            : null,
+        activity: activityStageItem
+          ? {
+              stageItemId: activityStageItem.id,
+              instanceId: activityStageItem.instance.id,
+              channelId: activityStageItem.instance.channel_id,
+              label: activityTitle,
+              joined: isActivityParticipant(
+                activityStageItem.instance,
+                currentUserId,
+              ),
+            }
+          : null,
       }),
     [
       activityStageItem,
+      activityTitle,
       currentUserId,
       resolveParticipantDisplayName,
-      t,
-      tA,
       voiceStage.viewedRemoteScreenIds,
     ],
   )
@@ -554,7 +543,9 @@ export function VoiceStageView({
       if (session.kind === 'stream') {
         voiceStage.setStageMediaSubscribed(session.stageItemId, false)
       } else {
-        channelActivityClient.leave(session.channelId, session.instanceId)
+        activityStore
+          .leave(session.channelId, session.instanceId)
+          .catch(() => undefined)
       }
 
       if (voiceStage.focusedMediaId === session.stageItemId) {
@@ -608,9 +599,14 @@ export function VoiceStageView({
           <VoiceStageActivityTile
             key={item.id}
             item={item}
-            activity={channelActivity}
+            application={activityApplication}
             currentUserId={currentUserId}
+            participants={activityParticipants}
+            canEnd={
+              item.instance.host_id === currentUserId || canEndChannelActivities
+            }
             variant={variant}
+            popout={popoutSurface}
             onFocus={focusMedia}
             onAspectRatioChange={onStreamAspectRatioChange}
           />
@@ -646,11 +642,14 @@ export function VoiceStageView({
       )
     },
     [
+      activityApplication,
+      activityParticipants,
       auth.user,
-      channelActivity,
+      canEndChannelActivities,
       connecting,
       currentUserId,
       focusMedia,
+      popoutSurface,
       inThisVoiceCall,
       participantsById,
       t,
@@ -701,9 +700,8 @@ export function VoiceStageView({
               </div>
             }
           >
-            <ChannelActivityLauncher
+            <ActivityLauncher
               channelId={channelId}
-              activity={channelActivity}
               onClose={closeActivityLauncher}
             />
           </Suspense>
@@ -720,14 +718,17 @@ export function VoiceStageView({
               displayName={resolveParticipantDisplayName}
             />
           ) : (
-            <EmptyVoiceStage
+            <VoiceStageJoinPrompt
               title={title}
+              participants={[]}
+              users={users}
+              displayName={resolveParticipantDisplayName}
               joinLabel={resolvedJoinLabel ?? t('actions.join')}
               onJoin={() => void voiceSession.join(channelId)}
             />
           )
         ) : showRemoteJoinPreview ? (
-          <VoiceStageJoinPreview
+          <VoiceStageJoinPrompt
             title={title}
             participants={participants}
             users={users}
@@ -780,9 +781,8 @@ export function VoiceStageView({
         {onClose ? (
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0"
+            variant="media"
+            size="icon-lg"
             aria-label={t('actions.minimize')}
             title={t('actions.minimize')}
             onClick={onClose}
@@ -797,18 +797,19 @@ export function VoiceStageView({
               className="size-8 shrink-0"
               fallbackClassName="size-8 text-xs"
               showPresence
-              presenceRingClassName="border-media-backdrop"
             />
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 text-sm font-semibold text-on-media">
+              <h1 className="min-w-0 text-base font-semibold text-on-media">
                 {dmHeader.onOpenProfile ? (
-                  <button
+                  <Button
                     type="button"
-                    className="block max-w-full truncate rounded-sm text-left font-semibold text-on-media transition-colors hover:text-on-media/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-media/40"
+                    variant="plain"
+                    size="inline"
+                    className="block max-w-full truncate text-on-media"
                     onClick={dmHeader.onOpenProfile}
                   >
                     {title}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="block truncate">{title}</span>
                 )}
@@ -841,7 +842,7 @@ export function VoiceStageView({
               className="size-5 text-on-media/60"
             />
             <h1
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-base font-semibold"
               title={
                 focusedMediaHeader
                   ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
@@ -876,6 +877,7 @@ export function VoiceStageView({
                 <VoiceStreamViewers
                   viewers={focusedViewers}
                   variant="avatars"
+                  labels={focusedViewerLabels}
                   className="ml-1 shrink-0"
                 />
               ) : null}
@@ -909,6 +911,7 @@ export function VoiceStageView({
               <VoiceStreamViewers
                 viewers={focusedViewers}
                 variant="avatars"
+                labels={focusedViewerLabels}
                 className="ml-1 shrink-0"
               />
             ) : null}
@@ -925,10 +928,10 @@ export function VoiceStageView({
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
             type="button"
-            variant={chatOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            className="size-9 shrink-0"
+            variant="media"
+            size="icon-lg"
             title={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
+            aria-label={chatOpen ? t('actions.hideChat') : t('actions.openChat')}
             aria-pressed={chatOpen}
             onClick={onToggleChat}
           >
@@ -975,7 +978,7 @@ export function VoiceStageView({
                 inCall={inThisVoiceCall}
                 connecting={connecting}
                 joinLabel={resolvedJoinLabel}
-                overlay
+
                 incomingCall={
                   voiceCallIncoming && voiceCall?.phase === 'ringing'
                 }
@@ -1084,7 +1087,7 @@ function VoiceStageWaitingCall({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-background">
+      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-media-backdrop">
         <UserAvatar
           user={counterpart}
           className="size-28 sm:size-32 md:size-36"
@@ -1106,29 +1109,12 @@ function VoiceStageWaitingCall({
   )
 }
 
-function EmptyVoiceStage({
-  title,
-  joinLabel,
-  onJoin,
-}: {
-  title: string
-  joinLabel: string
-  onJoin: () => void
-}) {
-  const t = useTranslations('voice')
-
-  return (
-    <div className="flex min-h-voice-tile-sm flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-      <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
-      <p className="text-sm text-muted-foreground">{t('stage.noOne')}</p>
-      <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
-        {joinLabel}
-      </Button>
-    </div>
-  )
-}
-
-function VoiceStageJoinPreview({
+/**
+ * Before joining: who is in the channel (a stack of up to four avatars), the
+ * channel name, a status line and the join button. Empty channels show no
+ * avatars.
+ */
+function VoiceStageJoinPrompt({
   title,
   participants,
   users,
@@ -1149,60 +1135,62 @@ function VoiceStageJoinPreview({
   const visibleParticipants = participants.slice(0, 4)
   const hiddenParticipantCount =
     participants.length - visibleParticipants.length
-  const firstParticipantName = displayName(participants[0].id)
   const status =
-    participants.length === 1
-      ? t('stage.inVoiceChat', { name: firstParticipantName })
-      : t('stage.andMoreInVoiceChat', {
-          name: firstParticipantName,
-          count: participants.length - 1,
-        })
+    participants.length === 0
+      ? t('stage.noOne')
+      : participants.length === 1
+        ? t('stage.inVoiceChat', { name: displayName(participants[0]!.id) })
+        : t('stage.andMoreInVoiceChat', {
+            name: displayName(participants[0]!.id),
+            count: participants.length - 1,
+          })
 
   return (
-    <div className="grid min-h-voice-tile flex-1 place-items-center px-4 text-center">
-      <div className="flex translate-y-3 flex-col items-center gap-4">
-        <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
-          <ul
-            className="flex -space-x-3"
-            aria-label={t('stage.participantsLabel')}
-          >
-            {visibleParticipants.map((participant) => {
-              const user =
-                users[participant.id] ??
-                (participant.id === currentUser?._id
-                  ? (currentUser ?? undefined)
-                  : undefined)
-              return (
-                <li key={participant.id} title={displayName(participant.id)}>
-                  <UserAvatar
-                    user={user}
-                    className="size-12 ring-2 ring-muted"
-                    fallbackClassName="size-12 text-sm"
-                    showPresence={false}
-                  />
-                </li>
-              )
-            })}
-            {hiddenParticipantCount > 0 ? (
+    <div className="flex min-h-voice-tile-sm flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+      {visibleParticipants.length > 0 ? (
+        <ul className="flex -space-x-3" aria-label={t('stage.participantsLabel')}>
+          {visibleParticipants.map((participant) => {
+            const user =
+              users[participant.id] ??
+              (participant.id === currentUser?._id
+                ? (currentUser ?? undefined)
+                : undefined)
+            return (
               <li
-                className="relative grid size-12 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground ring-2 ring-muted"
-                aria-label={t('stage.moreParticipants', {
-                  count: hiddenParticipantCount,
-                })}
+                key={participant.id}
+                title={displayName(participant.id)}
+                className="rounded-full ring-4 ring-media-backdrop"
               >
-                +{hiddenParticipantCount}
+                <UserAvatar
+                  user={user}
+                  className="size-16"
+                  fallbackClassName="size-16 text-base"
+                  showPresence={false}
+                />
               </li>
-            ) : null}
-          </ul>
-        </div>
-        <div className="space-y-1.5">
-          <h2 className="max-w-md truncate text-3xl font-bold">{title}</h2>
-          <p className="max-w-lg text-sm text-muted-foreground">{status}</p>
-        </div>
-        <Button type="button" size="lg" className="mt-1" onClick={onJoin}>
-          {joinLabel}
-        </Button>
+            )
+          })}
+          {hiddenParticipantCount > 0 ? (
+            <li
+              className="grid size-16 place-items-center rounded-full bg-on-media/15 text-base font-semibold text-on-media ring-4 ring-media-backdrop"
+              aria-label={t('stage.moreParticipants', {
+                count: hiddenParticipantCount,
+              })}
+            >
+              +{hiddenParticipantCount}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <h2 className="max-w-md truncate text-2xl font-bold text-on-media">
+          {title}
+        </h2>
+        <p className="max-w-lg text-sm text-on-media/60">{status}</p>
       </div>
+      <Button type="button" size="lg" onClick={onJoin}>
+        {joinLabel}
+      </Button>
     </div>
   )
 }

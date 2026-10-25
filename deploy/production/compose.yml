@@ -81,6 +81,8 @@ services:
     init: true
     logging: *json-log-rotation
     env_file: secrets.env
+    environment:
+      SYRNIKE__HOSTS__ACTIVITIES: https://{id}.activities.syrnike13.ru
     depends_on:
       database:
         condition: service_healthy
@@ -107,6 +109,8 @@ services:
     init: true
     logging: *json-log-rotation
     env_file: secrets.env
+    environment:
+      SYRNIKE__HOSTS__ACTIVITIES: https://{id}.activities.syrnike13.ru
     depends_on:
       database:
         condition: service_healthy
@@ -172,6 +176,35 @@ services:
       default:
         aliases:
           - syrnike13-gifbox
+
+  # Activity Origins proxy (ADR-0011): serves {id}.activities.syrnike13.ru
+  # and answers Caddy's on-demand TLS question. Questions about nightly hosts
+  # go through Caddy's internal :14700 relay to the nightly proxy.
+  activity-proxy:
+    image: ghcr.io/syrnike13/app-activity-proxy:latest
+    init: true
+    logging: *json-log-rotation
+    env_file: secrets.env
+    environment:
+      SYRNIKE__HOSTS__ACTIVITIES: https://{id}.activities.syrnike13.ru
+      # The desktop renderer is served from 127.0.0.1 on a random port.
+      SYRNIKE__ACTIVITIES__CLIENT_ORIGINS: https://app.syrnike13.ru http://127.0.0.1:*
+      SYRNIKE__ACTIVITIES__ASK_DELEGATE_SUFFIX: .activities.beta.syrnike13.ru
+      SYRNIKE__ACTIVITIES__ASK_DELEGATE_URL: http://caddy:14700/_caddy/ask
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+    # Only on the default network: first-party applications reach the web
+    # service as http://web:5000, which must not resolve to the nightly one.
+    networks:
+      default:
+        aliases:
+          - syrnike13-activity-proxy
 
   # Regular task daemon
   crond:

@@ -24,6 +24,7 @@ export function VoiceOnAirBadge({
   }
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- on-air badge handles the double click itself and keeps clicks off the row
     <span
       className={cn(
         'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-3xs font-bold leading-none tracking-wide text-destructive-foreground',

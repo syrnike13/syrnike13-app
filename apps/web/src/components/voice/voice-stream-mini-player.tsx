@@ -9,12 +9,14 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   ChevronLeftIcon,
+  LogOutIcon,
   MonitorXIcon,
   Settings2Icon,
   Volume2Icon,
   VolumeXIcon,
 } from '#/components/icons'
 import { Checkbox } from '@syrnike13/ui/primitives/checkbox'
+import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Popover,
   PopoverContent,
@@ -29,9 +31,6 @@ import {
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
 import { ScreenShareQualitySections } from '#/components/voice/voice-screen-share-quality'
-import {
-  voiceStagePopoverContentClass,
-} from '#/components/voice/voice-stage-popover-styles'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useAuth } from '#/features/auth/auth-context'
@@ -57,6 +56,21 @@ import {
 } from '#/features/voice/stream-mini-player'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import type { ActivityInstance } from '@syrnike13/api-types/gateway-schema'
+import type { ActivityApplication } from '#/features/activities/activity-api'
+import { ActivityFrame } from '#/features/activities/activity-frame'
+import {
+  activityStageItemId,
+  isActivityStageItemId,
+} from '#/features/activities/activity-stage'
+import {
+  activityStore,
+  isActivityParticipant,
+} from '#/features/activities/activity-store'
+import {
+  useActivityApplication,
+  useActivityInstance,
+} from '#/features/activities/use-activities'
 import { VoiceStageVideo } from './voice-stage-video'
 
 function readWidth() {
@@ -66,9 +80,6 @@ function readWidth() {
     return 320
   }
 }
-
-const miniIconButtonClass =
-  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-on-media/80 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring data-[popup-open]:bg-on-media/15 data-[popup-open]:text-on-media'
 
 function MiniControl({
   label,
@@ -83,11 +94,13 @@ function MiniControl({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             type="button"
+            variant="media"
+            size="icon"
             data-mini-control
             aria-label={label}
-            className={miniIconButtonClass}
+            className="pointer-events-auto"
             onClick={onClick}
           />
         }
@@ -165,13 +178,20 @@ function MiniStreamSettings({
     <Popover onOpenChange={onOpenChange}>
       <Tooltip>
         <TooltipTrigger render={<span />}>
-          <PopoverTrigger render={<button
-              type="button"
-              data-mini-control
-              aria-label={t('stream.settings')}
-              className={miniIconButtonClass} />}>
-              <Settings2Icon className="size-4.5" />
-            </PopoverTrigger>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="media"
+                size="icon"
+                data-mini-control
+                aria-label={t('stream.settings')}
+                className="pointer-events-auto"
+              />
+            }
+          >
+            <Settings2Icon />
+          </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>{t('stream.settings')}</TooltipContent>
       </Tooltip>
@@ -180,11 +200,7 @@ function MiniStreamSettings({
         side="top"
         align="end"
         sideOffset={8}
-        className={cn(
-          // eslint-disable-next-line shadcn/require-static-classes -- shared voice popover surface class
-          voiceStagePopoverContentClass,
-          'z-510 max-h-voice-popover w-64 overflow-y-auto',
-        )}
+        className="z-510 max-h-voice-popover w-64 overflow-y-auto"
       >
         {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
         {remoteUserId && showOwnQuality ? (
@@ -200,6 +216,64 @@ function MiniStreamSettings({
         ) : null}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** A joined activity keeps running in the mini player while you browse. */
+function MiniActivityContent({
+  instance,
+  application,
+  currentUserId,
+  channelName,
+  onReturn,
+}: {
+  instance: ActivityInstance
+  application: ActivityApplication
+  currentUserId: string
+  channelName: string
+  onReturn: () => void
+}) {
+  const t = useTranslations('voice')
+  const tA = useTranslations('activities')
+  return (
+    <div className="flex size-full flex-col">
+      <div className="flex h-9 shrink-0 cursor-grab items-center gap-1 px-1 text-on-media">
+        <Button
+          type="button"
+          variant="media"
+          size="sm"
+          data-mini-control
+          aria-label={t('miniPlayer.back')}
+          title={channelName}
+          className="min-w-0"
+          onClick={onReturn}
+        >
+          <ChevronLeftIcon />
+          <span className="truncate">{channelName}</span>
+        </Button>
+        <span className="min-w-0 flex-1 truncate text-xs text-on-media/70">
+          {application.name}
+        </span>
+        <MiniControl
+          label={tA('leave')}
+          onClick={() => {
+            void activityStore
+              .leave(instance.channel_id, instance.id)
+              .catch(() => undefined)
+          }}
+        >
+          <LogOutIcon className="size-4.5" />
+        </MiniControl>
+      </div>
+      <div data-mini-control className="min-h-0 flex-1">
+        <ActivityFrame
+          application={application}
+          instance={instance}
+          currentUserId={currentUserId}
+          layout="mini"
+        />
+      </div>
+    </div>
   )
 }
 
@@ -273,8 +347,23 @@ export function VoiceStreamMiniPlayer() {
     voice.viewedRemoteScreenIds,
     voice.focusedMediaId,
   )
+  const activityInstance = useActivityInstance(voice.stageChannelId)
+  const activityApplication = useActivityApplication(
+    activityInstance?.application_id,
+  )
+  const currentUserId = auth.user?._id ?? null
+  const activity =
+    activityInstance &&
+    activityApplication &&
+    currentUserId &&
+    isActivityParticipant(activityInstance, currentUserId)
+      ? { instance: activityInstance, application: activityApplication }
+      : null
+  const showActivity =
+    activity !== null &&
+    (item === null || isActivityStageItemId(voice.focusedMediaId))
   const visible = miniPlayerVisible({
-    hasStream: item !== null,
+    hasStream: item !== null || showActivity,
     sessionChannelId: voice.stageChannelId,
     routeChannelId: params.channelId,
     stageMounted: voice.mountedStageChannelIds.includes(
@@ -283,17 +372,16 @@ export function VoiceStreamMiniPlayer() {
     popoutOpen: voice.popoutWindow !== null && !voice.popoutWindow.closed,
     fullscreen: voice.stageFullscreen,
   })
-  if (!visible || !item || !voice.stageChannelId) return null
+  if (!visible || (!item && !showActivity) || !voice.stageChannelId) {
+    return null
+  }
   const right = anchor.corner.endsWith('right')
   const bottom = anchor.corner.startsWith('bottom')
   const channelName =
     channel && 'name' in channel ? channel.name : t('channel')
-  const streamerName = voiceParticipantDisplayName(
-    item.userId,
-    users,
-    auth.user,
-    t,
-  )
+  const streamerName = item
+    ? voiceParticipantDisplayName(item.userId, users, auth.user, t)
+    : ''
   const isControl = (target: EventTarget) =>
     target instanceof Element && target.closest('[data-mini-control]') !== null
   const returnToChannel = () => {
@@ -302,7 +390,11 @@ export function VoiceStreamMiniPlayer() {
       return
     }
     if (!voice.stageChannelId) return
-    voice.setFocusedMediaId(item.id)
+    voice.setFocusedMediaId(
+      showActivity && activity
+        ? activityStageItemId(activity.instance.id)
+        : (item?.id ?? null),
+    )
     void navigate({
       to: '/c/$channelId',
       params: { channelId: voice.stageChannelId },
@@ -325,6 +417,7 @@ export function VoiceStreamMiniPlayer() {
   )
   return (
     <TooltipProvider>
+      {/* eslint-disable-next-line design/no-lookalike -- drag surface of the mini player */}
       <section
         ref={anchor.ref}
         aria-label={t('miniPlayer.label')}
@@ -348,86 +441,102 @@ export function VoiceStreamMiniPlayer() {
             anchor.dragging && 'scale-103 shadow-2xl',
           )}
         >
-          <button
-            type="button"
-            className={cn(
-              'absolute inset-0 flex items-center justify-center focus-visible:outline focus-visible:outline-ring',
-              anchor.dragging ? 'cursor-grabbing' : 'cursor-pointer',
-            )}
-            aria-label={t('miniPlayer.back')}
-          >
-            {item.track ? (
-              <VoiceStageVideo
-                track={item.track}
-                mediaId={item.id}
-                fit="contain"
-              />
-            ) : (
-              <span className="text-sm text-on-media/70">
-                {item.error
-                  ? t('stream.unavailable')
-                  : t('stream.connecting')}
-              </span>
-            )}
-          </button>
-
-          {/* Верх: тень сверху рассеивается вниз, название канала. */}
-          <div
-            className={cn(
-              chromeVisibility,
-              'top-0 h-16 items-start bg-linear-to-b from-media-backdrop/75 via-media-backdrop/35 to-transparent pt-1.5',
-            )}
-          >
+          {showActivity && activity && currentUserId ? (
+            <MiniActivityContent
+              instance={activity.instance}
+              application={activity.application}
+              currentUserId={currentUserId}
+              channelName={channelName}
+              onReturn={returnToChannel}
+            />
+          ) : item ? (
+            <>
+            {/* eslint-disable-next-line design/no-lookalike -- video surface returns to the stream */}
             <button
               type="button"
-              data-mini-control
+              className={cn(
+                'absolute inset-0 flex items-center justify-center focus-visible:outline focus-visible:outline-ring',
+                anchor.dragging ? 'cursor-grabbing' : 'cursor-pointer',
+              )}
               aria-label={t('miniPlayer.back')}
-              title={channelName}
-              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-on-media/90 transition-colors hover:bg-on-media/15 hover:text-on-media focus-visible:outline focus-visible:outline-ring"
-              onClick={returnToChannel}
             >
-              <ChevronLeftIcon className="size-5 shrink-0" />
-              <span className="truncate">{channelName}</span>
+              {item.track ? (
+                <VoiceStageVideo
+                  track={item.track}
+                  mediaId={item.id}
+                  fit="contain"
+                />
+              ) : (
+                <span className="text-sm text-on-media/70">
+                  {item.error
+                    ? t('stream.unavailable')
+                    : t('stream.connecting')}
+                </span>
+              )}
             </button>
-          </div>
 
-          {/* Низ: тень снизу рассеивается вверх, ник и управление. */}
-          <div
-            className={cn(
-              chromeVisibility,
-              'bottom-0 h-16 items-end bg-linear-to-t from-media-backdrop/80 via-media-backdrop/40 to-transparent pb-1.5',
-            )}
-          >
-            <span className="min-w-0 flex-1 truncate pb-1.5 pl-1 text-sm font-semibold text-on-media drop-shadow">
-              {streamerName}
-            </span>
-            {!item.isLocal ? (
-              <MiniStreamMuteButton userId={item.userId} />
-            ) : null}
-            <MiniStreamSettings
-              remoteUserId={item.isLocal ? null : item.userId}
-              showOwnQuality={ownStreamActive}
-              onOpenChange={setSettingsOpen}
-            />
-            {item.isLocal ? (
-              <MiniControl
-                label={t('actions.stopStream')}
-                onClick={voiceMedia.toggleScreenShare}
+            {/* Верх: тень сверху рассеивается вниз, название канала. */}
+            <div
+              className={cn(
+                chromeVisibility,
+                'top-0 h-16 items-start bg-linear-to-b from-media-backdrop/75 via-media-backdrop/35 to-transparent pt-1.5',
+              )}
+            >
+              <Button
+                type="button"
+                variant="media"
+                size="sm"
+                data-mini-control
+                aria-label={t('miniPlayer.back')}
+                title={channelName}
+                className="pointer-events-auto min-w-0"
+                onClick={returnToChannel}
               >
-                <MonitorXIcon className="size-4.5" />
-              </MiniControl>
-            ) : (
-              <MiniControl
-                label={t('actions.stopWatching')}
-                onClick={() => voice.setStageMediaSubscribed(item.id, false)}
-              >
-                <MonitorXIcon className="size-4.5" />
-              </MiniControl>
-            )}
-          </div>
+                <ChevronLeftIcon />
+                <span className="truncate">{channelName}</span>
+              </Button>
+            </div>
+
+            {/* Низ: тень снизу рассеивается вверх, ник и управление. */}
+            <div
+              className={cn(
+                chromeVisibility,
+                'bottom-0 h-16 items-end bg-linear-to-t from-media-backdrop/80 via-media-backdrop/40 to-transparent pb-1.5',
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate pb-1.5 pl-1 text-sm font-semibold text-on-media drop-shadow">
+                {streamerName}
+              </span>
+              {!item.isLocal ? (
+                <MiniStreamMuteButton userId={item.userId} />
+              ) : null}
+              <MiniStreamSettings
+                remoteUserId={item.isLocal ? null : item.userId}
+                showOwnQuality={ownStreamActive}
+                onOpenChange={setSettingsOpen}
+              />
+              {item.isLocal ? (
+                <MiniControl
+                  label={t('actions.stopStream')}
+                  onClick={voiceMedia.toggleScreenShare}
+                >
+                  <MonitorXIcon className="size-4.5" />
+                </MiniControl>
+              ) : (
+                <MiniControl
+                  label={t('actions.stopWatching')}
+                  onClick={() => voice.setStageMediaSubscribed(item.id, false)}
+                >
+                  <MonitorXIcon className="size-4.5" />
+                </MiniControl>
+              )}
+            </div>
+            </>
+          ) : null}
         </div>
 
         {/* Невидимая зона изменения размера во внутреннем углу. */}
+        {/* eslint-disable-next-line design/no-lookalike -- invisible resize handle in the corner */}
         <button
           type="button"
           data-mini-control

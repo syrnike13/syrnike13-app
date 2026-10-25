@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -20,7 +19,6 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -55,9 +53,6 @@ export function useChannelChat({
   const [composerAction, setComposerAction] = useState<ComposerAction>(null)
   const [hasOlder, setHasOlder] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
-
-  const replyTargetId =
-    composerAction?.type === 'reply' ? composerAction.message._id : null
 
   const historyQuery = useQuery({
     queryKey: queryKeys.channels.messages(channelId),
@@ -105,15 +100,6 @@ export function useChannelChat({
   }, [channelId])
 
   useEffect(() => {
-    if (!replyTargetId) return
-    requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-message-id="${replyTargetId}"]`)
-        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    })
-  }, [replyTargetId])
-
-  useEffect(() => {
     if (!enabled || !token || !lastMessageId || !channel) return
     if (lastAckedMessageIdRef.current === lastMessageId) return
     lastAckedMessageIdRef.current = lastMessageId
@@ -157,12 +143,9 @@ export function useChannelChat({
             }
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
             if (activeChannelIdRef.current === requestChannelId) {
-              toast.error(
-                apiErrorMessage(error, t('messagesLoadError')),
-              )
             }
           }),
         ),
@@ -194,12 +177,9 @@ export function useChannelChat({
               }
             }),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.upsertMessage(message)
-              toast.error(
-                apiErrorMessage(error, t('deleteMessageError')),
-              )
             }),
           ),
         ),
@@ -215,16 +195,13 @@ export function useChannelChat({
       await Effect.runPromise(
         pinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success(t('messagePinned'))),
+            Effect.sync(() => {}),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.patchMessage(channelId, message._id, {
                 pinned: message.pinned,
               })
-              toast.error(
-                apiErrorMessage(error, t('pinMessageError')),
-              )
             }),
           ),
         ),
@@ -252,16 +229,13 @@ export function useChannelChat({
       await Effect.runPromise(
         unpinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success(t('messageUnpinned'))),
+            Effect.sync(() => {}),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.patchMessage(channelId, message._id, {
                 pinned: message.pinned,
               })
-              toast.error(
-                apiErrorMessage(error, t('unpinMessageError')),
-              )
             }),
           ),
         ),
@@ -270,11 +244,21 @@ export function useChannelChat({
     [channelId, t, token],
   )
 
+  /** Discord: стрелка вверх в пустом композере редактирует своё последнее сообщение. */
+  const editLastOwnMessage = useCallback(() => {
+    const userId = auth.user?._id
+    const last = [...messagesRef.current]
+      .reverse()
+      .find((message) => message.author === userId && !message.system)
+    if (!last) return false
+    setComposerAction({ type: 'edit', message: last })
+    return true
+  }, [auth.user?._id])
+
   const replyTo =
     composerAction?.type === 'reply' ? composerAction.message : null
   const editingMessage =
     composerAction?.type === 'edit' ? composerAction.message : null
-  const listHighlightMessageId = replyTo?._id ?? highlightMessageId
 
   return {
     auth,
@@ -296,7 +280,8 @@ export function useChannelChat({
     jumpToMessage,
     replyTo,
     editingMessage,
-    listHighlightMessageId,
+    jumpMessageId: highlightMessageId,
+    editLastOwnMessage,
     notifyTyping,
     stopTyping,
   }

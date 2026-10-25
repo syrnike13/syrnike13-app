@@ -98,7 +98,7 @@ describe('RoleMembersPanel', () => {
   it('searches role members by server nickname', () => {
     render(<RoleMembersPanel server={server()} role={role()} />)
 
-    fireEvent.change(screen.getByRole('textbox'), {
+    fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'wizard' },
     })
 

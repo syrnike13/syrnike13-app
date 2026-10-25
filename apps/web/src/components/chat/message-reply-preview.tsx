@@ -4,10 +4,13 @@ import { XIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
+import { MessageReply } from '@syrnike13/ui/primitives/message'
+import { Toggle } from '@syrnike13/ui/primitives/toggle'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { messagePreviewText } from '#/lib/message-format/preview-text'
 
 export function messageAuthorName(
   message: Message,
@@ -44,21 +47,7 @@ function replyAuthorColor(
   return undefined
 }
 
-/** Уголок «ответа» — border + скругление. */
-function ReplyThreadCorner({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'mb-0.5 box-border h-3 w-5.5 shrink-0 rounded-tl-md',
-        'border-t-2 border-l-2 border-muted-foreground/45',
-        className,
-      )}
-    />
-  )
-}
-
-/** Цитата ответа в ленте — мини-аватар, имя, превью. */
+/** Цитата ответа в ленте: мини-аватар, имя, превью. Уголок рисует MessageReply. */
 export function InlineReplyQuote({
   replyId,
   messagesById,
@@ -75,48 +64,51 @@ export function InlineReplyQuote({
   const t = useTranslations('chat')
   const members = useSyncStore((s) => s.members)
   const servers = useSyncStore((s) => s.servers)
+  const channels = useSyncStore((s) => s.channels)
+  const emojis = useSyncStore((s) => s.emojis)
 
   const original = messagesById[replyId]
   if (!original) {
     return (
-      <p className="mb-1 min-h-4 text-xs leading-4 text-muted-foreground italic">
-        {t('replyToDeleted')}
-      </p>
+      <MessageReply>
+        <span className="italic">{t('replyToDeleted')}</span>
+      </MessageReply>
     )
   }
 
   const name = messageAuthorName(original, users, t('messageLabel'))
   const replyUser = original.user ?? users[original.author]
   const snippet =
-    original.content?.trim().slice(0, 100) || t('attachmentPreview')
-  const nameColor = replyAuthorColor(
-    serverId,
-    original,
-    members,
-    servers,
-  )
+    (original.content
+      ? messagePreviewText(original.content, {
+          users,
+          channels,
+          emojis,
+          roles: serverId ? servers[serverId]?.roles : undefined,
+        }).slice(0, 100)
+      : '') || t('attachmentPreview')
+  const nameColor = replyAuthorColor(serverId, original, members, servers)
 
-  const rowClass = cn(
-    'mb-1 flex max-w-full min-w-0 items-end gap-1.5 rounded-sm text-left',
-    onJump &&
-      'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-  )
-
-  const body = (
-    <>
-      <ReplyThreadCorner className="-ml-7" />
+  return (
+    <MessageReply
+      render={
+        onJump ? (
+          <button type="button" onClick={() => onJump(replyId)} />
+        ) : undefined
+      }
+    >
       {replyUser ? (
         <UserAvatar
           user={replyUser}
-          className="mb-px size-4 shrink-0"
+          className="size-4 shrink-0"
           fallbackClassName="size-4 text-3xs"
           showPresence={false}
         />
       ) : null}
       <span
         className={cn(
-          'shrink-0 text-sm font-semibold leading-4.5',
-          nameColor ? 'text-(--reply-name-color)' : 'text-primary',
+          'shrink-0 font-medium',
+          nameColor ? 'text-(--reply-name-color)' : 'text-foreground',
         )}
         style={
           nameColor
@@ -124,22 +116,10 @@ export function InlineReplyQuote({
             : undefined
         }
       >
-        {name}
+        @{name}
       </span>
-      <span className="min-w-0 truncate text-sm leading-4.5 text-muted-foreground">
-        {snippet}
-      </span>
-    </>
-  )
-
-  if (!onJump) {
-    return <div className={rowClass}>{body}</div>
-  }
-
-  return (
-    <button type="button" className={cn(rowClass, 'w-full')} onClick={() => onJump(replyId)}>
-      {body}
-    </button>
+      <span className="min-w-0 truncate">{snippet}</span>
+    </MessageReply>
   )
 }
 
@@ -182,38 +162,26 @@ export function ComposerReplyBanner({
         </span>
       </p>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1">
         {showMentionToggle ? (
-          <button
-            type="button"
-            className={cn(
-              'rounded px-1 text-xs font-semibold leading-none transition-colors',
-              mentionEnabled
-                ? 'text-primary hover:text-primary/80'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => onMentionToggle(!mentionEnabled)}
-            title={
-              mentionEnabled ? t('mentionOn') : t('mentionOff')
-            }
+          <Toggle
+            size="sm"
+            pressed={mentionEnabled}
+            onPressedChange={onMentionToggle}
+            title={mentionEnabled ? t('mentionOn') : t('mentionOff')}
           >
             @ {mentionEnabled ? t('mentionOnShort') : t('mentionOffShort')}
-          </button>
-        ) : null}
-
-        {showMentionToggle ? (
-          <div className="h-3.5 w-px bg-foreground/15" aria-hidden />
+          </Toggle>
         ) : null}
 
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
+          size="icon-xs"
           onClick={onClear}
           aria-label={t('cancelReply')}
         >
-          <XIcon className="size-3.5" />
+          <XIcon />
         </Button>
       </div>
     </div>

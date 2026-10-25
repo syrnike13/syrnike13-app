@@ -3,7 +3,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useRef, useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { AuthCard } from '#/components/auth/auth-layout'
 import { PasswordInput } from '#/components/auth/password-input'
@@ -26,13 +25,11 @@ import {
   useSyrnikeConfig,
 } from './use-syrnike-config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function LoginForm() {
   const auth = useAuth()
   const navigate = useNavigate()
   const t = useTranslations('auth')
-  const tValidation = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
@@ -45,7 +42,6 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(loginSchema, value)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -60,9 +56,6 @@ export function LoginForm() {
         }
       } catch (error) {
         if (auth.session) return
-        toast.error(
-          apiErrorMessage(error, t('login.error')),
-        )
       } finally {
         setSubmitting(false)
       }
@@ -74,7 +67,6 @@ export function LoginForm() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(mfaPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'fields'))
         return
       }
 
@@ -84,9 +76,6 @@ export function LoginForm() {
           auth.submitMfaPassword(parsed.data.password),
         )
       } catch (error) {
-        toast.error(
-          apiErrorMessage(error, t('mfa.error')),
-        )
       } finally {
         setSubmitting(false)
       }
@@ -127,12 +116,13 @@ export function LoginForm() {
             <Button
               type="button"
               variant="outline"
+              size="lg"
               onClick={auth.cancelMfa}
               disabled={submitting}
             >
               {t('back')}
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" />
               ) : null}
@@ -161,7 +151,6 @@ export function LoginForm() {
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">{t('email')}</Label>
                 <Input
-                  className="auth-input"
                   id="email"
                   type="email"
                   autoComplete="email"
@@ -197,7 +186,7 @@ export function LoginForm() {
           </loginForm.Field>
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button type="submit" size="lg" className="w-full" disabled={submitting}>
             {submitting ? (
               <Spinner data-icon="inline-start" />
             ) : null}

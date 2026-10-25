@@ -1,4 +1,3 @@
-// design-allow-file mobile-size-branch: literal shadcn base-nova use-mobile hook
 import * as React from 'react'
 
 const MOBILE_BREAKPOINT = 768

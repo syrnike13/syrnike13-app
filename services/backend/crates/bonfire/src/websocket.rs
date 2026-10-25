@@ -631,6 +631,7 @@ async fn worker(
     amqp: &AMQP,
 ) {
     let syrnike_config = syrnike_config::config().await;
+    let mut activity_limits = crate::activities::ActivityRateLimits::default();
     let idle_check_interval = Duration::from_millis(SYSTEM_IDLE_CHECK_INTERVAL_MS);
     let mut next_idle_check = Instant::now() + idle_check_interval;
 
@@ -817,21 +818,19 @@ async fn worker(
                             }
                         }
                     }
-                    ClientMessage::ChannelActivity {
+                    ClientMessage::Activity {
                         request_id,
-                        channel_id,
                         request,
                     } => {
-                        if let Some(event) = crate::channel_activity::handle_request(
+                        let event = crate::activities::handle_request(
+                            db,
                             &user,
+                            &mut activity_limits,
                             request_id,
-                            channel_id,
                             request,
                         )
-                        .await
-                        {
-                            write.lock().await.send(config.encode(&event)).await.ok();
-                        }
+                        .await;
+                        write.lock().await.send(config.encode(&event)).await.ok();
                     }
                     ClientMessage::VoiceMediaStopped { source } => {
                         match syrnike_database::voice::clear_voice_media_track(&user.id, source)

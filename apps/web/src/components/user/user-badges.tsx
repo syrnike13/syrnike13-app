@@ -67,7 +67,7 @@ export function UserBadges({
               <TooltipContent
                 side="top"
                 sideOffset={8}
-                className="px-2.5 py-2 text-left text-wrap"
+                className="text-left text-wrap"
               >
                 <div className="flex max-w-64 items-center gap-2.5">
                   <BadgeIconImage src={iconUrl} size="tooltip" />

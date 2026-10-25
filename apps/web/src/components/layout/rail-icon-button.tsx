@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: rail control owns its product hover/active surface.
 import {
   useLinkProps,
   type LinkComponentProps,
@@ -12,7 +11,6 @@ import {
   railIconItemRowClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
   Tooltip,
@@ -103,7 +101,7 @@ export function RailIconButton<TTo extends string>(
   return (
     <TooltipProvider delay={0}>
       <Tooltip>
-        <div className={railIconItemRowClass}>
+        <li className={railIconItemRowClass}>
           {/* key сбрасывает DOM: иначе idle opacity-0 + transition «съедает» unread */}
           <RailActiveIndicator
             key={indicatorKey}
@@ -116,14 +114,10 @@ export function RailIconButton<TTo extends string>(
                 <a
                   {...anchorProps}
                   className={cn(
-                    // eslint-disable-next-line shadcn/require-static-classes -- buttonVariants output is static per variant
-                    buttonVariants({
-                      variant: active ? 'default' : 'ghost',
-                      size: 'icon',
-                    }),
-                    'size-10',
-                    !active &&
-                      'bg-card text-foreground hover:bg-secondary hover:text-foreground',
+                    'flex size-10 shrink-0 items-center justify-center overflow-hidden outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-card text-foreground hover:bg-primary hover:text-primary-foreground',
                   )}
                 />
               }
@@ -131,8 +125,8 @@ export function RailIconButton<TTo extends string>(
               {children}
             </TooltipTrigger>
           </Squircle>
-        </div>
-        <TooltipContent side="right" sideOffset={8} className="font-black">
+        </li>
+        <TooltipContent side="right" sideOffset={8}>
           {tooltipContent ?? title}
         </TooltipContent>
       </Tooltip>

@@ -1,26 +1,30 @@
-import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { PencilFillIcon, ChevronDownIcon, SettingsIcon } from '#/components/icons'
+import { ChevronDownIcon, CopyIcon, PencilFillIcon, SettingsIcon } from '#/components/icons'
+import { Effect } from 'effect'
+import { useState } from 'react'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { useNavigate } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 
-import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { UserAvatar } from '#/components/user/user-avatar'
-import { UserBadges } from '#/components/user/user-badges'
-import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import {
-  profileMenuNestClass,
-  profileMenuRowClass,
-} from '#/components/user/profile-menu-row'
+  Item,
+  ItemContent,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
+import { CurrentUserStatusDialog } from '#/components/user/current-user-status-dialog'
+import {
+  ProfileBody,
+  ProfileHeader,
+  ProfileName,
+  ProfileSurface,
+} from '#/components/user/profile/profile-parts'
 import { PresenceStatusSelect } from '#/components/user/presence-status-select'
-import { useAuth } from '#/features/auth/auth-context'
+import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { canAccessAdmin } from '#/features/authorization/authorization'
-import { fetchUserProfile } from '#/features/api/users-api'
-import { queryKeys } from '#/lib/api/query-keys'
-import { userBannerUrl } from '#/lib/media'
-import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 
 type CurrentUserProfileMenuProps = {
@@ -45,169 +49,137 @@ export function CurrentUserProfileMenu({
   bannerOverlay,
 }: CurrentUserProfileMenuProps) {
   const t = useTranslations('users')
-  const auth = useAuth()
   const navigate = useNavigate()
   const { openSettings } = useSettingsModal()
-  const token = auth.session?.token
   const displayName = user.display_name ?? user.username
-  const customStatus = user.status?.text?.trim()
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
 
-  const profileQuery = useQuery({
-    queryKey: queryKeys.users.profile(user._id),
-    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
-    enabled: Boolean(token),
-    staleTime: 60_000,
-  })
+  async function copyUserId() {
+    try {
+      await Effect.runPromise(writeClipboardTextEffect(user._id))
+    } catch {
+    }
+  }
 
-  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
-    animated: true,
-  })
-  const profileBio = profileQuery.data?.content?.trim()
+  const { bio } = useUserProfileData(user._id)
 
   return (
-    <div className="flex min-w-0 flex-col">
-      <div className="relative">
-        {bannerOverlay ? (
-          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-3 safe-pt-3">
-            {bannerOverlay}
-          </div>
-        ) : null}
-        <div
-          className={userProfileBannerClassName(
-            !bannerUrl &&
-              'bg-gradient-to-br from-primary/80 via-chart-4/70 to-sidebar-primary/80',
-          )}
-        >
-          {bannerUrl ? (
-            <>
-              <FxImage
-                src={bannerUrl}
-                wrapperClassName="block h-full w-full"
-                className="h-full w-full"
-              />
-              <div
-                className="pointer-events-none absolute inset-0 z-1 bg-background/40"
-                aria-hidden
-              />
-            </>
-          ) : null}
-        </div>
-        <div className="absolute top-15.25 left-4 z-10">
-          <UserProfileStatusBubble
-            status={customStatus}
-            className="left-full top-46/100 ml-2.5"
-          />
-          <button
-            type="button"
-            title={onAvatarPress ? t('selectStatus') : t('openProfile')}
-            aria-label={onAvatarPress ? t('selectStatus') : t('openProfile')}
-            className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
-            onClick={(event) => {
-              event.stopPropagation()
-              if (onAvatarPress) {
-                onAvatarPress()
-                return
-              }
-              onOpenGlobalProfile?.()
-            }}
-          >
-            <span className="relative block rounded-full">
-              <UserAvatar
-                user={user}
-                className="size-20"
-                fallbackClassName="size-20 text-xl ring-6 ring-popover bg-card"
-                animated="always"
-                showPresence
-                presenceRingClassName="border-popover"
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-full bg-media-backdrop/0 transition-colors group-hover/avatar-button:bg-media-backdrop/25"
-              />
-            </span>
-          </button>
-        </div>
-      </div>
+    <ProfileSurface surface="popover">
+      <ProfileHeader
+        user={user}
+        actions={bannerOverlay}
+        onStatusClick={() => setStatusDialogOpen(true)}
+        avatarLabel={onAvatarPress ? t('selectStatus') : t('openProfile')}
+        onAvatarClick={onAvatarPress ?? onOpenGlobalProfile}
+      />
 
-      <div className="px-4 pt-15 pb-3">
-        {onAvatarPress ? (
-          <button
-            type="button"
-            title={t('selectStatus')}
-            aria-label={t('selectStatus')}
-            className="group/display-name flex w-full min-w-0 items-center gap-0.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onAvatarPress}
-          >
-            <span className="truncate text-xl leading-6 font-semibold text-foreground">
-              {displayName}
-            </span>
-            <ChevronDownIcon
-              className="size-4 shrink-0 opacity-50 transition-opacity group-hover/display-name:opacity-80"
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <h2 className="truncate text-xl leading-6 font-semibold text-foreground">
-            {displayName}
-          </h2>
-        )}
-        <p className="mt-0.5 truncate text-sm leading-4.5 text-muted-foreground">
-          {user.display_name ? `@${user.username}` : user.username}
-        </p>
-        <UserBadges badges={user.badges} size="sm" className="mt-2" />
-        {profileBio ? (
-          <p className="mt-2 line-clamp-2 text-sm leading-4.5 text-muted-foreground">
-            {profileBio}
+      <ProfileBody>
+        <ProfileName
+          user={user}
+          nameSlot={
+            onAvatarPress ? (
+              <Button
+                type="button"
+                variant="plain"
+                size="inline"
+                title={t('selectStatus')}
+                aria-label={t('selectStatus')}
+                className="group/name max-w-full min-w-0 gap-0.5"
+                onClick={onAvatarPress}
+              >
+                <span className="truncate text-xl leading-6 font-semibold text-foreground">
+                  {displayName}
+                </span>
+                <ChevronDownIcon
+                  aria-hidden
+                  className="size-4 shrink-0 text-muted-foreground group-hover/name:text-foreground"
+                />
+              </Button>
+            ) : undefined
+          }
+        />
+        {bio ? (
+          <p className="line-clamp-2 text-sm leading-4.5 text-muted-foreground">
+            {bio}
           </p>
         ) : null}
-      </div>
 
-      {hidePresenceRow ? (
-        <div className="px-3 pb-3">
+        {hidePresenceRow ? (
           <Button
             type="button"
-            className="h-8 w-full"
+            variant="secondary"
             onClick={() => openSettings('profile')}
           >
-            <PencilFillIcon className="size-4" aria-hidden />
+            <PencilFillIcon />
             {t('editProfile')}
           </Button>
-        </div>
-      ) : (
-        <div className={profileMenuNestClass}>
-          <button
-            type="button"
-            className={profileMenuRowClass}
-            onClick={() => {
-              onClose?.()
-              openSettings('profile')
-            }}
-          >
-            <PencilFillIcon
-              className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
-              aria-hidden
-            />
-            <span className="truncate">{t('editProfile')}</span>
-          </button>
-          {canAccessAdmin() ? (
-            <button
-              type="button"
-              className={profileMenuRowClass}
-              onClick={() => {
-                onClose?.()
-                void navigate({ to: '/admin' })
-              }}
-            >
-              <SettingsIcon
-                className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
-                aria-hidden
+        ) : (
+          <>
+            <ProfileMenuCard>
+              <ProfileMenuRow
+                icon={<PencilFillIcon />}
+                label={t('editProfile')}
+                onClick={() => {
+                  onClose?.()
+                  openSettings('profile')
+                }}
               />
-              <span className="truncate">{t('admin')}</span>
-            </button>
-          ) : null}
-          <PresenceStatusSelect />
-        </div>
-      )}
-    </div>
+              <ItemSeparator className="my-0" />
+              <PresenceStatusSelect />
+              {canAccessAdmin() ? (
+                <>
+                  <ItemSeparator className="my-0" />
+                  <ProfileMenuRow
+                    icon={<SettingsIcon />}
+                    label={t('admin')}
+                    onClick={() => {
+                      onClose?.()
+                      void navigate({ to: '/admin' })
+                    }}
+                  />
+                </>
+              ) : null}
+            </ProfileMenuCard>
+            <ProfileMenuCard>
+              <ProfileMenuRow
+                icon={<CopyIcon />}
+                label={t('copyUserId')}
+                onClick={() => void copyUserId()}
+              />
+            </ProfileMenuCard>
+          </>
+        )}
+      </ProfileBody>
+      <CurrentUserStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+      />
+    </ProfileSurface>
+  )
+}
+
+/** Discord self-popout menu block: a card of rows split by hairlines. */
+function ProfileMenuCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col rounded-lg bg-secondary p-1">{children}</div>
+  )
+}
+
+function ProfileMenuRow({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <Item size="sm" render={<button type="button" />} onClick={onClick}>
+      <ItemMedia variant="icon">{icon}</ItemMedia>
+      <ItemContent>
+        <ItemTitle>{label}</ItemTitle>
+      </ItemContent>
+    </Item>
   )
 }

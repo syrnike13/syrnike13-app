@@ -35,7 +35,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted",
+  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-hover [button]:cursor-pointer [button]:text-left [button]:hover:bg-hover [button]:disabled:pointer-events-none [button]:disabled:opacity-50 [label]:cursor-pointer [label]:hover:bg-hover aria-[current=true]:bg-selection aria-[current=true]:hover:bg-selection data-popup-open:bg-hover has-data-[slot=item-overlay]:relative has-data-[slot=item-overlay]:hover:bg-hover has-[[data-slot=item-overlay]:focus-visible]:border-ring has-[[data-slot=item-overlay]:focus-visible]:ring-[3px] has-[[data-slot=item-overlay]:focus-visible]:ring-ring/50",
   {
     variants: {
       variant: {
@@ -47,6 +47,9 @@ const itemVariants = cva(
         default: "gap-2.5 px-3 py-2.5",
         sm: "gap-2.5 px-3 py-2.5",
         xs: "gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0",
+        // Discord list row (friends, members): 62px, 16px title, 14px status,
+        // a hairline above every row that hides around the hovered row.
+        lg: "relative min-h-15.5 gap-3 px-2.5 py-2 before:pointer-events-none before:absolute before:inset-x-2.5 before:top-0 before:h-px before:bg-border hover:before:hidden [[data-slot=item]:hover+&]:before:hidden",
       },
     },
     defaultVariants: {
@@ -81,7 +84,7 @@ function Item({
 }
 
 const itemMediaVariants = cva(
-  "flex shrink-0 items-center justify-center gap-2 group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start [&_svg]:pointer-events-none",
+  "flex shrink-0 items-center justify-center gap-2 group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start group-data-[size=lg]/item:translate-y-0 group-data-[size=lg]/item:self-center [&_svg]:pointer-events-none",
   {
     variants: {
       variant: {
@@ -117,7 +120,7 @@ function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="item-content"
       className={cn(
-        "flex flex-1 flex-col gap-1 group-data-[size=xs]/item:gap-0 [&+[data-slot=item-content]]:flex-none",
+        "flex min-w-0 flex-1 flex-col gap-1 group-data-[size=lg]/item:gap-0 group-data-[size=xs]/item:gap-0 [&+[data-slot=item-content]]:flex-none",
         className
       )}
       {...props}
@@ -130,7 +133,7 @@ function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="item-title"
       className={cn(
-        "line-clamp-1 flex w-fit items-center gap-2 text-sm leading-snug font-medium underline-offset-4",
+        "line-clamp-1 flex w-fit items-center gap-2 text-sm leading-snug font-medium underline-offset-4 group-data-[size=lg]/item:text-base group-data-[size=lg]/item:font-semibold",
         className
       )}
       {...props}
@@ -151,11 +154,41 @@ function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+/**
+ * Makes the whole item clickable without nesting its actions inside a link:
+ * an empty button (or a link via `render`) stretched over the item. Not part of base-nova;
+ * the item highlights on the Prism `hover` surface while it is hovered.
+ */
+function ItemOverlay({
+  className,
+  render,
+  ...props
+}: useRender.ComponentProps<"button">) {
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        // A rendered link must not get the button-only `type`.
+        type: render ? undefined : "button",
+        className: cn("absolute inset-0 rounded-[inherit] outline-none", className),
+      },
+      props
+    ),
+    render,
+    state: { slot: "item-overlay" },
+  })
+}
+
 function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="item-actions"
-      className={cn("flex items-center gap-2", className)}
+      className={cn(
+        // Ghost action buttons (triggers included) get a surface while the
+        // item or the button is hovered or focused, like Discord list rows.
+        "relative flex items-center gap-2 [&>svg:not([class*='size-'])]:size-4 group-hover/item:[&_[data-variant=ghost]]:bg-card group-focus-within/item:[&_[data-variant=ghost]]:bg-card",
+        className
+      )}
       {...props}
     />
   )
@@ -192,6 +225,7 @@ export {
   ItemMedia,
   ItemContent,
   ItemActions,
+  ItemOverlay,
   ItemGroup,
   ItemSeparator,
   ItemTitle,

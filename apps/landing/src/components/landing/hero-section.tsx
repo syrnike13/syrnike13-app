@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: landing marketing CTAs use brand pill buttons.
 import {
   Button,
   buttonVariants,
@@ -50,10 +49,7 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
         <a
           data-homage-anchor="download"
           href={current.url}
-          className={cn(
-            buttonVariants({ size: 'lg' }),
-            'h-14 w-full gap-2.5 text-base font-semibold',
-          )}
+          className={cn(buttonVariants({ size: 'xl' }), 'w-full')}
         >
           <PlatformIcon platform={platform} className="size-4" />
           {t('downloadFor', { platform: current.label })}
@@ -70,8 +66,9 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
                 type="button"
                 variant="outline"
                 size="xs"
+                shape="circle"
                 onClick={() => onSwitchPlatform(p)}
-                className="gap-1.5 rounded-full"
+                className="gap-1.5"
               >
                 <PlatformIcon platform={p} className="size-3" />
                 {desktopDownloads[p].label}

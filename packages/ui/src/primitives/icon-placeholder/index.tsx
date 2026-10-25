@@ -1,4 +1,3 @@
-// design-allow-file icon-import: literal shadcn Base UI components resolve their icons through this adapter
 import type { ComponentProps } from 'react'
 import {
   RiArrowDownLine,

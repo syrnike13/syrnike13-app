@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 const adminRedirectUrls: Record<string, string> = {
   'app.syrnike13.ru': 'https://admin.syrnike13.ru',
@@ -20,6 +21,7 @@ export const Route = createFileRoute('/admin')({
 })
 
 function AdminRedirect() {
+  const t = useTranslations('common')
   const target =
     typeof window === 'undefined'
       ? 'https://admin.syrnike13.ru'
@@ -31,7 +33,7 @@ function AdminRedirect() {
 
   return (
     <main className="gradient-surface-content flex min-h-svh items-center justify-center bg-background px-6 text-sm text-muted-foreground">
-      Переходим в админку...
+      {t('adminRedirect')}
     </main>
   )
 }

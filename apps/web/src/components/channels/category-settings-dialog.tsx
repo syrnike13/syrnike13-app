@@ -2,7 +2,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import type { Category } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -23,7 +22,6 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 type CategorySettingsDialogProps = {
   serverId: string
@@ -79,14 +77,10 @@ function CategorySettingsDialogContent({
           syncStore.upsertServer(updated)
           setTitle(trimmed)
           setSavedTitle(trimmed)
-          toast.success(t('updated'))
         })
       }).pipe(
         Effect.match({
-          onFailure: (error) => {
-            toast.error(
-              apiErrorMessage(error, t('saveError')),
-            )
+          onFailure: () => {
             return false
           },
           onSuccess: () => true,
@@ -130,16 +124,12 @@ function CategorySettingsDialogContent({
         })
         yield* Effect.sync(() => {
           syncStore.upsertServer(updated)
-          toast.success(t('deleted'))
           setConfirmingDeletion(false)
           onOpenChange(false)
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeleting(false))),

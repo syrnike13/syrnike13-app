@@ -10,7 +10,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
-import { profileMenuRowClass } from '#/components/user/profile-menu-row'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { PRESENCE_DISPLAY, PRESENCE_OPTIONS } from '#/lib/presence'
 import { useSetPresence } from '#/features/users/use-set-presence'
 import { cn } from '#/lib/utils'
@@ -41,34 +47,28 @@ export function PresenceStatusSelect({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
+        // Discord: nested profile menus open on hover, like submenus.
+        openOnHover
+        delay={50}
         disabled={isPending}
         render={
-          <button
-            type="button"
-            className={cn(
-              // eslint-disable-next-line shadcn/require-static-classes -- shared profile menu row class
-              profileMenuRowClass,
-              'data-[popup-open]:bg-accent/60 data-[popup-open]:text-foreground',
-              className,
-            )}
+          <Item
+            size="sm"
+            className={className}
+            render={<button type="button" />}
           />
         }
       >
-        <span
-          className={cn('size-3 shrink-0 rounded-full', current.dotClass)}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate">{t(current.labelKey)}</span>
-        {showMutedBell ? (
-          <BellOffIcon
-            className="size-4 shrink-0 opacity-60 transition-opacity group-hover:opacity-100 group-data-[popup-open]:opacity-100"
-            aria-hidden
-          />
-        ) : null}
-        <ChevronRightIcon
-          className="size-4 shrink-0 opacity-50 transition-opacity group-hover:opacity-90 group-data-[popup-open]:opacity-90"
-          aria-hidden
-        />
+        <ItemMedia variant="icon">
+          <span className={cn('size-3 rounded-full', current.dotClass)} aria-hidden />
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle>{t(current.labelKey)}</ItemTitle>
+        </ItemContent>
+        <ItemActions className="text-muted-foreground">
+          {showMutedBell ? <BellOffIcon aria-hidden /> : null}
+          <ChevronRightIcon aria-hidden />
+        </ItemActions>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-52">
         <DropdownMenuRadioGroup

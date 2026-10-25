@@ -8,9 +8,9 @@ import type {
 } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Option, Schema } from 'effect'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useId, useState } from 'react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -40,16 +40,26 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@syrnike13/ui/primitives/empty'
-import { Input } from '@syrnike13/ui/primitives/input'
+import { Badge } from '@syrnike13/ui/primitives/badge'
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from '@syrnike13/ui/primitives/radio-group'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@syrnike13/ui/primitives/input-group'
+import { Item, ItemActions, ItemContent } from '@syrnike13/ui/primitives/item'
+import { Separator } from '@syrnike13/ui/primitives/separator'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import {
   Select,
@@ -67,6 +77,7 @@ import {
 } from '#/features/api/feedback-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { queryKeys } from '#/lib/api/query-keys'
+import { shellColumnHeaderClass } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const PAGE_SIZE = 20
@@ -102,7 +113,8 @@ export function FeedbackView({
   const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const viewerId = auth.user?._id
-  const [mode, setMode] = useState<FeedbackViewMode>(initialMode)
+  const mode = initialMode
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const [sort, setSort] = useState<FeedbackSort>('popular')
@@ -110,9 +122,9 @@ export function FeedbackView({
   const [area, setArea] = useState<FeedbackArea | 'all'>('all')
   const [platform, setPlatform] = useState<FeedbackPlatform | 'all'>('all')
   const [status, setStatus] = useState<FeedbackProductStatus | 'all'>('all')
-  const [filtersOpen, setFiltersOpen] = useState(false)
   const [internalCreateOpen, setInternalCreateOpen] = useState(false)
   const showCatalogControls = mode === 'all'
+  const headingId = useId()
 
   const createControlled = createOpen !== undefined
   const isCreateOpen = createOpen ?? internalCreateOpen
@@ -130,7 +142,7 @@ export function FeedbackView({
       onCreated?.()
       return
     }
-    setMode('mine')
+    void navigate({ to: `${prefix}/feedback`, search: { view: 'mine' } })
   }
 
   const activeFilterCount = [category, area, platform, status].filter(
@@ -208,234 +220,208 @@ export function FeedbackView({
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []
   const total = activeQuery.data?.pages[0]?.total
 
+  const filterGroups = [
+    {
+      label: t('filterType'),
+      value: category,
+      options: [
+        { value: 'all', label: t('allTypes') },
+        ...FEEDBACK_CATEGORIES.map((item) => ({ value: item.value, label: tm(item.labelKey) })),
+      ],
+      onChange: (value: string) => setCategory(value as FeedbackCategory | 'all'),
+    },
+    {
+      label: t('filterStatus'),
+      value: status,
+      options: [
+        { value: 'all', label: t('allStatuses') },
+        ...FEEDBACK_PRODUCT_STATUSES.map((item) => ({ value: item.value, label: tm(item.labelKey) })),
+      ],
+      onChange: (value: string) => setStatus(value as FeedbackProductStatus | 'all'),
+    },
+    {
+      label: t('filterArea'),
+      value: area,
+      options: [
+        { value: 'all', label: t('allAreas') },
+        ...FEEDBACK_AREAS.map((item) => ({ value: item.value, label: tm(item.labelKey) })),
+      ],
+      onChange: (value: string) => setArea(value as FeedbackArea | 'all'),
+    },
+    {
+      label: t('filterPlatform'),
+      value: platform,
+      options: [
+        { value: 'all', label: t('allPlatforms') },
+        ...FEEDBACK_PLATFORMS.map((item) => ({ value: item.value, label: tm(item.labelKey) })),
+      ],
+      onChange: (value: string) => setPlatform(value as FeedbackPlatform | 'all'),
+    },
+  ]
+
+  const listEmpty =
+    activeQuery.isLoading || activeQuery.isError || suggestions.length === 0
+
   return (
     <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          {prefix === '/m' ? (
-            <Link
-              to="/m"
-              search={{ tab: 'online' }}
-              aria-label={t('backHomeAria')}
-              className={cn(
-                buttonVariants({ variant: 'ghost', size: 'icon' }),
-                'size-8 shrink-0',
-              )}
-            >
-              <ChevronLeftIcon className="size-5" />
-            </Link>
-          ) : null}
-          <div className="flex shrink-0 items-center gap-2">
-            <LightbulbIcon className="size-5 shrink-0 text-primary" aria-hidden />
-            <h1 className="text-sm font-semibold sm:text-base">{t('title')}</h1>
-          </div>
-          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {MODE_TABS.map((item) => (
-              <Button
-                key={item.id}
-                type="button"
-                variant={mode === item.id ? 'secondary' : 'ghost'}
-                size="sm"
-                className="shrink-0"
-                onClick={() => setMode(item.id)}
-              >
-                {t(item.labelKey)}
-              </Button>
-            ))}
-          </nav>
+      <header className={cn(shellColumnHeaderClass, 'px-4')}>
+        {prefix === '/m' ? (
           <Button
-            size="sm"
-            className="shrink-0"
-            onClick={() => handleCreateOpenChange(true)}
+            variant="ghost"
+            size="icon"
+            aria-label={t('backHomeAria')}
+            render={<Link to="/m" search={{ tab: 'online' }} />}
           >
-            <PlusIcon className="size-4" data-icon="inline-start" />
-            <span className="hidden sm:inline">{t('create')}</span>
-            <span className="sm:hidden">{t('createShort')}</span>
+            <ChevronLeftIcon className="size-5" />
           </Button>
-        </div>
-
-        {showCatalogControls ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <label className="relative min-w-56 flex-1">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('search')}
-                className="pl-9"
-              />
-            </label>
-
-            <Select
-              items={[
-                { value: 'popular', label: t('sortPopular') },
-                { value: 'new', label: t('sortNew') },
-              ]}
-              value={sort}
-              onValueChange={(value) => {
-                const decoded = Schema.decodeUnknownOption(
-                  ApiSchema.FeedbackSort,
-                )(value)
-                if (Option.isSome(decoded)) setSort(decoded.value)
-              }}
-            >
-              <SelectTrigger aria-label={t('sortAria')} size="sm" className="w-32 sm:w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent side="bottom" align="start" sideOffset={4}>
-                <SelectGroup>
-                  <SelectItem value="popular">{t('sortPopular')}</SelectItem>
-                  <SelectItem value="new">{t('sortNew')}</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
-            <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-              <PopoverTrigger render={<Button
-                  type="button"
-                  variant={filtersOpen ? 'secondary' : 'outline'}
-                  size="sm"
-                  className="h-9 shrink-0" />}>
-                  <FilterIcon className="size-4" data-icon="inline-start" />
-                  {t('filters')}
-                  {activeFilterCount > 0 ? (
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                      {activeFilterCount}
-                    </span>
-                  ) : null}
-                </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                className="flex max-h-feedback w-104 max-w-viewport-inset flex-col gap-0 overflow-hidden p-0"
-              >
-                <ScrollArea className="min-h-0 flex-1">
-                  <div className="grid gap-4 p-3 sm:grid-cols-2">
-                    <FeedbackFilterGroup
-                      label={t('filterType')}
-                      value={category}
-                      options={[
-                        { value: 'all', label: t('allTypes') },
-                        ...FEEDBACK_CATEGORIES.map((item) => ({
-                          value: item.value,
-                          label: tm(item.labelKey),
-                        })),
-                      ]}
-                      onChange={setCategory}
-                    />
-                    <FeedbackFilterGroup
-                      label={t('filterStatus')}
-                      value={status}
-                      options={[
-                        { value: 'all', label: t('allStatuses') },
-                        ...FEEDBACK_PRODUCT_STATUSES.map((item) => ({
-                          value: item.value,
-                          label: tm(item.labelKey),
-                        })),
-                      ]}
-                      onChange={setStatus}
-                    />
-                    <FeedbackFilterGroup
-                      label={t('filterArea')}
-                      value={area}
-                      options={[
-                        { value: 'all', label: t('allAreas') },
-                        ...FEEDBACK_AREAS.map((item) => ({
-                          value: item.value,
-                          label: tm(item.labelKey),
-                        })),
-                      ]}
-                      onChange={setArea}
-                    />
-                    <FeedbackFilterGroup
-                      label={t('filterPlatform')}
-                      value={platform}
-                      options={[
-                        { value: 'all', label: t('allPlatforms') },
-                        ...FEEDBACK_PLATFORMS.map((item) => ({
-                          value: item.value,
-                          label: tm(item.labelKey),
-                        })),
-                      ]}
-                      onChange={setPlatform}
-                    />
-                  </div>
-                </ScrollArea>
-                {activeFilterCount > 0 ? (
-                  <div className="shrink-0 border-t border-shell-divider bg-muted/20 px-3 py-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-muted-foreground"
-                      onClick={resetFilters}
-                    >
-                      <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
-                      {t('resetFilters')}
-                    </Button>
-                  </div>
-                ) : null}
-              </PopoverContent>
-            </Popover>
-          </div>
         ) : null}
+        <LightbulbIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+        <h1 className="text-base font-semibold">{t('title')}</h1>
+        <div className="mx-2 flex h-6">
+          <Separator orientation="vertical" />
+        </div>
+        <nav aria-label={t('title')} className="flex min-w-0 flex-1 items-center gap-2">
+          {MODE_TABS.map((item) => (
+            <Link
+              key={item.id}
+              to={`${prefix}/feedback`}
+              search={{ view: item.id }}
+              aria-current={mode === item.id ? 'page' : undefined}
+              className={buttonVariants({
+                variant: mode === item.id ? 'secondary' : 'ghost',
+                size: 'sm',
+              })}
+            >
+              {t(item.labelKey)}
+            </Link>
+          ))}
+        </nav>
+        <Button size="sm" onClick={() => handleCreateOpenChange(true)}>
+          <PlusIcon data-icon="inline-start" />
+          <span className="hidden sm:inline">{t('create')}</span>
+          <span className="sm:hidden">{t('createShort')}</span>
+        </Button>
       </header>
 
-      <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-3 pb-2 sm:px-6">
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {mode === 'all' ? t('modeAll') : t('modeMine')}
-          {typeof total === 'number' ? ` — ${total.toLocaleString(locale)}` : ''}
-        </p>
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          {t('votesNote')}
-        </p>
-      </div>
+      {showCatalogControls ? (
+        <div className="flex flex-wrap items-center gap-2 px-6 pt-4 pb-2">
+          <InputGroup size="sm" className="min-w-56 flex-1">
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('search')}
+              aria-label={t('search')}
+            />
+          </InputGroup>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-320 px-3 pb-3 sm:px-5">
-          {activeQuery.isLoading ? (
-            <FeedbackListSkeleton />
-          ) : activeQuery.isError ? (
-            <FeedbackEmpty
-              title={t('loadErrorTitle')}
-              description={t('loadErrorDescription')}
-            />
-          ) : suggestions.length === 0 ? (
-            <FeedbackEmpty
-              title={
-                mode === 'mine' ? t('emptyMineTitle') : t('emptyAllTitle')
-              }
-              description={
-                mode === 'mine'
-                  ? t('emptyMineDescription')
-                  : t('emptyAllDescription')
-              }
-            />
-          ) : (
-            <div className="space-y-2">
-              {suggestions.map((suggestion) => (
-                <FeedbackSuggestionRow
-                  key={suggestion._id}
-                  suggestion={suggestion}
-                  token={token!}
-                />
+          <Select
+            items={[
+              { value: 'popular', label: t('sortPopular') },
+              { value: 'new', label: t('sortNew') },
+            ]}
+            value={sort}
+            onValueChange={(value) => {
+              const decoded = Schema.decodeUnknownOption(ApiSchema.FeedbackSort)(value)
+              if (Option.isSome(decoded)) setSort(decoded.value)
+            }}
+          >
+            <SelectTrigger aria-label={t('sortAria')} size="sm" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent side="bottom" align="start">
+              <SelectGroup>
+                <SelectItem value="popular">{t('sortPopular')}</SelectItem>
+                <SelectItem value="new">{t('sortNew')}</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" />}>
+              <FilterIcon data-icon="inline-start" />
+              {t('filters')}
+              {activeFilterCount > 0 ? <Badge>{activeFilterCount}</Badge> : null}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {filterGroups.map((group) => (
+                <DropdownMenuSub key={group.label}>
+                  <DropdownMenuSubTrigger
+                    description={group.options.find((option) => option.value === group.value)?.label}
+                  >
+                    {group.label}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup value={group.value} onValueChange={group.onChange}>
+                      {group.options.map((option) => (
+                        <DropdownMenuRadioItem key={option.value} value={option.value} closeOnClick>
+                          {option.label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
               ))}
-            </div>
-          )}
+              {activeFilterCount > 0 ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={resetFilters}>
+                    <RotateCcwIcon />
+                    {t('resetFilters')}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : null}
 
-          {activeQuery.hasNextPage ? (
-            <div className="flex justify-center py-4">
+      {listEmpty ? (
+        activeQuery.isLoading ? (
+          <FeedbackListSkeleton />
+        ) : activeQuery.isError ? (
+          <FeedbackEmpty title={t('loadErrorTitle')} description={t('loadErrorDescription')} />
+        ) : (
+          <FeedbackEmpty
+            title={mode === 'mine' ? t('emptyMineTitle') : t('emptyAllTitle')}
+            description={mode === 'mine' ? t('emptyMineDescription') : t('emptyAllDescription')}
+          />
+        )
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <section aria-labelledby={headingId} className="flex flex-col gap-2 px-6 pb-4">
+            <div className="flex items-baseline justify-between gap-3 pt-2">
+              <h2
+                id={headingId}
+                className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+              >
+                {mode === 'all' ? t('modeAll') : t('modeMine')}
+                {typeof total === 'number' ? ` — ${total.toLocaleString(locale)}` : ''}
+              </h2>
+              <p className="hidden text-xs text-muted-foreground sm:block">{t('votesNote')}</p>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {suggestions.map((suggestion) => (
+                <FeedbackSuggestionRow key={suggestion._id} suggestion={suggestion} token={token!} />
+              ))}
+            </ul>
+            {activeQuery.hasNextPage ? (
               <Button
                 variant="secondary"
                 size="sm"
+                className="self-center"
                 disabled={activeQuery.isFetchingNextPage}
                 onClick={() => void activeQuery.fetchNextPage()}
               >
                 {activeQuery.isFetchingNextPage ? t('loadingMore') : t('showMore')}
               </Button>
-            </div>
-          ) : null}
-        </div>
-      </ScrollArea>
+            ) : null}
+          </section>
+        </ScrollArea>
+      )}
 
       <FeedbackCreateDialog
         open={isCreateOpen}
@@ -446,56 +432,9 @@ export function FeedbackView({
   )
 }
 
-function FeedbackFilterGroup<Value extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: Value
-  options: ReadonlyArray<{ value: Value; label: string }>
-  onChange: (value: Value) => void
-}) {
-  return (
-    <div>
-      <p className="px-2 pb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
-      <RadioGroup
-        aria-label={label}
-        value={value}
-        onValueChange={(next) => onChange(next as Value)}
-        className="gap-0.5"
-      >
-        {options.map((option) => {
-          const selected = option.value === value
-          return (
-            <label
-              key={option.value}
-              className={cn(
-                'flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-                selected && 'bg-accent/60 text-foreground',
-              )}
-            >
-              <RadioGroupItem
-                value={option.value}
-                aria-label={option.label}
-              />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {option.label}
-              </span>
-            </label>
-          )
-        })}
-      </RadioGroup>
-    </div>
-  )
-}
-
 function FeedbackEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <Empty className="min-h-64">
+    <Empty size="page">
       <EmptyMedia variant="icon">
         <LightbulbIcon aria-hidden />
       </EmptyMedia>
@@ -509,26 +448,19 @@ function FeedbackEmpty({ title, description }: { title: string; description: str
 
 function FeedbackListSkeleton() {
   return (
-    <div className="space-y-2">
+    <ul className="flex flex-col gap-2 px-6 pt-4">
       {Array.from({ length: 5 }, (_, index) => (
-        <div
-          key={index}
-          className="space-y-2.5 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5"
-        >
-          <div className="flex items-center gap-1.5">
-            <Skeleton className="h-6 w-14" />
-            <Skeleton className="h-6 w-24" />
-            <Skeleton className="h-6 w-20" />
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Skeleton className="h-3.5 w-2/5" />
-              <Skeleton className="h-3 w-3/4" />
-            </div>
-            <Skeleton className="h-9 w-20 shrink-0" />
-          </div>
-        </div>
+        <Item key={index} variant="outline" render={<li />}>
+          <ItemContent>
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-3/4" />
+          </ItemContent>
+          <ItemActions>
+            <Skeleton className="h-8 w-16" />
+          </ItemActions>
+        </Item>
       ))}
-    </div>
+    </ul>
   )
 }

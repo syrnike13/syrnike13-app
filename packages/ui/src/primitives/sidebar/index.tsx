@@ -1,5 +1,3 @@
-// design-allow-file px-size: literal shadcn base-nova source
-// design-allow-file restyle-shared: literal shadcn base-nova source
 "use client"
 
 import * as React from "react"
@@ -329,7 +327,6 @@ function SidebarInput({
   ...props
 }: React.ComponentProps<typeof Input>) {
   return (
-    // design-allow restyle-shared: literal shadcn base-nova sidebar input
     <Input
       data-slot="sidebar-input"
       data-sidebar="input"
@@ -410,7 +407,9 @@ function SidebarGroupLabel({
     props: mergeProps<"div">(
       {
         className: cn(
-          "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+          // Discord category label: 14px/500 muted text that brightens on
+          // hover, a 12px chevron after the text.
+          "flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-md px-2 text-left text-sm font-medium tracking-tight text-muted-foreground ring-sidebar-ring outline-hidden transition-[margin,opacity,color] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 hover:text-foreground focus-visible:ring-2 [&>span]:truncate [&>svg]:size-3 [&>svg]:shrink-0",
           className
         ),
       },
@@ -467,7 +466,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      className={cn("flex w-full min-w-0 flex-col gap-0", className)}
+      className={cn("flex w-full min-w-0 flex-col gap-0.5", className)}
       {...props}
     />
   )
@@ -484,19 +483,32 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
+// Discord-style navigation rows: muted 16px/400 labels (500 when active), 20px icons, the
+// selected row on `selection` (lighter than the `hover` fill), 32px channel
+// rows and 42px DM/navigation rows. Explicit icon sizes are respected. The row
+// keeps its hover while a following sibling in its menu item (its action
+// buttons) is hovered; buttons outside a menu item are not affected.
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-base font-normal tracking-tight text-muted-foreground ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground data-active:bg-selection data-active:font-medium data-active:text-selection-foreground data-active:hover:bg-selection data-active:hover:text-selection-foreground [[data-sidebar=menu-item]>&:has(~:hover)]:bg-sidebar-accent [[data-sidebar=menu-item]>&:has(~:hover)]:text-sidebar-accent-foreground data-active:[[data-sidebar=menu-item]>&:has(~:hover)]:bg-selection data-active:[[data-sidebar=menu-item]>&:has(~:hover)]:text-selection-foreground [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-5 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         outline:
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
+        // Not in base-nova: a destructive row (log out, leave server).
+        destructive:
+          "text-destructive hover:bg-destructive/10 hover:text-destructive",
       },
       size: {
-        default: "h-8 text-sm",
+        default: "h-8",
         sm: "h-7 text-xs",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
+        // Not in base-nova: settings navigation rows, 36px.
+        md: "h-9 gap-3 group-data-[collapsible=icon]:p-0!",
+        lg: "h-10.5 gap-3 group-data-[collapsible=icon]:p-0!",
+        // Not in base-nova: the leading account row (settings): 56px with a
+        // 40px avatar and two lines.
+        xl: "h-14 gap-3 group-data-[collapsible=icon]:p-0!",
       },
     },
     defaultVariants: {
@@ -519,7 +531,9 @@ function SidebarMenuButton({
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const { isMobile, state } = useSidebar()
+  // Optional context: app navigation renders menu buttons without a
+  // SidebarProvider, where the collapsed-state tooltip never applies.
+  const sidebar = React.useContext(SidebarContext)
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
@@ -553,7 +567,7 @@ function SidebarMenuButton({
       <TooltipContent
         side="right"
         align="center"
-        hidden={state !== "collapsed" || isMobile}
+        hidden={sidebar?.state !== "collapsed" || sidebar.isMobile}
         {...tooltip}
       />
     </Tooltip>

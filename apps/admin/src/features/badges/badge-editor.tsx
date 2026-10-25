@@ -4,7 +4,6 @@ import type { Badge } from '@syrnike13/api-types'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import { IconDropzone } from '#/components/icon-dropzone'
@@ -30,7 +29,6 @@ import {
   AlertDialogTitle,
 } from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Card } from '@syrnike13/ui/primitives/card'
 import {
   Dialog,
   DialogContent,
@@ -63,6 +61,7 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 import { badgeIconUrl } from '#/lib/media'
+import { Item } from '@syrnike13/ui/primitives/item'
 
 export function BadgeEditorPage({
   mode,
@@ -140,11 +139,9 @@ export function BadgeEditorPage({
         ...c,
         created,
       ])
-      toast.success(t('created'))
       void navigate({ to: '/badges/$badgeId', params: { badgeId: created._id } })
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('createError'))
+    onError: () => {
     },
   })
 
@@ -171,10 +168,8 @@ export function BadgeEditorPage({
       )
       setIconFile(null)
       setRemoveIcon(false)
-      toast.success(t('saved'))
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('saveError'))
+    onError: () => {
     },
   })
 
@@ -193,11 +188,9 @@ export function BadgeEditorPage({
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (c = []) =>
         c.filter((item) => item._id !== deleted._id),
       )
-      toast.success(t('deleted'))
       void navigate({ to: '/badges' })
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('deleteError'))
+    onError: () => {
     },
   })
 
@@ -217,12 +210,10 @@ export function BadgeEditorPage({
         }),
       ),
     onSuccess: () => {
-      toast.success(t('assigned'))
       setAssignOpen(false)
       setAssignQuery('')
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('assignError'))
+    onError: () => {
     },
   })
 
@@ -351,10 +342,7 @@ export function BadgeEditorPage({
                 </Button>
               ) : null}
             </AdminSection>
-            <Card
-              size="sm"
-              className="flex-row items-center gap-2.5 px-3 py-2"
-            >
+            <Item variant="outline" size="xs">
               <BadgeIcon
                 badge={{ icon: removeIcon && !iconFile ? undefined : badge?.icon }}
                 previewUrl={previewUrl}
@@ -366,7 +354,7 @@ export function BadgeEditorPage({
                   {t('usernamePreview')}
                 </div>
               </div>
-            </Card>
+            </Item>
           </div>
         </div>
 

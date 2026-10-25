@@ -32,6 +32,7 @@ COPY crates/core/ratelimits/Cargo.toml ./crates/core/ratelimits/
 COPY crates/services/autumn/Cargo.toml ./crates/services/autumn/
 COPY crates/services/january/Cargo.toml ./crates/services/january/
 COPY crates/services/gifbox/Cargo.toml ./crates/services/gifbox/
+COPY crates/services/activity-proxy/Cargo.toml ./crates/services/activity-proxy/
 COPY crates/daemons/crond/Cargo.toml ./crates/daemons/crond/
 COPY crates/daemons/pushd/Cargo.toml ./crates/daemons/pushd/
 COPY crates/daemons/voice-ingress/Cargo.toml ./crates/daemons/voice-ingress/

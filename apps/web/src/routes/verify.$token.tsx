@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
@@ -51,7 +50,6 @@ function VerifyEmailPage() {
         if (!ticket) {
           yield* Effect.sync(() => {
             setState({ status: 'success', hasTicket: false })
-            toast.success(t('verify.successTitle'))
           })
           return
         }
@@ -105,7 +103,7 @@ function VerifyEmailPage() {
           </CardDescription>
         </CardHeader>
         {state.status === 'loading' ? (
-          <CardContent className="flex justify-center py-6">
+          <CardContent className="flex justify-center">
             <Spinner className="size-8 text-muted-foreground" />
           </CardContent>
         ) : null}

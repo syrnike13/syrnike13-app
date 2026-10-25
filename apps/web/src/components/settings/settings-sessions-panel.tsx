@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { MonitorIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import {
   useLocale,
   useTranslations,
@@ -20,6 +19,16 @@ import {
   AlertDialogTitle,
 } from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
+import { ulidToDate } from '#/lib/ulid'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
@@ -28,16 +37,12 @@ import {
   fetchSessions,
   revokeOtherSessionsEffect,
 } from '#/features/api/sessions-api'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { loadSession } from '#/lib/session'
 
+/** Session ids are ULIDs: the creation time is in the id. */
 function formatSessionDate(sessionId: string, locale: AppLocale) {
-  try {
-    const timestamp = Number.parseInt(sessionId.slice(0, 10), 16) * 1000
-    return new Date(timestamp).toLocaleString(locale)
-  } catch {
-    return '—'
-  }
+  const date = ulidToDate(sessionId)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(locale)
 }
 
 export function SettingsSessionsPanel() {
@@ -73,13 +78,11 @@ export function SettingsSessionsPanel() {
           }),
         ),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(apiErrorMessage(error, t('revokeError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success(t('revokeSuccess'))
             }),
         }),
       ),
@@ -101,13 +104,11 @@ export function SettingsSessionsPanel() {
           }),
         ),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(apiErrorMessage(error, t('revokeOthersError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success(t('revokeOthersSuccess'))
             }),
         }),
       ),
@@ -141,19 +142,17 @@ export function SettingsSessionsPanel() {
     <div className="space-y-2">
       {current ? (
         <SettingsBlock title={t('currentTitle')}>
-          <div className="flex items-start gap-3 py-3">
-            <MonitorIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-            <div className="min-w-0">
-              <p className="text-base font-medium">
-                {current.name || t('thisDevice')}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t('created', {
-                  date: formatSessionDate(current._id, locale),
-                })}
-              </p>
-            </div>
-          </div>
+          <Item size="sm">
+            <ItemMedia variant="icon">
+              <MonitorIcon />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>{current.name || t('thisDevice')}</ItemTitle>
+              <ItemDescription>
+                {t('created', { date: formatSessionDate(current._id, locale) })}
+              </ItemDescription>
+            </ItemContent>
+          </Item>
         </SettingsBlock>
       ) : null}
 
@@ -166,55 +165,49 @@ export function SettingsSessionsPanel() {
       >
         {others.length > 0 ? (
           <>
-            <div className="flex justify-end pb-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() =>
-                  setPendingRevocation({ type: 'revoke-others' })
-                }
-              >
-                {t('revokeAll')}
-              </Button>
-            </div>
-            <ul className="divide-y divide-border/40">
+            <ItemGroup className="gap-0">
               {others.map((session) => (
-                <li
-                  key={session._id}
-                  className="flex items-center gap-3 py-3"
-                >
-                  <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-medium">
-                      {session.name || t('session')}
-                    </p>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
+                <Item key={session._id} size="sm">
+                  <ItemMedia variant="icon">
+                    <MonitorIcon />
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{session.name || t('session')}</ItemTitle>
+                    <ItemDescription>
                       {formatSessionDate(session._id, locale)}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 shrink-0 text-destructive"
-                    title={t('revoke')}
-                    onClick={() =>
-                      setPendingRevocation({
-                        type: 'revoke',
-                        sessionId: session._id,
-                      })
-                    }
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
-                </li>
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon-sm"
+                      title={t('revoke')}
+                      aria-label={t('revoke')}
+                      onClick={() =>
+                        setPendingRevocation({
+                          type: 'revoke',
+                          sessionId: session._id,
+                        })
+                      }
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </ItemActions>
+                </Item>
               ))}
-            </ul>
+            </ItemGroup>
+            <Button
+              type="button"
+              variant="destructive"
+              className="self-start"
+              onClick={() => setPendingRevocation({ type: 'revoke-others' })}
+            >
+              {t('revokeAll')}
+            </Button>
           </>
         ) : (
-          <Empty className="py-3">
+          <Empty size="sm">
             <EmptyDescription>{t('noOthers')}</EmptyDescription>
           </Empty>
         )}

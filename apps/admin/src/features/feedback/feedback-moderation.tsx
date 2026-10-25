@@ -9,7 +9,6 @@ import {
 import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Effect, Option, Schema } from 'effect'
-import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -30,7 +29,7 @@ import {
 import { Badge } from '@syrnike13/ui/primitives/badge'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Card } from '@syrnike13/ui/primitives/card'
-import { Empty } from '@syrnike13/ui/primitives/empty'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {
   Dialog,
   DialogContent,
@@ -89,6 +88,7 @@ import {
 import { queryKeys } from '#/lib/api/query-keys'
 import { ApiError } from '#/lib/api/client'
 import { cn } from '#/lib/utils'
+import { Item } from '@syrnike13/ui/primitives/item'
 
 type Mode = 'pending' | 'published'
 type ModerationDialog =
@@ -227,7 +227,6 @@ function FeedbackModerationContent() {
 
   function canLeaveActiveDraft() {
     if (!draftController?.isDirty) return true
-    toast.warning(t('draftWarning'))
     return false
   }
 
@@ -249,33 +248,30 @@ function FeedbackModerationContent() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => approveFeedback(token!, id),
     onSuccess: () => {
-      toast.success(t('approved'))
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('approveError')),
+    onError: () => {},
   })
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       rejectFeedback(token!, id, { reason }),
     onSuccess: () => {
-      toast.success(t('rejected'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('rejectError')),
+    onError: () => {},
   })
   const mergeMutation = useMutation({
     mutationFn: ({ source, target }: { source: FeedbackSuggestion; target: FeedbackSuggestion }) =>
       mergeFeedback(token!, source._id, { target_id: target._id }),
     onSuccess: () => {
-      toast.success(t('merged'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('mergeError')),
+    onError: () => {},
   })
 
   const pendingTotal = pendingQuery.data?.pages[0]?.total ?? 0
@@ -436,10 +432,10 @@ function FeedbackModeTabs({
   return (
     <Tabs value={mode} onValueChange={(value) => onChange(value as Mode)}>
       <TabsList aria-label={t('tabsAria')}>
-        <TabsTrigger value="pending" className="px-4">
+        <TabsTrigger value="pending">
           {t('tabPending', { count: pendingTotal })}
         </TabsTrigger>
-        <TabsTrigger value="published" className="px-4">
+        <TabsTrigger value="published">
           {t('tabPublished', { count: publishedTotal })}
         </TabsTrigger>
       </TabsList>
@@ -519,14 +515,9 @@ function FeedbackQueueItem({
   const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'flex w-full border-l-2 px-5 py-4 text-left transition-colors',
-        selected
-          ? 'border-primary bg-primary/10'
-          : 'border-transparent hover:bg-muted/45',
-      )}
+    <Item
+      aria-current={selected}
+      render={<button type="button" />}
       onClick={onSelect}
     >
       <div className="min-w-0 flex-1">
@@ -556,7 +547,7 @@ function FeedbackQueueItem({
           <span>{formatFeedbackDate(suggestion.created_at, locale)}</span>
         </div>
       </div>
-    </button>
+    </Item>
   )
 }
 
@@ -764,8 +755,8 @@ function DuplicatePicker({
             />
           ))
         ) : (
-          <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
-            {t('noMatches')}
+          <Empty size="sm" variant="card">
+            <EmptyDescription>{t('noMatches')}</EmptyDescription>
           </Empty>
         )}
       </CandidateGroup>
@@ -795,8 +786,8 @@ function DuplicatePicker({
       {selectedTarget ? (
         <MergeComparison source={source} target={selectedTarget} />
       ) : (
-        <Empty className="border border-dashed px-3 py-3 text-xs leading-5 text-muted-foreground">
-          {t('pickComparison')}
+        <Empty size="sm" variant="card">
+          <EmptyDescription>{t('pickComparison')}</EmptyDescription>
         </Empty>
       )}
     </RadioGroup>
@@ -882,8 +873,13 @@ function MergeComparison({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <Card className={cn('gap-0 py-0', compact ? 'text-xs' : '')}>
-      <div className="grid items-stretch gap-3 p-3 comparison-grid">
+    <Card className="gap-0 py-0">
+      <div
+        className={cn(
+          'grid items-stretch gap-3 p-3 comparison-grid',
+          compact && 'text-xs',
+        )}
+      >
         <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
           <ArrowRightIcon className="size-5" aria-label={t('votesTransferAria')} />
@@ -1005,15 +1001,12 @@ function PublishedFeedbackEditor({
       setBaseline(next)
       setStatus(next.status)
       setResponse(next.response)
-      toast.success(t('updated'))
       onSaved()
     },
     onError: (error) => {
       if (error instanceof ApiError && error.message === 'InvalidOperation') {
-        toast.error(t('staleError'))
         return
       }
-      toast.error(t('saveError'))
     },
   })
   const hideMutation = useMutation({
@@ -1024,10 +1017,9 @@ function PublishedFeedbackEditor({
           : Effect.fail(new Error(t('missingToken'))),
       ),
     onSuccess: () => {
-      toast.success(t('hidden'))
       onSaved()
     },
-    onError: () => toast.error(t('hideError')),
+    onError: () => {},
   })
 
   const saveDraft = useCallback(async () => {

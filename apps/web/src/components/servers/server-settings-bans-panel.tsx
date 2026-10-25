@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
+import { SearchInput } from '#/components/ui/search-input'
 import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { SearchIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
@@ -18,7 +17,6 @@ import {
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBansEffect,
@@ -131,11 +129,8 @@ export function ServerSettingsBansPanel({
         })
         yield* Effect.sync(closeUnbanDialog)
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('unbanError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRemovingUserId(null))),
@@ -172,15 +167,11 @@ export function ServerSettingsBansPanel({
       </div>
 
       {bans.length > 0 ? (
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('search')}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('search')}
+        />
       ) : null}
 
       {bansQuery.isLoading ? (
@@ -188,11 +179,11 @@ export function ServerSettingsBansPanel({
       ) : bansQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : bans.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('empty')}</EmptyDescription>
         </Empty>
       ) : filteredBans.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('noResults')}</EmptyDescription>
         </Empty>
       ) : (

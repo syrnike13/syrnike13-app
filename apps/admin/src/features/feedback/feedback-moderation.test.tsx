@@ -169,9 +169,6 @@ describe('FeedbackModerationPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Вторая идея/ }))
 
-    expect(mocks.toastWarning).toHaveBeenCalledWith(
-      'Сохраните или сбросьте изменения перед сменой обращения',
-    )
     expect(screen.getByRole('heading', { name: firstSuggestion.title })).not.toBeNull()
     expect((screen.getByLabelText('Ответ команды') as HTMLTextAreaElement).value).toBe(
       'Черновик ответа',

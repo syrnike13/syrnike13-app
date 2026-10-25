@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import type { Invite } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { CopyIcon, PlusIcon } from '#/components/icons'
-import { toast } from 'sonner'
 import {
   useLocale,
   useTranslations,
@@ -34,7 +33,6 @@ import {
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
@@ -124,11 +122,8 @@ export function ServerSettingsInvitesPanel({
           setRevokeReason('')
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('revokeError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRevokingCode(null))),
@@ -140,14 +135,11 @@ export function ServerSettingsInvitesPanel({
     await Effect.runPromise(
       writeClipboardTextEffect(inviteUrl(code)).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('copyError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -177,7 +169,7 @@ export function ServerSettingsInvitesPanel({
       ) : invitesQuery.error ? (
         <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : invites.length === 0 ? (
-        <Empty className="py-8">
+        <Empty>
           <EmptyDescription>{t('empty')}</EmptyDescription>
         </Empty>
       ) : (

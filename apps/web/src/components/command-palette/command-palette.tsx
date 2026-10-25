@@ -35,6 +35,7 @@ import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { syncStore } from '#/features/sync/sync-store'
+import { messagePreviewText } from '#/lib/message-format/preview-text'
 
 function groupIcon(group: string) {
   switch (group) {
@@ -99,7 +100,10 @@ export function CommandPalette() {
     return messageHits.map((hit) => ({
       id: `msg-${hit.message._id}`,
       group: 'messages',
-      label: hit.message.content?.slice(0, 80) || t('attachment'),
+      label:
+        (hit.message.content
+          ? messagePreviewText(hit.message.content, syncStore.getState()).slice(0, 80)
+          : '') || t('attachment'),
       subtitle: hit.channelLabel,
       keywords: hit.message.content ?? '',
       score: 50,
@@ -254,7 +258,7 @@ export function CommandPalette() {
                   <CommandMenuItem
                     key={item.id}
                     value={item.id}
-                    className="gap-3 px-2 py-2"
+                    className="gap-3"
                     onSelect={() => runItem(item)}
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" />

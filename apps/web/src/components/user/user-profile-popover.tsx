@@ -10,6 +10,7 @@ import {
   UserProfileCard,
   type UserProfileCardProps,
 } from '#/components/user/user-profile-card'
+import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { cn } from '#/lib/utils'
 
 function isRoleDialogTarget(target: EventTarget | null): boolean {
@@ -43,10 +44,23 @@ export function UserProfilePopover({
   ...cardProps
 }: UserProfilePopoverProps) {
   const [openInternal, setOpenInternal] = useState(false)
+  const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
+  // Mounted on first open: the dialog subscribes to auth and sync stores.
+  const [globalProfileMounted, setGlobalProfileMounted] = useState(false)
   const open = openProp ?? openInternal
   const setOpen = onOpenChangeProp ?? setOpenInternal
+  // Without a caller-owned dialog the popover opens the full profile itself,
+  // so every popover (feed, mentions, system rows) can reach it.
+  const openGlobalProfile =
+    onOpenGlobalProfile ??
+    (() => {
+      setOpen(false)
+      setGlobalProfileMounted(true)
+      setGlobalProfileOpen(true)
+    })
 
   return (
+    <>
     <Popover
       open={open}
       onOpenChange={(next, details) => {
@@ -77,9 +91,18 @@ export function UserProfilePopover({
           user={user}
           {...cardProps}
           onClose={() => setOpen(false)}
-          onOpenGlobalProfile={onOpenGlobalProfile}
+          onOpenGlobalProfile={openGlobalProfile}
         />
       </PopoverContent>
     </Popover>
+    {onOpenGlobalProfile || !globalProfileMounted ? null : (
+      <UserGlobalProfileDialog
+        user={user}
+        serverId={cardProps.serverId}
+        open={globalProfileOpen}
+        onOpenChange={setGlobalProfileOpen}
+      />
+    )}
+    </>
   )
 }

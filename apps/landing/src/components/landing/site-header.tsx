@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { APP_LOGO_SRC } from '#/lib/brand'
 import { config } from '#/lib/config'
-import { cn } from '#/lib/utils'
 
 export function SiteHeader() {
   const t = useTranslations('landing')
@@ -26,10 +25,11 @@ export function SiteHeader() {
       <a
         data-homage-anchor="header-cta"
         href={`${config.appUrl}/?tab=online`}
-        className={cn(
-          buttonVariants({ variant: 'secondary', size: 'sm' }),
-          'rounded-full px-4',
-        )}
+        className={buttonVariants({
+          variant: 'secondary',
+          size: 'sm',
+          shape: 'circle',
+        })}
       >
         {t('openInBrowser')}
       </a>

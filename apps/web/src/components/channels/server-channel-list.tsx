@@ -17,7 +17,6 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd'
 import { FolderPlusIcon, PlusCircleIcon } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { ChannelCategoryHeader } from '#/components/channels/channel-category-header'
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
@@ -49,7 +48,6 @@ import {
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -206,27 +204,28 @@ function ChannelDroppableList({
 }) {
   if (!canDrag) {
     return (
-      <div className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-0.5">
         {channels.map((channel) => (
-          <ChannelSidebarItem
-            key={channel._id}
-            channel={channel}
-            activeChannelId={activeChannelId}
-            users={users}
-            currentUserId={currentUserId}
-            unreads={unreads}
-            canManage={canManage}
-            canInvite={canInvite(channel)}
-          />
+          <li key={channel._id}>
+            <ChannelSidebarItem
+              channel={channel}
+              activeChannelId={activeChannelId}
+              users={users}
+              currentUserId={currentUserId}
+              unreads={unreads}
+              canManage={canManage}
+              canInvite={canInvite(channel)}
+            />
+          </li>
         ))}
-      </div>
+      </ul>
     )
   }
 
   return (
     <Droppable droppableId={sectionId}>
       {(provided) => (
-        <div
+        <ul
           ref={provided.innerRef}
           {...provided.droppableProps}
           className="flex shrink-0 flex-col gap-0.5"
@@ -238,7 +237,7 @@ function ChannelDroppableList({
               index={index}
             >
               {(dragProvided, dragSnapshot) => (
-                <div
+                <li
                   ref={(element) => {
                     dragProvided.innerRef(element)
                     if (index === 0) {
@@ -261,12 +260,12 @@ function ChannelDroppableList({
                     canInvite={canInvite(channel)}
                     dragHandleProps={dragProvided.dragHandleProps ?? undefined}
                   />
-                </div>
+                </li>
               )}
             </Draggable>
           ))}
           {provided.placeholder}
-        </div>
+        </ul>
       )}
     </Droppable>
   )
@@ -557,12 +556,9 @@ export function ServerChannelList({
           setOptimisticSections(null)
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
             setOptimisticSections(null)
-            toast.error(
-              apiErrorMessage(error, t('list.orderError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setReordering(false))),

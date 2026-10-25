@@ -7,6 +7,18 @@ import { cn } from '#/lib/utils'
 
 export type ServerActivityKind = 'voice' | 'screen-share' | null
 
+const MAX_ACRONYM_LENGTH = 5
+
+/** Discord-style fallback: first character of every word, case kept. */
+export function serverAcronym(name: string): string {
+  const acronym = name
+    .replace(/'s /g, ' ')
+    .split(/\s+/)
+    .map((word) => Array.from(word)[0] ?? '')
+    .join('')
+  return Array.from(acronym).slice(0, MAX_ACRONYM_LENGTH).join('') || '?'
+}
+
 function ServerActivityBadge({
   kind,
   connected,
@@ -52,6 +64,8 @@ export function ServerAvatar({
   connected: boolean
 }) {
   const iconUrl = serverIconUrl(server.icon, { animated })
+  const acronym = serverAcronym(server.name)
+  const acronymLength = Array.from(acronym).length
 
   return (
     <span className="relative flex size-full items-center justify-center">
@@ -63,8 +77,17 @@ export function ServerAvatar({
           className="size-full object-cover"
         />
       ) : (
-        <span className="text-xs font-semibold uppercase">
-          {server.name.trim().slice(0, 2) || '??'}
+        <span
+          className={cn(
+            'font-medium whitespace-nowrap',
+            acronymLength <= 2
+              ? 'text-base'
+              : acronymLength <= 3
+                ? 'text-sm'
+                : 'text-xs',
+          )}
+        >
+          {acronym}
         </span>
       )}
       <ServerActivityBadge kind={activity} connected={connected} />

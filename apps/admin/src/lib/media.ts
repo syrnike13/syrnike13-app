@@ -6,7 +6,9 @@ function attachmentPreviewUrl(file: Pick<File, '_id' | 'tag'>) {
   return `${config.mediaUrl}/${file.tag}/${file._id}`
 }
 
-export function badgeIconUrl(icon: File | null | undefined) {
+export function badgeIconUrl(
+  icon: Pick<File, '_id' | 'tag'> | null | undefined,
+) {
   if (!icon) return null
   return attachmentPreviewUrl(icon)
 }

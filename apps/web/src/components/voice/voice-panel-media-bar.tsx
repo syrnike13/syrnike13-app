@@ -19,8 +19,10 @@ import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { voiceMediaControlState } from '#/features/voice/voice-media-availability'
-import { isChannelActivityStageItemId } from '#/features/activities/channel-activity-stage'
-import { shellDivider } from '#/components/layout/shell-chrome'
+import { isActivityStageItemId } from '#/features/activities/activity-stage'
+import { useActivityInstance } from '#/features/activities/use-activities'
+import { canUseActivities } from '#/features/authorization/authorization'
+import { useSyncStore } from '#/features/sync/sync-store'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'
@@ -54,6 +56,7 @@ function PanelMediaButton({
 }) {
   return (
     <VoiceControlTooltip title={title} wrapperClassName="flex min-w-0 flex-1">
+      {/* eslint-disable-next-line design/no-lookalike -- voice panel media bar keeps its own segmented look */}
       <button
         type="button"
         aria-label={title}
@@ -93,6 +96,7 @@ function PanelMediaButtonSoon({
       }
       contentClassName="text-center"
     >
+      {/* eslint-disable-next-line design/no-lookalike -- voice panel media bar keeps its own segmented look */}
       <button
         type="button"
         aria-label={title}
@@ -113,6 +117,12 @@ export function VoicePanelMediaBar() {
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
   const connecting = voiceSession.status === 'connecting'
+  const activityRunning =
+    useActivityInstance(voiceSession.channelId) !== null
+  // Subscribes to authorization snapshot changes for the voice channel.
+  const activitiesAllowed = useSyncStore(() =>
+    canUseActivities(voiceSession.channelId ?? undefined),
+  )
   // A camera whose device failed keeps its "on" intent: the button turns it off.
   const cameraOn = voiceMedia.cameraEnabled || voiceMedia.cameraDeviceFailed
   const sharingScreen = voiceMedia.screenShareEnabled
@@ -136,7 +146,7 @@ export function VoicePanelMediaBar() {
 
   return (
     <TooltipProvider delay={300}>
-      <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
+      <div className="flex gap-1.5 px-2 pt-1 pb-2">
         <CameraDevicePickerAnchor className="flex min-w-0 flex-1">
           <PanelMediaButton
             title={cameraControl.title}
@@ -169,12 +179,19 @@ export function VoicePanelMediaBar() {
 
         {uiFeatureFlags.channelActivities ? (
           <PanelMediaButton
-            title={t('actions.activities')}
+            title={
+              activityRunning || activitiesAllowed
+                ? t('actions.activities')
+                : t('actions.activitiesNoPermission')
+            }
             active={
               voiceStage.activityLauncherOpen ||
-              isChannelActivityStageItemId(voiceStage.focusedMediaId)
+              isActivityStageItemId(voiceStage.focusedMediaId)
             }
-            disabled={voiceSession.status !== 'connected'}
+            disabled={
+              voiceSession.status !== 'connected' ||
+              (!activityRunning && !activitiesAllowed)
+            }
             onClick={() => {
               if (voiceStage.activityLauncherOpen) {
                 voiceStage.setActivityLauncherOpen(false)

@@ -2,7 +2,7 @@ import type { ManualPresence } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RadioGroup, RadioGroupItem } from '@syrnike13/ui/primitives/radio-group'
-import { profileMenuRowClass } from '#/components/user/profile-menu-row'
+import { SidebarMenuButton } from '@syrnike13/ui/primitives/sidebar'
 import { PRESENCE_DISPLAY, PRESENCE_OPTIONS } from '#/lib/presence'
 import { useSetPresence } from '#/features/users/use-set-presence'
 import { cn } from '#/lib/utils'
@@ -36,23 +36,22 @@ export function PresencePickerList({
       {PRESENCE_OPTIONS.map((option) => {
         const selected = option.value === current.value
         return (
-          <label
+          <SidebarMenuButton
             key={option.value}
-            className={cn(
-              profileMenuRowClass,
-              'h-11 cursor-pointer justify-between rounded-lg px-3',
-              selected && 'bg-accent/70 text-foreground',
-            )}
+            size="lg"
+            isActive={selected}
+            render={<label />}
+            className="cursor-pointer justify-between"
           >
             <span className="flex min-w-0 items-center gap-3">
               <span
                 className={cn('size-3 shrink-0 rounded-full', option.dotClass)}
                 aria-hidden
               />
-              <span className="truncate text-base">{t(option.labelKey)}</span>
+              <span className="truncate">{t(option.labelKey)}</span>
             </span>
             <RadioGroupItem value={option.value} disabled={isPending} />
-          </label>
+          </SidebarMenuButton>
         )
       })}
     </RadioGroup>

@@ -3,14 +3,12 @@ import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 
 import {
   railGlyphClass,
-  railIconIdleClass,
+  railIconClass,
   railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
-import { cn } from '#/lib/utils'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Squircle } from '@syrnike13/ui/primitives/squircle'
 import {
@@ -32,7 +30,6 @@ import {
 import { createServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {
@@ -75,7 +72,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           syncStore.applyServerJoinBundle({ server, member, channels })
           syncStore.setSelectedServerId(server._id)
           handleOpenChange(false)
-          toast.success(t('created', { name: server.name }))
         })
 
         const firstChannel = channels[0]
@@ -91,11 +87,8 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSaving(false))),
@@ -108,7 +101,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     const code = parseInviteCode(inviteInput)
     if (!token) return
     if (!code) {
-      toast.error(t('inviteRequired'))
       return
     }
 
@@ -123,7 +115,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           yield* Effect.sync(() => {
             syncStore.setSelectedServerId(response.server._id)
             handleOpenChange(false)
-            toast.success(t('joinSuccess'))
           })
 
           const channel = response.channels[0]
@@ -144,7 +135,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         if (isGroupInviteJoin(response)) {
           yield* Effect.sync(() => {
             handleOpenChange(false)
-            toast.success(t('inviteAccepted'))
           })
           yield* Effect.tryPromise({
             try: () =>
@@ -159,14 +149,11 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         }
 
         yield* Effect.sync(() =>
-          toast.error(t('unknownInvite')),
+          {},
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('joinError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setJoining(false))),
@@ -180,20 +167,15 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         render={
           trigger ?? (
             <Squircle asChild {...railIconSquircleProps}>
-              {/* design-allow restyle-shared: rail idle surface is a brand/rail exception */}
-              <Button
+              {/* eslint-disable-next-line design/no-lookalike -- server rail tile, shared with the server icons */}
+              <button
                 type="button"
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  'size-10',
-                  // eslint-disable-next-line shadcn/require-static-classes -- shared rail idle surface constant
-                  railIconIdleClass,
-                )}
+                className={railIconClass(false)}
                 title={t('triggerAria')}
+                aria-label={t('triggerAria')}
               >
                 <PlusIcon className={railGlyphClass} />
-              </Button>
+              </button>
             </Squircle>
           )
         }

@@ -1,5 +1,6 @@
 {
   "common": {
+    "adminRedirect": "Переходим в админку…",
     "appName": "Сырники",
     "language": "Язык",
     "notFound": {
@@ -275,7 +276,9 @@
       "addBanner": "Добавить баннер",
       "editAvatar": "Изменить аватар",
       "removeAvatar": "Удалить аватар",
-      "addAvatar": "Добавить аватар"
+      "addAvatar": "Добавить аватар",
+      "avatar": "Аватар",
+      "banner": "Баннер"
     },
     "desktop": {
       "app": "Приложение",
@@ -323,6 +326,56 @@
       "description": "На каком языке показывать приложение",
       "en": "English",
       "ru": "Русский"
+    },
+    "permissions": {
+      "groups": {
+        "general": "Общие права сервера",
+        "members": "Участники",
+        "textChannels": "Текстовые каналы",
+        "voiceChannels": "Голосовые каналы",
+        "channelAccess": "Доступ к каналу"
+      },
+      "labels": {
+        "administrator": "Администратор",
+        "manageChannel": "Управление каналами",
+        "manageServer": "Управление сервером",
+        "managePermissions": "Управление правами",
+        "manageRole": "Управление ролями",
+        "manageCustomisation": "Управление оформлением",
+        "kickMembers": "Исключать участников",
+        "banMembers": "Банить участников",
+        "timeoutMembers": "Тайм-аут участников",
+        "assignRoles": "Назначать роли",
+        "changeNickname": "Менять свой ник",
+        "manageNicknames": "Управлять никами",
+        "changeAvatar": "Менять свой аватар",
+        "removeAvatars": "Удалять аватары",
+        "viewChannels": "Просмотр каналов",
+        "viewThisChannel": "Видеть этот канал",
+        "readMessageHistory": "Читать историю сообщений",
+        "sendMessage": "Отправлять сообщения",
+        "manageMessages": "Управлять сообщениями",
+        "manageWebhooks": "Управлять вебхуками",
+        "inviteOthers": "Приглашать людей",
+        "sendEmbeds": "Встраивать контент",
+        "uploadFiles": "Прикреплять файлы",
+        "masquerade": "Маскировка",
+        "react": "Добавлять реакции",
+        "mentionEveryone": "Упоминать @everyone",
+        "mentionRoles": "Упоминать роли",
+        "bypassSlowmode": "Обходить slowmode",
+        "connect": "Подключаться",
+        "speak": "Говорить",
+        "video": "Видео",
+        "listen": "Слушать",
+        "muteMembers": "Мьютить участников",
+        "deafenMembers": "Отключать звук",
+        "moveMembers": "Перемещать участников",
+        "useActivities": "Использовать Активности"
+      },
+      "hints": {
+        "administrator": "Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются."
+      }
     }
   },
   "auth": {
@@ -440,9 +493,10 @@
       "preview": {
         "label": "Анимация загрузки",
         "replay": "Повторить",
-        "variants": "Хэллоуин-варианты",
+        "variants": "Сцены",
         "variantClassic": "Обычная",
-        "variantWitch": "Ведьмин скин"
+        "variantHalloween": "Хэллоуин",
+        "variantNewYear": "Новый год"
       },
       "factTitle": "А вы знали?",
       "status": {
@@ -480,7 +534,8 @@
       "unread": "Есть непрочитанные сообщения",
       "more": "Ещё {count}",
       "home": "Главная",
-      "noServers": "Нет серверов"
+      "noServers": "Нет серверов",
+      "servers": "Серверы"
     },
     "voice": {
       "activeCall": "Идёт звонок",
@@ -491,7 +546,8 @@
       "soundOff": "Звук выключен"
     },
     "channel": {
-      "directMessages": "Личные сообщения"
+      "directMessages": "Личные сообщения",
+      "noChannels": "Нет доступных каналов"
     },
     "serverTooltip": {
       "voiceParticipants": "Участники голосовых каналов",
@@ -514,55 +570,6 @@
         "headline": "Спойлеры, анонсы и.. Сырники!",
         "dismiss": "Я уже подписан",
         "open": "В Telegram"
-      }
-    },
-    "permissions": {
-      "groups": {
-        "general": "Общие права сервера",
-        "members": "Участники",
-        "textChannels": "Текстовые каналы",
-        "voiceChannels": "Голосовые каналы",
-        "channelAccess": "Доступ к каналу"
-      },
-      "labels": {
-        "administrator": "Администратор",
-        "manageChannel": "Управление каналами",
-        "manageServer": "Управление сервером",
-        "managePermissions": "Управление правами",
-        "manageRole": "Управление ролями",
-        "manageCustomisation": "Управление оформлением",
-        "kickMembers": "Исключать участников",
-        "banMembers": "Банить участников",
-        "timeoutMembers": "Тайм-аут участников",
-        "assignRoles": "Назначать роли",
-        "changeNickname": "Менять свой ник",
-        "manageNicknames": "Управлять никами",
-        "changeAvatar": "Менять свой аватар",
-        "removeAvatars": "Удалять аватары",
-        "viewChannels": "Просмотр каналов",
-        "viewThisChannel": "Видеть этот канал",
-        "readMessageHistory": "Читать историю сообщений",
-        "sendMessage": "Отправлять сообщения",
-        "manageMessages": "Управлять сообщениями",
-        "manageWebhooks": "Управлять вебхуками",
-        "inviteOthers": "Приглашать людей",
-        "sendEmbeds": "Встраивать контент",
-        "uploadFiles": "Прикреплять файлы",
-        "masquerade": "Маскировка",
-        "react": "Добавлять реакции",
-        "mentionEveryone": "Упоминать @everyone",
-        "mentionRoles": "Упоминать роли",
-        "bypassSlowmode": "Обходить slowmode",
-        "connect": "Подключаться",
-        "speak": "Говорить",
-        "video": "Видео",
-        "listen": "Слушать",
-        "muteMembers": "Мьютить участников",
-        "deafenMembers": "Отключать звук",
-        "moveMembers": "Перемещать участников"
-      },
-      "hints": {
-        "administrator": "Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются."
       }
     }
   },
@@ -946,7 +953,7 @@
       "title": "Пригласить друзей в {server}",
       "membersJoin": "Участники окажутся в",
       "search": "Найти друзей",
-      "serverMembers": "Участники сервера",
+      "friends": "Друзья",
       "noFriends": "Друзья не найдены",
       "invite": "Пригласить",
       "invited": "Отправлено",
@@ -1042,6 +1049,7 @@
       "addEmojiDescription": "Имя — латиница, без пробелов. Файл — изображение.",
       "nameLabel": "Имя",
       "fileLabel": "Файл",
+      "uploadEmoji": "Загрузить эмодзи",
       "serverEmoji": "Серверные emoji",
       "loading": "Загрузка…",
       "noEmoji": "Нет серверных emoji",
@@ -1053,6 +1061,7 @@
   "users": {
     "selectStatus": "Выбрать статус",
     "openProfile": "Открыть профиль",
+    "addStatus": "Добавить статус",
     "editProfile": "Редактировать профиль",
     "admin": "Админка",
     "status": "Статус",
@@ -1077,6 +1086,7 @@
     "message": "Сообщение",
     "removeRole": "Убрать «{name}»",
     "editRoles": "Изменить роли",
+    "addRole": "Добавить роль",
     "rolesUpdateError": "Не удалось обновить роли",
     "kickSuccess": "Участник исключён",
     "kickError": "Не удалось исключить",
@@ -1105,6 +1115,8 @@
     "copyId": "Копировать ID",
     "unblock": "Разблокировать",
     "memberSince": "На сервере с",
+    "aboutMe": "Обо мне",
+    "accountCreated": "В числе пользователей с",
     "roles": "Роли",
     "call": "Позвонить",
     "answer": "Ответить",
@@ -1141,7 +1153,9 @@
       "muteSound": "Отключить звук",
       "moveTo": "Переместить в",
       "disconnectAction": "Отключить от голосового канала"
-    }
+    },
+    "mutualFriendsShort": "{count, plural, one {# общий друг} few {# общих друга} many {# общих друзей} other {# общих друга}}",
+    "mutualServersShort": "{count, plural, one {# общий сервер} few {# общих сервера} many {# общих серверов} other {# общих сервера}}"
   },
   "notifications": {
     "count": "{count, plural, one {# уведомление} few {# уведомления} many {# уведомлений} other {# уведомления}}",
@@ -1387,11 +1401,11 @@
       "backToChannel": "Вернуться в канал",
       "soon": "Скоро",
       "activities": "Активности",
-      "soundboard": "Саундбар"
+      "soundboard": "Саундбар",
+      "activitiesNoPermission": "Активности: нет права на запуск"
     },
     "stage": {
       "activity": "Активность",
-      "unknownApp": "Неизвестное приложение",
       "loadingActivity": "Загружаем Активность…",
       "otherStreams": "Другие трансляции в канале",
       "noOne": "В канале никого нет",
@@ -1420,15 +1434,8 @@
       "deafened": "Без звука",
       "micOff": "Микрофон выключен",
       "participantMuted": "Вы заглушили этого участника",
-      "activityPlaying": "Участники голосового канала уже играют.",
-      "activityUpdateClient": "Обновите клиент, чтобы открыть это приложение.",
-      "unsupportedActivity": "Неподдерживаемая Активность",
-      "joinActivity": "Присоединиться",
-      "joiningActivity": "Подключаем…",
-      "leaveActivity": "Покинуть Активность",
       "exitActivity": "Выйти из активности — {name}",
       "stopWatchingName": "Прекратить просмотр — {name}",
-      "activityError": "Не удалось подключиться.",
       "popoutTitle": "Голосовой стейдж в отдельном окне",
       "goToWindow": "Перейти в окно",
       "returnHere": "Вернуть сюда"
@@ -1626,17 +1633,6 @@
       "inputVolume": "Громкость входящего",
       "dontHear": "Не слышать"
     },
-    "activity": {
-      "unsupported": "Неподдерживаемая Активность",
-      "playing": "Участники голосового канала уже играют.",
-      "updateClient": "Обновите клиент, чтобы открыть это приложение.",
-      "join": "Присоединиться",
-      "joining": "Подключаем…",
-      "joinError": "Не удалось подключиться.",
-      "leave": "Покинуть Активность",
-      "loading": "Загружаем Активность…",
-      "title": "Активность"
-    },
     "call": {
       "user": "Пользователь",
       "direct": "Личный звонок",
@@ -1707,6 +1703,13 @@
       "outputUnavailable": "Выбранное устройство вывода недоступно. Используем устройство по умолчанию.",
       "micFallback": "Выбранный микрофон недоступен. Используем микрофон по умолчанию.",
       "micUnavailableLabel": "Микрофон недоступен"
+    },
+    "activityParticipant": "В Активности",
+    "activityParticipants": {
+      "count": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
+      "one": "Играет {name}",
+      "two": "Играют {first} и {second}",
+      "many": "Играют {count}"
     }
   },
   "channels": {
@@ -1887,8 +1890,24 @@
     "video": "Видео",
     "linkPreview": "Превью ссылки",
     "addReaction": "Добавить реакцию",
+    "reactionLabel": "{emoji}: {count, plural, one {# реакция} few {# реакции} many {# реакций} other {# реакции}}",
     "emoji": "Эмодзи",
     "serverEmojis": "Эмодзи сервера",
+    "emojiPicker": {
+      "search": "Найдите подходящий эмодзи",
+      "frequent": "Часто используемые",
+      "results": "Результаты",
+      "noResults": "Эмодзи не найдены",
+      "skinTone": "Оттенок кожи",
+      "people": "Люди",
+      "nature": "Природа",
+      "food": "Еда",
+      "activities": "Активности",
+      "travel": "Путешествия",
+      "objects": "Предметы",
+      "symbols": "Символы",
+      "flags": "Флаги"
+    },
     "search": "Поиск",
     "searchServer": "Поиск по серверу",
     "searchServerPlaceholder": "Поиск по серверу…",
@@ -1897,9 +1916,11 @@
     "nothingFound": "Ничего не найдено",
     "unknownAuthor": "Неизвестный",
     "noText": "[без текста]",
+    "jump": "Перейти",
     "mentions": "Упоминания",
     "members": "Участники",
     "otherMentions": "Другие упоминания",
+    "emojiMatching": "Эмодзи, названия которых содержат {query}",
     "searchFailed": "Поиск не удался",
     "searchMessages": "Поиск по сообщениям",
     "searchMessagesPlaceholder": "Поиск по сообщениям…",
@@ -1962,9 +1983,16 @@
     "todayAt": "Сегодня в {time}",
     "yesterdayAt": "Вчера в {time}",
     "newMessages": "Новые сообщения",
+    "newMessagesShort": "Новые",
     "jumpToPresent": "К последним",
-    "noMessages": "Сообщений пока нет",
-    "noMessagesHint": "Напишите первым.",
+    "intro": {
+      "channelTitle": "Добро пожаловать в #{name}!",
+      "channelText": "Это начало канала #{name}.",
+      "dmText": "Это начало истории личных сообщений с {name}.",
+      "groupTitle": "Добро пожаловать в {name}!",
+      "groupText": "Это начало группы {name}.",
+      "savedText": "Заметки, ссылки и файлы, которые вы сюда отправляете, видите только вы."
+    },
     "messagesLabel": "Сообщения",
     "showMembers": "Показать участников",
     "hideMembers": "Скрыть участников",
@@ -2078,7 +2106,9 @@
       "one": "{name} печатает…",
       "two": "{first} и {second} печатают…",
       "many": "Несколько человек печатают…"
-    }
+    },
+    "groupMembers": "Участники — {count}",
+    "groupOwner": "Владелец группы"
   },
   "friends": {
     "accept": "Принять",
@@ -2107,7 +2137,7 @@
   "home": {
     "activeNow": {
       "title": "Сейчас активны",
-      "soon": "Скоро",
+      "soon": "Пока тихо",
       "description": "Здесь появятся игры и активности друзей"
     },
     "dm": {
@@ -2118,7 +2148,9 @@
       "tabs": {
         "online": "В сети",
         "all": "Все",
-        "pending": "Заявки"
+        "pending": "Запросы",
+        "blocked": "Заблокированные",
+        "add": "Добавить в друзья"
       },
       "idCopied": "ID скопирован",
       "copyError": "Не удалось скопировать",
@@ -2134,16 +2166,25 @@
       "allCount": "Все друзья — {count}",
       "pendingCount": "Заявки — {count}",
       "title": "Друзья",
-      "add": "Добавить",
-      "send": "Отправить",
+      "send": "Отправить запрос",
       "usernamePlaceholder": "Имя пользователя",
       "searchPlaceholder": "Поиск по друзьям",
-      "emptyOnline": "Нет друзей в сети",
-      "emptyPending": "Нет заявок",
-      "emptyAll": "Пока нет друзей",
       "accept": "Принять",
       "cancel": "Отменить",
-      "decline": "Отклонить"
+      "decline": "Отклонить",
+      "tabsLabel": "Друзья",
+      "blockedCount": "Заблокированные — {count}",
+      "addTitle": "Добавить в друзья",
+      "addDescription": "Добавляйте друзей по имени пользователя.",
+      "openConversation": "Написать {name}",
+      "unblock": "Разблокировать",
+      "emptySearch": "Никого не нашлось.",
+      "empty": {
+        "online": "Сейчас никого нет в сети",
+        "all": "Пока нет друзей",
+        "pending": "Нет запросов в друзья",
+        "blocked": "Вы никого не заблокировали"
+      }
     },
     "newConversation": {
       "title": "Новая беседа",
@@ -2162,6 +2203,10 @@
       "noFriendsToAdd": "Нет друзей для добавления",
       "cancel": "Отмена",
       "create": "Создать"
+    },
+    "sidebar": {
+      "navigation": "Навигация",
+      "directMessages": "Личные сообщения"
     }
   },
   "invite": {
@@ -2196,6 +2241,14 @@
     "profileNameMin": "Имя должно быть не короче 2 символов"
   },
   "media": {
+    "crop": {
+      "title": "Редактировать изображение",
+      "zoom": "Масштаб",
+      "rotate": "Повернуть",
+      "reset": "Сброс",
+      "cancel": "Отмена",
+      "apply": "Применить"
+    },
     "imageFallback": "Изображение",
     "imageNumber": "Изображение {index}",
     "zoomIn": "Приблизить",
@@ -2230,17 +2283,55 @@
   },
   "activities": {
     "title": "Активности",
-    "description": "Запустите общее приложение для участников этого голосового канала.",
-    "launchError": "Не удалось запустить Активность: {error}",
+    "description": "Запустите приложение для всех в этом голосовом канале.",
+    "missingPermission": "Чтобы запускать Активности в этом канале, нужно право «Использовать Активности».",
+    "loading": "Загружаем приложения…",
+    "loadError": "Не удалось загрузить приложения.",
+    "retry": "Повторить",
+    "emptyTitle": "Приложений пока нет",
+    "emptyDescription": "Приложения появятся здесь, когда станут доступны.",
     "start": "Запустить",
     "back": "Назад",
-    "syrnikRace": {
-      "title": "Сырниковая гонка",
-      "description": "Ready-лобби, общая цель, конкурентные попадания, очки и завершение раунда."
+    "unknownApplication": "Активность",
+    "leave": "Покинуть Активность",
+    "endForEveryone": "Завершить для всех",
+    "join": "Присоединиться",
+    "joining": "Подключаемся…",
+    "full": "Мест нет",
+    "applicationUnavailable": "Это приложение больше недоступно.",
+    "sidebarParticipants": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
+    "errors": {
+      "generic": "Что-то пошло не так. Попробуйте ещё раз.",
+      "not_in_voice_channel": "Сначала войдите в голосовой канал.",
+      "missing_permission": "У вас нет права запускать Активности здесь.",
+      "unknown_application": "Это приложение недоступно.",
+      "already_running": "В этом канале уже идёт Активность.",
+      "full": "В этой Активности нет мест.",
+      "not_allowed": "Это действие вам недоступно.",
+      "rate_limited": "Слишком много запросов. Подождите немного.",
+      "disconnected": "Нет соединения. Повторите, когда связь восстановится.",
+      "timeout": "Сервер не ответил. Попробуйте ещё раз."
     },
-    "sharedCounter": {
-      "title": "Совместный счётчик",
-      "description": "Минимальная проверка общей серверной ревизии."
+    "frame": {
+      "loading": "Загружаем Активность…",
+      "unavailable": "Эту Активность нельзя открыть."
+    },
+    "authorize": {
+      "title": "Разрешить {name} доступ к аккаунту?",
+      "description": "{name} запрашивает:",
+      "allow": "Разрешить",
+      "scopes": {
+        "identify": "Имя пользователя, отображаемое имя и аватар",
+        "storage": "Сохранённый прогресс и очки в этом приложении"
+      }
+    },
+    "externalLink": {
+      "title": "Открыть внешнюю ссылку?",
+      "description": "{name} хочет открыть эту ссылку вне syrnike13. Продолжайте, только если доверяете ей.",
+      "open": "Открыть ссылку"
+    },
+    "dialog": {
+      "cancel": "Отмена"
     }
   },
   "nativeMedia": {

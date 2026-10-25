@@ -7,6 +7,8 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 
 import { getContext } from './integrations/tanstack-query/root-provider'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
+import { cn } from '#/lib/utils'
 
 export function getRouter() {
   const context = getContext()
@@ -41,7 +43,7 @@ function DefaultNotFoundComponent() {
         </p>
         <a
           href="/"
-          className="mt-5 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className={cn(buttonVariants(), 'mt-5')}
         >
           {t('home')}
         </a>

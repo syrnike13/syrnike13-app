@@ -106,7 +106,7 @@ describe("DropdownMenuItem description", () => {
       item?.querySelector('[data-slot="dropdown-menu-item-description"]'),
     ).toHaveTextContent("Muted until 23.10")
     expect(item?.className).toContain("py-1.5")
-    expect(item?.className).toContain("pr-8")
+    expect(item?.className).toContain("pr-9")
     expect(
       item?.querySelector('[data-slot="dropdown-menu-checkbox-item-indicator"]'),
     ).toBeInTheDocument()

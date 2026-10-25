@@ -1,4 +1,3 @@
-// design-allow-file hardcoded-string: dev-only homage debug panel
 
 import { useEffect, useRef, useState } from 'react'
 

@@ -2,11 +2,10 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Card } from '@syrnike13/ui/primitives/card'
+import { Card, CardContent } from '@syrnike13/ui/primitives/card'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
@@ -40,7 +39,6 @@ function LoginPage() {
           : auth.login({ email, password }),
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('error'))
     } finally {
       setSubmitting(false)
     }
@@ -65,7 +63,8 @@ function LoginPage() {
           </div>
         </div>
 
-        <Card className="p-5">
+        <Card>
+          <CardContent>
           <form onSubmit={submit}>
           <h1 className="text-base font-semibold">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -127,6 +126,7 @@ function LoginPage() {
             ) : null}
           </div>
           </form>
+          </CardContent>
         </Card>
       </div>
     </main>

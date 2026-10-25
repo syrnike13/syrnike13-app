@@ -106,37 +106,38 @@ export function feedbackProductStatusLabel(
   return item ? t(item.labelKey) : status
 }
 
-export function feedbackCategoryClass(category: FeedbackCategory) {
-  return category === 'bug'
-    ? 'border-destructive/30 bg-destructive/8 text-destructive'
-    : 'border-primary/30 bg-primary/8 text-primary'
+/** `Badge` variants: the status meaning maps onto the primitive's tints. */
+export type FeedbackBadgeVariant = 'destructive' | 'info' | 'success' | 'warning' | 'secondary'
+
+export function feedbackCategoryVariant(category: FeedbackCategory): FeedbackBadgeVariant {
+  return category === 'bug' ? 'destructive' : 'info'
 }
 
-export function feedbackStatusClass(status: FeedbackProductStatus) {
+export function feedbackStatusVariant(status: FeedbackProductStatus): FeedbackBadgeVariant {
   switch (status) {
     case 'in_progress':
     case 'released':
-      return 'border-chart-3/35 bg-chart-3/10 text-chart-3'
+      return 'success'
     case 'planned':
-      return 'border-chart-4/35 bg-chart-4/10 text-chart-4'
+      return 'warning'
     case 'not_planned':
-      return 'border-destructive/35 bg-destructive/10 text-destructive'
+      return 'destructive'
     case 'collecting':
     case 'under_consideration':
-      return 'border-chart-2/35 bg-chart-2/10 text-chart-2'
+      return 'info'
   }
 }
 
-export function feedbackModerationClass(status: FeedbackModerationStatus) {
+export function feedbackModerationVariant(status: FeedbackModerationStatus): FeedbackBadgeVariant {
   switch (status) {
     case 'approved':
-      return 'border-chart-3/35 bg-chart-3/10 text-chart-3'
+      return 'success'
     case 'pending':
-      return 'border-chart-2/35 bg-chart-2/10 text-chart-2'
+      return 'info'
     case 'rejected':
-      return 'border-destructive/35 bg-destructive/10 text-destructive'
+      return 'destructive'
     case 'merged':
     case 'hidden':
-      return 'border-border bg-muted/30 text-muted-foreground'
+      return 'secondary'
   }
 }

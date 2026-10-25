@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/feedback">{children}</a>,
+  useNavigate: () => vi.fn(),
 }))
 
 vi.mock('#/components/feedback/feedback-suggestion-row', () => ({
@@ -70,8 +71,8 @@ describe('FeedbackView', () => {
 
   afterEach(cleanup)
 
-  it('hides unsupported catalogue controls when showing own feedback', async () => {
-    renderFeedbackView()
+  it('shows search, sort and the filter menu for all feedback', async () => {
+    renderFeedbackView('all')
 
     expect(await screen.findByPlaceholderText('Найти обращение')).not.toBeNull()
     expect(screen.getByLabelText('Сортировка')).not.toBeNull()
@@ -79,21 +80,19 @@ describe('FeedbackView', () => {
     fireEvent.click(screen.getByRole('button', { name: /Фильтры/ }))
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Тип обращения')).not.toBeNull()
+      expect(screen.getByText('Тип обращения')).not.toBeNull()
     })
-    expect(screen.getByLabelText('Область')).not.toBeNull()
-    expect(screen.getByLabelText('Платформа')).not.toBeNull()
-    expect(screen.getByLabelText('Статус')).not.toBeNull()
+    expect(screen.getByText('Область')).not.toBeNull()
+    expect(screen.getByText('Платформа')).not.toBeNull()
+    expect(screen.getByText('Статус')).not.toBeNull()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Мои обращения' }))
+  it('hides unsupported catalogue controls when showing own feedback', async () => {
+    renderFeedbackView('mine')
 
     expect(screen.queryByPlaceholderText('Найти обращение')).toBeNull()
     expect(screen.queryByLabelText('Сортировка')).toBeNull()
     expect(screen.queryByRole('button', { name: /Фильтры/ })).toBeNull()
-    expect(screen.queryByLabelText('Тип обращения')).toBeNull()
-    expect(screen.queryByLabelText('Область')).toBeNull()
-    expect(screen.queryByLabelText('Платформа')).toBeNull()
-    expect(screen.queryByLabelText('Статус')).toBeNull()
 
     await waitFor(() => {
       expect(mocks.fetchMyFeedbackSuggestions).toHaveBeenCalledWith(

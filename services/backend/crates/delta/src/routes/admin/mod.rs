@@ -3,6 +3,7 @@ use rocket::Route;
 use syrnike_database::User;
 use syrnike_result::{create_error, Result};
 
+mod activities;
 mod badges;
 mod diagnostics;
 mod user_badges;
@@ -18,6 +19,11 @@ fn require_privileged(user: &User) -> Result<()> {
 
 pub fn routes() -> (Vec<Route>, OpenApi) {
     openapi_get_routes_spec![
+        activities::list,
+        activities::create,
+        activities::edit,
+        activities::delete,
+        activities::generate_secret,
         badges::list,
         badges::create,
         badges::edit,

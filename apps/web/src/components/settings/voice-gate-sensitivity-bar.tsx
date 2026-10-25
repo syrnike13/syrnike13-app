@@ -112,7 +112,8 @@ export function VoiceGateSensitivityBar({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
+      {/* eslint-disable-next-line design/no-lookalike -- drag track of the gate threshold */}
       <div
         ref={trackRef}
         role="slider"
@@ -122,7 +123,7 @@ export function VoiceGateSensitivityBar({
         aria-label={t('gateAria')}
         aria-disabled={auto}
         className={cn(
-          'relative h-2 overflow-hidden rounded-full bg-muted',
+          'relative flex h-3.5 items-center',
           !auto && 'cursor-pointer',
         )}
         onPointerDown={onPointerDown}
@@ -130,14 +131,20 @@ export function VoiceGateSensitivityBar({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <div
-          ref={levelRef}
-          className="absolute inset-y-0 left-0 w-(--level-width) rounded-full bg-primary/80"
-          style={{ '--level-width': '0%' } as CSSVars}
-        />
+        {/* Same geometry as Slider: 6px track, primary fill, 14px thumb. */}
+        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-foreground/20">
+          <div
+            ref={levelRef}
+            className="absolute inset-y-0 left-0 w-(--level-width) rounded-full bg-primary"
+            style={{ '--level-width': '0%' } as CSSVars}
+          />
+        </div>
         <div
           ref={markerRef}
-          className="absolute inset-y-0 left-(--marker-left) z-10 w-px -translate-x-1/2 bg-foreground/90"
+          className={cn(
+            'absolute top-1/2 left-(--marker-left) size-3.5 -translate-1/2 rounded-full border-2 border-primary bg-background',
+            auto && 'opacity-60',
+          )}
           style={{ '--marker-left': '0%' } as CSSVars}
         />
       </div>

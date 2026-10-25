@@ -4,6 +4,7 @@ pub use rocket::response::Redirect;
 use rocket::{Build, Rocket};
 use syrnike_config::Settings;
 
+mod activities;
 mod admin;
 mod auth_account;
 mod bots;
@@ -33,6 +34,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
             "/admin" => admin::routes(),
+            "/activities" => activities::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -58,6 +60,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
             "/admin" => admin::routes(),
+            "/activities" => activities::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -84,6 +87,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
             "/admin" => admin::routes(),
+            "/activities" => activities::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -106,6 +110,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
             "/admin" => admin::routes(),
+            "/activities" => activities::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -171,6 +176,7 @@ fn custom_openapi_spec() -> OpenApi {
               "Interactions",
               "Groups",
               "Voice",
+              "Activities",
               "Webhooks",
             ]
           },
@@ -335,6 +341,11 @@ fn custom_openapi_spec() -> OpenApi {
             Tag {
                 name: "Voice".to_owned(),
                 description: Some("Join and talk with other users".to_owned()),
+                ..Default::default()
+            },
+            Tag {
+                name: "Activities".to_owned(),
+                description: Some("Applications running in voice channels".to_owned()),
                 ..Default::default()
             },
             Tag {

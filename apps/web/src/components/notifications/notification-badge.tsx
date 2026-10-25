@@ -30,11 +30,9 @@ export function NotificationBadge({
     return (
       <Badge
         variant="destructive"
+        size="dot"
         aria-label={countLabel}
-        className={cn(
-          'pointer-events-none size-2 min-w-0 shrink-0 p-0',
-          className,
-        )}
+        className={cn('pointer-events-none shrink-0', className)}
       />
     )
   }
@@ -44,11 +42,9 @@ export function NotificationBadge({
   return (
     <Badge
       variant="destructive"
+      size="count"
       aria-label={countLabel}
-      className={cn(
-        'pointer-events-none h-4 min-w-4 px-1 text-xs leading-none',
-        className,
-      )}
+      className={cn('pointer-events-none', className)}
     >
       {display}
     </Badge>

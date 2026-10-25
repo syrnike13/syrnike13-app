@@ -107,7 +107,7 @@ export function VoiceRtcDebugView() {
         </nav>
       </aside>
 
-      <main className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <ScrollArea className="h-full">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {voiceSession.status !== 'connected' ? (
@@ -126,7 +126,7 @@ export function VoiceRtcDebugView() {
             )}
           </div>
         </ScrollArea>
-      </main>
+      </div>
     </div>
   )
 }
@@ -155,7 +155,7 @@ function DebugSectionBody({
   if (!snapshot) {
     return (
       <div className="rounded border border-dashed border-border px-6 py-12">
-        <Empty className="p-0">
+        <Empty size="inline">
           <EmptyHeader>
             <EmptyTitle>{t('debug.collectingTitle')}</EmptyTitle>
             <EmptyDescription>{t('debug.collectingHint')}</EmptyDescription>
@@ -1000,7 +1000,7 @@ function MediaTabs({
 function EmptyPanel({ text }: { text: string }) {
   return (
     <div className="rounded border border-dashed border-border px-6 py-12">
-      <Empty className="p-0">
+      <Empty size="inline">
         <EmptyDescription>{text}</EmptyDescription>
       </Empty>
     </div>
@@ -1012,7 +1012,7 @@ function DebugEmptyState() {
 
   return (
     <div className="rounded border border-dashed border-border px-6 py-12">
-      <Empty className="p-0">
+      <Empty size="inline">
         <EmptyHeader>
           <EmptyTitle>{t('debug.noVoiceTitle')}</EmptyTitle>
           <EmptyDescription>{t('debug.noVoiceHint')}</EmptyDescription>

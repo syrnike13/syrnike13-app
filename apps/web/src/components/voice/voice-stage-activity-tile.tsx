@@ -1,10 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import {
-  Gamepad2Icon,
-  LogOutIcon,
-  Maximize2Icon,
-} from '#/components/icons'
+import type { ActivityInstance } from '@syrnike13/api-types/gateway-schema'
+import type { ActivityLayout } from '@syrnike13/activity-sdk/protocol'
+import { LogOutIcon, Maximize2Icon, PowerIcon } from '#/components/icons'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
@@ -17,232 +15,251 @@ import {
 } from '@syrnike13/ui/primitives/context-menu'
 import type { StageMediaTileVariant } from '#/components/voice/voice-stage-media-tile'
 import {
-  getFirstPartyChannelActivity,
-  type FirstPartyChannelActivity,
-} from '#/features/activities/channel-activity-catalog'
-import { channelActivityClient } from '#/features/activities/channel-activity-client'
-import type {
-  ChannelActivityInstance,
-  ChannelActivityViewState,
-} from '#/features/activities/channel-activity-types'
+  VoiceStreamViewers,
+  type StreamViewer,
+} from '#/components/voice/voice-stream-viewers'
+import type { ActivityApplication } from '#/features/activities/activity-api'
+import { ActivityApplicationIcon } from '#/features/activities/activity-application-icon'
+import { activityErrorMessage } from '#/features/activities/activity-errors'
+import { ActivityFrame } from '#/features/activities/activity-frame'
+import {
+  activityStore,
+  isActivityParticipant,
+} from '#/features/activities/activity-store'
+import { useActivityConnectionStatus } from '#/features/activities/use-activities'
 import { cn } from '#/lib/utils'
-
-const EmbeddedActivityFrame = lazy(() =>
-  import('#/features/activities/channel-activity-panel').then((module) => ({
-    default: module.EmbeddedActivityFrame,
-  })),
-)
 
 export type VoiceStageActivityItem = Readonly<{
   id: string
   kind: 'activity'
-  instance: ChannelActivityInstance
+  instance: ActivityInstance
 }>
 
 type VoiceStageActivityTileProps = {
   item: VoiceStageActivityItem
-  activity: ChannelActivityViewState
+  application: ActivityApplication | null
   currentUserId: string
+  participants: readonly StreamViewer[]
+  canEnd: boolean
   variant: StageMediaTileVariant
+  /** Stage presentation: a popped-out stage reports `popout` to the app. */
+  popout?: boolean
   onFocus: (mediaId: string) => void
   onAspectRatioChange?: (aspectRatio: number) => void
 }
 
 const ACTIVITY_ASPECT_RATIO = 16 / 9
 
+export function activityFrameLayout(
+  variant: StageMediaTileVariant,
+  popout: boolean,
+): ActivityLayout {
+  if (popout) return 'popout'
+  return variant === 'grid' ? 'grid' : 'focus'
+}
+
 export function VoiceStageActivityTile({
   item,
-  activity,
+  application,
   currentUserId,
+  participants,
+  canEnd,
   variant,
+  popout = false,
   onFocus,
   onAspectRatioChange,
 }: VoiceStageActivityTileProps) {
   const t = useTranslations('voice')
   const tA = useTranslations('activities')
-  const application = getFirstPartyChannelActivity(item.instance.application_id)
-  const joined = item.instance.participant_ids.includes(currentUserId)
-  const [joining, setJoining] = useState(false)
-
-  useEffect(() => {
-    if (joined || activity.error || activity.transport !== 'connected') {
-      setJoining(false)
-    }
-  }, [activity.error, activity.transport, joined])
+  const { instance } = item
+  const joined = isActivityParticipant(instance, currentUserId)
+  const title = application?.name ?? tA('unknownApplication')
 
   useEffect(() => {
     if (variant === 'focus') onAspectRatioChange?.(ACTIVITY_ASPECT_RATIO)
   }, [onAspectRatioChange, variant])
 
-  const join = () => {
-    if (joining || activity.transport !== 'connected') return
-    setJoining(true)
-    channelActivityClient.join(item.instance.channel_id, item.instance.id)
-  }
   const leave = () => {
-    channelActivityClient.leave(item.instance.channel_id, item.instance.id)
+    void activityStore
+      .leave(instance.channel_id, instance.id)
+      .catch(() => undefined)
   }
+  const end = () => {
+    void activityStore.end(instance.channel_id, instance.id).catch(() => undefined)
+  }
+  const focusLabel =
+    variant === 'focus' ? t('actions.returnToGrid') : t('actions.focus')
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<article
-          data-testid="voice-stage-activity-tile"
-          data-activity-id={item.instance.id}
-          className={cn(
-            'group relative size-full min-h-0 overflow-hidden rounded-md border border-border bg-card text-card-foreground outline-none ring-offset-2 ring-offset-background',
-            variant !== 'focus' &&
-              variant !== 'fullscreen' &&
-              'hover:border-primary/50',
-            variant === 'fullscreen' && 'rounded-none border-0',
-          )} />}>
-          {variant === 'strip' ? (
-            <button
-              type="button"
-              className="flex size-full flex-col items-center justify-center gap-1.5 bg-muted/40 px-3 text-center hover:bg-accent"
-              onClick={() => onFocus(item.id)}
-            >
-              <Gamepad2Icon className="size-6 text-primary" aria-hidden />
-              <span className="max-w-full truncate text-xs font-semibold">
-                {application ? tA(application.titleKey) : t('activity.title')}
-              </span>
-            </button>
-          ) : joined && application ? (
-            <Suspense fallback={<ActivityLoadingState />}>
-              <EmbeddedActivityFrame
-                key={item.instance.id}
-                application={application}
-                instance={item.instance}
-                error={activity.error}
-                transport={activity.transport}
-                currentUserId={currentUserId}
-                onCommand={(command) =>
-                  channelActivityClient.command(
-                    item.instance.channel_id,
-                    item.instance.id,
-                    command,
-                  )
-                }
-                onClose={leave}
-              />
-            </Suspense>
-          ) : (
-            <ActivityJoinState
-              application={application}
-              joining={joining}
-              connected={activity.transport === 'connected'}
-              error={activity.error}
-              onJoin={join}
-            />
-          )}
+      <ContextMenuTrigger
+        render={
+          <article
+            data-testid="voice-stage-activity-tile"
+            data-activity-id={instance.id}
+            data-joined={joined ? '' : undefined}
+            className={cn(
+              'group relative size-full min-h-0 overflow-hidden rounded-md bg-card text-card-foreground outline-none',
+              variant === 'strip' && '@container aspect-video shrink-0',
+              variant === 'grid' && 'hover:brightness-110',
+              variant === 'fullscreen' && 'rounded-none',
+            )}
+          />
+        }
+      >
+        {variant === 'strip' ? (
+          // eslint-disable-next-line design/no-lookalike -- stage tile surface
+          <button
+            type="button"
+            className="flex size-full flex-col items-center justify-center gap-1.5 bg-muted/40 px-3 text-center hover:bg-accent"
+            onClick={() => onFocus(item.id)}
+          >
+            <ActivityApplicationIcon application={application} className="size-7" />
+            <span className="max-w-full truncate text-xs font-semibold">
+              {title}
+            </span>
+          </button>
+        ) : joined && application ? (
+          <ActivityFrame
+            application={application}
+            instance={instance}
+            currentUserId={currentUserId}
+            layout={activityFrameLayout(variant, popout)}
+          />
+        ) : (
+          <ActivityJoinState
+            instance={instance}
+            application={application}
+            title={title}
+            participants={participants}
+            compact={variant === 'grid'}
+          />
+        )}
 
-          {variant !== 'strip' ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="absolute top-2 right-2 z-20 size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              title={
-                variant === 'focus'
-                  ? t('actions.returnToGrid')
-                  : t('actions.focus')
-              }
-              aria-label={
-                variant === 'focus'
-                  ? t('actions.returnToGrid')
-                  : t('actions.focus')
-              }
-              onClick={() => onFocus(item.id)}
-            >
-              <Maximize2Icon className="size-4" />
-            </Button>
-          ) : null}
+        {variant !== 'strip' ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="absolute top-2 right-2 z-20 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            title={focusLabel}
+            aria-label={focusLabel}
+            onClick={() => onFocus(item.id)}
+          >
+            <Maximize2Icon />
+          </Button>
+        ) : null}
 
-          {variant !== 'focus' &&
-          variant !== 'fullscreen' &&
-          variant !== 'strip' ? (
-            <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-media-inset-xl items-center gap-1.5 rounded bg-card/90 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm">
-              <Gamepad2Icon className="size-3.5 shrink-0 text-primary" />
-              <span className="truncate">
-                {application ? tA(application.titleKey) : t('activity.title')}
-              </span>
-            </div>
-          ) : null}
-        </ContextMenuTrigger>
+        {variant === 'grid' && joined ? (
+          <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-media-inset-xl items-center gap-1.5 rounded bg-media-backdrop/60 px-2 py-1 text-xs font-medium text-on-media">
+            <ActivityApplicationIcon application={application} className="size-4" />
+            <span className="min-w-0 truncate">{title}</span>
+          </div>
+        ) : null}
+        {variant === 'grid' && joined && participants.length > 0 ? (
+          <VoiceStreamViewers
+            viewers={participants}
+            variant="count"
+            labels="activityParticipants"
+            className="absolute right-2 bottom-2 z-20"
+          />
+        ) : null}
+      </ContextMenuTrigger>
       <ContextMenuContent className="z-420 min-w-56">
         <ContextMenuItem onClick={() => onFocus(item.id)}>
           <Maximize2Icon />
-          {variant === 'focus'
-            ? t('actions.returnToGrid')
-            : t('actions.focus')}
+          {focusLabel}
         </ContextMenuItem>
+        {joined || canEnd ? <ContextMenuSeparator /> : null}
         {joined ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onClick={leave}>
-              <LogOutIcon />
-              {t('activity.leave')}
-            </ContextMenuItem>
-          </>
+          <ContextMenuItem onClick={leave}>
+            <LogOutIcon />
+            {tA('leave')}
+          </ContextMenuItem>
+        ) : null}
+        {canEnd ? (
+          <ContextMenuItem variant="destructive" onClick={end}>
+            <PowerIcon />
+            {tA('endForEveryone')}
+          </ContextMenuItem>
         ) : null}
       </ContextMenuContent>
     </ContextMenu>
   )
 }
 
-function ActivityLoadingState() {
-  const t = useTranslations('voice')
+function ActivityJoinState({
+  instance,
+  application,
+  title,
+  participants,
+  compact,
+}: {
+  instance: ActivityInstance
+  application: ActivityApplication | null
+  title: string
+  participants: readonly StreamViewer[]
+  compact: boolean
+}) {
+  const tA = useTranslations('activities')
+  const connection = useActivityConnectionStatus()
+  const [joining, setJoining] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const full =
+    application !== null &&
+    instance.participants.length >= application.max_participants
+
+  const join = () => {
+    if (joining) return
+    setJoining(true)
+    setError(null)
+    activityStore
+      .join(instance.channel_id, instance.id)
+      .catch((cause: unknown) => setError(activityErrorMessage(cause, tA)))
+      .finally(() => setJoining(false))
+  }
 
   return (
     <div
-      className="flex size-full items-center justify-center bg-background text-muted-foreground"
-      role="status"
+      data-testid="activity-join-state"
+      className="flex size-full flex-col items-center justify-center gap-3 bg-muted/40 p-4 text-center"
     >
-      <Spinner className="mr-2 size-5" />
-      {t('activity.loading')}
-    </div>
-  )
-}
-
-function ActivityJoinState({
-  application,
-  joining,
-  connected,
-  error,
-  onJoin,
-}: {
-  application?: FirstPartyChannelActivity
-  joining: boolean
-  connected: boolean
-  error: ChannelActivityViewState['error']
-  onJoin: () => void
-}) {
-  const t = useTranslations('voice')
-  const tA = useTranslations('activities')
-
-  return (
-    <div className="flex size-full flex-col items-center justify-center gap-3 bg-muted/40 p-5 text-center">
-      <div className="flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
-        <Gamepad2Icon className="size-6" />
+      <ActivityApplicationIcon
+        application={application}
+        className={compact ? 'size-10' : 'size-14'}
+      />
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
+        <h2 className="truncate text-base font-semibold">{title}</h2>
+        {application?.description && !compact ? (
+          <p className="line-clamp-2 text-sm text-muted-foreground">
+            {application.description}
+          </p>
+        ) : null}
       </div>
-      <div>
-        <h2 className="text-base font-semibold">
-          {application ? tA(application.titleKey) : t('activity.unsupported')}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {application
-            ? t('activity.playing')
-            : t('activity.updateClient')}
-        </p>
-      </div>
-      {application ? (
-        <Button type="button" disabled={joining || !connected} onClick={onJoin}>
-          {joining ? <Spinner className="size-4" aria-hidden /> : null}
-          {joining ? t('activity.joining') : t('activity.join')}
-        </Button>
+      {participants.length > 0 ? (
+        <VoiceStreamViewers
+          viewers={participants}
+          variant="avatars"
+          labels="activityParticipants"
+        />
       ) : null}
+      {application ? (
+        <Button
+          type="button"
+          disabled={joining || full || connection !== 'connected'}
+          onClick={join}
+        >
+          {joining ? <Spinner data-icon="inline-start" /> : null}
+          {full ? tA('full') : joining ? tA('joining') : tA('join')}
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {tA('applicationUnavailable')}
+        </p>
+      )}
       {error ? (
-        <p className="text-xs text-destructive">
-          {t('activity.joinError')}
+        <p role="alert" className="text-xs text-destructive">
+          {error}
         </p>
       ) : null}
     </div>

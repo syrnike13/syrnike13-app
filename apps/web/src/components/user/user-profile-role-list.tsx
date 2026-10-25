@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon, XIcon } from '#/components/icons'
 
+import { Button } from '@syrnike13/ui/primitives/button'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
+import { ProfileSection } from '#/components/user/profile/profile-parts'
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
@@ -17,7 +19,6 @@ import {
   canEditAnyMemberRole,
   canToggleMemberRole,
 } from '#/lib/member-roles'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
@@ -25,8 +26,8 @@ type UserProfileRoleListProps = {
   user: User
   serverId?: string
   roles?: MemberRoleEntry[]
-  /** Заголовок «Роли» (в модалке он виден). */
-  heading?: boolean
+  /** Заголовок секции (модалка, панель). */
+  title?: string
   /** Свернуть лишние роли в «+N». */
   maxVisible?: number
   className?: string
@@ -45,7 +46,7 @@ export function UserProfileRoleList({
   user,
   serverId,
   roles: rolesProp,
-  heading = false,
+  title,
   maxVisible,
   className,
 }: UserProfileRoleListProps) {
@@ -112,11 +113,8 @@ export function UserProfileRoleList({
         Effect.tap((updated) =>
           Effect.sync(() => syncStore.upsertMembers([updated])),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('removeRoleError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRemovingRoleId(null))),
@@ -124,13 +122,8 @@ export function UserProfileRoleList({
     )
   }
 
-  return (
+  const list = (
     <div className={cn('min-w-0', className)}>
-      {heading ? (
-        <p className="mb-1.5 text-xs leading-4 font-medium text-muted-foreground">
-          {t('roles')}
-        </p>
-      ) : null}
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {visibleRoles.map((role) => {
           const serverRole = server?.roles?.[role.id]
@@ -166,10 +159,11 @@ export function UserProfileRoleList({
               />
               <span className="min-w-0 truncate">{role.name}</span>
               {canRemove ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   disabled={removingRoleId !== null}
-                  className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
                   title={t('removeRole', { name: role.name })}
                   aria-label={t('removeRole', { name: role.name })}
                   onClick={(event) => {
@@ -177,8 +171,8 @@ export function UserProfileRoleList({
                     void removeRole(role.id)
                   }}
                 >
-                  <XIcon className={cn('size-3', removing && 'opacity-50')} />
-                </button>
+                  {removing ? <Spinner className="size-3" /> : <XIcon />}
+                </Button>
               ) : (
                 <span className="w-0.5" aria-hidden />
               )}
@@ -187,22 +181,24 @@ export function UserProfileRoleList({
         })}
 
         {hiddenCount > 0 ? (
-          <button
+          <Button
             type="button"
-            className="h-6 shrink-0 rounded-lg px-2 text-xs leading-4 font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size="xs"
             onClick={(event) => {
               event.stopPropagation()
               setExpanded(true)
             }}
           >
             +{hiddenCount}
-          </button>
+          </Button>
         ) : null}
 
         {canEditRoles ? (
-          <button
+          <Button
             type="button"
-            className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size={roles.length === 0 ? 'xs' : 'icon-xs'}
             title={t('editRoles')}
             aria-label={t('editRoles')}
             onClick={(event) => {
@@ -210,8 +206,9 @@ export function UserProfileRoleList({
               setRolesDialogOpen(true)
             }}
           >
-            <PlusIcon className="size-4.5" />
-          </button>
+            <PlusIcon />
+            {roles.length === 0 ? t('addRole') : null}
+          </Button>
         ) : null}
       </div>
 
@@ -226,4 +223,6 @@ export function UserProfileRoleList({
       ) : null}
     </div>
   )
+
+  return title ? <ProfileSection title={title}>{list}</ProfileSection> : list
 }

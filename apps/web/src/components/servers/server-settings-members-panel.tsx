@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SearchInput } from '#/components/ui/search-input'
 import type { Member, User } from '@syrnike13/api-types'
 import { Option, Schema } from 'effect'
 import {
@@ -8,8 +9,6 @@ import {
   type Translator,
 } from '@syrnike13/ui/i18n'
 
-import { SearchIcon } from '#/components/icons'
-import { Input } from '@syrnike13/ui/primitives/input'
 import {
   NativeSelect,
   NativeSelectOption,
@@ -26,6 +25,7 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ServerSettingsMembersPanelProps = {
   serverId: string
@@ -118,15 +118,11 @@ export function ServerSettingsMembersPanel({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('search')}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput className="min-w-0 flex-1"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('search')}
+        />
         <NativeSelect
           value={sort}
           className="w-full sm:w-45"
@@ -172,6 +168,7 @@ export function ServerSettingsMembersPanel({
                 align="start"
                 side="right"
               >
+                {/* eslint-disable-next-line design/no-lookalike -- members table row on the shared column grid */}
                 <button
                   type="button"
                   className="grid min-h-12 w-full member-table-grid items-center gap-3 border-b border-border px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/45 focus-visible:outline-none"
@@ -230,9 +227,9 @@ export function ServerSettingsMembersPanel({
             )
           })}
           {filteredMembers.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {t('noMembers')}
-            </div>
+            <Empty>
+              <EmptyDescription>{t('noMembers')}</EmptyDescription>
+            </Empty>
           ) : null}
         </div>
       </div>

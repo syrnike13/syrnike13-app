@@ -1,12 +1,12 @@
-use super::scripts::LATEST_REVISION;
+use super::scripts::{create_activity_collections, LATEST_REVISION};
 
 use crate::mongodb::bson::doc;
 use crate::mongodb::options::CreateCollectionOptions;
 use crate::MongoDb;
 
-pub async fn create_database(db: &MongoDb) {
+pub async fn create_database(mongo: &MongoDb) {
     info!("Creating database.");
-    let db = db.db();
+    let db = mongo.db();
 
     db.create_collection("accounts")
         .await
@@ -388,6 +388,8 @@ pub async fn create_database(db: &MongoDb) {
     })
     .await
     .expect("Failed to create feedback votes indexes.");
+
+    create_activity_collections(mongo).await;
 
     info!("Created database.");
 }

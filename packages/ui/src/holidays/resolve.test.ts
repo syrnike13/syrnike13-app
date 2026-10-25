@@ -68,6 +68,32 @@ describe('resolveActiveHoliday', () => {
     expect(resolveActiveHoliday({ month: 1, day: 12 })?.id).toBe('new-year')
   })
 
+  it('starts Halloween two weeks early and keeps it a few days after', () => {
+    expect(resolveActiveHoliday({ month: 10, day: 16 })).toBeNull()
+    expect(resolveActiveHoliday({ month: 10, day: 17 })?.id).toBe('halloween')
+    expect(resolveActiveHoliday({ month: 11, day: 3 })?.id).toBe('halloween')
+    expect(resolveActiveHoliday({ month: 11, day: 4 })).toBeNull()
+  })
+
+  it('runs New Year through December and the old New Year', () => {
+    expect(resolveActiveHoliday({ month: 11, day: 30 })).toBeNull()
+    expect(resolveActiveHoliday({ month: 12, day: 1 })?.id).toBe('new-year')
+    expect(resolveActiveHoliday({ month: 1, day: 14 })?.id).toBe('new-year')
+    expect(resolveActiveHoliday({ month: 1, day: 15 })).toBeNull()
+  })
+
+  it('keeps holiday windows apart except where priority decides', () => {
+    const allowed = new Set(['christmas|new-year', 'new-year|christmas'])
+    for (let dayOfYear = 0; dayOfYear < 366; dayOfYear += 1) {
+      const date = new Date(2024, 0, 1 + dayOfYear)
+      const day = { month: date.getMonth() + 1, day: date.getDate() }
+      const active = HOLIDAY_CATALOG.filter((holiday) =>
+        holiday.windows.some((window) => isMonthDayInWindow(day, window)),
+      ).map((holiday) => holiday.id)
+      if (active.length > 1) expect(allowed.has(active.join('|'))).toBe(true)
+    }
+  })
+
   it('prefers the higher-priority holiday on overlaps', () => {
     expect(resolveActiveHoliday({ month: 1, day: 7 })?.id).toBe('christmas')
   })
