@@ -218,7 +218,7 @@ mod tests {
 
         let mut event = EventV1::UserRelationship {
             id: current.id.clone(),
-            user: friend.clone().into(&db, Some(&current)).await,
+            user: friend.clone().into_known(&current, false).await,
         };
 
         assert!(state.handle_incoming_event_v1(&db, &mut event).await);
@@ -235,6 +235,90 @@ mod tests {
                         })
                 ))
         ));
+    }
+
+    /// Start as cached, subscribed friends, then move the stored relationship
+    /// to `current_status` / `friend_status` and deliver the matching event.
+    async fn assert_user_relationship_revokes_former_friend(
+        current_status: RelationshipStatus,
+        friend_status: RelationshipStatus,
+    ) {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let current = User {
+            id: "current-user".to_string(),
+            username: "current".to_string(),
+            discriminator: "0001".to_string(),
+            ..Default::default()
+        };
+        let friend = User {
+            id: "friend-user".to_string(),
+            username: "friend".to_string(),
+            discriminator: "0002".to_string(),
+            ..Default::default()
+        };
+        db.insert_user(&current).await.expect("insert current");
+        db.insert_user(&friend).await.expect("insert friend");
+        db.set_relationship(&current.id, &friend.id, &RelationshipStatus::Friend)
+            .await
+            .expect("current relationship");
+        db.set_relationship(&friend.id, &current.id, &RelationshipStatus::Friend)
+            .await
+            .expect("friend relationship");
+
+        let current = db.fetch_user(&current.id).await.expect("fetch current");
+        let mut state = State::from(current.clone(), "session-1".to_string());
+        state.cache.users.insert(friend.id.clone(), friend.clone());
+        state.insert_subscription(friend.id.clone()).await;
+        state.apply_state().await;
+        state.authorization_enabled = true;
+
+        db.set_relationship(&current.id, &friend.id, &current_status)
+            .await
+            .expect("current relationship change");
+        db.set_relationship(&friend.id, &current.id, &friend_status)
+            .await
+            .expect("friend relationship change");
+        let current = db.fetch_user(&current.id).await.expect("fetch current");
+
+        let mut event = EventV1::UserRelationship {
+            id: current.id.clone(),
+            user: friend.clone().into_known(&current, false).await,
+        };
+
+        assert!(state.handle_incoming_event_v1(&db, &mut event).await);
+        assert!(!state.subscribed.read().await.contains(&friend.id));
+        assert!(matches!(
+            event,
+            EventV1::Bulk { ref v }
+                if v.iter().any(|event| matches!(
+                    event,
+                    EventV1::AuthorizationSnapshot { snapshot }
+                        if snapshot.users.get(&friend.id).is_none_or(|permissions| {
+                            permissions & UserPermission::SendMessage as u64 == 0
+                        })
+                ))
+        ));
+    }
+
+    #[async_std::test]
+    async fn user_relationship_revokes_removed_friend() {
+        assert_user_relationship_revokes_former_friend(
+            RelationshipStatus::None,
+            RelationshipStatus::None,
+        )
+        .await;
+    }
+
+    #[async_std::test]
+    async fn user_relationship_revokes_blocked_friend() {
+        assert_user_relationship_revokes_former_friend(
+            RelationshipStatus::Blocked,
+            RelationshipStatus::BlockedOther,
+        )
+        .await;
     }
 
     #[async_std::test]
