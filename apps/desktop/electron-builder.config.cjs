@@ -42,7 +42,7 @@ const nativeFiles = [
 ]
 const mediaFiles = [
   'windows_media.node', 'livekit.dll', 'livekit_ffi.dll',
-  'windows_media_texture_broker.node', 'media-manifest.json',
+  'windows_media_texture_broker.node', 'syrnike_audio_plugin_host.exe', 'media-manifest.json',
 ]
 
 function refreshManifest(root, manifestName, files) {

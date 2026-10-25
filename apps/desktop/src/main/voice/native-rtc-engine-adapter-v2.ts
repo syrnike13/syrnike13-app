@@ -64,6 +64,7 @@ function projectDesiredState(
   meterDemand: boolean,
   preview: PreviewDemand | null,
   remoteVideoDemand: EngineDesiredState['remoteVideoDemand'],
+  effectBusId: string | null,
 ): EngineDesiredState {
   const connected = binding !== null
   const value: EngineDesiredState = {
@@ -95,6 +96,8 @@ function projectDesiredState(
       monitor: desired.selfMonitoringActive,
       monitorDeviceId: desired.outputDeviceId ?? null,
       monitorVolume: desired.outputVolume,
+      // The plugin host bus; the DSP keeps the voice dry whenever it is absent.
+      effectBusId,
       bitrate: desired.microphoneBitrate,
       retryRevision: retries.microphone,
     } : { state: 'off' },
@@ -160,6 +163,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private revision = 0
   private warm = false
   private meterDemand = false
+  private effectBusId: string | null = null
   private started = false
   private disposed = false
   private epoch = 0
@@ -333,6 +337,12 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.started) await this.flush()
   }
 
+  setMicrophoneEffectBus(busId: string | null): void {
+    if (this.disposed || this.effectBusId === busId) return
+    this.effectBusId = busId
+    this.commitDesired()
+  }
+
   subscribe(listener: (event: VoiceEngineEvent) => void): () => void {
     this.listeners.add(listener)
     listener(this.availabilityEvent())
@@ -372,7 +382,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private commitDesired(): void {
     if (this.disposed) return
     this.latest = projectDesiredState(++this.revision, this.binding, this.desired,
-      this.audio, this.retries, this.warm, this.meterDemand, this.preview, this.remoteVideoDemand)
+      this.audio, this.retries, this.warm, this.meterDemand, this.preview, this.remoteVideoDemand, this.effectBusId)
     this.publishSpeaking()
     this.scheduleFlush()
   }

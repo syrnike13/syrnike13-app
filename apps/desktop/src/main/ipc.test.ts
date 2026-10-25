@@ -80,6 +80,9 @@ vi.mock('./native-media-engine', () => ({
   registerNativeMediaRuntimeIpc: vi.fn(),
 }))
 
+vi.mock('./audio-effects/audio-effects-ipc', () => ({
+  registerAudioEffectsIpc: vi.fn(),
+}))
 vi.mock('./media-permissions', () => ({
   registerDisplayMediaIpc: vi.fn(),
 }))

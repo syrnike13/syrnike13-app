@@ -31,6 +31,7 @@ export const MicrophoneIntentSchema = Schema.Union([Schema.Struct({ state: Schem
   monitor: Schema.Boolean,
   monitorDeviceId: Schema.Union([identifier, Schema.Null]),
   monitorVolume: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 3 })),
+  effectBusId: Schema.Union([identifier, Schema.Null]),
   bitrate: Schema.Int.check(Schema.isBetween({ minimum: 6000, maximum: 512000 })),
   retryRevision: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9007199254740991 })),
 })])

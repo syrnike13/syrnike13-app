@@ -73,6 +73,15 @@ export const IPC = {
   voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
   voiceGetTelemetry: 'syrnike-desktop:voice:get-telemetry',
   voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',
+  audioEffectsGetState: 'syrnike-desktop:audio-effects:get-state',
+  audioEffectsSetChain: 'syrnike-desktop:audio-effects:set-chain',
+  audioEffectsUpdateSlot: 'syrnike-desktop:audio-effects:update-slot',
+  audioEffectsOpenEditor: 'syrnike-desktop:audio-effects:open-editor',
+  audioEffectsGetStats: 'syrnike-desktop:audio-effects:get-stats',
+  audioEffectsStateChanged: 'syrnike-desktop:audio-effects:state-changed',
+  audioPluginsGetCatalog: 'syrnike-desktop:audio-plugins:get-catalog',
+  audioPluginsScan: 'syrnike-desktop:audio-plugins:scan',
+  audioPluginsCatalogChanged: 'syrnike-desktop:audio-plugins:catalog-changed',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

@@ -48,6 +48,7 @@ function manifest(): MediaArtifactManifest {
       { name: 'livekit.dll', sha256: 'b'.repeat(64) },
       { name: 'livekit_ffi.dll', sha256: 'c'.repeat(64) },
       { name: 'windows_media_texture_broker.node', sha256: 'd'.repeat(64) },
+      { name: 'syrnike_audio_plugin_host.exe', sha256: 'e'.repeat(64) },
     ],
   }
 }

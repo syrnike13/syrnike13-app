@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const EXPECTED_FILES = [
-  'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json', 'windows_media.node', 'windows_media_texture_broker.node',
+  'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json', 'syrnike_audio_plugin_host.exe', 'windows_media.node',
+  'windows_media_texture_broker.node',
 ]
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')

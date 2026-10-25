@@ -134,6 +134,10 @@ void MicrophoneOwner::run() noexcept {
   std::unique_ptr<MicrophoneMonitor> monitor;
   std::shared_ptr<MicrophonePcmPort> monitor_source;
   auto monitor_retry_at = Clock::now();
+  std::shared_ptr<audio_plugins::EffectBusClient> effects;
+  std::optional<std::string> effects_id;
+  const MicrophonePipeline* effects_pipeline = nullptr;
+  auto effects_retry_at = Clock::now();
   std::optional<std::uint64_t> sender_room;
   std::uint64_t sender_epoch = 0;
   std::uint64_t sender_bitrate = 0;
@@ -271,6 +275,23 @@ void MicrophoneOwner::run() noexcept {
         problem = previous_problem;
         selection_pending = true;
         continue;
+      }
+      if (!pipeline || desired.intent.state == MicrophoneIntentState::off) {
+        effects.reset();
+        effects_id.reset();
+        effects_pipeline = nullptr;
+      } else if (pipeline.get() != effects_pipeline || desired.intent.effect_bus_id != effects_id ||
+                 (effects_id && !effects && Clock::now() >= effects_retry_at)) {
+        // The plugin host is best effort like self-monitoring: a bus that is
+        // not up yet keeps the voice dry and is reopened, never a failure.
+        std::shared_ptr<audio_plugins::EffectBusClient> next;
+        if (desired.intent.effect_bus_id) next = audio_plugins::EffectBusClient::open(*desired.intent.effect_bus_id);
+        if (pipeline->setEffects(next) == MicrophonePipelineFailure::none) {
+          effects = std::move(next);
+          effects_id = desired.intent.effect_bus_id;
+          effects_pipeline = pipeline.get();
+          if (effects_id && !effects) effects_retry_at = Clock::now() + std::chrono::seconds{1};
+        }
       }
       if (!pipeline || !desired.intent.monitor || desired.intent.state == MicrophoneIntentState::off) {
         stopMonitor();

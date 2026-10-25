@@ -10,7 +10,7 @@
 namespace syrnike::windows_media::protocol {
 
 inline constexpr int kVersion = 5;
-inline constexpr std::string_view kSchemaSha256 = "f9057e7c1f4af6b002338c8c88008e7502fd3d4e43d24dcf4d115f59237ab4e2";
+inline constexpr std::string_view kSchemaSha256 = "9d0a055378be5fcce055a1c445e33054770b05187a387f243aef2909ea3fb242";
 inline constexpr std::size_t kControlQueueCapacity = 16;
 inline constexpr std::size_t kEventQueueCapacity = 64;
 inline constexpr std::size_t kMaximumCredentialLeases = 4;

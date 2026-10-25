@@ -68,6 +68,7 @@ import {
 } from './native-runtime/diagnostic-incidents'
 import { recordRendererDiagnosticMetrics } from './native-runtime/anonymous-metrics'
 import { decodeIpcInput } from './ipc-schema'
+import { registerAudioEffectsIpc } from './audio-effects/audio-effects-ipc'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -113,6 +114,7 @@ export function registerDesktopIpc(
   ) => authPersistence.withPermit(operation)
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
+  registerAudioEffectsIpc(getWindow)
   registerNativeMediaRuntimeIpc(getWindow, () => {
     void desktopVoiceService
       .dispatch({ type: 'setSelfMonitoringActive', active: false })

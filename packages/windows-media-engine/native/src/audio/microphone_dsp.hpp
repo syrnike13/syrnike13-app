@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/microphone_pcm.hpp"
+#include "audio_plugins/effect_bus.hpp"
 #include <memory>
 
 namespace syrnike::windows_media::audio {
@@ -64,9 +65,12 @@ class MicrophoneDsp final {
   bool configure(std::uint64_t revision, const MicrophoneDspConfig&) noexcept;
   // A non-null monitor receives the self-monitoring frame: the same processed
   // signal behind the gate, but independent of mute and push-to-talk, so a
-  // muted user still hears what the call would hear.
+  // muted user still hears what the call would hear. Effects run on the
+  // post-AEC/NS voice, before the gate measures it; a missed host deadline
+  // leaves the frame dry.
   void process(MicrophoneFrame&, std::int64_t now_100ns, EchoReferencePort*,
-               std::array<std::int16_t, kMicrophoneFrameSamples>* monitor = nullptr) noexcept;
+               std::array<std::int16_t, kMicrophoneFrameSamples>* monitor = nullptr,
+               audio_plugins::EffectBusClient* effects = nullptr) noexcept;
   MicrophoneDspStats stats() const noexcept { return stats_; }
  private:
   std::unique_ptr<MicrophoneEnhancement> enhancement_;

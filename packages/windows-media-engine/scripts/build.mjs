@@ -15,7 +15,10 @@ import { generateMediaModels } from './generate-media-models.mjs'
 
 const NAPI_VERSION = 8
 const ARCH = 'x64'
-const MEDIA_FILES = ['windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'windows_media_texture_broker.node']
+const MEDIA_FILES = [
+  'windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'windows_media_texture_broker.node',
+  'syrnike_audio_plugin_host.exe',
+]
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')

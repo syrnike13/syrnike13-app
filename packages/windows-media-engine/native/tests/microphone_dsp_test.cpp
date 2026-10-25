@@ -1,5 +1,9 @@
 #include "audio/microphone_dsp.hpp"
 #include "audio/rendered_echo_reference.hpp"
+#include <windows.h>
+#include <atomic>
+#include <string>
+#include <thread>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -193,6 +197,51 @@ void gateMeasuresBeforeGain() {
   dsp.process(frame, 1'000'000, nullptr);
   require(adapter.gain_calls == gain_calls && frame.samples[1] == 1000, "AGC2 bypass still applied automatic gain");
 }
+// Effects run before the gate: the gate and the speaking indicator measure
+// the processed voice, and a missing host leaves the frame untouched.
+void effectsRunBeforeTheGate() {
+  using namespace syrnike::windows_media::audio_plugins;
+  const auto id = "dsp-test-" + std::to_string(GetCurrentProcessId());
+  auto server = EffectBusServer::create(id);
+  require(server != nullptr, "Effect bus server was not created");
+  auto client = EffectBusClient::open(id);
+  require(client != nullptr, "Effect bus client was not opened");
+  std::atomic<float> gain{0.0f};
+  std::atomic<bool> stop{false};
+  std::thread host([&] {
+    while (!stop.load())
+      server->serve(std::chrono::milliseconds{20}, [&](auto& samples) {
+        for (float& value : samples) value *= gain.load();
+      });
+  });
+  server->setActive(true, 0);
+  MicrophoneDsp dsp(std::make_unique<Enhancement>());
+  MicrophoneDspConfig config;
+  config.automatic_gain = false;
+  config.gate_threshold_db = -40;
+  require(dsp.configure(1, config), "Effects config rejected");
+  // A voiced frame muted by the effect closes the gate and stays silent.
+  auto frame = signal(2000);
+  dsp.process(frame, 1'000'000, nullptr, nullptr, client.get());
+  require(!dsp.stats().gate_open && !dsp.stats().speaking && frame.samples == std::array<std::int16_t, 480>{},
+          "Gate measured the voice before the effect chain");
+  // A quiet frame raised by the effect opens it.
+  gain = 40.0f;
+  frame = signal(50);
+  dsp.process(frame, 1'000'000, nullptr, nullptr, client.get());
+  require(dsp.stats().gate_open && frame.samples[1] == 2000, "Effect output did not reach the gate");
+  stop = true;
+  host.join();
+  server.reset();
+  // Without a live host the voice goes through dry.
+  for (int index = 0; index < 32; ++index) {
+    frame = signal(50);
+    dsp.process(frame, 1'000'000, nullptr, nullptr, client.get());
+  }
+  frame = signal(2000);
+  dsp.process(frame, 1'000'000, nullptr, nullptr, client.get());
+  require(dsp.stats().gate_open && frame.samples[1] == 2000, "A dead effect host altered the voice");
+}
 void renderedReferenceRetirement() {
   RenderedEchoReference port(2);
   EchoReferenceFrame frame;
@@ -267,6 +316,7 @@ int main() try {
   gainFailurePreservesFrameAndEcho();
   referenceFreshness();
   renderedReferenceRetirement();
+  effectsRunBeforeTheGate();
   std::cout << "Microphone DSP contracts passed\n";
   return 0;
 } catch (const std::exception& error) {

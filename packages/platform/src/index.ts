@@ -122,6 +122,31 @@ export {
   RemoteVideoDemandSchema,
 } from './api'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
+export type {
+  AudioEffectBuiltinKind,
+  AudioEffectParameterDefinition,
+  AudioEffectSlot,
+  AudioEffectSlotStatus,
+  AudioEffectSlotUpdate,
+  AudioEffectsHostStatus,
+  AudioEffectsState,
+  AudioEffectsStats,
+  AudioPluginCatalog,
+  AudioPluginInfo,
+} from './audio-effects'
+export {
+  AUDIO_EFFECT_BUILTIN_KINDS,
+  AUDIO_EFFECT_BUILTINS,
+  AUDIO_EFFECTS_MAX_SLOTS,
+  AudioEffectChainSchema,
+  AudioEffectSlotSchema,
+  AudioEffectSlotStatusSchema,
+  AudioEffectSlotUpdateSchema,
+  AudioEffectsStateSchema,
+  AudioEffectsStatsSchema,
+  AudioPluginCatalogSchema,
+  AudioPluginInfoSchema,
+} from './audio-effects'
 export {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,

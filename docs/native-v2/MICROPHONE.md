@@ -70,6 +70,40 @@ gain adaptation does not change the gate's dBFS threshold semantics.
 - Mute and push-to-talk are applied inside the DSP, so toggling them never
   reopens capture or republishes.
 
+## Effects and VST 3 plugins
+
+Effects run on the post-AEC/NS voice, before the gate measures it, so the
+gate, the speaking indicator, self-monitoring and the call all hear the
+processed signal. Third-party plugins never load into the media utility:
+`syrnike_audio_plugin_host.exe` (staged with the addon) owns the chain, and the
+DSP worker exchanges one 10 ms frame with it through a named shared-memory
+section and two events (`audio_plugins/effect_bus`).
+
+- `MicrophoneIntent.effectBusId` names the bus; Electron main starts the host,
+  sends its bus ID, and replaces it after a crash with a new ID. A null or not
+  yet open bus keeps the voice dry; it is never a microphone failure.
+- The worker waits at most 4 ms. A missed deadline leaves that frame dry, and
+  frames stay dry without waiting until the host has answered the late one, so
+  a hung or dead host costs one deadline, not a stalled call.
+- Each slot has its own dry/wet mix with an equal-power law and a 20 ms ramp.
+  The dry path is delayed by the plugin latency so a partial mix does not
+  comb-filter; a disabled slot fades out and then skips the effect.
+- The built-in pitch shifter is a two-head delay sweep, so its wet copy is
+  always half a window (1024 samples, 21 ms) behind. It reports that delay, so
+  the dry path is aligned and Mix on it blends instead of combing; the whole
+  voice is 21 ms later while the effect is mixed in.
+- Chains are swapped lock-free at a block boundary. Slots are shared by
+  consecutive chains, so reordering keeps plugin state, and plugin objects are
+  created and destroyed on the host UI thread, which also runs the editors.
+- Built-in effects (EQ, compressor, reverb, pitch, echo) are our own code from
+  public-domain algorithms (RBJ biquads, Freeverb). Plugins use the MIT
+  Steinberg VST 3 SDK 3.8 hosting sources only. Scanning loads each module in a
+  separate host process, so a broken plugin fails only its own entry.
+- The catalog is scanned on demand, once per session, when the effect list is
+  opened; the result is cached by module mtime and size. Scan processes run
+  below normal priority, so loading a heavy module (a sampler takes seconds)
+  never starves the call or the UI.
+
 ## Publication
 
 The sender publishes `SOURCE_MICROPHONE` without DTX or simulcast on the SDK

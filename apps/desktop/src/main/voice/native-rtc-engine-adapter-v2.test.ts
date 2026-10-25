@@ -300,6 +300,21 @@ describe('NativeRtcEngineAdapterV2', () => {
     await adapter.dispose()
   })
 
+  it('routes the warm microphone through the plugin host bus while one is running', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await adapter.setMicrophonePreview(true)
+    expect(adapter.desiredSnapshot()?.microphone).toMatchObject({ effectBusId: null })
+    const revision = adapter.desiredSnapshot()!.revision
+    adapter.setMicrophoneEffectBus('fx-0123')
+    expect(adapter.desiredSnapshot()?.microphone).toMatchObject({ state: 'warm', effectBusId: 'fx-0123' })
+    adapter.setMicrophoneEffectBus('fx-0123')
+    expect(adapter.desiredSnapshot()!.revision).toBe(revision + 1)
+    adapter.setMicrophoneEffectBus(null)
+    expect(adapter.desiredSnapshot()?.microphone).toMatchObject({ effectBusId: null })
+    await adapter.dispose()
+  })
+
   it('preserves product microphone bounds and disjoint volume/mute maps', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)
