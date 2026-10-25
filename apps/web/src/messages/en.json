@@ -493,9 +493,10 @@
       "preview": {
         "label": "Loading animation",
         "replay": "Replay",
-        "variants": "Halloween variants",
+        "variants": "Scenes",
         "variantClassic": "Classic",
-        "variantWitch": "Witch skin"
+        "variantHalloween": "Halloween",
+        "variantNewYear": "New Year"
       },
       "factTitle": "Did you know?",
       "status": {

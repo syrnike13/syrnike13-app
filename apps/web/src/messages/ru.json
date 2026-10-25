@@ -493,9 +493,10 @@
       "preview": {
         "label": "Анимация загрузки",
         "replay": "Повторить",
-        "variants": "Хэллоуин-варианты",
+        "variants": "Сцены",
         "variantClassic": "Обычная",
-        "variantWitch": "Ведьмин скин"
+        "variantHalloween": "Хэллоуин",
+        "variantNewYear": "Новый год"
       },
       "factTitle": "А вы знали?",
       "status": {

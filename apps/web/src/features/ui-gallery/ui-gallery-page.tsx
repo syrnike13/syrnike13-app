@@ -1621,7 +1621,8 @@ function OverlayGallery() {
 
 const CAKE_VARIANT_LABEL_KEYS: Record<CakeLogoVariant, string> = {
   classic: 'variantClassic',
-  witch: 'variantWitch',
+  halloween: 'variantHalloween',
+  'new-year': 'variantNewYear',
 }
 
 function ExamplesGallery() {
@@ -1756,7 +1757,7 @@ function ExamplesGallery() {
       </Demo>
       <Demo
         title="Loading screen"
-        hint="Boot screen: tetromino assembly; the Halloween witch skin keeps the logo whole."
+        hint="Boot screen: tetromino assembly; seasonal scenes keep the logo whole and play around it."
         wide
       >
         <div

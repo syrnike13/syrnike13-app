@@ -1,10 +1,13 @@
 import { useEffect, useId, useState, type CSSProperties } from 'react'
 
+import type { HolidayId } from '@syrnike13/ui/holidays'
+
 import { cn } from '#/lib/utils'
 import { useMediaQuery } from '#/hooks/use-media-query'
 
 import { CAKE_TETROMINOES } from './cake-logo-data'
-import { HalloweenDecor } from './cake-logo-halloween'
+import { HalloweenScene } from './cake-logo-halloween'
+import { NewYearScene } from './cake-logo-new-year'
 import cakeLogoArtwork from './cake-logo-artwork.png'
 
 type CakeAnimationStyle = CSSProperties & {
@@ -25,14 +28,26 @@ const PIECES = CAKE_TETROMINOES.map((piece, index) => ({
 const ASSEMBLY_MS = (PIECES.length - 1) * PIECE_INTERVAL_MS + FALL_DURATION_MS
 const CYCLE_MS = STATIC_HOLD_MS + ASSEMBLY_MS
 
-export const CAKE_LOGO_VARIANTS = ['classic', 'witch'] as const
+export const CAKE_LOGO_VARIANTS = ['classic', 'halloween', 'new-year'] as const
 
 export type CakeLogoVariant = (typeof CAKE_LOGO_VARIANTS)[number]
 
 type CakeLogoPhase = 'still' | 'assembly'
 
-/** Seasonal scene that plays automatically while the Halloween window is open. */
-export const HALLOWEEN_CAKE_VARIANT: CakeLogoVariant = 'witch'
+/** Holiday scenes keyed by holiday id; other holidays use the classic logo. */
+const HOLIDAY_CAKE_VARIANTS: Readonly<Partial<Record<HolidayId, CakeLogoVariant>>> = {
+  halloween: 'halloween',
+  'new-year': 'new-year',
+  christmas: 'new-year',
+}
+
+export function cakeLogoVariantForHoliday(
+  holidayId: string | undefined,
+): CakeLogoVariant {
+  return (
+    (holidayId && HOLIDAY_CAKE_VARIANTS[holidayId as HolidayId]) || 'classic'
+  )
+}
 
 /** Fast tetromino assembly with one seamless artwork layer beneath the blocks. */
 export function CakeLogo({
@@ -43,7 +58,7 @@ export function CakeLogo({
   className?: string
   /** Explicit dev-preview playback, including when reduced motion is enabled. */
   previewMotion?: boolean
-  /** `witch` keeps the logo whole and only adds Halloween set dressing. */
+  /** Holiday variants keep the logo whole and dress it for the holiday. */
   variant?: CakeLogoVariant
 }) {
   const maskId = useId()
@@ -51,8 +66,11 @@ export function CakeLogo({
   const animate = previewMotion || !prefersReducedMotion
   const [timeline, setTimeline] = useState({ cycle: 0, elapsed: 0 })
 
+  // Only the classic assembly needs a JS clock; holiday scenes loop in CSS.
+  const assembles = animate && variant === 'classic'
+
   useEffect(() => {
-    if (!animate) return
+    if (!assembles) return
     const startedAt = Date.now()
 
     // One clock handles landing and replay. Completed blocks leave the DOM,
@@ -68,11 +86,10 @@ export function CakeLogo({
     updateTimeline()
     const timer = window.setInterval(updateTimeline, TIMELINE_STEP_MS)
     return () => window.clearInterval(timer)
-  }, [animate])
+  }, [assembles])
 
   const assemblyElapsed = timeline.elapsed - STATIC_HOLD_MS
-  const assembling =
-    animate && variant === 'classic' && assemblyElapsed >= 0
+  const assembling = assembles && assemblyElapsed >= 0
   const phase: CakeLogoPhase = assembling ? 'assembly' : 'still'
 
   const cycleStyle: CakeAnimationStyle = {
@@ -160,7 +177,8 @@ export function CakeLogo({
             )
           })
         : null}
-      {variant === 'witch' ? <HalloweenDecor /> : null}
+      {variant === 'halloween' ? <HalloweenScene /> : null}
+      {variant === 'new-year' ? <NewYearScene /> : null}
     </svg>
   )
 }

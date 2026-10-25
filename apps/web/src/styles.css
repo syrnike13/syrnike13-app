@@ -618,79 +618,116 @@ html {
   }
 }
 
-/* Halloween set dressing: the logo itself never changes in this scene. */
-.cake-halloween-decor,
-.cake-bat {
+/*
+ * Holiday scenes around a whole logo. Every prop loops on its own CSS clock,
+ * so nothing restarts with the classic assembly.
+ */
+.cake-scene {
   pointer-events: none;
 }
 
-.cake-cobweb {
-  opacity: 0.55;
+/* Two-frame sprites (bat wings) swap every half of --frame. */
+.cake-frame-a,
+.cake-frame-b {
+  animation: cake-frame var(--frame, 260ms) steps(1, end) infinite;
 }
 
-.cake-spider-thread {
-  fill: var(--muted-foreground);
-  opacity: 0.4;
+.cake-frame-b {
+  animation-delay: calc(var(--frame, 260ms) / -2);
 }
 
-.cake-spider {
-  animation: cake-spider-drop 1200ms steps(9, end) 120ms both;
+@keyframes cake-frame {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
-@keyframes cake-spider-drop {
-  0% {
-    opacity: 0;
-    transform: translateY(-1px);
-  }
-  8% {
-    opacity: 1;
-  }
-  48% {
-    transform: translateY(6px);
-  }
-  76% {
-    transform: translateY(6px);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-1px);
-  }
+/* Halloween: moon, candle-lit pumpkin and bats. */
+.cake-moon {
+  opacity: 0.85;
+}
+
+.cake-lantern {
+  animation: cake-candle 2.6s steps(1, end) infinite;
+}
+
+@keyframes cake-candle {
+  0% { opacity: 1; }
+  18% { opacity: 0.7; }
+  24% { opacity: 1; }
+  52% { opacity: 0.85; }
+  58% { opacity: 0.6; }
+  64% { opacity: 1; }
+  88% { opacity: 0.8; }
 }
 
 .cake-bat {
-  animation: cake-bat-cross 900ms steps(10, end) 1500ms both;
+  --frame: 240ms;
+  opacity: 0;
+  animation: cake-bat 8s infinite both;
 }
 
-@keyframes cake-bat-cross {
-  0% {
-    opacity: 0;
-    transform: translate(0, 0);
+.cake-bat[data-flight='late'] {
+  animation-duration: 9s;
+  animation-delay: 4.2s;
+}
+
+@keyframes cake-bat {
+  0% { opacity: 0; transform: translate(33px, 3px); }
+  6% { opacity: 1; transform: translate(28px, 0); }
+  20% { transform: translate(18px, -3px); }
+  34% { transform: translate(6px, -3px); }
+  48% { opacity: 1; transform: translate(-5px, 0); }
+  56%, 100% { opacity: 0; transform: translate(-13px, -1px); }
+}
+
+/* New Year: blinking tree, twinkling star and snowfall. */
+.cake-star {
+  animation: cake-star 1.8s steps(1, end) infinite;
+}
+
+@keyframes cake-star {
+  0% { opacity: 1; }
+  40% { opacity: 0.6; }
+  55% { opacity: 1; }
+  70% { opacity: 0.8; }
+}
+
+.cake-light {
+  animation: cake-light 1.8s steps(1, end) infinite;
+}
+
+.cake-light[data-group='1'] { animation-delay: -0.6s; }
+.cake-light[data-group='2'] { animation-delay: -1.2s; }
+
+@keyframes cake-light {
+  0% { opacity: 1; }
+  66% { opacity: 0.3; }
+}
+
+.cake-snowflake {
+  animation: cake-snow-fall var(--snow-duration) linear var(--snow-delay)
+    infinite;
+}
+
+@keyframes cake-snow-fall {
+  0% { transform: translate(0, var(--snow-from)); }
+  50% {
+    transform: translate(1px, calc((var(--snow-from) + var(--snow-to)) / 2));
   }
-  10% {
-    opacity: 1;
-  }
-  45% {
-    transform: translate(-20px, -1px);
-  }
-  78% {
-    opacity: 1;
-  }
-  90%,
-  100% {
-    opacity: 0;
-    transform: translate(-44px, 0);
-  }
+  100% { transform: translate(0, var(--snow-to)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cake-logo:not([data-motion-preview]),
   .cake-logo:not([data-motion-preview]) .cake-logo-piece,
-  .cake-logo:not([data-motion-preview]) .cake-spider,
-  .cake-logo:not([data-motion-preview]) .cake-bat {
+  .cake-logo:not([data-motion-preview]) .cake-scene,
+  .cake-logo:not([data-motion-preview]) .cake-scene * {
     animation: none;
   }
 
-  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks {
+  .cake-logo:not([data-motion-preview]) .cake-tetromino-blocks,
+  .cake-logo:not([data-motion-preview]) .cake-frame-b,
+  .cake-logo:not([data-motion-preview]) .cake-bat {
     display: none;
   }
 }
