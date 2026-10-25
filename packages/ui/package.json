@@ -9,6 +9,7 @@
     "./i18n": "./src/i18n/index.ts",
     "./icons": "./src/icons/index.tsx",
     "./lib/cn": "./src/lib/cn.ts",
+    "./lib/file-size": "./src/lib/file-size.ts",
     "./primitives/*": "./src/primitives/*/index.tsx",
     "./styles.css": "./src/styles.css",
     "./tokens": "./src/tokens/index.ts",

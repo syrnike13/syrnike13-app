@@ -3557,6 +3557,8 @@ export interface components {
       category: components["schemas"]["FeedbackCategory"];
       area?: components["schemas"]["FeedbackArea"];
       platform?: components["schemas"]["FeedbackPlatform"];
+      /** @description Files, screenshots and videos attached by the author. */
+      attachments?: components["schemas"]["File"][] | null;
       moderation_status: components["schemas"]["FeedbackModerationStatus"];
       status: components["schemas"]["FeedbackProductStatus"];
       team_response?: string | null;
@@ -3586,6 +3588,8 @@ export interface components {
       category: components["schemas"]["FeedbackCategory"];
       area?: components["schemas"]["FeedbackArea"];
       platform: components["schemas"]["FeedbackPlatform"];
+      /** @description Ids of files uploaded to the `feedback` tag. */
+      attachments?: string[] | null;
       /** @default false */
       anonymous?: boolean;
     };

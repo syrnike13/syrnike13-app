@@ -1,4 +1,6 @@
 use iso8601_timestamp::Timestamp;
+
+use super::File;
 #[cfg(feature = "validator")]
 use validator::Validate;
 
@@ -87,6 +89,9 @@ auto_derived!(
         /// Optional client platform where the feedback applies.
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub platform: Option<FeedbackPlatform>,
+        /// Files, screenshots and videos attached by the author.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub attachments: Option<Vec<File>>,
         /// Moderation visibility state.
         pub moderation_status: FeedbackModerationStatus,
         /// Product delivery state.
@@ -132,6 +137,10 @@ auto_derived!(
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub area: Option<FeedbackArea>,
         pub platform: FeedbackPlatform,
+        /// Ids of files uploaded to the `feedback` tag.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        #[cfg_attr(feature = "validator", validate(length(max = 10)))]
+        pub attachments: Option<Vec<String>>,
         /// Publish without exposing the author to other users. Moderators still see the author.
         #[cfg_attr(feature = "serde", serde(default))]
         pub anonymous: bool,

@@ -320,6 +320,8 @@
       "loadingMore": "Загружаем…",
       "anonymousShort": "Анонимно",
       "anonymousLong": "Анонимно для пользователей",
+      "attachments": "Вложения",
+      "videoAria": "Видео «{name}»",
       "allPlatforms": "Все платформы",
       "inspectorAria": "Инспектор обращения",
       "newSuggestion": "Новое обращение",

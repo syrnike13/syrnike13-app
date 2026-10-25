@@ -4,7 +4,11 @@ import { Cause, Effect, Option, Schema } from 'effect'
 
 export type UploadProgressHandler = (progress: number) => void
 
+export type AttachmentUploadTag = 'attachments' | 'feedback'
+
 export type UploadAttachmentOptions = {
+  /** Autumn tag; `feedback` accepts larger files than message attachments. */
+  tag?: AttachmentUploadTag
   onProgress?: UploadProgressHandler
   signal?: AbortSignal
   t: Translator
@@ -14,11 +18,28 @@ const UploadResponseSchema = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1)),
 })
 
+const UploadRejectionSchema = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('FileTooLarge'), max: Schema.Number }),
+  Schema.Struct({ type: Schema.Literal('FileTypeNotAllowed') }),
+])
+
+/** Localized reason for an upload the file server rejected. */
+function uploadRejectionMessage(body: unknown, t: Translator) {
+  const rejection = Schema.decodeUnknownOption(UploadRejectionSchema)(body)
+  if (Option.isNone(rejection)) return undefined
+  return rejection.value.type === 'FileTooLarge'
+    ? t('uploadTooLarge', {
+        size: Math.floor(rejection.value.max / 1_000_000),
+      })
+    : t('uploadTypeNotAllowed')
+}
+
 type UploadRequestOptions = {
   token: string
   file: File
   endpoint: string
   failureMessage: string
+  rejectionMessage?: (body: unknown) => string | undefined
   networkFailureMessage?: string
   abortMessage: string
   onProgress?: UploadProgressHandler
@@ -67,7 +88,14 @@ const uploadFile = Effect.fn('media.uploadFile')(
             return
           }
         }
-        settle(Effect.fail(new Error(options.failureMessage)))
+        settle(
+          Effect.fail(
+            new Error(
+              options.rejectionMessage?.(xhr.response) ??
+                options.failureMessage,
+            ),
+          ),
+        )
       }
       const handleNetworkError = () =>
         settle(
@@ -148,8 +176,9 @@ export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
       uploadFile({
         token,
         file,
-        endpoint: 'attachments',
+        endpoint: options.tag ?? 'attachments',
         failureMessage: options.t('uploadFailed'),
+        rejectionMessage: (body) => uploadRejectionMessage(body, options.t),
         networkFailureMessage: options.t('networkError'),
         abortMessage: options.t('uploadCancelled'),
         onProgress: options.onProgress,
@@ -167,6 +196,7 @@ export function uploadAttachment(
   options: UploadAttachmentOptions,
 ): Promise<string> {
   const effect = uploadAttachmentEffect(token, file, {
+    tag: options.tag,
     onProgress: options.onProgress,
     t: options.t,
   })

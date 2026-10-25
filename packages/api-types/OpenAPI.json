@@ -16328,6 +16328,7 @@
           "category": {"$ref": "#/components/schemas/FeedbackCategory"},
           "area": {"$ref": "#/components/schemas/FeedbackArea"},
           "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
+          "attachments": {"description": "Files, screenshots and videos attached by the author.", "type": "array", "items": {"$ref": "#/components/schemas/File"}, "nullable": true},
           "moderation_status": {"$ref": "#/components/schemas/FeedbackModerationStatus"},
           "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
           "team_response": {"type": "string", "nullable": true},
@@ -16361,6 +16362,7 @@
           "category": {"$ref": "#/components/schemas/FeedbackCategory"},
           "area": {"$ref": "#/components/schemas/FeedbackArea"},
           "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
+          "attachments": {"description": "Ids of files uploaded to the `feedback` tag.", "type": "array", "items": {"type": "string"}, "maxItems": 10, "nullable": true},
           "anonymous": {"type": "boolean", "default": false}
         }
       },

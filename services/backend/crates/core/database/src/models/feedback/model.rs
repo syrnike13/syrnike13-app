@@ -4,6 +4,8 @@ use iso8601_timestamp::Timestamp;
 use syrnike_models::v0;
 use ulid::Ulid;
 
+use crate::File;
+
 auto_derived!(
     /// Product feedback suggestion persisted by the platform.
     pub struct FeedbackSuggestion {
@@ -21,6 +23,8 @@ auto_derived!(
         pub area: Option<v0::FeedbackArea>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub platform: Option<v0::FeedbackPlatform>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub attachments: Option<Vec<File>>,
         pub moderation_status: v0::FeedbackModerationStatus,
         pub product_status: v0::FeedbackProductStatus,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +128,7 @@ impl FeedbackSuggestion {
             category,
             area,
             platform: Some(platform),
+            attachments: None,
             moderation_status: v0::FeedbackModerationStatus::Pending,
             product_status: v0::FeedbackProductStatus::Collecting,
             team_response: None,
@@ -165,6 +170,9 @@ impl FeedbackSuggestion {
             category: self.category,
             area: self.area,
             platform: self.platform,
+            attachments: self
+                .attachments
+                .map(|files| files.into_iter().map(Into::into).collect()),
             moderation_status: self.moderation_status,
             status: self.product_status,
             team_response: self.team_response,

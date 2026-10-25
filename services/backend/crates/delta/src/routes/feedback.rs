@@ -1,6 +1,6 @@
 use rocket::{State, serde::json::Json};
 use syrnike_database::{
-    Database, FeedbackSuggestion, FeedbackSuggestionPage, FeedbackSuggestionQuery,
+    Database, FeedbackSuggestion, File, FeedbackSuggestionPage, FeedbackSuggestionQuery,
     FeedbackSuggestionView, User,
 };
 use syrnike_models::v0;
@@ -128,7 +128,7 @@ pub async fn create(
     }
 
     let data = normalise_create_data(data.into_inner())?;
-    let suggestion = FeedbackSuggestion::new(
+    let mut suggestion = FeedbackSuggestion::new(
         user.id.clone(),
         user.username.clone(),
         data.title,
@@ -138,6 +138,20 @@ pub async fn create(
         data.platform,
         data.anonymous,
     );
+
+    let attachment_ids = data.attachments.unwrap_or_default();
+    ensure_attachments_usable(db, &attachment_ids, &user.id).await?;
+
+    let mut attachments = vec![];
+    for attachment_id in &attachment_ids {
+        attachments.push(
+            File::use_feedback_attachment(db, attachment_id, &suggestion.id, &user.id).await?,
+        );
+    }
+    if !attachments.is_empty() {
+        suggestion.attachments = Some(attachments);
+    }
+
     db.insert_feedback_suggestion(&suggestion).await?;
 
     Ok(Json(view_into_api(
@@ -317,6 +331,24 @@ pub async fn update_publication(
     )))
 }
 
+/// Check every attachment before any of them is claimed, so a bad id cannot
+/// leave earlier files bound to a suggestion that is never stored.
+async fn ensure_attachments_usable(db: &Database, ids: &[String], user_id: &str) -> Result<()> {
+    for (index, id) in ids.iter().enumerate() {
+        if ids[..index].contains(id) {
+            return validation_error("attachments must not repeat");
+        }
+
+        let file = db.fetch_attachment("feedback", id).await?;
+        let owned = file.uploader_id.as_deref() == Some(user_id);
+        if !owned || file.used_for.is_some() || file.deleted == Some(true) {
+            return Err(create_error!(NotFound));
+        }
+    }
+
+    Ok(())
+}
+
 fn require_privileged(user: &User) -> Result<()> {
     if user.privileged {
         Ok(())
@@ -486,7 +518,7 @@ mod tests {
         http::{ContentType, Header, Status},
         local::asynchronous::{Client, LocalRequest, LocalResponse},
     };
-    use syrnike_database::{Database, DatabaseInfo, FeedbackSuggestion, User};
+    use syrnike_database::{Database, DatabaseInfo, FeedbackSuggestion, File, Metadata, User};
     use syrnike_models::v0;
     use ulid::Ulid;
 
@@ -722,5 +754,142 @@ mod tests {
         let page: v0::FeedbackSuggestionPage = mine.into_json().await.expect("response body");
         assert_eq!(page.total, 0);
         assert!(page.suggestions.is_empty());
+    }
+
+    async fn insert_upload(db: &Database, tag: &str, uploader_id: &str) -> File {
+        let file = File {
+            id: Ulid::new().to_string(),
+            tag: tag.to_string(),
+            filename: "screen-recording.mp4".to_string(),
+            hash: None,
+            uploaded_at: None,
+            uploader_id: Some(uploader_id.to_string()),
+            used_for: None,
+            deleted: None,
+            reported: None,
+            metadata: Metadata::Video {
+                width: 1920,
+                height: 1080,
+            },
+            content_type: "video/mp4".to_string(),
+            size: 150_000_000,
+            message_id: None,
+            user_id: None,
+            server_id: None,
+            object_id: None,
+        };
+        db.insert_attachment(&file).await.expect("file inserted");
+        file
+    }
+
+    fn create_body(attachments: &[&str]) -> String {
+        serde_json::json!({
+            "title": "Screen share freezes",
+            "description": "Screen share freezes after a few minutes.",
+            "category": "bug",
+            "platform": "windows",
+            "attachments": attachments,
+        })
+        .to_string()
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_attaches_only_feedback_uploads() {
+        let context = FeedbackTestContext::new().await;
+        let (author, author_session) = context.user(false).await;
+        let video = insert_upload(&context.db, "feedback", &author.id).await;
+        let message_file = insert_upload(&context.db, "attachments", &author.id).await;
+
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&video.id])),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+        let suggestion: v0::FeedbackSuggestion =
+            created.into_json().await.expect("response body");
+        let attachments = suggestion.attachments.expect("attachments");
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].id, video.id);
+        assert_eq!(attachments[0].tag, "feedback");
+
+        let wrong_tag = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&message_file.id])),
+        )
+        .await;
+        assert_eq!(wrong_tag.status(), Status::NotFound);
+
+        let (_, other_session) = context.user(false).await;
+        let foreign = FeedbackTestContext::request_with_session(
+            &other_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&insert_upload(&context.db, "feedback", &author.id).await.id])),
+        )
+        .await;
+        assert_eq!(foreign.status(), Status::NotFound);
+
+        let reused = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&video.id])),
+        )
+        .await;
+        assert_eq!(reused.status(), Status::NotFound);
+
+        let fresh = insert_upload(&context.db, "feedback", &author.id).await;
+        let duplicated = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&fresh.id, &fresh.id])),
+        )
+        .await;
+        assert_eq!(duplicated.status(), Status::BadRequest);
+
+        let partial = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&fresh.id, "missing"])),
+        )
+        .await;
+        assert_eq!(partial.status(), Status::NotFound);
+        let fresh_after = context
+            .db
+            .fetch_attachment("feedback", &fresh.id)
+            .await
+            .expect("file exists");
+        assert!(fresh_after.used_for.is_none(), "rejected request must not claim files");
+
+        let too_many = vec![video.id.as_str(); 11];
+        let rejected = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&too_many)),
+        )
+        .await;
+        assert_eq!(rejected.status(), Status::BadRequest);
     }
 }

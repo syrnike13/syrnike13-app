@@ -51,3 +51,8 @@ export const RotateCwIcon = defineIcon(iconifyIcon('lucide:rotate-cw'), {
   pack: 'iconify',
   name: 'lucide:rotate-cw',
 })
+
+export const PaperclipIcon = defineIcon(iconifyIcon('lucide:paperclip'), {
+  pack: 'iconify',
+  name: 'lucide:paperclip',
+})

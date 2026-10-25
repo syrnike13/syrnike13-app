@@ -12,6 +12,7 @@ import {
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
+import { FeedbackAttachments } from '#/components/feedback/feedback-attachments'
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -142,6 +143,10 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
           </div>
 
           <p className="text-base leading-7 whitespace-pre-wrap">{suggestion.description}</p>
+
+          {suggestion.attachments?.length ? (
+            <FeedbackAttachments attachments={suggestion.attachments} />
+          ) : null}
 
           {suggestion.team_response ? (
             <Alert>

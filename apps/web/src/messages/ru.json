@@ -697,7 +697,8 @@
       "teamResponse": "Ответ команды",
       "rejectionReason": "Причина отклонения",
       "mergedTitle": "Предложение объединено",
-      "openMainIdea": "Открыть основную идею"
+      "openMainIdea": "Открыть основную идею",
+      "videoAria": "Видео «{name}»"
     },
     "create": {
       "title": "Добавить обращение",
@@ -717,6 +718,13 @@
       "titlePlaceholder": "Коротко опишите идею",
       "descriptionLabel": "Описание",
       "descriptionPlaceholder": "Опишите проблему, как должно работать решение и какую пользу оно принесёт сообществу.",
+      "attachmentsLabel": "Вложения",
+      "addAttachments": "Прикрепить файлы",
+      "attachmentsHint": "Скриншоты, видео или другие файлы до {size} МБ. Можно перетащить сюда.",
+      "attachmentTooLarge": "Файл «{name}» больше {size} МБ",
+      "attachmentsLimit": "Можно прикрепить не больше {count, plural, one {# файла} few {# файлов} many {# файлов} other {# файла}}",
+      "attachmentsSummary": "Вложения",
+      "attachmentsFailed": "Не все вложения загрузились. Удалите файлы с ошибкой или отправьте ещё раз.",
       "similarTitle": "Похожие предложения",
       "searchingSimilar": "Ищем похожие обращения…",
       "typeSummary": "Тип",
@@ -2306,6 +2314,8 @@
     "nextImage": "Следующее изображение",
     "attachments": "Миниатюры вложений",
     "uploadFailed": "Не удалось загрузить файл",
+    "uploadTooLarge": "Файл больше {size} МБ",
+    "uploadTypeNotAllowed": "Такой тип файла загружать нельзя",
     "emojiUploadFailed": "Не удалось загрузить emoji",
     "uploadCancelled": "Загрузка отменена",
     "networkError": "Ошибка сети при загрузке"

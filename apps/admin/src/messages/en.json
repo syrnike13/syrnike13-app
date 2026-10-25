@@ -320,6 +320,8 @@
       "loadingMore": "Loading…",
       "anonymousShort": "Anonymous",
       "anonymousLong": "Anonymous to users",
+      "attachments": "Attachments",
+      "videoAria": "Video “{name}”",
       "allPlatforms": "All platforms",
       "inspectorAria": "Feedback inspector",
       "newSuggestion": "New feedback",
