@@ -4,6 +4,7 @@ export {
   RiArrowDownSLine as ChevronDownIcon,
   RiArrowRightLine as ArrowRightIcon,
   RiArrowUpSLine as ChevronUpIcon,
+  RiAttachmentLine as PaperclipIcon,
   RiAwardLine as AwardIcon,
   RiBugLine as BugIcon,
   RiDownloadLine as DownloadIcon,

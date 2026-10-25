@@ -1,6 +1,7 @@
 /** Каналы IPC между renderer (web) и main process. */
 export const IPC = {
   versions: 'syrnike-desktop:versions',
+  systemGetInfo: 'syrnike-desktop:system:get-info',
   clipboardWriteText: 'syrnike-desktop:clipboard:write-text',
   windowMinimize: 'syrnike-desktop:window:minimize',
   windowMaximize: 'syrnike-desktop:window:maximize',

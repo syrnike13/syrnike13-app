@@ -123,6 +123,10 @@ export {
 } from './api'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export {
+  DesktopSystemInfoSchema,
+  type DesktopSystemInfo,
+} from './system'
+export {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
   DiagnosticCorrelationIdSchema,

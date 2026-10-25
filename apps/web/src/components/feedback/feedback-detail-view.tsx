@@ -12,6 +12,11 @@ import {
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
+import { FeedbackAttachments } from '#/components/feedback/feedback-attachments'
+import {
+  FeedbackPeripheralsSummary,
+  FeedbackSystemSummary,
+} from '#/components/feedback/feedback-system'
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -142,6 +147,33 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
           </div>
 
           <p className="text-base leading-7 whitespace-pre-wrap">{suggestion.description}</p>
+
+          {suggestion.attachments?.length ? (
+            <FeedbackAttachments attachments={suggestion.attachments} />
+          ) : null}
+
+          {suggestion.system || suggestion.peripherals?.length ? (
+            <section className="space-y-3">
+              {suggestion.system ? (
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium text-muted-foreground">
+                    {t('systemTitle')}
+                  </h3>
+                  <FeedbackSystemSummary system={suggestion.system} />
+                </div>
+              ) : null}
+              {suggestion.peripherals?.length ? (
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium text-muted-foreground">
+                    {t('peripheralsTitle')}
+                  </h3>
+                  <FeedbackPeripheralsSummary
+                    peripherals={suggestion.peripherals}
+                  />
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {suggestion.team_response ? (
             <Alert>

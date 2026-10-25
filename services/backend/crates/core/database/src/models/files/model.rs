@@ -73,6 +73,7 @@ auto_derived!(
         RoleIcon,
         BadgeIcon,
         ActivityIcon,
+        FeedbackSuggestion,
     }
 
     /// Information about what the file was used for
@@ -104,6 +105,25 @@ impl File {
             FileUsedFor {
                 id: parent.to_owned(),
                 object_type: FileUsedForType::Message,
+            },
+            uploader_id.to_owned(),
+        )
+        .await
+    }
+
+    /// Use a file for a feedback suggestion attachment
+    pub async fn use_feedback_attachment(
+        db: &Database,
+        id: &str,
+        parent: &str,
+        uploader_id: &str,
+    ) -> Result<File> {
+        db.find_and_use_attachment(
+            id,
+            "feedback",
+            FileUsedFor {
+                id: parent.to_owned(),
+                object_type: FileUsedForType::FeedbackSuggestion,
             },
             uploader_id.to_owned(),
         )

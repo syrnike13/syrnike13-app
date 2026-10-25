@@ -47,6 +47,14 @@ pub async fn router() -> Router<AppState> {
 
     Router::new()
         .route("/", get(root))
+        // Feedback attachments are far larger than other uploads; only this
+        // route accepts bodies beyond the global limit.
+        .route(
+            "/feedback",
+            post(upload_feedback_file)
+                .options(options)
+                .layer(DefaultBodyLimit::max(feedback_body_limit(&config))),
+        )
         .route(
             "/:tag",
             post(upload_file)
@@ -59,6 +67,24 @@ pub async fn router() -> Router<AppState> {
         .route("/:tag/:file_id/:file_name", get(fetch_file))
         .layer(cors)
 }
+
+/// Multipart framing overhead allowed on top of the largest feedback file.
+const MULTIPART_OVERHEAD_BYTES: usize = 1_000_000;
+
+fn feedback_body_limit(config: &syrnike_config::Settings) -> usize {
+    let limits = &config.features.limits;
+    [&limits.new_user, &limits.default]
+        .into_iter()
+        .filter_map(|tier| tier.file_upload_size_limit.get("feedback").copied())
+        .max()
+        .unwrap_or(limits.global.body_limit_size)
+        .max(limits.global.body_limit_size)
+        + MULTIPART_OVERHEAD_BYTES
+}
+
+/// Uploads above this size are not kept in [`S3_CACHE`]; large feedback videos
+/// would otherwise evict the media every chat is reading.
+const UPLOAD_CACHE_MAX_BYTES: usize = 20_000_000;
 
 lazy_static! {
     /// Short-lived file cache to allow us to populate different CDN regions without increasing bandwidth to S3 provider
@@ -240,6 +266,7 @@ async fn options() {}
 #[allow(non_camel_case_types)]
 pub enum Tag {
     attachments,
+    feedback,
     avatars,
     backgrounds,
     icons,
@@ -314,6 +341,7 @@ pub struct UploadResponse {
 /// | Tag | Size | Resolution | Type |
 /// | :-: | --: | :-- | :-: |
 /// | attachments | 20 MB | - | Any |
+/// | feedback | 200 MB | - | Any |
 /// | avatars | 4 MB, GIF up to 10 MB | 40 MP or 10,000px | Image |
 /// | backgrounds | 6 MB, GIF up to 10 MB | 40 MP or 10,000px | Image |
 /// | icons | 2.5 MB | 40 MP or 10,000px | Image |
@@ -339,7 +367,25 @@ async fn upload_file(
     State(state): State<AppState>,
     user: User,
     Path(tag): Path<Tag>,
-    TypedMultipart(UploadPayload { mut file }): TypedMultipart<UploadPayload>,
+    TypedMultipart(UploadPayload { file }): TypedMultipart<UploadPayload>,
+) -> Result<Json<UploadResponse>> {
+    upload(state, user, tag, file).await
+}
+
+/// Upload a feedback attachment; served on its own route for its larger body limit
+async fn upload_feedback_file(
+    State(state): State<AppState>,
+    user: User,
+    TypedMultipart(UploadPayload { file }): TypedMultipart<UploadPayload>,
+) -> Result<Json<UploadResponse>> {
+    upload(state, user, Tag::feedback, file).await
+}
+
+async fn upload(
+    state: AppState,
+    user: User,
+    tag: Tag,
+    mut file: FieldData<NamedTempFile>,
 ) -> Result<Json<UploadResponse>> {
     let db = &state.database;
     // Fetch configuration
@@ -406,8 +452,10 @@ async fn upload_file(
     // Determine metadata for the file
     let metadata = generate_metadata(&file.contents, mime_type);
 
-    // Block non-images for non-attachment uploads
-    if !matches!(tag, Tag::attachments) && !matches!(metadata, Metadata::Image { .. }) {
+    // Block non-images for uploads other than message and feedback attachments
+    if !matches!(tag, Tag::attachments | Tag::feedback)
+        && !matches!(metadata, Metadata::Image { .. })
+    {
         return Err(create_error!(FileTypeNotAllowed));
     }
 
@@ -498,9 +546,9 @@ async fn upload_file(
             .await
     )?;
     db.set_attachment_hash_nonce(&file_hash.id, &nonce).await?;
-    S3_CACHE
-        .insert(file_hash.id.to_owned(), Ok(buf.clone()))
-        .await;
+    if buf.len() <= UPLOAD_CACHE_MAX_BYTES {
+        S3_CACHE.insert(file_hash.id.to_owned(), Ok(buf)).await;
+    }
 
     // Debug information
     let time_to_upload = Instant::now() - upload_start;
@@ -527,6 +575,7 @@ pub static CACHE_CONTROL: &str = "public, max-age=604800, immutable";
 /// | Tag | Image Resolution <sup>†</sup> | Animations stripped by preview <sup>‡</sup> |
 /// | :-: | --- | :-: |
 /// | attachments | Up to 1280px on any axis | ❌ |
+/// | feedback | Up to 1280px on any axis | ❌ |
 /// | avatars | Up to 256px on any axis | ✅ |
 /// | backgrounds | Up to 1280x720px | ❌ |
 /// | icons | Up to 128px on any axis | ✅ |
@@ -728,30 +777,109 @@ async fn fetch_file(
     }
 
     let content_disposition = original_content_disposition(&tag, &hash.content_type);
-    retrieve_file_by_hash(&state, &hash).await.map(|data| {
-        with_cache_validators(
-            (
-                [
-                    (header::CONTENT_TYPE, hash.content_type),
-                    (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
-                    (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
-                ],
-                data,
-            )
-                .into_response(),
-            &etag,
-            &last_modified,
+    let data = retrieve_file_by_hash(&state, &hash).await?;
+    let total = data.len();
+    let requested_range = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| parse_byte_range(value, total));
+
+    let response = match requested_range {
+        Some(ByteRange::Unsatisfiable) => (
+            StatusCode::RANGE_NOT_SATISFIABLE,
+            [(header::CONTENT_RANGE, format!("bytes */{total}"))],
         )
-    })
+            .into_response(),
+        Some(ByteRange::Satisfiable { start, end }) => (
+            StatusCode::PARTIAL_CONTENT,
+            [
+                (header::CONTENT_TYPE, hash.content_type),
+                (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
+                (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
+                (header::ACCEPT_RANGES, "bytes".to_owned()),
+                (header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}")),
+            ],
+            data[start..=end].to_vec(),
+        )
+            .into_response(),
+        Some(ByteRange::Ignored) | None => (
+            [
+                (header::CONTENT_TYPE, hash.content_type),
+                (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
+                (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
+                (header::ACCEPT_RANGES, "bytes".to_owned()),
+            ],
+            data,
+        )
+            .into_response(),
+    };
+
+    Ok(with_cache_validators(response, &etag, &last_modified))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ByteRange {
+    /// Inclusive byte range within the file
+    Satisfiable { start: usize, end: usize },
+    /// Well-formed range outside of the file
+    Unsatisfiable,
+    /// Malformed or multi-part range; the whole file is served
+    Ignored,
+}
+
+/// Parse a single `Range: bytes=...` header value against a file of `total` bytes
+fn parse_byte_range(value: &str, total: usize) -> ByteRange {
+    let Some(spec) = value.trim().strip_prefix("bytes=") else {
+        return ByteRange::Ignored;
+    };
+    if spec.contains(',') {
+        return ByteRange::Ignored;
+    }
+    let Some((start, end)) = spec.trim().split_once('-') else {
+        return ByteRange::Ignored;
+    };
+    let (start, end) = (start.trim(), end.trim());
+
+    let range = if start.is_empty() {
+        // Suffix range: the last `end` bytes
+        let Ok(suffix) = end.parse::<usize>() else {
+            return ByteRange::Ignored;
+        };
+        if suffix == 0 || total == 0 {
+            return ByteRange::Unsatisfiable;
+        }
+        (total.saturating_sub(suffix), total - 1)
+    } else {
+        let Ok(start) = start.parse::<usize>() else {
+            return ByteRange::Ignored;
+        };
+        let end = if end.is_empty() {
+            total.saturating_sub(1)
+        } else {
+            match end.parse::<usize>() {
+                Ok(end) if end >= start => end.min(total.saturating_sub(1)),
+                _ => return ByteRange::Ignored,
+            }
+        };
+        if start >= total {
+            return ByteRange::Unsatisfiable;
+        }
+        (start, end)
+    };
+
+    ByteRange::Satisfiable {
+        start: range.0,
+        end: range.1,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         cache_validator_matches, effective_upload_size_limit, original_content_disposition,
-        original_etag, preview_cache_key, preview_etag, should_cache_s3_result,
-        validate_badge_upload, PreviewVariant, Tag, BADGE_UPLOAD_SIZE_LIMIT, CACHE_CONTROL,
-        PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+        original_etag, parse_byte_range, preview_cache_key, preview_etag, should_cache_s3_result,
+        validate_badge_upload, ByteRange, PreviewVariant, Tag, BADGE_UPLOAD_SIZE_LIMIT,
+        CACHE_CONTROL, PROFILE_GIF_UPLOAD_SIZE_LIMIT,
     };
     use axum::http::{header, HeaderMap, HeaderValue};
     use syrnike_database::Metadata;
@@ -1027,5 +1155,34 @@ mod tests {
             "\"syrnike-preview-avatars-processed-sha\"",
             "Thu, 01 Jan 1970 00:00:00 GMT",
         ));
+    }
+
+    #[test]
+    fn byte_range_parses_single_ranges() {
+        assert_eq!(
+            parse_byte_range("bytes=0-99", 1000),
+            ByteRange::Satisfiable { start: 0, end: 99 }
+        );
+        assert_eq!(
+            parse_byte_range("bytes=900-", 1000),
+            ByteRange::Satisfiable { start: 900, end: 999 }
+        );
+        assert_eq!(
+            parse_byte_range("bytes=-100", 1000),
+            ByteRange::Satisfiable { start: 900, end: 999 }
+        );
+        assert_eq!(
+            parse_byte_range("bytes=500-5000", 1000),
+            ByteRange::Satisfiable { start: 500, end: 999 }
+        );
+    }
+
+    #[test]
+    fn byte_range_rejects_out_of_file_and_ignores_unsupported_ranges() {
+        assert_eq!(parse_byte_range("bytes=1000-", 1000), ByteRange::Unsatisfiable);
+        assert_eq!(parse_byte_range("bytes=-0", 1000), ByteRange::Unsatisfiable);
+        assert_eq!(parse_byte_range("bytes=0-1,5-9", 1000), ByteRange::Ignored);
+        assert_eq!(parse_byte_range("bytes=9-1", 1000), ByteRange::Ignored);
+        assert_eq!(parse_byte_range("items=0-1", 1000), ByteRange::Ignored);
     }
 }

@@ -224,3 +224,43 @@ describe('useComposerAttachments', () => {
     })
   })
 })
+
+describe('useComposerAttachments early uploads', () => {
+  beforeEach(() => {
+    uploadAttachment.mockReset()
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: vi.fn(() => 'blob:x') },
+      revokeObjectURL: { configurable: true, value: vi.fn() },
+    })
+  })
+
+  it('reuses an upload started by start() instead of uploading again', async () => {
+    const upload = deferred<string>()
+    uploadAttachment.mockReturnValueOnce(upload.promise)
+    const { result } = renderHook(() =>
+      useComposerAttachments(undefined, { tag: 'feedback' }),
+    )
+
+    act(() => result.current.append([new File(['video'], 'clip.mp4')]))
+    act(() => result.current.start('token'))
+    expect(uploadAttachment).toHaveBeenCalledTimes(1)
+    expect(uploadAttachment.mock.calls[0]![2]).toMatchObject({ tag: 'feedback' })
+
+    let ids: string[] = []
+    const submit = Effect.runPromise(result.current.uploadAll('token')).then(
+      (value) => {
+        ids = value
+      },
+    )
+    await act(async () => {
+      upload.resolve('attachment-1')
+      await submit
+    })
+
+    expect(ids).toEqual(['attachment-1'])
+    expect(uploadAttachment).toHaveBeenCalledTimes(1)
+    await waitFor(() =>
+      expect(result.current.files[0]).toMatchObject({ status: 'uploaded' }),
+    )
+  })
+})

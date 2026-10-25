@@ -25,7 +25,7 @@ import {
   isSpoilerFilename,
   stripSpoilerFilename,
 } from '#/lib/composer-files'
-import { formatFileSize } from '#/lib/file-size'
+import { formatFileSize } from '@syrnike13/ui/lib/file-size'
 import {
   attachmentOriginalUrl,
   attachmentPreviewUrl,
