@@ -43,7 +43,7 @@ export function GroupMemberSidebar({ channel }: { channel: GroupChannel }) {
           <h2 id={headingId} className="px-2 pt-4 pb-1 text-sm font-medium text-muted-foreground">
             {t('groupMembers', { count: members.length })}
           </h2>
-          <SidebarMenu className="gap-0.5">
+          <SidebarMenu>
             {members.map((user) => (
               <SidebarMenuItem key={user._id}>
                 <UserInteractiveShell user={user} side="left" align="start">

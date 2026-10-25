@@ -59,7 +59,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
 
   return (
     <nav aria-label={tSidebar('directMessages')} className={className}>
-      <SidebarMenu className="gap-0.5">
+      <SidebarMenu>
         {dmChannels.map((channel) => {
           const label = getChannelLabel(channel, users, auth.user?._id, tChat)
           const active = channel._id === activeChannelId

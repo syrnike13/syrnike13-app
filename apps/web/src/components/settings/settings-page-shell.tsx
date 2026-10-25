@@ -104,7 +104,7 @@ export function SettingsNavItem({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        size="lg"
+        size="md"
         isActive={active}
         variant={destructive ? 'destructive' : 'default'}
         disabled={disabled}

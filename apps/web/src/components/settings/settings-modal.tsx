@@ -173,7 +173,7 @@ function SettingsDesktopModal() {
                 return (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
-                      size="lg"
+                      size="md"
                       isActive={section === item.id}
                       aria-current={section === item.id ? 'page' : undefined}
                       onClick={() => setSection(item.id)}
@@ -187,7 +187,7 @@ function SettingsDesktopModal() {
               <SidebarSeparator className="my-2" />
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  size="lg"
+                  size="md"
                   variant="destructive"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}

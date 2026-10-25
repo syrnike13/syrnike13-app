@@ -57,7 +57,7 @@ export function HomeSidebar({
 
       <ScrollArea className="min-h-0 flex-1">
         <nav aria-label={tSidebar('navigation')} className="p-2">
-          <SidebarMenu className="gap-0.5">
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"

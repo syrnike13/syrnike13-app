@@ -466,7 +466,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      className={cn("flex w-full min-w-0 flex-col gap-0", className)}
+      className={cn("flex w-full min-w-0 flex-col gap-0.5", className)}
       {...props}
     />
   )
@@ -502,6 +502,8 @@ const sidebarMenuButtonVariants = cva(
       size: {
         default: "h-8",
         sm: "h-7 text-xs",
+        // Not in base-nova: settings navigation rows, 36px.
+        md: "h-9 gap-3 group-data-[collapsible=icon]:p-0!",
         lg: "h-10.5 gap-3 group-data-[collapsible=icon]:p-0!",
         // Not in base-nova: the leading account row (settings): 56px with a
         // 40px avatar and two lines.
