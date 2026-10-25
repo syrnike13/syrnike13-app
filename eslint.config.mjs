@@ -86,7 +86,11 @@ export default defineConfig([
     rules: {
       'design/no-restyle': 'error',
       'design/no-lookalike': 'error',
-      'design/no-hardcoded-text': ['error', { allow: ['syrnike13'] }],
+      // Brand, units, key names and protocol terms read the same in every locale.
+      'design/no-hardcoded-text': [
+        'error',
+        { allow: ['syrnike13', 'nightly', 'FPS', 'dB', 'esc', 'Ctrl', 'K', '@everyone', 'Chromium / Node', 'AKA', '/.proxy/'] },
+      ],
       'design/require-disable-reason': 'error',
       'shadcn/no-raw-colors': 'error',
       'shadcn/no-arbitrary-values': 'error',
@@ -119,13 +123,20 @@ export default defineConfig([
     },
   },
   {
-    // Developer-only surfaces (DEV overlay, component gallery) are not localised.
+    // Developer-only surfaces (DEV overlay, component gallery, RTC stats) are not
+    // localised and lay out raw diagnostics rather than product UI.
     files: [
       'apps/web/src/features/dev-tools/**',
       'apps/web/src/features/ui-gallery/**',
       'apps/web/src/routes/dev/**',
+      'apps/web/src/components/voice/voice-rtc-debug-view.tsx',
+      'apps/landing/src/components/landing/landing-game-homages/**',
     ],
-    rules: { 'design/no-hardcoded-text': 'off' },
+    rules: {
+      'design/no-hardcoded-text': 'off',
+      'design/no-restyle': 'off',
+      'design/no-lookalike': 'off',
+    },
   },
   {
     // SVG masks use white/black as alpha semantics, not as theme colours.

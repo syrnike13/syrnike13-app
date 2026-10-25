@@ -5,7 +5,7 @@
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
-import { collectClasses, isPlacementClass, splitClasses } from './classes.mjs'
+import { collectClasses, isFreeGeometryClass, isPlacementClass, splitClasses } from './classes.mjs'
 import { loadSurfacedPrimitives } from './primitives.mjs'
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..')
@@ -32,13 +32,14 @@ function attribute(opening, name) {
 }
 
 /** Classes on `className` that go beyond placement, plus whether a `*Variants()` recipe is used. */
-function restylingClasses(opening) {
+function restylingClasses(opening, primitive) {
   const classAttr = attribute(opening, 'className')
   if (!classAttr?.value) return { classes: [], variants: false }
   const { strings, variants } = collectClasses(classAttr.value, MERGE_FUNCTIONS)
   const classes = strings
     .flatMap(({ value }) => splitClasses(value))
     .filter((token) => !isPlacementClass(token))
+    .filter((token) => !primitive || !isFreeGeometryClass(primitive, token))
   return { classes: [...new Set(classes)], variants }
 }
 
@@ -69,7 +70,7 @@ const noRestyle = {
     const imported = new Map()
 
     function checkPrimitive(opening, primitive) {
-      const { classes } = restylingClasses(opening)
+      const { classes } = restylingClasses(opening, primitive.name)
       if (classes.length > 0) {
         context.report({
           node: opening,
@@ -127,7 +128,11 @@ const INPUT_PRIMITIVE = {
 }
 
 function isRenderProp(node) {
-  const parent = node.parent?.parent
+  // `render={<a />}`, also behind `cond ? <a /> : undefined` or `cond && <a />`.
+  let parent = node.parent?.parent
+  while (parent?.type === 'ConditionalExpression' || parent?.type === 'LogicalExpression') {
+    parent = parent.parent
+  }
   return (
     parent?.type === 'JSXExpressionContainer' &&
     parent.parent?.type === 'JSXAttribute' &&
@@ -163,6 +168,9 @@ const noLookalike = {
         if (opening.name.type !== 'JSXIdentifier') return
         const tag = opening.name.name
         if (!/^[a-z]/.test(tag)) return
+        // `render={<button />}` hands a bare element to a primitive, which owns its look;
+        // a styled one is a hand-built control dressed up as that primitive.
+        if (isRenderProp(opening) && restylingClasses(opening).classes.length === 0) return
 
         if (tag === 'button') {
           context.report({ node: opening, messageId: 'element', data: { tag, primitive: 'Button' } })

@@ -6,14 +6,15 @@ const PLACEMENT = [
   /^(?:w|min-w|max-w|max-h)-/,
   /^(?:h|min-h|size)-(?:full|auto|fit|min|max|screen|svh|dvh|lvh|0)$/,
   /^(?:flex-(?:1|auto|initial|none)|grow|grow-0|shrink|shrink-0)$/,
-  /^(?:basis|self|justify-self|place-self|order|col|row)-/,
+  /^(?:basis|self|justify-self|place-self|order|col|row|grid-cols|grid-rows|grid-flow)-/,
   /^(?:static|relative|absolute|fixed|sticky|isolate|isolation-auto)$/,
   /^-?(?:inset|inset-x|inset-y|top|right|bottom|left|start|end|z|translate-x|translate-y)-/,
   /^(?:hidden|block|inline|inline-block|inline-flex|flex|grid|inline-grid|contents|flow-root)$/,
   /^flex-(?:row|col|row-reverse|col-reverse|wrap|nowrap|wrap-reverse)$/,
   /^(?:items|justify|content|place-items|place-content)-/,
   /^(?:gap|gap-x|gap-y|space-x|space-y)-/,
-  /^p-0$/,
+  // Zero padding hands the spacing to the content (edge-to-edge lists, media).
+  /^(?:p|px|py|pt|pb|pl|pr)-0$/,
   /^(?:sr-only|not-sr-only|invisible|visible)$/,
   /^(?:truncate|whitespace-.+|break-.+|line-clamp-.+|hyphens-.+)$/,
   /^text-(?:wrap|nowrap|balance|pretty|ellipsis|clip|left|center|right|justify|start|end)$/,
@@ -23,12 +24,42 @@ const PLACEMENT = [
   /^(?:group|peer)(?:\/[\w-]+)?$/,
   /^(?:underline|no-underline)$/,
   /^underline-offset-/,
+  // Monospace marks the content (codes, IDs, paths), not the component look.
+  /^font-mono$/,
+  // Electron window-drag regions are behaviour, not look.
+  /^shell-title-bar-(?:no-)?drag$/,
 ]
+
+/**
+ * Primitives whose geometry is the call site's choice: a spinner is sized like
+ * an icon and a skeleton takes the shape of the content it stands in for.
+ */
+const FREE_GEOMETRY = {
+  Spinner: [/^size-/],
+  // How tall a multi-line field starts depends on the text it expects.
+  Textarea: [/^min-h-/],
+  // A divider or a vertical slider is as long as the row it sits in.
+  Separator: [/^(?:h|w)-/],
+  Slider: [/^(?:h|w)-/],
+  // Overlays are as tall as the content they hold.
+  DialogContent: [/^(?:h|min-h)-/],
+  PopoverContent: [/^(?:h|min-h)-/],
+  DrawerContent: [/^(?:h|min-h)-/],
+  Skeleton: [/^(?:h|size)-/, /^rounded(?:-|$)/],
+}
+
+/** True when `primitive` lets call sites set this class. */
+export function isFreeGeometryClass(primitive, token) {
+  const utility = utilityOf(token)
+  return (FREE_GEOMETRY[primitive] ?? []).some((pattern) => pattern.test(utility))
+}
 
 const TEXT_SIZE = /^text-(?:\d*x[sl]|sm|base|lg|\[)/
 
 /** `text-<token>` that names a colour, not a size or alignment. */
 function isTextColor(utility) {
+  // `text-(--author-color)` reads an API-provided colour through a CSS variable.
+  if (/^text-\(--[\w-]+\)$/.test(utility)) return true
   return /^text-[a-z]/.test(utility) && !TEXT_SIZE.test(utility)
 }
 

@@ -32,10 +32,10 @@ description: Use this skill for any UI change in the syrnike13 app — new scree
 
 ## Осознанные исключения
 
-Техническая строка, которую нельзя локализовать (метаданные документа, язык-данные, внутренние guard-ошибки), помечается:
+Исключение из дизайн-правила ставится на одну строку и всегда с причиной:
 
-```ts
-// design-allow hardcoded-string: <причина>
+```tsx
+// eslint-disable-next-line design/no-lookalike -- colour swatch
 ```
 
-или для файла целиком — `// design-allow-file <rule>: <причина>` в первых 12 строках. Без причины исключение не пройдёт ревью.
+Внутри JSX — `{/* eslint-disable-next-line <rule> -- <причина> */}`. Отключать правило для файла или блока нельзя: `design/require-disable-reason` это ловит. Технические токены, одинаковые во всех языках (FPS, dB, Ctrl, @everyone), перечислены в `allow` правила `design/no-hardcoded-text` в `eslint.config.mjs`.

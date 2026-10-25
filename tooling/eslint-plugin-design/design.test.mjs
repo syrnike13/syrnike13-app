@@ -36,6 +36,12 @@ function PopoverContent({ className }) {
 }`,
 )
 primitive(
+  'spinner',
+  `function Spinner({ className }) {
+  return <svg className={cn("size-4 animate-spin", className)} />
+}`,
+)
+primitive(
   'squircle',
   `export function Squircle({ className }) {
   return <div className={cn('size-full min-h-0 min-w-0', className)} />
@@ -51,6 +57,7 @@ const tester = new RuleTester({
 const options = [{ primitivesDir }]
 const imports = `import { Button } from '@syrnike13/ui/primitives/button'
 import { PopoverContent, PopoverTrigger } from '@syrnike13/ui/primitives/popover'
+import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Squircle } from '@syrnike13/ui/primitives/squircle'
 `
 
@@ -61,10 +68,17 @@ tester.run('design/no-restyle', designPlugin.rules['no-restyle'], {
     { code: `${imports}<PopoverContent className="w-80 p-0" />`, options },
     { code: `${imports}<PopoverTrigger render={<button className="rounded-md bg-card" />} />`, options },
     { code: `${imports}<Squircle className="size-10 bg-card" />`, options },
+    { code: `${imports}<Spinner className="size-6" />`, options },
+    { code: `${imports}<Button className="text-(--author-name-color)" />`, options },
     { code: `<Link className={buttonVariants({ variant: 'ghost', size: 'sm' })} />` },
     { code: `<Link className={cn(buttonVariants({ variant: 'ghost' }), 'w-full justify-start')} />` },
   ],
   invalid: [
+    {
+      code: `${imports}<Spinner className="size-6 text-sm" />`,
+      options,
+      errors: [{ messageId: 'primitive' }],
+    },
     {
       code: `${imports}<Button className="size-8 rounded-full bg-card" />`,
       options,
@@ -102,6 +116,9 @@ tester.run('design/no-lookalike', designPlugin.rules['no-lookalike'], {
     `<a href="/terms" className="text-primary underline-offset-4 hover:underline">x</a>`,
     `<a className={buttonVariants({ variant: 'secondary' })} href="#" />`,
     `<Trigger render={<a href="#" className="rounded-md" />} />`,
+    `<Item render={<button type="button" disabled />} />`,
+    `<Item onClick={open} render={<label />} />`,
+    `<Reply render={jump ? <button type="button" onClick={jump} /> : undefined} />`,
     `<div className="flex gap-2" />`,
   ],
   invalid: [
