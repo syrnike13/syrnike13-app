@@ -209,6 +209,8 @@ mod tests {
         db.set_relationship(&friend.id, &current.id, &RelationshipStatus::Friend)
             .await
             .expect("friend relationship");
+        let current = db.fetch_user(&current.id).await.expect("fetch current");
+        let friend = db.fetch_user(&friend.id).await.expect("fetch friend");
 
         // The friend request arrived after Ready, so the gateway has never cached the friend.
         let mut state = State::from(current.clone(), "session-1".to_string());
