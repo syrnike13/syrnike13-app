@@ -96,6 +96,26 @@ describe('UserProfileCard', () => {
     syncStore.reset()
   })
 
+  it('shows the server profile over the global one', async () => {
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'target-user' },
+        joined_at: '2026-01-01T00:00:00Z',
+        nickname: 'Server Bob',
+        bio: 'Only on this server',
+        colours: { primary: '#112233', accent: '#445566' },
+      } as never,
+    ])
+
+    const { container } = renderProfile(
+      <UserProfileCard user={targetUser} serverId="server-1" />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Server Bob' })).toBeTruthy()
+    expect(await screen.findByText('Only on this server')).toBeTruthy()
+    expect(container.querySelector('.profile-theme')).toBeTruthy()
+  })
+
   it('opens a direct message from the profile popover', async () => {
     renderProfile(<UserProfileCard user={targetUser} />)
 

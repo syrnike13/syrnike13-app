@@ -680,6 +680,9 @@ impl From<crate::Member> for Member {
             joined_at: value.joined_at,
             nickname: value.nickname,
             avatar: value.avatar.map(|f| f.into()),
+            banner: value.banner.map(|f| f.into()),
+            bio: value.bio,
+            colours: value.colours.map(Into::into),
             roles: value.roles,
             timeout: value.timeout,
             can_publish: value.can_publish,
@@ -696,6 +699,9 @@ impl From<Member> for crate::Member {
             joined_at: value.joined_at,
             nickname: value.nickname,
             avatar: value.avatar.map(|f| f.into()),
+            banner: value.banner.map(|f| f.into()),
+            bio: value.bio,
+            colours: value.colours.map(Into::into),
             roles: value.roles,
             timeout: value.timeout,
             can_publish: value.can_publish,
@@ -712,6 +718,9 @@ impl From<crate::PartialMember> for PartialMember {
             joined_at: value.joined_at,
             nickname: value.nickname,
             avatar: value.avatar.map(|f| f.into()),
+            banner: value.banner.map(|f| f.into()),
+            bio: value.bio,
+            colours: value.colours.map(Into::into),
             roles: value.roles,
             timeout: value.timeout,
             can_publish: value.can_publish,
@@ -728,6 +737,9 @@ impl From<PartialMember> for crate::PartialMember {
             joined_at: value.joined_at,
             nickname: value.nickname,
             avatar: value.avatar.map(|f| f.into()),
+            banner: value.banner.map(|f| f.into()),
+            bio: value.bio,
+            colours: value.colours.map(Into::into),
             roles: value.roles,
             timeout: value.timeout,
             can_publish: value.can_publish,
@@ -759,6 +771,9 @@ impl From<crate::FieldsMember> for FieldsMember {
     fn from(value: crate::FieldsMember) -> Self {
         match value {
             crate::FieldsMember::Avatar => FieldsMember::Avatar,
+            crate::FieldsMember::Banner => FieldsMember::Banner,
+            crate::FieldsMember::Bio => FieldsMember::Bio,
+            crate::FieldsMember::Colours => FieldsMember::Colours,
             crate::FieldsMember::Nickname => FieldsMember::Nickname,
             crate::FieldsMember::Roles => FieldsMember::Roles,
             crate::FieldsMember::Timeout => FieldsMember::Timeout,
@@ -774,6 +789,9 @@ impl From<FieldsMember> for crate::FieldsMember {
     fn from(value: FieldsMember) -> crate::FieldsMember {
         match value {
             FieldsMember::Avatar => crate::FieldsMember::Avatar,
+            FieldsMember::Banner => crate::FieldsMember::Banner,
+            FieldsMember::Bio => crate::FieldsMember::Bio,
+            FieldsMember::Colours => crate::FieldsMember::Colours,
             FieldsMember::Nickname => crate::FieldsMember::Nickname,
             FieldsMember::Roles => crate::FieldsMember::Roles,
             FieldsMember::Timeout => crate::FieldsMember::Timeout,
@@ -1293,6 +1311,7 @@ impl From<FieldsUser> for crate::FieldsUser {
             FieldsUser::Avatar => crate::FieldsUser::Avatar,
             FieldsUser::ProfileBackground => crate::FieldsUser::ProfileBackground,
             FieldsUser::ProfileContent => crate::FieldsUser::ProfileContent,
+            FieldsUser::ProfileColours => crate::FieldsUser::ProfileColours,
             FieldsUser::StatusPresence => crate::FieldsUser::StatusPresence,
             FieldsUser::StatusText => crate::FieldsUser::StatusText,
             FieldsUser::DisplayName => crate::FieldsUser::DisplayName,
@@ -1308,6 +1327,7 @@ impl From<crate::FieldsUser> for FieldsUser {
             crate::FieldsUser::Avatar => FieldsUser::Avatar,
             crate::FieldsUser::ProfileBackground => FieldsUser::ProfileBackground,
             crate::FieldsUser::ProfileContent => FieldsUser::ProfileContent,
+            crate::FieldsUser::ProfileColours => FieldsUser::ProfileColours,
             crate::FieldsUser::StatusPresence => FieldsUser::StatusPresence,
             crate::FieldsUser::StatusText => FieldsUser::StatusText,
             crate::FieldsUser::DisplayName => FieldsUser::DisplayName,
@@ -1416,6 +1436,7 @@ impl From<crate::UserProfile> for UserProfile {
         UserProfile {
             content: value.content,
             background: value.background.map(|file| file.into()),
+            colours: value.colours.map(Into::into),
         }
     }
 }
@@ -1425,6 +1446,25 @@ impl From<UserProfile> for crate::UserProfile {
         crate::UserProfile {
             content: value.content,
             background: value.background.map(|file| file.into()),
+            colours: value.colours.map(Into::into),
+        }
+    }
+}
+
+impl From<crate::ProfileColours> for ProfileColours {
+    fn from(value: crate::ProfileColours) -> Self {
+        ProfileColours {
+            primary: value.primary,
+            accent: value.accent,
+        }
+    }
+}
+
+impl From<ProfileColours> for crate::ProfileColours {
+    fn from(value: ProfileColours) -> crate::ProfileColours {
+        crate::ProfileColours {
+            primary: value.primary,
+            accent: value.accent,
         }
     }
 }

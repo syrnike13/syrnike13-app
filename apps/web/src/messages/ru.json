@@ -289,7 +289,20 @@
       "removeAvatar": "Удалить аватар",
       "addAvatar": "Добавить аватар",
       "avatar": "Аватар",
-      "banner": "Баннер"
+      "banner": "Баннер",
+      "tabsAria": "Тип профиля",
+      "userProfileTab": "Профиль пользователя",
+      "serverProfilesTab": "Профили серверов",
+      "colours": "Цвета профиля",
+      "primaryColour": "Основной",
+      "accentColour": "Акцент",
+      "resetColours": "Сбросить"
+    },
+    "serverProfile": {
+      "server": "Сервер",
+      "hint": "Пустые поля берутся из профиля пользователя.",
+      "nickname": "Никнейм",
+      "noServers": "Вступите на сервер, чтобы настроить серверный профиль."
     },
     "desktop": {
       "app": "Приложение",

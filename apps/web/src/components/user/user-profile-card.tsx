@@ -25,6 +25,7 @@ import { UserProfileMutuals } from '#/components/user/user-profile-mutuals'
 import { UserProfileRoleList } from '#/components/user/user-profile-role-list'
 import { useUserMutuals } from '#/components/user/use-user-mutuals'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
+import { useServerProfile } from '#/features/users/use-server-profile'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   DropdownMenu,
@@ -88,7 +89,14 @@ export function UserProfileCard({
   const [blockOpen, setBlockOpen] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
 
-  const { bio } = useUserProfileData(profile._id)
+  // A server profile overrides the global one field by field, like Discord.
+  const globalProfile = useUserProfileData(profile._id)
+  const serverProfile = useServerProfile(serverId, profile._id)
+  const bio = serverProfile?.bio ?? globalProfile.bio
+  const colours = serverProfile?.colours ?? globalProfile.colours
+  const shownUser = serverProfile?.nickname
+    ? { ...profile, display_name: serverProfile.nickname }
+    : profile
   const { mutualFriends, mutualFriendsCount, mutualServersCount } =
     useUserMutuals(profile._id)
 
@@ -227,17 +235,20 @@ export function UserProfileCard({
   return (
     <ProfileSurface
       surface="popover"
+      colours={colours}
       className="max-h-profile-popover overflow-y-auto"
     >
       <ProfileHeader
         user={profile}
+        bannerSrc={serverProfile?.bannerUrl ?? undefined}
+        avatarSrc={serverProfile?.avatarUrl ?? undefined}
         actions={bannerActions}
         onAvatarClick={canViewProfile ? handleViewProfile : undefined}
       />
 
       <ProfileBody>
         <div className="flex flex-col gap-2">
-          <ProfileName user={profile} />
+          <ProfileName user={shownUser} />
           <UserProfileMutuals
             mutualFriends={mutualFriends}
             mutualFriendsCount={mutualFriendsCount}

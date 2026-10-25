@@ -1,6 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DataEditUser, FieldsUser } from '@syrnike13/api-types'
+import type {
+  DataEditUser,
+  FieldsUser,
+  ProfileColours,
+} from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 
@@ -11,6 +15,7 @@ import {
   ProfileSurface,
 } from '#/components/user/profile/profile-parts'
 import { useImageCropper } from '#/components/media/image-crop-dialog'
+import { ProfileColoursField } from '#/components/user/profile/profile-colours-field'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -40,6 +45,8 @@ import {
   type ProfileDraftController,
 } from '#/components/settings/profile-draft-context'
 import { SettingsProfileStatusDialog } from '#/components/settings/settings-profile-status-dialog'
+import { SettingsServerProfileEditor } from '#/components/settings/settings-server-profile-editor'
+import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
 
 /** Profile banners show at 300×105 (popover) and 400×140 (dialog). */
 const PROFILE_BANNER_ASPECT = 17 / 6
@@ -48,6 +55,11 @@ type ProfileBaseline = {
   displayName: string
   statusText: string
   bio: string
+  colours: ProfileColours | null
+}
+
+function sameColours(a: ProfileColours | null, b: ProfileColours | null) {
+  return a?.primary === b?.primary && a?.accent === b?.accent
 }
 
 function revokeObjectUrl(url: string | null) {
@@ -56,7 +68,7 @@ function revokeObjectUrl(url: string | null) {
   }
 }
 
-export function SettingsProfilePanel() {
+function SettingsUserProfileEditor() {
   const t = useTranslations('settings.profile')
   const tm = useTranslations('media')
   const auth = useAuth()
@@ -71,14 +83,11 @@ export function SettingsProfilePanel() {
     displayName: '',
     statusText: '',
     bio: '',
+    colours: null,
   })
 
   const commitSavedBaseline = useCallback((next: ProfileBaseline) => {
-    savedBaselineRef.current = {
-      displayName: next.displayName,
-      statusText: next.statusText,
-      bio: next.bio,
-    }
+    savedBaselineRef.current = { ...next }
   }, [])
   const saveInFlightRef = useRef(false)
   const hydratedUserIdRef = useRef<string | null>(null)
@@ -94,6 +103,7 @@ export function SettingsProfilePanel() {
   const [displayName, setDisplayName] = useState('')
   const [statusText, setStatusText] = useState('')
   const [bio, setBio] = useState('')
+  const [colours, setColours] = useState<ProfileColours | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [avatarPreviewOverride, setAvatarPreviewOverride] = useState<
@@ -119,10 +129,13 @@ export function SettingsProfilePanel() {
     if (!userChanged && hydrated) {
       if (!profileBioSyncedRef.current && profileQuery.isFetched) {
         const content = profileQuery.data?.content ?? ''
+        const savedColours = profileQuery.data?.colours ?? null
         setBio(content)
+        setColours(savedColours)
         commitSavedBaseline({
           ...savedBaselineRef.current,
           bio: content,
+          colours: savedColours,
         })
         profileBioSyncedRef.current = true
       }
@@ -136,17 +149,20 @@ export function SettingsProfilePanel() {
       displayName: user.display_name ?? '',
       statusText: user.status?.text ?? '',
       bio: profileQuery.data?.content ?? '',
+      colours: profileQuery.data?.colours ?? null,
     }
     commitSavedBaseline(nextBaseline)
     setDisplayName(nextBaseline.displayName)
     setStatusText(nextBaseline.statusText)
     setBio(nextBaseline.bio)
+    setColours(nextBaseline.colours)
     setAvatarPreviewOverride(undefined)
     setBannerPreviewOverride(undefined)
     setHydrated(true)
     setIsSaving(false)
   }, [
     hydrated,
+    profileQuery.data?.colours,
     profileQuery.data?.content,
     profileQuery.isFetched,
     profileReady,
@@ -233,15 +249,17 @@ export function SettingsProfilePanel() {
     const wasDirty =
       displayName.trim() !== saved.displayName.trim() ||
       statusText.trim() !== saved.statusText.trim() ||
-      bio.trim() !== saved.bio.trim()
+      bio.trim() !== saved.bio.trim() ||
+      !sameColours(colours, saved.colours)
 
     if (!wasDirty) return false
 
     setDisplayName(saved.displayName)
     setStatusText(saved.statusText)
     setBio(saved.bio)
+    setColours(saved.colours)
     return true
-  }, [bio, displayName, statusText])
+  }, [bio, colours, displayName, statusText])
 
   const saveTextFields = useCallback(async (): Promise<boolean> => {
     if (!user) return false
@@ -284,6 +302,14 @@ export function SettingsProfilePanel() {
       }
     }
 
+    if (!sameColours(colours, baseline.colours)) {
+      if (colours) {
+        changes.profile = { ...changes.profile, colours }
+      } else {
+        remove.push('ProfileColours')
+      }
+    }
+
     const ok = await Effect.runPromise(persistProfile(changes))
     if (!ok) return false
 
@@ -291,19 +317,29 @@ export function SettingsProfilePanel() {
       displayName: trimmedName,
       statusText: trimmedStatus,
       bio: trimmedBio,
+      colours,
     })
     setDisplayName(trimmedName)
     setStatusText(trimmedStatus)
     setBio(trimmedBio)
     return true
-  }, [bio, commitSavedBaseline, displayName, persistProfile, statusText, user])
+  }, [
+    bio,
+    colours,
+    commitSavedBaseline,
+    displayName,
+    persistProfile,
+    statusText,
+    user,
+  ])
 
   const saved = savedBaselineRef.current
   const textDirty =
     hydrated &&
     (displayName.trim() !== saved.displayName.trim() ||
       statusText.trim() !== saved.statusText.trim() ||
-      bio.trim() !== saved.bio.trim())
+      bio.trim() !== saved.bio.trim() ||
+      !sameColours(colours, saved.colours))
 
   const draftRegistration = useMemo((): ProfileDraftController | null => {
     if (!hydrated) return null
@@ -468,6 +504,7 @@ export function SettingsProfilePanel() {
             placeholder={t('bioPlaceholder')}
           />
         </Field>
+        <ProfileColoursField value={colours} onChange={setColours} />
       </FieldGroup>
 
       <aside className="order-1 flex flex-col gap-2 lg:order-2 lg:sticky lg:top-0 lg:self-start">
@@ -478,7 +515,7 @@ export function SettingsProfilePanel() {
               <div className="overflow-hidden rounded-lg bg-popover ring-1 ring-foreground/10" />
             }
           >
-            <ProfileSurface surface="popover">
+            <ProfileSurface surface="popover" colours={colours}>
             <ProfileHeader
               user={{
                 ...user,
@@ -556,6 +593,26 @@ export function SettingsProfilePanel() {
         avatarUrl={avatarPreview}
         bannerUrl={bannerPreview}
       />
+    </div>
+  )
+}
+
+type ProfileTab = 'user' | 'server'
+
+/** Global profile and per-server profiles, as in Discord's profile settings. */
+export function SettingsProfilePanel() {
+  const t = useTranslations('settings.profile')
+  const [tab, setTab] = useState<ProfileTab>('user')
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as ProfileTab)}>
+        <TabsList variant="line" aria-label={t('tabsAria')}>
+          <TabsTrigger value="user">{t('userProfileTab')}</TabsTrigger>
+          <TabsTrigger value="server">{t('serverProfilesTab')}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {tab === 'user' ? <SettingsUserProfileEditor /> : <SettingsServerProfileEditor />}
     </div>
   )
 }

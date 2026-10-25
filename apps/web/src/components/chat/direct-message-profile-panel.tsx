@@ -43,7 +43,7 @@ export function DirectMessageProfilePanel({
   const tu = useTranslations('users')
   const { locale } = useLocale()
   useMutualServerMembersSync(user._id, currentUserId, token)
-  const { bio } = useUserProfileData(user._id)
+  const { bio, colours } = useUserProfileData(user._id)
   const { mutualServers, mutualFriends } = useUserMutuals(user._id)
   const mutuals = [
     mutualFriends.length > 0 ? tu('mutualFriendsShort', { count: mutualFriends.length }) : null,
@@ -75,7 +75,7 @@ export function DirectMessageProfilePanel({
       >
         <div className="flex h-full min-h-0 flex-col">
           <ScrollArea className="min-h-0 flex-1">
-            <ProfileSurface surface="secondary">
+            <ProfileSurface colours={colours} surface="secondary">
               <ProfileHeader user={user} onAvatarClick={onOpenProfile} />
               <ProfileBody>
                 <div className="flex flex-col gap-2">

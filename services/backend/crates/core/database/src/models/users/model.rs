@@ -72,6 +72,7 @@ auto_derived!(
         StatusPresence,
         ProfileContent,
         ProfileBackground,
+        ProfileColours,
         DisplayName,
 
         // internal fields
@@ -137,6 +138,17 @@ auto_derived!(
         /// Background visible on user's profile
         #[serde(skip_serializing_if = "Option::is_none")]
         pub background: Option<File>,
+        /// Profile theme colours
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub colours: Option<ProfileColours>,
+    }
+
+    /// Profile theme colours (`#RRGGBB`)
+    pub struct ProfileColours {
+        /// Main colour, used for the top of the profile
+        pub primary: String,
+        /// Accent colour, used for the bottom of the profile
+        pub accent: String,
     }
 
     /// Who can reach this user
@@ -832,6 +844,11 @@ impl User {
                     x.background = None;
                 }
             }
+            FieldsUser::ProfileColours => {
+                if let Some(x) = self.profile.as_mut() {
+                    x.colours = None;
+                }
+            }
             FieldsUser::DisplayName => self.display_name = None,
             FieldsUser::Suspension => self.suspended_until = None,
             FieldsUser::None => {}
@@ -948,6 +965,7 @@ impl User {
                 FieldsUser::StatusPresence,
                 FieldsUser::ProfileContent,
                 FieldsUser::ProfileBackground,
+                FieldsUser::ProfileColours,
                 FieldsUser::Suspension,
             ],
         )

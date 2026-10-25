@@ -17,6 +17,7 @@ export function useUserProfileData(userId: string) {
 
   return {
     bio: profileQuery.data?.content?.trim() || null,
+    colours: profileQuery.data?.colours ?? null,
     bannerUrl: userBannerUrl(profileQuery.data?.background, {
       animated: true,
     }),
