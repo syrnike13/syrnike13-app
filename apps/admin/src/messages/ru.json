@@ -91,7 +91,7 @@
   },
   "users": {
     "title": "Пользователи",
-    "searchPlaceholder": "id, username или username#0001",
+    "searchPlaceholder": "id или username",
     "find": "Найти",
     "noSession": "Нет сессии",
     "notFound": "Не найден",
@@ -201,8 +201,8 @@
       "cancel": "Отмена",
       "assign": "Выдать",
       "assignTitle": "Выдать бейдж",
-      "assignDescription": "User id или username#0001",
-      "assignPlaceholder": "user id или username#0001"
+      "assignDescription": "User id или username",
+      "assignPlaceholder": "user id или username"
     }
   },
   "activities": {

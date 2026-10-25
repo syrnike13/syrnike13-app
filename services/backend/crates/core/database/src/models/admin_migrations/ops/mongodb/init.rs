@@ -150,7 +150,7 @@ pub async fn create_database(mongo: &MongoDb) {
                     "username": 1_i32
                 },
                 "name": "username",
-                "unique": false,
+                "unique": true,
                 "collation": {
                     "locale": "en",
                     "strength": 2_i32

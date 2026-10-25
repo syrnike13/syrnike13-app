@@ -13,6 +13,7 @@ import { loadSession } from '#/lib/session'
 import { isDesktopRuntime } from '#/platform/runtime'
 import { VoiceStreamMiniPlayer } from '#/components/voice/voice-stream-mini-player'
 import { VoiceStagePopoutHost } from '#/components/voice/voice-stage-popout-host'
+import { UsernameResetPrompt } from '#/components/user/change-username-dialog'
 
 /**
  * Layout route для `/` — десктопная раскладка.
@@ -44,6 +45,7 @@ function DesktopLayout() {
           <VoiceStagePopoutHost />
           <CommandPalette />
           <SettingsModal />
+          <UsernameResetPrompt />
           <AchievementToastHost />
         </DesktopHotkeyProvider>
       </CommandPaletteProvider>

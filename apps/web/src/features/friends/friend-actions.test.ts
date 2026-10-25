@@ -121,7 +121,7 @@ describe('friend actions', () => {
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
   })
 
-  it('sends a friend request by canonical username and stores the updated user', async () => {
+  it('sends a friend request by unique username and stores the updated user', async () => {
     const targetUser = {
       _id: 'user-1',
       username: 'alice',
@@ -145,7 +145,7 @@ describe('friend actions', () => {
 
     expect(deps.sendFriendRequest).toHaveBeenCalledWith(
       'token-1',
-      'alice#1234',
+      'alice',
     )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
   })

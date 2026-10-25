@@ -9,6 +9,7 @@ import { CommandPaletteProvider } from '#/features/command-palette/command-palet
 import { AuthedGate } from '#/features/auth/authed-gate'
 import { loadSession } from '#/lib/session'
 import { mapMobilePathToApp, shouldUseMobileLayout } from '#/lib/device-routing'
+import { UsernameResetPrompt } from '#/components/user/change-username-dialog'
 
 /**
  * Layout route для `/m` — мобильная раскладка.
@@ -48,6 +49,7 @@ function MobileLayout() {
         <MobileVoiceChannelDrawerProvider>
           <MobileShell />
           <SettingsModal />
+          <UsernameResetPrompt />
           <MobileVoiceChannelDrawer />
           <AchievementToastHost />
         </MobileVoiceChannelDrawerProvider>

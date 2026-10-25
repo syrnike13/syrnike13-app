@@ -16,20 +16,7 @@ pub async fn send_friend_request(
     mut user: User,
     data: Json<v0::DataSendFriendRequest>,
 ) -> Result<Json<v0::User>> {
-    let mut target = if let Some((username, discriminator)) = data.username.split_once('#') {
-        db.fetch_user_by_username(username, discriminator).await?
-    } else {
-        let discriminators = db.fetch_discriminators_in_use(&data.username).await?;
-
-        match discriminators.as_slice() {
-            [discriminator] => {
-                db.fetch_user_by_username(&data.username, discriminator)
-                    .await?
-            }
-            [] => return Err(create_error!(NotFound)),
-            _ => return Err(create_error!(InvalidProperty)),
-        }
-    };
+    let mut target = db.fetch_user_by_username(&data.username).await?;
 
     if user.bot.is_some() || target.bot.is_some() {
         return Err(create_error!(IsBot));

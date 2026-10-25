@@ -17,6 +17,7 @@ use futures::StreamExt;
 use iso8601_timestamp::Timestamp;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+use syrnike_models::v0::UserFlags;
 use syrnike_permissions::{ChannelPermission, DEFAULT_WEBHOOK_PERMISSIONS};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -26,7 +27,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 61; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 62; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1689,8 +1690,134 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
         migrate_split_permissions(db).await;
     };
 
+    if revision <= 61 {
+        info!("Running migration [revision 61 / 25-10-2026]: Make usernames unique regardless of case.");
+
+        migrate_unique_usernames(db).await;
+    };
+
     // Reminder to update LATEST_REVISION when adding new migrations.
     LATEST_REVISION.max(revision)
+}
+
+/// Longest username accepted by the username change route.
+const MAX_USERNAME_LENGTH: usize = 32;
+
+/// `name_discriminator` (or `name_discriminator_n` on a further clash), cut
+/// so it still fits the username length limit.
+fn deduplicated_username(username: &str, discriminator: &str, attempt: usize) -> String {
+    let suffix = if attempt == 0 {
+        format!("_{discriminator}")
+    } else {
+        format!("_{discriminator}_{attempt}")
+    };
+    let base: String = username
+        .chars()
+        .take(MAX_USERNAME_LENGTH.saturating_sub(suffix.chars().count()))
+        .collect();
+    format!("{base}{suffix}")
+}
+
+/// Usernames become unique, like Discord's. The oldest account keeps a shared
+/// name; the others get `name_discriminator` and are asked to pick a new one.
+async fn migrate_unique_usernames(db: &MongoDb) {
+    let collation = doc! { "locale": "en", "strength": 2_i32 };
+    let mut duplicates = db
+        .col::<Document>("users")
+        .aggregate(vec![
+            doc! { "$sort": { "_id": 1_i32 } },
+            doc! {
+                "$group": {
+                    "_id": "$username",
+                    "users": { "$push": {
+                        "id": "$_id",
+                        "username": "$username",
+                        "discriminator": "$discriminator",
+                        "flags": "$flags",
+                    } },
+                    "count": { "$sum": 1_i32 },
+                }
+            },
+            doc! { "$match": { "count": { "$gt": 1_i32 } } },
+        ])
+        .collation(
+            from_document::<mongodb::options::Collation>(collation.clone())
+                .expect("Failed to build username collation."),
+        )
+        .await
+        .expect("Failed to group duplicate usernames.");
+
+    while let Some(group) = duplicates.next().await {
+        let group = group.expect("Failed to read duplicate username group.");
+        let users = group
+            .get_array("users")
+            .expect("Duplicate group without users.");
+
+        // Users were sorted by id (creation time): the first one keeps the name.
+        for user in users.iter().skip(1) {
+            let Some(user) = user.as_document() else {
+                continue;
+            };
+            let (Ok(id), Ok(username)) = (user.get_str("id"), user.get_str("username")) else {
+                continue;
+            };
+            let discriminator = user.get_str("discriminator").unwrap_or("0");
+            let flags = match user.get("flags") {
+                Some(Bson::Int32(flags)) => *flags,
+                Some(Bson::Int64(flags)) => *flags as i32,
+                _ => 0,
+            };
+
+            let mut attempt = 0;
+            let new_username = loop {
+                let candidate = deduplicated_username(username, discriminator, attempt);
+                let taken = db
+                    .col::<Document>("users")
+                    .find_one(doc! { "username": &candidate })
+                    .collation(
+                        from_document::<mongodb::options::Collation>(collation.clone())
+                            .expect("Failed to build username collation."),
+                    )
+                    .await
+                    .expect("Failed to check username.")
+                    .is_some();
+                if !taken {
+                    break candidate;
+                }
+                attempt += 1;
+            };
+
+            db.col::<Document>("users")
+                .update_one(
+                    doc! { "_id": id },
+                    doc! {
+                        "$set": {
+                            "username": &new_username,
+                            "flags": flags | UserFlags::UsernameReset as i32,
+                        }
+                    },
+                )
+                .await
+                .expect("Failed to rename duplicate username.");
+        }
+    }
+
+    db.db()
+        .run_command(doc! { "dropIndexes": "users", "index": "username" })
+        .await
+        .ok();
+    db.db()
+        .run_command(doc! {
+            "createIndexes": "users",
+            "indexes": [{
+                "key": { "username": 1_i32 },
+                "name": "username",
+                "unique": true,
+                "collation": collation,
+            }]
+        })
+        .await
+        .expect("Failed to create unique username index.");
 }
 
 /// Permissions that used to be covered by another permission: wherever the
@@ -1821,6 +1948,22 @@ async fn migrate_split_permissions(db: &MongoDb) {
                 .await
                 .expect("Failed to update channel permissions.");
         }
+    }
+}
+
+#[cfg(test)]
+mod unique_username_tests {
+    use super::{deduplicated_username, MAX_USERNAME_LENGTH};
+
+    #[test]
+    fn duplicate_names_get_the_discriminator_and_still_fit() {
+        assert_eq!(deduplicated_username("Борис", "1234", 0), "Борис_1234");
+        assert_eq!(deduplicated_username("Борис", "1234", 2), "Борис_1234_2");
+
+        let long = "a".repeat(40);
+        let renamed = deduplicated_username(&long, "1234", 0);
+        assert_eq!(renamed.chars().count(), MAX_USERNAME_LENGTH);
+        assert!(renamed.ends_with("_1234"));
     }
 }
 

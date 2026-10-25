@@ -241,3 +241,17 @@ export const updatePrivacyEffect = Effect.fn('web.users.updatePrivacy')(
     })
   },
 )
+
+export const changeUsernameEffect = Effect.fn('web.users.changeUsername')(
+  function*(token: string, username: string, password: string) {
+    return yield* apiRequestEffect(
+      '/users/@me/username',
+      ApiSchema.ChangeUsernameChangeUsername200,
+      {
+        method: 'PATCH',
+        token,
+        body: { username, password },
+      },
+    )
+  },
+)

@@ -16,17 +16,14 @@ pub trait AbstractUsers: Sync + Send {
     /// Fetch a user from the database
     async fn fetch_user(&self, id: &str) -> Result<User>;
 
-    /// Fetch a user from the database by their username
-    async fn fetch_user_by_username(&self, username: &str, discriminator: &str) -> Result<User>;
+    /// Fetch a user by their unique username, ignoring case
+    async fn fetch_user_by_username(&self, username: &str) -> Result<User>;
 
     /// Fetch a session from the database by token
     async fn fetch_session_by_token(&self, token: &str) -> Result<Session>;
 
     /// Fetch multiple users by their ids
     async fn fetch_users<'a>(&self, ids: &'a [String]) -> Result<Vec<User>>;
-
-    /// Fetch all discriminators in use for a username
-    async fn fetch_discriminators_in_use(&self, username: &str) -> Result<Vec<String>>;
 
     /// Fetch ids of users that both users are friends with
     async fn fetch_mutual_user_ids(&self, user_a: &str, user_b: &str) -> Result<Vec<String>>;

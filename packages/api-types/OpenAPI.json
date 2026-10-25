@@ -9680,7 +9680,7 @@
             "type": "string"
           },
           "discriminator": {
-            "description": "Discriminator",
+            "description": "Legacy discriminator; usernames are unique on their own",
             "type": "string"
           },
           "display_name": {
@@ -10727,7 +10727,7 @@
         ],
         "properties": {
           "username": {
-            "description": "Username and discriminator combo separated by #",
+            "description": "Unique username, case does not matter",
             "type": "string"
           }
         }

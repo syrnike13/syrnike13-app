@@ -20,6 +20,7 @@ import { NotificationSettings } from '#/components/notifications/notification-se
 import { SettingsProfilePanel } from '#/components/settings/settings-profile-panel'
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsPrivacyPanel } from '#/components/settings/settings-privacy-panel'
+import { ChangeUsernameDialog } from '#/components/user/change-username-dialog'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
@@ -158,11 +159,24 @@ export function SettingsAccountPanel() {
     readBrowserDiagnosticReportsEnabled,
   )
   const [sendingDiagnosticReport, setSendingDiagnosticReport] = useState(false)
+  const [usernameDialogOpen, setUsernameDialogOpen] = useState(false)
 
   return (
     <div className="space-y-2">
+      <ChangeUsernameDialog
+        open={usernameDialogOpen}
+        onOpenChange={setUsernameDialogOpen}
+      />
       <SettingsBlock title={t('accountInfo')}>
-        <SettingsRow label={t('username')} value={`@${user?.username}`} />
+        <SettingsRow label={t('username')} value={`@${user?.username}`}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setUsernameDialogOpen(true)}
+          >
+            {t('changeUsername')}
+          </Button>
+        </SettingsRow>
         <SettingsRow
           label={t('displayName')}
           value={user?.display_name?.trim() || '—'}

@@ -1159,7 +1159,7 @@ export interface components {
       _id: string;
       /** @description Username */
       username: string;
-      /** @description Discriminator */
+      /** @description Legacy discriminator; usernames are unique on their own */
       discriminator: string;
       /** @description Display name */
       display_name?: string | null;
@@ -1520,7 +1520,7 @@ export interface components {
     };
     /** @description User lookup information */
     DataSendFriendRequest: {
-      /** @description Username and discriminator combo separated by # */
+      /** @description Unique username, case does not matter */
       username: string;
     };
     /** @description Bot with user response */
