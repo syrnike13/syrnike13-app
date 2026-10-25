@@ -124,7 +124,7 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use syrnike_database::{DatabaseInfo, MemberCompositeKey, PartialRole, Role, Server, User};
-    use syrnike_permissions::OverrideField;
+    use syrnike_permissions::{OverrideField, UserPermission};
 
     use super::*;
 
@@ -181,6 +181,60 @@ mod tests {
         assert!(!state.subscribed.read().await.contains(&server_id));
         assert!(!state.cache.servers.contains_key(&server_id));
         assert!(state.cache.current_membership(&server_id).is_none());
+    }
+
+    #[async_std::test]
+    async fn user_relationship_authorizes_new_friend_missing_from_cache() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let current = User {
+            id: "current-user".to_string(),
+            username: "current".to_string(),
+            discriminator: "0001".to_string(),
+            ..Default::default()
+        };
+        let friend = User {
+            id: "friend-user".to_string(),
+            username: "friend".to_string(),
+            discriminator: "0002".to_string(),
+            ..Default::default()
+        };
+        db.insert_user(&current).await.expect("insert current");
+        db.insert_user(&friend).await.expect("insert friend");
+        db.set_relationship(&current.id, &friend.id, &RelationshipStatus::Friend)
+            .await
+            .expect("current relationship");
+        db.set_relationship(&friend.id, &current.id, &RelationshipStatus::Friend)
+            .await
+            .expect("friend relationship");
+        let current = db.fetch_user(&current.id).await.expect("fetch current");
+        let friend = db.fetch_user(&friend.id).await.expect("fetch friend");
+
+        // The friend request arrived after Ready, so the gateway has never cached the friend.
+        let mut state = State::from(current.clone(), "session-1".to_string());
+        state.authorization_enabled = true;
+
+        let mut event = EventV1::UserRelationship {
+            id: current.id.clone(),
+            user: friend.clone().into(&db, Some(&current)).await,
+        };
+
+        assert!(state.handle_incoming_event_v1(&db, &mut event).await);
+        assert!(state.cache.users.contains_key(&friend.id));
+        assert!(state.subscribed.read().await.contains(&friend.id));
+        assert!(matches!(
+            event,
+            EventV1::Bulk { ref v }
+                if v.iter().any(|event| matches!(
+                    event,
+                    EventV1::AuthorizationSnapshot { snapshot }
+                        if snapshot.users.get(&friend.id).is_some_and(|permissions| {
+                            permissions & UserPermission::SendMessage as u64 != 0
+                        })
+                ))
+        ));
     }
 
     #[async_std::test]
@@ -1235,22 +1289,24 @@ impl State {
                     refresh_authorization = true;
                 }
             }
-            EventV1::UserRelationship { id, user, .. } => {
+            EventV1::UserRelationship { user, .. } => {
+                // `id` is the receiving user's own id; the other party is `user`.
                 if let Ok(perspective) = db.fetch_user(&self.cache.user_id).await {
                     self.cache
                         .users
                         .insert(self.cache.user_id.clone(), perspective);
                 }
+                let target_id = user.id.clone();
                 let target = db
-                    .fetch_user(id)
+                    .fetch_user(&target_id)
                     .await
                     .unwrap_or_else(|_| user.clone().into());
-                self.cache.users.insert(id.clone(), target);
+                self.cache.users.insert(target_id.clone(), target);
 
-                if self.cache.can_subscribe_to_user(id) {
-                    self.insert_subscription(id.clone()).await;
+                if self.cache.can_subscribe_to_user(&target_id) {
+                    self.insert_subscription(target_id).await;
                 } else {
-                    self.remove_subscription(id).await;
+                    self.remove_subscription(&target_id).await;
                 }
                 refresh_authorization = true;
             }
