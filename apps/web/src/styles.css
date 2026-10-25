@@ -170,7 +170,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -183,7 +182,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -195,7 +193,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -208,7 +205,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -220,7 +216,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -234,7 +229,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -246,7 +240,6 @@ html {
   }
 
   :is(
-    [data-slot='scroll-area-viewport'],
     .scrollbar-minimal,
     .scrollbar-overlay,
     .overflow-y-auto,
@@ -259,8 +252,7 @@ html {
 
   @media (prefers-reduced-motion: reduce) {
     :is(
-      [data-slot='scroll-area-viewport'],
-      .scrollbar-minimal,
+        .scrollbar-minimal,
       .scrollbar-overlay,
       .overflow-y-auto,
       .overflow-auto,
@@ -413,41 +405,6 @@ html {
   align-items: center;
 }
 
-.auth-home-link {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  gap: 0.5rem;
-  border-radius: 0.75rem;
-  padding-inline: 0.75rem;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  font-weight: 700;
-  transition:
-    color 160ms cubic-bezier(0.25, 1, 0.5, 1),
-    background-color 160ms cubic-bezier(0.25, 1, 0.5, 1),
-    transform 120ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.auth-home-link svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.auth-home-link:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.auth-home-link:active {
-  transform: translateY(1px);
-}
-
-.auth-home-link:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .auth-stage-content {
   display: flex;
   width: 100%;
@@ -490,31 +447,6 @@ html {
   color: var(--muted-foreground);
   font-size: 0.75rem;
   opacity: 0.78;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: none;
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--theme-surface-raised, var(--card));
-  padding-block: 2rem;
-  box-shadow: var(--shadow-sm);
-}
-
-.auth-card [data-slot='card-title'] {
-  font-size: 1.625rem;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.025em;
-}
-
-.auth-card [data-slot='card-description'] {
-  max-width: 40ch;
-  color: var(--muted-foreground);
-  font-size: 0.9375rem;
-  line-height: 1.5;
 }
 
 .auth-secondary-action {
@@ -572,20 +504,9 @@ html {
     gap: 0.75rem;
   }
 
-  .auth-card {
-    border-radius: 0.875rem;
-    padding-block: 1.5rem;
-  }
-
   .auth-secondary-action,
   .auth-support-links a {
     min-height: 2.75rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .auth-home-link {
-    transition-duration: 0.01ms;
   }
 }
 
@@ -1044,16 +965,6 @@ html {
   margin: 0;
 }
 
-/*
- * Лента измеряет строки сразу. content-visibility подменяет высоту
- * невидимых строк оценкой 10rem; после первого рендера фактическая высота
- * меняется и MessageScroller теряет позицию «у конца».
- */
-[data-slot='message-scroller-item'] {
-  content-visibility: visible;
-  contain-intrinsic-size: none;
-}
-
 /* Mobile safe-area helpers. Require viewport-fit=cover in the meta viewport. */
 .safe-pt {
   padding-top: env(safe-area-inset-top);
@@ -1206,11 +1117,21 @@ html {
   transform: var(--lightbox-transform);
 }
 
+@utility crop-transform {
+  transform: var(--crop-transform);
+}
+
+/* Dims everything around the crop frame. */
+@utility crop-frame-mask {
+  box-shadow: 0 0 0 100vmax
+    color-mix(in oklch, var(--media-backdrop) 60%, transparent);
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
 }
 
-@utility rail-overflow-width {
+@utility w-rail-overflow {
   width: calc(100% + 0.25rem);
 }
 
@@ -1231,7 +1152,7 @@ html {
   transition-property: height;
 }
 
-@utility media-picker-rows {
+@utility grid-rows-media-picker {
   grid-template-rows: 1fr auto;
 }
 
@@ -1249,40 +1170,6 @@ html {
 }
 
 /* Viewport/surface constraints. */
-/* Settings modal sizing: full screen below 1280, then 92vw, then 55vw. */
-.settings-modal {
-  width: 100vw;
-  height: 100dvh;
-  transition:
-    opacity 120ms ease-out,
-    scale 120ms ease-out;
-}
-
-.settings-modal[data-starting-style],
-.settings-modal[data-ending-style] {
-  opacity: 0;
-  scale: 0.985;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-modal {
-    transition: none;
-  }
-}
-
-@media (min-width: 1280px) {
-  .settings-modal {
-    width: 92vw;
-    height: 88vh;
-  }
-}
-
-@media (min-width: 1920px) {
-  .settings-modal {
-    width: 55vw;
-  }
-}
-
 @utility h-profile-dialog {
   height: min(50rem, 90vh);
 }

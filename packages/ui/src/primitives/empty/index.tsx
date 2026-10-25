@@ -19,6 +19,7 @@ const emptyVariants = cva(
       variant: {
         default: "",
         card: "rounded-lg bg-card p-4 text-card-foreground ring-1 ring-foreground/10",
+        outline: "rounded-lg border border-dashed",
       },
     },
     defaultVariants: {

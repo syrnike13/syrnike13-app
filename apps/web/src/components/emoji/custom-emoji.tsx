@@ -16,7 +16,12 @@ export function CustomEmoji({
   className,
   size = 'md',
 }: CustomEmojiProps) {
-  const px = { sm: 'size-4', md: 'size-5', lg: 'size-7', xl: 'size-10' }[size]
+  const sizeClass = cn(
+    size === 'sm' && 'size-4',
+    size === 'md' && 'size-5',
+    size === 'lg' && 'size-7',
+    size === 'xl' && 'size-10',
+  )
 
   return (
     <FxImage
@@ -24,8 +29,8 @@ export function CustomEmoji({
       alt={name ? `:${name}:` : 'emoji'}
       title={name ? `:${name}:` : undefined}
       wrapperAs="span"
-      wrapperClassName={cn('inline-block align-text-bottom', px, className)}
-      className={px}
+      wrapperClassName={cn('inline-block align-text-bottom', sizeClass, className)}
+      className={sizeClass}
       draggable={false}
     />
   )

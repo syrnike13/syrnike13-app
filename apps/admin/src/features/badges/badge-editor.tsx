@@ -30,7 +30,6 @@ import {
   AlertDialogTitle,
 } from '@syrnike13/ui/primitives/alert-dialog'
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Card } from '@syrnike13/ui/primitives/card'
 import {
   Dialog,
   DialogContent,
@@ -63,6 +62,7 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 import { badgeIconUrl } from '#/lib/media'
+import { Item } from '@syrnike13/ui/primitives/item'
 
 export function BadgeEditorPage({
   mode,
@@ -351,10 +351,7 @@ export function BadgeEditorPage({
                 </Button>
               ) : null}
             </AdminSection>
-            <Card
-              size="sm"
-              className="flex-row items-center gap-2.5 px-3 py-2"
-            >
+            <Item variant="outline" size="xs">
               <BadgeIcon
                 badge={{ icon: removeIcon && !iconFile ? undefined : badge?.icon }}
                 previewUrl={previewUrl}
@@ -366,7 +363,7 @@ export function BadgeEditorPage({
                   {t('usernamePreview')}
                 </div>
               </div>
-            </Card>
+            </Item>
           </div>
         </div>
 

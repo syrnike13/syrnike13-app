@@ -128,7 +128,8 @@ function SettingsDesktopModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         showCloseButton={false}
-        className="settings-modal flex max-w-none gap-0 overflow-hidden p-0 max-xl:rounded-none sm:max-w-none"
+        size="page"
+        className="flex"
       >
         <DialogTitle className="sr-only">{t('userSettingsTitle')}</DialogTitle>
         <DialogDescription className="sr-only">

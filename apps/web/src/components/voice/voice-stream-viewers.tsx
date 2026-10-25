@@ -169,6 +169,7 @@ function StreamViewerAvatars({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
+          // eslint-disable-next-line design/no-lookalike -- avatar stack chip
           <button
             type="button"
             className={cn(
@@ -207,7 +208,8 @@ function StreamViewerAvatars({
       <PopoverContent
         side="top"
         align="end"
-        className="z-420 w-56 p-2"
+        variant="menu"
+        className="z-420 w-56"
         onMouseEnter={show}
         onMouseLeave={scheduleClose}
         initialFocus={false}

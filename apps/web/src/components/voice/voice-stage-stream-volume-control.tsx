@@ -10,6 +10,7 @@ import {
   VOICE_VOLUME_PERCENT_MAX,
 } from '#/features/voice/voice-listener-store'
 import { cn } from '#/lib/utils'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 type VoiceStageStreamVolumeControlProps = {
   userId: string
@@ -31,6 +32,7 @@ export function VoiceStageStreamVolumeControl({
 
   return (
     <div className={cn('group/stream-vol relative', className)}>
+      {/* eslint-disable-next-line design/no-lookalike -- only stops clicks reaching the tile */}
       <div
         className={cn(
           'pointer-events-none absolute bottom-full left-1/2 z-50 -translate-x-1/2 pb-2 opacity-0 transition-opacity duration-200 ease-out motion-reduce:transition-none',
@@ -64,21 +66,22 @@ export function VoiceStageStreamVolumeControl({
         </div>
       </div>
 
-      <button
+      <Button
         type="button"
+        variant="media"
+        size="icon-lg"
         title={
           muted ? t('actions.enableStreamSound') : t('actions.disableStreamSound')
         }
         aria-pressed={muted}
         onClick={toggleMute}
-        className="flex size-9 shrink-0 items-center justify-center text-on-media/60 transition-colors hover:text-on-media"
       >
         {showMutedIcon ? (
           <VolumeXIcon className="size-5" />
         ) : (
           <Volume2Icon className="size-5" />
         )}
-      </button>
+      </Button>
     </div>
   )
 }

@@ -449,6 +449,7 @@ export function ChannelSidebarItem({
         {!active && notificationBadge.hasUnread ? (
           <RailUnreadIndicator className="-left-2" />
         ) : null}
+        {/* eslint-disable-next-line design/no-restyle -- reserves room for the hover actions overlaid on the row */}
         <SidebarMenuButton
           isActive={active}
           className={cn(

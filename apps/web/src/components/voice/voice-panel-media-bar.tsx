@@ -56,6 +56,7 @@ function PanelMediaButton({
 }) {
   return (
     <VoiceControlTooltip title={title} wrapperClassName="flex min-w-0 flex-1">
+      {/* eslint-disable-next-line design/no-lookalike -- voice panel media bar keeps its own segmented look */}
       <button
         type="button"
         aria-label={title}
@@ -95,6 +96,7 @@ function PanelMediaButtonSoon({
       }
       contentClassName="text-center"
     >
+      {/* eslint-disable-next-line design/no-lookalike -- voice panel media bar keeps its own segmented look */}
       <button
         type="button"
         aria-label={title}

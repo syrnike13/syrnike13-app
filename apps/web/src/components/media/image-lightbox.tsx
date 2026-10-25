@@ -224,19 +224,17 @@ export function ImageLightbox({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* design-allow restyle-shared: fullscreen media viewer surface */}
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className={cn(
-          'fixed inset-0 z-300 flex max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
-          'rounded-none bg-transparent p-0 ring-0 sm:max-w-none',
-        )}
+        size="screen"
+        className="z-300 flex items-center justify-center"
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
 
         <TooltipProvider delay={300}>
           {author ? (
+            // eslint-disable-next-line design/no-lookalike -- only keeps clicks off the backdrop
             <div
               className="absolute top-5 left-4 z-10 flex max-w-lightbox-caption items-center gap-3"
               onClick={stopBubble}
@@ -273,6 +271,7 @@ export function ImageLightbox({
             </div>
           ) : null}
 
+          {/* eslint-disable-next-line design/no-lookalike -- only keeps clicks off the backdrop */}
           <div
             className={cn(
               'absolute top-5 right-16 z-10 flex items-center p-1',
@@ -376,6 +375,7 @@ export function ImageLightbox({
             </>
           ) : null}
 
+        {/* eslint-disable-next-line design/no-lookalike -- backdrop click closes the lightbox */}
         <div
           className={cn(
             'flex h-full w-full items-center justify-center overflow-hidden p-6 sm:p-10',
@@ -412,6 +412,7 @@ export function ImageLightbox({
             setOffset(nextOffset)
           }}
         >
+          {/* eslint-disable-next-line design/no-lookalike -- pan surface of the zoomed image; keeps clicks off the backdrop */}
           <img
             ref={imageRef}
             src={src}
@@ -472,6 +473,7 @@ export function ImageLightbox({
         </div>
 
         {hasGallery ? (
+            // eslint-disable-next-line design/no-lookalike -- only keeps clicks off the backdrop
             <div
               role="list"
               aria-label={t('attachments')}
@@ -491,6 +493,7 @@ export function ImageLightbox({
                   const isFirst = itemIndex === 0
                   const isLast = itemIndex === files.length - 1
                   return (
+                    // eslint-disable-next-line design/no-lookalike -- thumbnail strip item
                     <button
                       key={item._id}
                       ref={active ? activeThumbRef : undefined}

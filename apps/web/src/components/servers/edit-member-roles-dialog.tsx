@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
+import { SearchInput } from '#/components/ui/search-input'
 import type { Member, Server, User } from '@syrnike13/api-types'
-import { SearchIcon } from '#/components/icons'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
-import { Input } from '@syrnike13/ui/primitives/input'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 
@@ -45,33 +44,29 @@ export function EditMemberRolesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid w-full max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
         <DialogHeader className="gap-2.5 px-5 py-3.5 pr-12 text-left sm:text-left">
-          <DialogTitle className="truncate text-base leading-snug">
+          <DialogTitle className="truncate">
             {t('title', { name: nickname })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('description')}
           </DialogDescription>
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              placeholder={t('searchRoles')}
-              aria-label={t('searchRolesAria')}
-              className="h-8 pl-8 text-sm"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
+          <SearchInput
+            value={query}
+            placeholder={t('searchRoles')}
+            aria-label={t('searchRolesAria')}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </DialogHeader>
         <Separator />
 
-        <ScrollArea className="max-h-roles-dialog px-2 py-1.5">
+        <ScrollArea className="max-h-roles-dialog">
           <MemberRolesEditor
             server={server}
             targetMember={targetMember}
             showHeading={false}
             compact
             roleSearch={query}
-            className="px-1 pb-2"
+            className="px-3 pt-1.5 pb-3.5"
           />
         </ScrollArea>
       </DialogContent>

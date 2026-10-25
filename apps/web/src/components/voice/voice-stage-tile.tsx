@@ -54,6 +54,7 @@ export function VoiceStageTile({
   const canFocus = Boolean(onSelect)
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- focusable stage tile (role=button, Enter/Space) on the participant palette
     <article
       role={canFocus ? 'button' : undefined}
       tabIndex={canFocus ? 0 : undefined}

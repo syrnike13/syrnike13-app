@@ -6,6 +6,7 @@ import type { NativeMediaRuntimeState, VoiceMediaKind } from '@syrnike13/platfor
 
 import { TriangleAlertIcon } from '#/components/icons'
 import { usePlatform } from '#/platform/use-platform'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 const pathLabelKeys: ReadonlyArray<
   readonly [keyof NativeMediaRuntimeState['paths'], string]
@@ -115,13 +116,15 @@ export function NativeMediaRuntimeBanner() {
     >
       <TriangleAlertIcon className="size-3.5" aria-hidden />
       <span>{messages.join(' ')}</span>
-      {canRetry ? <button type="button" className="shrink-0 underline" disabled={retrying} onClick={retry}>
-        {retrying ? t('retrying') : t('retryAction')}
-      </button> : null}
+      {canRetry ? (
+        <Button type="button" variant="plain" size="inline" className="shrink-0 underline" disabled={retrying} onClick={retry}>
+          {retrying ? t('retrying') : t('retryAction')}
+        </Button>
+      ) : null}
       {state.status === 'ready' && state.available ? retryablePaths.map(([kind, labelKey]) =>
         state.paths[kind].state === 'failed' && state.paths[kind].failure?.retryable ? (
-          <button key={kind} type="button" className="shrink-0 underline" disabled={retrying}
-            onClick={() => retryPath(kind)}>{t(labelKey)}</button>
+          <Button key={kind} type="button" variant="plain" size="inline" className="shrink-0 underline" disabled={retrying}
+            onClick={() => retryPath(kind)}>{t(labelKey)}</Button>
         ) : null,
       ) : null}
     </div>

@@ -134,6 +134,7 @@ export function ProfileHeader({
           </>
         ) : null}
         {onBannerClick ? (
+          // eslint-disable-next-line design/no-lookalike -- banner image is the edit target
           <button
             type="button"
             title={bannerLabel}
@@ -164,6 +165,7 @@ export function ProfileHeader({
         )}
       >
         {onAvatarClick ? (
+          // eslint-disable-next-line design/no-lookalike -- avatar image is the edit target
           <button
             type="button"
             title={avatarLabel ?? t('openProfile')}

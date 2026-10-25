@@ -40,7 +40,8 @@ export function UserProfileMutuals({
           {avatars.map((friend, index) => (
             <Avatar
               key={friend._id}
-              className={cn('size-4', index > 0 && '-ml-1')}
+              size="xs"
+              className={cn(index > 0 && '-ml-1')}
             >
               {userAvatarUrl(friend.avatar, { animated: false }) ? (
                 <RetryingAvatarImage
@@ -49,7 +50,7 @@ export function UserProfileMutuals({
                   className="object-cover"
                 />
               ) : null}
-              <AvatarFallback className="text-xs">
+              <AvatarFallback>
                 {(friend.display_name ?? friend.username).slice(0, 1)}
               </AvatarFallback>
             </Avatar>

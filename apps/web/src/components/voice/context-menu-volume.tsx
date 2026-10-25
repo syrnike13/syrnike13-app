@@ -25,12 +25,12 @@ export function ContextMenuVolume({
 }) {
   return (
     <ContextMenuGroup
-      className="px-2 py-2"
+      className="pb-2"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      <ContextMenuLabel className="px-0 pb-2">{label}</ContextMenuLabel>
-      <div className="flex items-center gap-2">
+      <ContextMenuLabel>{label}</ContextMenuLabel>
+      <div className="flex items-center gap-2 px-1.5">
         <Slider
           className="flex-1"
           aria-label={label}

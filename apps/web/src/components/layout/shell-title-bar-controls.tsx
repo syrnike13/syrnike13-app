@@ -109,6 +109,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
         } as CSSVars
       }
     >
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={titleBarWindowButtonClass}
@@ -117,6 +118,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
       >
         <MinusIcon className="size-3.5" />
       </button>
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={titleBarWindowButtonClass}
@@ -125,6 +127,7 @@ export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
       >
         <SquareIcon className="size-3" />
       </button>
+      {/* eslint-disable-next-line design/no-lookalike -- native window caption button */}
       <button
         type="button"
         className={cn(

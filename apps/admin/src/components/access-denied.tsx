@@ -2,7 +2,13 @@ import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '@syrnike13/ui/primitives/button'
-import { Card } from '@syrnike13/ui/primitives/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@syrnike13/ui/primitives/card'
 import { useAuth } from '#/features/auth/auth-context'
 
 export function AccessDenied() {
@@ -11,20 +17,21 @@ export function AccessDenied() {
 
   return (
     <div className="flex h-svh items-center justify-center px-4">
-      <Card className="w-full max-w-sm items-center p-6 text-center">
-        <h1 className="text-base font-semibold">{t('accessDeniedTitle')}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t('accessDeniedDescription')}
-        </p>
+      <Card className="w-full max-w-sm text-center">
+        <CardHeader>
+          <CardTitle role="heading" aria-level={1}>{t('accessDeniedTitle')}</CardTitle>
+          <CardDescription>{t('accessDeniedDescription')}</CardDescription>
+        </CardHeader>
         {auth.session ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => Effect.runFork(auth.logout())}
-          >
-            {t('logout')}
-          </Button>
+          <CardContent>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => Effect.runFork(auth.logout())}
+            >
+              {t('logout')}
+            </Button>
+          </CardContent>
         ) : null}
       </Card>
     </div>

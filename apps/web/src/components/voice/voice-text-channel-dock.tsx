@@ -65,7 +65,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           search={{ m: undefined }}
           className={cn(
             buttonVariants({ size: 'sm', variant: 'ghost' }),
-            'h-8 shrink-0',
+            'shrink-0',
           )}
         >
           {t('dock.openStage')}
@@ -74,7 +74,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           type="button"
           size="icon"
           variant="ghost"
-          className="size-8 shrink-0"
+          className="shrink-0"
           title={expanded ? t('actions.collapse') : t('actions.expand')}
           onClick={() => setExpanded((value) => !value)}
         >

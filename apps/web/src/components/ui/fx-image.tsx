@@ -65,16 +65,16 @@ export function FxImage({
     wrapperClassName,
   )
 
-  /* eslint-disable shadcn/no-inline-styles -- wrapperProps style passthrough */
   const containerStyle = (
     useIntrinsicBox
       ? {
           '--intrinsic-aspect': aspectRatio,
+          // eslint-disable-next-line shadcn/no-inline-styles -- caller's wrapperProps style passes through
           ...wrapperStyle,
         }
-      : wrapperStyle
+      : // eslint-disable-next-line shadcn/no-inline-styles -- caller's wrapperProps style passes through
+        wrapperStyle
   ) as React.CSSProperties
-  /* eslint-enable shadcn/no-inline-styles */
 
   return (
     <Wrapper

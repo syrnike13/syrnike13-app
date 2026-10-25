@@ -328,7 +328,7 @@ export function FeedbackCreateDialog({
                         if (Option.isSome(decoded)) setArea(decoded.value)
                       }}
                     >
-                      <SelectTrigger id="feedback-area" className="h-11 w-full">
+                      <SelectTrigger id="feedback-area" className="w-full">
                         <SelectValue placeholder={t('chooseArea')} />
                       </SelectTrigger>
                       <SelectContent
@@ -358,7 +358,7 @@ export function FeedbackCreateDialog({
                         if (Option.isSome(decoded)) setPlatform(decoded.value)
                       }}
                     >
-                      <SelectTrigger id="feedback-platform" className="h-11 w-full">
+                      <SelectTrigger id="feedback-platform" className="w-full">
                         <SelectValue placeholder={t('choosePlatform')}>
                           {selectedPlatform ? (
                             <FeedbackPlatformOption platform={selectedPlatform} />
@@ -395,7 +395,6 @@ export function FeedbackCreateDialog({
                     maxLength={TITLE_MAX}
                     autoFocus
                     placeholder={t('titlePlaceholder')}
-                    className="h-11 text-base"
                     onChange={(event) => setTitle(event.target.value)}
                   />
                 </div>
@@ -450,7 +449,7 @@ export function FeedbackCreateDialog({
                     value={description}
                     maxLength={DESCRIPTION_MAX}
                     placeholder={t('descriptionPlaceholder')}
-                    className="min-h-36 resize-y text-sm leading-6"
+                    className="min-h-36 resize-y"
                     onChange={(event) => setDescription(event.target.value)}
                   />
                 </div>

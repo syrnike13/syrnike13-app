@@ -49,6 +49,7 @@ export function UserProfileStatusBubble({
         className="absolute -top-1.5 left-0.5 size-4 rounded-full bg-(--profile-surface) shadow-sm"
       />
       {onClick ? (
+        // eslint-disable-next-line design/no-lookalike -- speech bubble around the status text
         <button
           type="button"
           className="relative w-max max-w-45 rounded-2xl bg-(--profile-surface) px-3 py-2 text-left text-sm leading-4.5 text-foreground shadow-md transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&:hover_span]:text-foreground"

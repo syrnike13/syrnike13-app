@@ -166,9 +166,9 @@ function readSkinTone() {
 function ServerRailIcon({ server }: { server: Server }) {
   const icon = serverIconUrl(server.icon, { animated: false })
   return (
-    <Avatar className="size-6">
+    <Avatar size="sm">
       {icon ? <AvatarImage src={icon} alt="" /> : null}
-      <AvatarFallback className="text-3xs">{serverAcronym(server.name)}</AvatarFallback>
+      <AvatarFallback>{serverAcronym(server.name)}</AvatarFallback>
     </Avatar>
   )
 }
@@ -371,7 +371,8 @@ function EmojiPickerPanel({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <ScrollArea className="w-12 shrink-0 border-r border-border">
+        <div className="w-12 shrink-0 border-r border-border">
+        <ScrollArea className="h-full">
           <nav className="flex flex-col items-center gap-1 py-2">
             {sections.map((section) => (
               <Tooltip key={section.id}>
@@ -383,7 +384,6 @@ function EmojiPickerPanel({
                       size="icon"
                       aria-label={section.title}
                       aria-current={!results && activeSection === section.id ? 'true' : undefined}
-                      className="aria-current:bg-selection aria-current:text-selection-foreground"
                       onClick={() => {
                         setQuery('')
                         const element = sectionRefs.current.get(section.id)
@@ -400,6 +400,7 @@ function EmojiPickerPanel({
             {catalogQuery.isPending ? <Spinner className="mt-2" /> : null}
           </nav>
         </ScrollArea>
+        </div>
 
         <ScrollArea className="min-w-0 flex-1" viewportRef={viewportRef}>
           <div className="relative">

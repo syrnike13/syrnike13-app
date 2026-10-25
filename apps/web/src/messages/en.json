@@ -1,5 +1,6 @@
 {
   "common": {
+    "adminRedirect": "Opening the admin panel…",
     "appName": "Syrnike",
     "language": "Language",
     "notFound": {
@@ -1914,6 +1915,7 @@
     "nothingFound": "Nothing found",
     "unknownAuthor": "Unknown",
     "noText": "[no text]",
+    "jump": "Jump",
     "mentions": "Mentions",
     "members": "Members",
     "otherMentions": "Other mentions",

@@ -277,7 +277,7 @@ export function ServerRail({
         <div aria-hidden="true" className={railSeparatorClass} />
 
         <ScrollArea
-          className={cn('min-h-0 flex-1', '-ml-1 rail-overflow-width')}
+          className={cn('min-h-0 flex-1', '-ml-1 w-rail-overflow')}
         >
           <ul
             className={cn(

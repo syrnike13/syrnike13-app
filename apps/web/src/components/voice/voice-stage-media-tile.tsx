@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: media-overlay controls use on-media surfaces.
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
@@ -62,9 +61,6 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 /** Нейтральный серый фон превью стрима, без палитры аватара. */
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
-const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-border bg-card font-medium text-card-foreground shadow-sm transition-colors hover:bg-hover'
-
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-media-inset-lg items-center gap-1 rounded bg-media-backdrop/60 font-medium text-on-media'
 
@@ -117,12 +113,8 @@ function UnsubscribedScreenStreamTile({
       >
         <Button
           type="button"
-          size="sm"
-          variant="secondary"
-          className={cn(
-            unsubscribedStreamButtonClass,
-            variant === 'strip' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm',
-          )}
+          size={variant === 'strip' ? 'xs' : 'default'}
+          variant="outline"
           onClick={(event) => {
             event.stopPropagation()
             onSubscribe()

@@ -12,6 +12,7 @@ import {
 import { usePlatform } from '#/platform/use-platform'
 import type { DesktopUpdateState } from '@syrnike13/platform'
 import { cn } from '#/lib/utils'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 /**
  * Компактная кнопка обновления для title bar (зелёная иконка + тултип).
@@ -68,15 +69,14 @@ export function DesktopUpdateTitleBarButton({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={tooltip}
               disabled={!ready}
               className={cn(
-                'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
-                'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
-                'disabled:pointer-events-none disabled:opacity-50',
-                'shell-title-bar-no-drag',
+                'shell-title-bar-no-drag shrink-0 text-chart-3 hover:text-chart-3',
                 className,
               )}
               onClick={() => {

@@ -1,4 +1,4 @@
-// design-allow-file restyle-shared: Tiptap suggestion listbox owns keyboard/focus through the
+// Tiptap suggestion listbox owns keyboard/focus through the
 // contenteditable (aria-activedescendant; Enter/Tab/Escape handled by the editor). A focusable
 // Popover/Command would steal focus and cmdk would capture arrow/Enter, while the shared
 // PopoverContent positioner cannot anchor to the caret rect here — so the caret-anchored
@@ -50,6 +50,7 @@ function MentionSuggestionRow({
         : undefined
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- listbox option driven by the editor's keyboard, not a focusable button
     <button
       ref={buttonRef}
       id={id}
@@ -204,6 +205,7 @@ export function MentionSuggestionMenu({
   )
 
   return createPortal(
+    // eslint-disable-next-line design/no-lookalike -- mousedown only keeps focus in the editor
     <div
       ref={menuRef}
       id={id}

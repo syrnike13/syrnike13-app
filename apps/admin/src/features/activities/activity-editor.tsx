@@ -432,7 +432,7 @@ export function ActivityEditorPage({
                         data-invalid={Boolean(rowErrors?.prefix) || undefined}
                       >
                         <InputGroup>
-                          <InputGroupAddon className="font-mono text-xs">
+                          <InputGroupAddon className="font-mono">
                             /.proxy/
                           </InputGroupAddon>
                           <InputGroupInput
@@ -542,15 +542,17 @@ export function ActivityEditorPage({
               <>
                 <AdminSection>
                   <AdminSectionHeader>{t('activityUrl')}</AdminSectionHeader>
-                  <a
-                    href={activity.activity_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-w-0 items-center gap-1.5 px-4 py-3 text-xs text-primary hover:underline"
-                  >
-                    <span className="truncate font-mono">{activity.activity_url}</span>
-                    <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
-                  </a>
+                  <p className="px-4 py-3 text-xs">
+                    <a
+                      href={activity.activity_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-w-0 items-center gap-1.5 text-primary hover:underline"
+                    >
+                      <span className="truncate font-mono">{activity.activity_url}</span>
+                      <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
+                    </a>
+                  </p>
                 </AdminSection>
 
                 <AdminSection>

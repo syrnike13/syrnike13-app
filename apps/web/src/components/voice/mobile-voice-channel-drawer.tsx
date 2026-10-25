@@ -87,6 +87,7 @@ export function MobileVoiceChannelDrawer() {
         if (!nextOpen) closeVoiceChannelDrawer()
       }}
     >
+      {/* eslint-disable-next-line design/no-restyle -- the voice drawer turns into a full-screen page on phones */}
       <DrawerContent
         className={cn(
           fullscreen

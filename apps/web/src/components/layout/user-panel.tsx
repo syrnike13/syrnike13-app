@@ -160,10 +160,10 @@ export function UserPanel({
           >
             <PopoverTrigger
               render={
+                // eslint-disable-next-line design/no-restyle -- the profile button's left inset is half the right one, so the avatar edge reads as even
                 <SidebarMenuButton
                   size="lg"
                   data-avatar-hover-scope=""
-                  // Avatar edge: half the right inset reads as optically even.
                   className="min-w-0 flex-1 pl-1 text-foreground"
                 />
               }
@@ -273,6 +273,7 @@ export function UserPanel({
             'motion-reduce:transition-none',
           )}
         >
+          {/* eslint-disable-next-line design/no-lookalike -- promo banner card */}
           <button
             type="button"
             className="relative h-13 text-left outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -339,7 +340,7 @@ export function UserPanel({
                   variant="ghost"
                   size="sm"
                   tabIndex={telegramPromoOpen ? 0 : -1}
-                  className="min-w-0 flex-1 px-2 text-xs"
+                  className="min-w-0 flex-1"
                   onClick={onDismissTelegramPromo}
                 >
                   {t('telegram.dismiss')}
@@ -351,7 +352,7 @@ export function UserPanel({
                   tabIndex={telegramPromoOpen ? 0 : -1}
                   className={cn(
                     buttonVariants({ variant: 'secondary', size: 'sm' }),
-                    'min-w-0 flex-1 px-2 text-xs',
+                    'min-w-0 flex-1',
                   )}
                 >
                   {t('telegram.open')}

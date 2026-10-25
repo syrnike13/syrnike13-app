@@ -1,4 +1,3 @@
-// design-allow-file hardcoded-string: internal developer tools panel.
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 

@@ -128,6 +128,7 @@ export function MobileVoiceFloatingTile() {
           : undefined
       }
     >
+      {/* eslint-disable-next-line design/no-lookalike -- draggable floating voice tile */}
       <button
         type="button"
         title={title}

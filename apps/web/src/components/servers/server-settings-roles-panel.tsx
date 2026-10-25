@@ -140,16 +140,17 @@ function SortableRoleListItem({
     disabled: !canDrag,
   })
 
-  /* eslint-disable shadcn/no-inline-styles */
-  // @dnd-kit owns the sortable transform, transition and z-index.
   const style = {
+    // eslint-disable-next-line shadcn/no-inline-styles -- @dnd-kit owns the sortable transform
     transform: CSS.Transform.toString(transform),
+    // eslint-disable-next-line shadcn/no-inline-styles -- @dnd-kit owns the drop transition
     transition,
+    // eslint-disable-next-line shadcn/no-inline-styles -- lifts the dragged row above its siblings
     zIndex: isDragging ? 1 : undefined,
   }
-  /* eslint-enable shadcn/no-inline-styles */
 
   const row = (
+    // eslint-disable-next-line design/no-lookalike -- sortable role row (role=button) owned by @dnd-kit
     <div
       ref={setNodeRef}
       style={style}
@@ -679,7 +680,7 @@ export function ServerSettingsRolesPanel({
         {canCreateRoles ? (
           <Button
             type="button"
-            className="h-9 w-full shrink-0"
+            className="w-full shrink-0"
             disabled={creating || reordering}
             onClick={() => void createRole()}
           >

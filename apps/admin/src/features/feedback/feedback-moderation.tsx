@@ -89,6 +89,7 @@ import {
 import { queryKeys } from '#/lib/api/query-keys'
 import { ApiError } from '#/lib/api/client'
 import { cn } from '#/lib/utils'
+import { Item } from '@syrnike13/ui/primitives/item'
 
 type Mode = 'pending' | 'published'
 type ModerationDialog =
@@ -436,10 +437,10 @@ function FeedbackModeTabs({
   return (
     <Tabs value={mode} onValueChange={(value) => onChange(value as Mode)}>
       <TabsList aria-label={t('tabsAria')}>
-        <TabsTrigger value="pending" className="px-4">
+        <TabsTrigger value="pending">
           {t('tabPending', { count: pendingTotal })}
         </TabsTrigger>
-        <TabsTrigger value="published" className="px-4">
+        <TabsTrigger value="published">
           {t('tabPublished', { count: publishedTotal })}
         </TabsTrigger>
       </TabsList>
@@ -519,14 +520,9 @@ function FeedbackQueueItem({
   const statusLabel = feedbackProductStatusLabel(suggestion.status, tm)
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'flex w-full border-l-2 px-5 py-4 text-left transition-colors',
-        selected
-          ? 'border-primary bg-primary/10'
-          : 'border-transparent hover:bg-muted/45',
-      )}
+    <Item
+      aria-current={selected}
+      render={<button type="button" />}
       onClick={onSelect}
     >
       <div className="min-w-0 flex-1">
@@ -556,7 +552,7 @@ function FeedbackQueueItem({
           <span>{formatFeedbackDate(suggestion.created_at, locale)}</span>
         </div>
       </div>
-    </button>
+    </Item>
   )
 }
 
@@ -882,8 +878,13 @@ function MergeComparison({
   const t = useTranslations('feedback.moderation')
 
   return (
-    <Card className={cn('gap-0 py-0', compact ? 'text-xs' : '')}>
-      <div className="grid items-stretch gap-3 p-3 comparison-grid">
+    <Card className="gap-0 py-0">
+      <div
+        className={cn(
+          'grid items-stretch gap-3 p-3 comparison-grid',
+          compact && 'text-xs',
+        )}
+      >
         <FeedbackComparisonItem label={t('source')} suggestion={source} />
         <div className="flex items-center justify-center text-muted-foreground">
           <ArrowRightIcon className="size-5" aria-label={t('votesTransferAria')} />

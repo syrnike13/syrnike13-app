@@ -183,7 +183,7 @@ function DiagnosticReportPage() {
 
         <AdminSection className="space-y-3 p-4">
           <Label
-            className="text-xs text-muted-foreground"
+            className="text-muted-foreground"
             htmlFor="diagnostic-status"
           >
             {t('statusLabel')}
@@ -210,7 +210,7 @@ function DiagnosticReportPage() {
             </NativeSelectOption>
           </NativeSelect>
           <Label
-            className="text-xs text-muted-foreground"
+            className="text-muted-foreground"
             htmlFor="diagnostic-notes"
           >
             {t('notes')}

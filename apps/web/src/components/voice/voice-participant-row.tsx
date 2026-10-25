@@ -186,6 +186,7 @@ export function VoiceParticipantRow({
       inVoice
       onProfileOpenChange={setProfileOpen}
     >
+      {/* eslint-disable-next-line design/no-lookalike -- draggable sidebar participant row */}
       <button
         type="button"
         draggable={canDragParticipant}

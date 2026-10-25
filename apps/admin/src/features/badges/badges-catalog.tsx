@@ -23,6 +23,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { fetchAdminBadges } from '#/features/api/admin-api'
 import { queryKeys } from '#/lib/api/query-keys'
 import { cn } from '#/lib/utils'
+import { Toggle } from '@syrnike13/ui/primitives/toggle'
 
 type BadgeFilter = 'all' | 'visible' | 'hidden' | 'premium'
 
@@ -90,19 +91,14 @@ export function BadgesCatalogPage() {
         </InputGroup>
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((item) => (
-            <button
+            <Toggle
               key={item.value}
-              type="button"
-              onClick={() => setFilter(item.value)}
-              className={cn(
-                'h-8 rounded-md px-2.5 text-xs transition-colors',
-                filter === item.value
-                  ? 'bg-accent font-medium text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
+              size="sm"
+              pressed={filter === item.value}
+              onPressedChange={() => setFilter(item.value)}
             >
               {t(item.labelKey)}
-            </button>
+            </Toggle>
           ))}
         </div>
       </div>

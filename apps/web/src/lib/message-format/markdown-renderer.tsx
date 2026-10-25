@@ -31,6 +31,7 @@ function SpoilerText({
   }
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- inline spoiler keeps text flow; role=button with keyboard handling
     <span
       role="button"
       tabIndex={0}

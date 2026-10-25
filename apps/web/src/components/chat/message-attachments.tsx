@@ -92,6 +92,7 @@ export function MessageAttachments({
                 isSpoilerFilename(file.filename) &&
                 !revealedSpoilers[file._id]
               return (
+                // eslint-disable-next-line design/no-lookalike -- image tile opens the lightbox
                 <button
                   key={file._id}
                   type="button"
@@ -146,8 +147,12 @@ export function MessageAttachments({
                 <FileIcon />
               </AttachmentMedia>
               <AttachmentContent>
-                <AttachmentTitle className={cn(spoiler && 'uppercase')}>
-                  {spoiler ? t('spoiler') : label}
+                <AttachmentTitle>
+                  {spoiler ? (
+                    <span className="uppercase">{t('spoiler')}</span>
+                  ) : (
+                    label
+                  )}
                 </AttachmentTitle>
                 <AttachmentDescription>
                   {formatFileSize(file.size)}
@@ -206,6 +211,7 @@ function SingleImageAttachment({
   const label = stripSpoilerFilename(file.filename) || t('image')
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- image tile opens the lightbox
     <button
       type="button"
       data-attachment-single

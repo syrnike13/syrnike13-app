@@ -69,7 +69,11 @@ export function InlineReplyQuote({
 
   const original = messagesById[replyId]
   if (!original) {
-    return <MessageReply className="italic">{t('replyToDeleted')}</MessageReply>
+    return (
+      <MessageReply>
+        <span className="italic">{t('replyToDeleted')}</span>
+      </MessageReply>
+    )
   }
 
   const name = messageAuthorName(original, users, t('messageLabel'))

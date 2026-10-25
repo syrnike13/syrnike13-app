@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: theme preview swatch intentionally mirrors the selected theme surface.
 import type { AppearanceSettings } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
@@ -42,6 +41,7 @@ export function ThemePreviewSwatch({
     <Tooltip>
       <TooltipTrigger
         render={
+          // eslint-disable-next-line design/no-lookalike -- theme swatch previews the theme colours
           <button
             type="button"
             aria-label={t('ariaLabel', { name: themeName })}

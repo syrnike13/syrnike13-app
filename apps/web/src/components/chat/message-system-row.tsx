@@ -23,6 +23,7 @@ import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { messageCreatedAt } from '#/lib/message-time'
 import { useMessageTimestamp } from '#/lib/use-message-time'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 type SystemRowProps = {
   message: Message
@@ -102,12 +103,9 @@ function SystemUserName({
       align="start"
       hideMessage={user._id === currentUserId}
     >
-      <button
-        type="button"
-        className="rounded-sm font-medium text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        {name}
-      </button>
+      <Button type="button" variant="plain" size="inline" className="text-foreground">
+        <span className="font-medium">{name}</span>
+      </Button>
     </UserProfilePopover>
   )
 }

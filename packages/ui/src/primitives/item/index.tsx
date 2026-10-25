@@ -35,7 +35,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-hover [button]:cursor-pointer [button]:text-left [button]:hover:bg-hover [button]:disabled:pointer-events-none [button]:disabled:opacity-50 [label]:cursor-pointer [label]:hover:bg-hover data-popup-open:bg-hover has-data-[slot=item-overlay]:relative has-data-[slot=item-overlay]:hover:bg-hover has-[[data-slot=item-overlay]:focus-visible]:border-ring has-[[data-slot=item-overlay]:focus-visible]:ring-[3px] has-[[data-slot=item-overlay]:focus-visible]:ring-ring/50",
+  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-hover [button]:cursor-pointer [button]:text-left [button]:hover:bg-hover [button]:disabled:pointer-events-none [button]:disabled:opacity-50 [label]:cursor-pointer [label]:hover:bg-hover aria-[current=true]:bg-selection aria-[current=true]:hover:bg-selection data-popup-open:bg-hover has-data-[slot=item-overlay]:relative has-data-[slot=item-overlay]:hover:bg-hover has-[[data-slot=item-overlay]:focus-visible]:border-ring has-[[data-slot=item-overlay]:focus-visible]:ring-[3px] has-[[data-slot=item-overlay]:focus-visible]:ring-ring/50",
   {
     variants: {
       variant: {

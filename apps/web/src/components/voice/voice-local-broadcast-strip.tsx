@@ -77,7 +77,7 @@ function BroadcastStrip({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="size-8 shrink-0"
+                  className="shrink-0"
                   disabled={disabled}
                   onClick={onStop}
                 />

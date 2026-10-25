@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
+import { SearchInput } from '#/components/ui/search-input'
 import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { SearchIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
   Dialog,
@@ -172,15 +172,11 @@ export function ServerSettingsBansPanel({
       </div>
 
       {bans.length > 0 ? (
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('search')}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('search')}
+        />
       ) : null}
 
       {bansQuery.isLoading ? (

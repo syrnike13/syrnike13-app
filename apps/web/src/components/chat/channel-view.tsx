@@ -92,9 +92,6 @@ const EMPTY_ALIASES: string[] = []
 const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 360
 const INLINE_VOICE_STAGE_MIN_HEIGHT = 220
 const INLINE_CHAT_MIN_HEIGHT = 160
-const VOICE_STAGE_HEADER_ICON_CLASS =
-  'text-on-media/70 hover:bg-on-media/10 hover:text-on-media'
-
 export function clampInlineVoiceStageHeight(
   height: number,
   containerHeight: number,
@@ -547,19 +544,20 @@ export function ChannelView({
                         channelId={channelId}
                         token={token}
                         users={users}
-                        triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                        triggerVariant="media"
                       />
                       <MessageSearch
                         scope={searchScope}
                         token={token}
                         users={users}
                         variant="icon"
-                        triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                        triggerVariant="media"
                       />
                     </>
                   ) : undefined
                 }
               />
+              {/* eslint-disable-next-line design/no-lookalike -- resize handle (role=separator) of the inline voice stage */}
               <div
                 aria-label={tVoice('resizeAria')}
                 aria-orientation="horizontal"

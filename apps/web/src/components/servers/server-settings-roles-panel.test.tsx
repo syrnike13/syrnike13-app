@@ -208,7 +208,12 @@ describe('ServerSettingsRolesPanel', () => {
     render(<ServerSettingsRolesPanel serverId="server-1" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Member' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Удалить роль' }))
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Действия роли Member' })[0],
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Удалить роль' }),
+    )
 
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog').textContent).toContain(

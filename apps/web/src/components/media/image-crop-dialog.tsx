@@ -152,6 +152,7 @@ export function ImageCropDialog({
           <DialogTitle>{t('title')}</DialogTitle>
         </DialogHeader>
 
+        {/* eslint-disable-next-line design/no-lookalike -- drag surface for panning the image */}
         <div
           className="relative h-80 cursor-grab touch-none overflow-hidden rounded-lg bg-media-backdrop select-none active:cursor-grabbing"
           onPointerDown={onPointerDown}
@@ -164,7 +165,7 @@ export function ImageCropDialog({
               src={url}
               alt=""
               draggable={false}
-              className="pointer-events-none absolute top-1/2 left-1/2 h-(--crop-h) w-(--crop-w) max-w-none [transform:var(--crop-transform)]"
+              className="pointer-events-none absolute top-1/2 left-1/2 h-(--crop-h) w-(--crop-w) max-w-none crop-transform"
               style={
                 {
                   '--crop-w': `${naturalWidth}px`,
@@ -174,11 +175,11 @@ export function ImageCropDialog({
               }
             />
           ) : null}
-          {/* The frame: everything outside is dimmed by a wide ring. */}
+          {/* The frame: everything outside is dimmed by a wide shadow. */}
           <div
             aria-hidden
             className={cn(
-              'pointer-events-none absolute top-1/2 left-1/2 h-(--frame-h) w-(--frame-w) -translate-1/2 border-2 border-on-media ring-[999px] ring-media-backdrop/60',
+              'pointer-events-none absolute top-1/2 left-1/2 h-(--frame-h) w-(--frame-w) -translate-1/2 border-2 border-on-media crop-frame-mask',
               shape.kind === 'circle' ? 'rounded-full' : 'rounded-md',
             )}
             style={

@@ -151,9 +151,9 @@ function ActivityRow({ activity }: { activity: AdminActivityApplication }) {
         href={activity.activity_url}
         target="_blank"
         rel="noreferrer"
-        className="hidden min-w-0 max-w-64 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground md:flex"
+        className="hidden min-w-0 max-w-64 items-center gap-1 text-muted-foreground transition-colors hover:text-foreground md:flex"
       >
-        <span className="truncate">{activity.activity_url}</span>
+        <span className="truncate text-xs">{activity.activity_url}</span>
         <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
       </a>
       <div className="hidden items-center gap-3 sm:flex">

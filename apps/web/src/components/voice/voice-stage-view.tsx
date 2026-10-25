@@ -802,13 +802,15 @@ export function VoiceStageView({
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <h1 className="min-w-0 text-base font-semibold text-on-media">
                 {dmHeader.onOpenProfile ? (
-                  <button
+                  <Button
                     type="button"
-                    className="block max-w-full truncate rounded-sm text-left font-semibold text-on-media transition-colors hover:text-on-media/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-media/40"
+                    variant="plain"
+                    size="inline"
+                    className="block max-w-full truncate text-on-media"
                     onClick={dmHeader.onOpenProfile}
                   >
                     {title}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="block truncate">{title}</span>
                 )}

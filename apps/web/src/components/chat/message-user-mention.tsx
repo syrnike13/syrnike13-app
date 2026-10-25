@@ -55,6 +55,7 @@ export function MessageUserMention({
       side="right"
       align="start"
     >
+      {/* eslint-disable-next-line design/no-lookalike -- the mention pill is the whole look of this trigger */}
       <button
         type="button"
         className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"

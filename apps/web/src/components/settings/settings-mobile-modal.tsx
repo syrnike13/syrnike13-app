@@ -26,7 +26,6 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetHeader,
   SheetTitle,
 } from '@syrnike13/ui/primitives/sheet'
 import {
@@ -119,75 +118,72 @@ export function SettingsMobileModal() {
         setOpen(nextOpen)
       }}
     >
-      {/* design-allow restyle-shared: mobile settings sheet uses the settings surface */}
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="gradient-surface-solid z-300 gap-0 bg-card p-0 text-card-foreground shadow-none data-[side=right]:w-full data-[side=right]:border-l-0 data-[side=right]:max-w-none data-[side=right]:sm:max-w-none"
-      >
-        <SheetHeader className="shrink-0 gap-0 border-b border-border p-0">
-          <div className="flex items-center gap-2 px-2 pb-3 safe-pt-3">
-            {stack.length > 1 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-10 shrink-0"
-                onClick={handleBack}
-                aria-label={t('back')}
-              >
-                <ChevronLeftIcon className="size-5" />
-              </Button>
-            ) : (
-              <span className="size-10 shrink-0" aria-hidden />
-            )}
-            <SheetTitle className="min-w-0 flex-1 truncate text-center">
-              {screenTitle(currentScreen, t)}
-            </SheetTitle>
-            <SheetClose
-              render={
+      <SheetContent side="screen" showCloseButton={false} className="z-300">
+        <div className="gradient-surface-solid flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 border-b border-border">
+            <div className="flex items-center gap-2 px-2 pb-3 safe-pt-3">
+              {stack.length > 1 ? (
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  className="size-10 shrink-0"
-                  aria-label={t('close')}
-                />
-              }
-            >
-              <XIcon className="size-5" />
-            </SheetClose>
-          </div>
-        </SheetHeader>
-
-        <ProfileDraftProvider>
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <ScrollArea className="min-h-0 flex-1">
-              <div
-                className={cn(
-                  'px-4 py-4',
-                  showProfileBar && 'pb-28',
-                )}
-              >
-                {currentScreen.kind === 'general' ? (
-                  <MobileGeneralSettingsMenu
-                    onSelect={(id) => openSection(id)}
-                    onLogout={() => void handleLogout()}
-                    loggingOut={loggingOut}
+                  size="icon-lg"
+                  className="shrink-0"
+                  onClick={handleBack}
+                  aria-label={t('back')}
+                >
+                  <ChevronLeftIcon className="size-5" />
+                </Button>
+              ) : (
+                <span className="size-9 shrink-0" aria-hidden />
+              )}
+              <SheetTitle className="min-w-0 flex-1 truncate text-center">
+                {screenTitle(currentScreen, t)}
+              </SheetTitle>
+              <SheetClose
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-lg"
+                    className="shrink-0"
+                    aria-label={t('close')}
                   />
-                ) : null}
-
-                {currentScreen.kind === 'section' ? (
-                  <SettingsPanelContent section={currentScreen.section} />
-                ) : null}
-              </div>
-            </ScrollArea>
-
-            {showProfileBar ? (
-              <ProfileUnsavedChangesBar className="inset-x-4 safe-bottom-3" />
-            ) : null}
+                }
+              >
+                <XIcon className="size-5" />
+              </SheetClose>
+            </div>
           </div>
-        </ProfileDraftProvider>
+
+          <ProfileDraftProvider>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <ScrollArea className="min-h-0 flex-1">
+                <div
+                  className={cn(
+                    'px-4 py-4',
+                    showProfileBar && 'pb-28',
+                  )}
+                >
+                  {currentScreen.kind === 'general' ? (
+                    <MobileGeneralSettingsMenu
+                      onSelect={(id) => openSection(id)}
+                      onLogout={() => void handleLogout()}
+                      loggingOut={loggingOut}
+                    />
+                  ) : null}
+
+                  {currentScreen.kind === 'section' ? (
+                    <SettingsPanelContent section={currentScreen.section} />
+                  ) : null}
+                </div>
+              </ScrollArea>
+
+              {showProfileBar ? (
+                <ProfileUnsavedChangesBar className="inset-x-4 safe-bottom-3" />
+              ) : null}
+            </div>
+          </ProfileDraftProvider>
+        </div>
       </SheetContent>
     </Sheet>
   )

@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
 import { useState } from 'react'
 import type {
   Channel,
@@ -8,7 +7,6 @@ import type {
 } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
-// design-allow-file restyle-shared: voice moderation actions use destructive focus treatment.
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {

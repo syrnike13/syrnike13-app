@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: desktop overlay HUD has native media-overlay contracts.
 import type { DesktopOverlayState } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
@@ -25,6 +24,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                 !participant.speaking && 'opacity-55',
               )}
             >
+              {/* eslint-disable-next-line design/no-restyle -- speaking ring of the in-game overlay */}
               <Avatar
                 aria-label={
                   participant.speaking
@@ -32,7 +32,6 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                     : participant.displayName
                 }
                 className={cn(
-                  'size-8',
                   participant.speaking &&
                     'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
                 )}
@@ -47,6 +46,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                     draggable={false}
                   />
                 ) : null}
+                {/* eslint-disable-next-line design/no-restyle -- solid fallback stays readable over any game frame */}
                 <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
                   {initials(participant.displayName)}
                 </AvatarFallback>

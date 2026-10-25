@@ -1,4 +1,3 @@
-// design-allow-file restyle-shared: channel settings navigation owns its active/hover surface.
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {

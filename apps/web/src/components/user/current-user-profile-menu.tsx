@@ -81,11 +81,13 @@ export function CurrentUserProfileMenu({
           user={user}
           nameSlot={
             onAvatarPress ? (
-              <button
+              <Button
                 type="button"
+                variant="plain"
+                size="inline"
                 title={t('selectStatus')}
                 aria-label={t('selectStatus')}
-                className="group/name flex max-w-full min-w-0 items-center gap-0.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/name max-w-full min-w-0 gap-0.5"
                 onClick={onAvatarPress}
               >
                 <span className="truncate text-xl leading-6 font-semibold text-foreground">
@@ -95,7 +97,7 @@ export function CurrentUserProfileMenu({
                   aria-hidden
                   className="size-4 shrink-0 text-muted-foreground group-hover/name:text-foreground"
                 />
-              </button>
+              </Button>
             ) : undefined
           }
         />

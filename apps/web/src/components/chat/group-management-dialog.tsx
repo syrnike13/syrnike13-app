@@ -400,7 +400,6 @@ function GroupManagementDialogContent({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-8"
           title={t('settings')}
           aria-label={t('settings')} />}>
           <SettingsIcon className="size-4" />

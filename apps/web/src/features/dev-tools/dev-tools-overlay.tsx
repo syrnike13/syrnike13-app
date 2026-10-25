@@ -1,5 +1,3 @@
-// design-allow-file hardcoded-string: internal developer tools overlay.
-// design-allow-file restyle-shared: the floating dev tools panel is not a product surface.
 import { useState } from 'react'
 
 import { Button } from '@syrnike13/ui/primitives/button'

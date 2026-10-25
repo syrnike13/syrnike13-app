@@ -1,4 +1,3 @@
-// design-allow-file hardcoded-string: internal developer holiday preview panel.
 import {
   HOLIDAY_CATALOG,
   findHoliday,

@@ -333,6 +333,7 @@ export function PresetSlider({
             )
 
             return (
+              // eslint-disable-next-line design/no-lookalike -- stop label moves the slider; the thumb stays the keyboard target
               <span
                 key={stop.value}
                 data-slot="preset-slider-label"

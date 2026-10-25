@@ -108,6 +108,7 @@ export function VoiceStageActivityTile({
         }
       >
         {variant === 'strip' ? (
+          // eslint-disable-next-line design/no-lookalike -- stage tile surface
           <button
             type="button"
             className="flex size-full flex-col items-center justify-center gap-1.5 bg-muted/40 px-3 text-center hover:bg-accent"

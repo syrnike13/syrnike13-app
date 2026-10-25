@@ -258,7 +258,7 @@ export function CommandPalette() {
                   <CommandMenuItem
                     key={item.id}
                     value={item.id}
-                    className="gap-3 px-2 py-2"
+                    className="gap-3"
                     onSelect={() => runItem(item)}
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" />

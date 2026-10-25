@@ -12,6 +12,12 @@ import {
   isImageFile,
 } from '#/lib/media'
 import type { CSSVars } from '#/lib/css-vars'
+import {
+  Item,
+  ItemContent,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { cn } from '#/lib/utils'
 
 /** Ссылку открываем только по http(s): javascript:/data: из чужой og-разметки не пускаем. */
@@ -140,14 +146,16 @@ function EmbedTitleLink({
   }
 
   return (
-    <a
-      href={link}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="text-base leading-5.5 font-semibold text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-    >
-      {children}
-    </a>
+    <span className="text-base leading-5.5 font-semibold">
+      <a
+        href={link}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="text-primary hover:underline"
+      >
+        {children}
+      </a>
+    </span>
   )
 }
 
@@ -226,6 +234,7 @@ function EmbedVideoLink({
   }
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- the whole embed card is the link
     <a
       data-embed-video-link
       href={link}
@@ -308,7 +317,7 @@ function ImageEmbed({ embed }: { embed: Extract<Embed, { type: 'Image' }> }) {
       href={link}
       target="_blank"
       rel="noreferrer noopener"
-      className="block max-w-full rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="block max-w-full"
     >
       {box}
     </a>
@@ -335,7 +344,7 @@ function VideoEmbed({ embed }: { embed: Extract<Embed, { type: 'Video' }> }) {
         href={link}
         target="_blank"
         rel="noreferrer noopener"
-        className="flex items-center gap-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="flex items-center gap-2 hover:underline"
       >
         <PlayIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="truncate text-foreground">{host}</span>
@@ -348,15 +357,24 @@ function EmbedMediaLink({ media }: { media: MediaFile }) {
   const label = media.filename?.trim() || media._id
 
   return (
-    <a
-      href={attachmentOriginalUrl(media)}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="flex items-center gap-2 rounded-sm bg-background/40 px-3 py-2 text-xs text-foreground hover:bg-background/70"
+    <Item
+      variant="muted"
+      size="xs"
+      render={
+        <a
+          href={attachmentOriginalUrl(media)}
+          target="_blank"
+          rel="noreferrer noopener"
+        />
+      }
     >
-      <FileIcon className="size-4 shrink-0" />
-      <span className="truncate">{label}</span>
-    </a>
+      <ItemMedia variant="icon">
+        <FileIcon />
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle className="w-full truncate">{label}</ItemTitle>
+      </ItemContent>
+    </Item>
   )
 }
 

@@ -40,26 +40,20 @@ export function UserGlobalProfileSections({
   const t = useTranslations('users')
 
   return (
-    <Tabs defaultValue="servers" className="min-h-0 flex-1 gap-0">
+    <Tabs defaultValue="servers" className="min-h-0 flex-1 gap-5">
       <TabsList
         variant="line"
-        className="w-full shrink-0 justify-start gap-6"
+        className="w-full shrink-0 justify-start"
       >
-        <TabsTrigger
-          value="servers"
-          className="flex-none px-0 text-base font-medium"
-        >
+        <TabsTrigger value="servers">
           {t('mutualServersCount', { count: mutualServers.length })}
         </TabsTrigger>
-        <TabsTrigger
-          value="friends"
-          className="flex-none px-0 text-base font-medium"
-        >
+        <TabsTrigger value="friends">
           {t('mutualFriendsCount', { count: mutualFriendsCount })}
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="servers" className="min-h-0 flex-1 overflow-y-auto pt-5">
+      <TabsContent value="servers" className="min-h-0 flex-1 overflow-y-auto">
         {mutualServers.length === 0 ? (
           <Empty size="inline">
             <EmptyDescription>{t('noMutualServers')}</EmptyDescription>
@@ -73,7 +67,7 @@ export function UserGlobalProfileSections({
                   disabled={busy}
                   onClick={() => onServerSelect(server._id)}
                 >
-                  <Avatar className="size-8">
+                  <Avatar>
                     {serverIconUrl(server.icon, { animated: false }) ? (
                       <AvatarImage
                         src={serverIconUrl(server.icon, { animated: false })!}
@@ -90,7 +84,7 @@ export function UserGlobalProfileSections({
         )}
       </TabsContent>
 
-      <TabsContent value="friends" className="min-h-0 flex-1 overflow-y-auto pt-5">
+      <TabsContent value="friends" className="min-h-0 flex-1 overflow-y-auto">
         {mutualFriendsCount === 0 ? (
           <Empty size="inline">
             <EmptyDescription>{t('noMutualFriends')}</EmptyDescription>

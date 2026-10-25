@@ -21,12 +21,16 @@ function PopoverContent({
   side = "bottom",
   sideOffset = 4,
   anchor,
+  variant = "default",
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
-  >) {
+  > & {
+    /** `menu` (not in base-nova): a list of `Item` rows, padded like a menu. */
+    variant?: "default" | "menu"
+  }) {
   const portalContainer = usePortalContainer()
 
   return (
@@ -41,8 +45,9 @@ function PopoverContent({
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"
+          data-variant={variant}
           className={cn(
-            "z-50 flex w-72 flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden",
+            "z-50 flex w-72 flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden data-[variant=menu]:gap-0 data-[variant=menu]:p-1",
             className
           )}
           {...props}

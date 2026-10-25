@@ -113,6 +113,7 @@ export function VoiceGateSensitivityBar({
 
   return (
     <div className="flex flex-col gap-1.5">
+      {/* eslint-disable-next-line design/no-lookalike -- drag track of the gate threshold */}
       <div
         ref={trackRef}
         role="slider"

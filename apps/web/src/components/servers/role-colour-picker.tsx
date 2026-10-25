@@ -75,6 +75,7 @@ export function RoleColourPicker({
 
       <div className="flex items-start gap-2">
         <div className="flex shrink-0 gap-2">
+          {/* eslint-disable-next-line design/no-lookalike -- colour swatch */}
           <button
             type="button"
             disabled={disabled}
@@ -91,6 +92,7 @@ export function RoleColourPicker({
             onClick={() => onChange('')}
           />
 
+          {/* eslint-disable-next-line design/no-lookalike -- colour swatch */}
           <button
             type="button"
             disabled={disabled}
@@ -109,6 +111,7 @@ export function RoleColourPicker({
             <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-scrim text-on-scrim">
               <PencilIcon className="size-3" />
             </span>
+            {/* eslint-disable-next-line design/no-lookalike -- native colour input behind the custom swatch */}
             <input
               ref={colourInputRef}
               type="color"
@@ -126,6 +129,7 @@ export function RoleColourPicker({
               const selected = matchingPreset === preset
 
               return (
+                // eslint-disable-next-line design/no-lookalike -- colour swatch
                 <button
                   key={preset}
                   type="button"

@@ -1,5 +1,6 @@
 {
   "common": {
+    "adminRedirect": "Переходим в админку…",
     "appName": "Сырники",
     "language": "Язык",
     "notFound": {
@@ -1914,6 +1915,7 @@
     "nothingFound": "Ничего не найдено",
     "unknownAuthor": "Неизвестный",
     "noText": "[без текста]",
+    "jump": "Перейти",
     "mentions": "Упоминания",
     "members": "Участники",
     "otherMentions": "Другие упоминания",

@@ -260,7 +260,8 @@ export function StreamSettingsSubmenu({
         align="start"
         sideOffset={6}
         data-mini-control
-        className="z-520 w-60 p-1"
+        variant="menu"
+        className="z-520 w-60"
       >
         {children}
       </PopoverContent>

@@ -350,7 +350,7 @@ export function DesktopScreenSharePicker({
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && cancelRequest()}>
       <DialogContent
         showCloseButton={false}
-        className="grid aspect-4/3 w-screen-share-picker max-w-none media-picker-rows gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="grid aspect-4/3 w-screen-share-picker max-w-none grid-rows-media-picker gap-0 overflow-hidden p-0 sm:max-w-none"
       >
         <DialogTitle className="sr-only">{t('sharePicker.title')}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -382,31 +382,35 @@ export function DesktopScreenSharePicker({
             })}
           </TabsList>
 
-          <TabsContent value="screen" className="min-h-0 overflow-y-auto p-4">
-            <DisplaySourceGrid
-              sources={screenSources}
-              submittingSourceId={submittingSourceId}
-              loading={loading}
-              emptyText={t(EMPTY_TAB_TEXT_KEYS.screen)}
-              onShare={selectSource}
-            />
+          <TabsContent value="screen" className="min-h-0 overflow-y-auto">
+            <div className="p-4">
+              <DisplaySourceGrid
+                sources={screenSources}
+                submittingSourceId={submittingSourceId}
+                loading={loading}
+                emptyText={t(EMPTY_TAB_TEXT_KEYS.screen)}
+                onShare={selectSource}
+              />
+            </div>
           </TabsContent>
           <TabsContent
             value="applications"
-            className="min-h-0 overflow-y-auto p-4"
+            className="min-h-0 overflow-y-auto"
           >
-            <DisplaySourceGrid
-              sources={applicationSources}
-              submittingSourceId={submittingSourceId}
-              loading={loading}
-              emptyText={t(EMPTY_TAB_TEXT_KEYS.applications)}
-              onShare={selectSource}
-            />
+            <div className="p-4">
+              <DisplaySourceGrid
+                sources={applicationSources}
+                submittingSourceId={submittingSourceId}
+                loading={loading}
+                emptyText={t(EMPTY_TAB_TEXT_KEYS.applications)}
+                onShare={selectSource}
+              />
+            </div>
           </TabsContent>
         </Tabs>
 
         <Separator />
-        <DialogFooter className="mx-0 mb-0 flex-row items-center justify-between rounded-none border-t-0 bg-transparent px-4 py-3 sm:justify-between">
+        <DialogFooter variant="bare" className="flex-row items-center justify-between sm:justify-between">
           <ScreenSharePickerQualitySummary />
           <div className="flex items-center gap-2">
             {hasPreviousPage || hasNextPage ? (
@@ -523,6 +527,7 @@ function DisplaySourceTile({
 
   return (
     <div className="grid min-w-0 gap-2">
+      {/* eslint-disable-next-line design/no-lookalike -- source thumbnail card */}
       <button
         type="button"
         aria-label={t('sharePicker.shareAria', { source: sourceLabel })}

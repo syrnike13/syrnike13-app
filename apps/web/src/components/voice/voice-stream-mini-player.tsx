@@ -245,7 +245,7 @@ function MiniActivityContent({
           data-mini-control
           aria-label={t('miniPlayer.back')}
           title={channelName}
-          className="min-w-0 pl-1"
+          className="min-w-0"
           onClick={onReturn}
         >
           <ChevronLeftIcon />
@@ -417,6 +417,7 @@ export function VoiceStreamMiniPlayer() {
   )
   return (
     <TooltipProvider>
+      {/* eslint-disable-next-line design/no-lookalike -- drag surface of the mini player */}
       <section
         ref={anchor.ref}
         aria-label={t('miniPlayer.label')}
@@ -450,6 +451,7 @@ export function VoiceStreamMiniPlayer() {
             />
           ) : item ? (
             <>
+            {/* eslint-disable-next-line design/no-lookalike -- video surface returns to the stream */}
             <button
               type="button"
               className={cn(
@@ -487,7 +489,7 @@ export function VoiceStreamMiniPlayer() {
                 data-mini-control
                 aria-label={t('miniPlayer.back')}
                 title={channelName}
-                className="pointer-events-auto min-w-0 pl-1"
+                className="pointer-events-auto min-w-0"
                 onClick={returnToChannel}
               >
                 <ChevronLeftIcon />
@@ -534,6 +536,7 @@ export function VoiceStreamMiniPlayer() {
         </div>
 
         {/* Невидимая зона изменения размера во внутреннем углу. */}
+        {/* eslint-disable-next-line design/no-lookalike -- invisible resize handle in the corner */}
         <button
           type="button"
           data-mini-control

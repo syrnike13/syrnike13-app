@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { SearchInput } from '#/components/ui/search-input'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
-import { SearchIcon } from '#/components/icons'
 import { Effect, Exit } from 'effect'
 import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
-import { Input } from '@syrnike13/ui/primitives/input'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
@@ -208,23 +207,19 @@ export function AddRoleMembersDialog({
         </DialogHeader>
 
         <div className="px-6 pb-3">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              placeholder={t('search')}
-              className="pl-9"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
+          <SearchInput
+            value={query}
+            placeholder={t('search')}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
 
         <p className="px-6 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {t('members')}
         </p>
 
-        <ScrollArea className="min-h-0 flex-1 px-3">
-          <ul className="pb-2">
+        <ScrollArea className="min-h-0 flex-1">
+          <ul className="px-3 pb-2">
             {candidates.map(({ member, user }) => {
               const selected = selectedIds.has(member._id.user)
               const disabled = !selected && atSelectionLimit
@@ -275,7 +270,7 @@ export function AddRoleMembersDialog({
         </ScrollArea>
 
         <Separator />
-        <DialogFooter className="grid grid-cols-2 gap-2 p-4 sm:justify-stretch">
+        <DialogFooter variant="bare" className="grid grid-cols-2 gap-2 sm:justify-stretch">
           <Button
             type="button"
             variant="secondary"

@@ -1,4 +1,3 @@
-// design-allow-file hardcoded-string: internal developer theme workbench.
 import {
   useEffect,
   useMemo,

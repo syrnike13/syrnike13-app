@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { SearchInput } from '#/components/ui/search-input'
 import { useMemo, useState } from 'react'
 import { Option, Schema } from 'effect'
 import {
@@ -25,7 +26,6 @@ import {
   InfoIcon,
   PencilIcon,
   PlusCircleIcon,
-  SearchIcon,
   ServerIcon,
   SettingsIcon,
   ShieldIcon,
@@ -42,8 +42,16 @@ import {
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
-import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
+import { Badge } from '@syrnike13/ui/primitives/badge'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerAuditLog } from '#/features/api/servers-api'
@@ -495,15 +503,11 @@ function AuditUserFilter({
         </DropdownMenuTrigger>
         <DropdownMenuContent className="max-h-80 w-65 overflow-y-auto">
           <div className="sticky top-0 z-10 bg-popover p-1">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                placeholder={t('filters.searchUser')}
-                className="pl-8"
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
+            <SearchInput
+              value={query}
+              placeholder={t('filters.searchUser')}
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </div>
           <DropdownMenuItem
             onClick={() => {
@@ -567,37 +571,38 @@ function AuditEntryRow({
 
   return (
     <li className="rounded-md border border-border bg-card/30">
-      <button
-        type="button"
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/35"
+      <Item
+        size="sm"
+        aria-expanded={open}
+        render={<button type="button" />}
         onClick={() => setOpen((current) => !current)}
       >
-        <AuditActionIcon action={entry.action.type} className="shrink-0" />
-        {actor ? (
-          <UserAvatar user={actor} className="size-9 shrink-0" />
-        ) : (
-          <span className="size-9 shrink-0 rounded-full bg-muted" />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">
-            {sentence}
-          </span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            {formatAuditTime(entry.created_at, locale)}
-          </span>
-        </span>
-        {entry.status !== 'Succeeded' ? (
-          <span className="rounded bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-            {t(`status.${entry.status}`)}
-          </span>
-        ) : null}
-        <ChevronDownIcon
-          className={cn(
-            'size-5 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-180',
+        <ItemMedia>
+          <AuditActionIcon action={entry.action.type} className="shrink-0" />
+          {actor ? (
+            <UserAvatar user={actor} className="size-9 shrink-0" />
+          ) : (
+            <span className="size-9 shrink-0 rounded-full bg-muted" />
           )}
-        />
-      </button>
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle className="block w-full truncate">{sentence}</ItemTitle>
+          <ItemDescription>
+            {formatAuditTime(entry.created_at, locale)}
+          </ItemDescription>
+        </ItemContent>
+        <ItemActions>
+          {entry.status !== 'Succeeded' ? (
+            <Badge variant="destructive">{t(`status.${entry.status}`)}</Badge>
+          ) : null}
+          <ChevronDownIcon
+            className={cn(
+              'size-5 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-180',
+            )}
+          />
+        </ItemActions>
+      </Item>
 
       {open ? (
         <dl className="grid gap-x-3 gap-y-1 border-t border-border px-14 py-3 text-sm audit-label-grid">

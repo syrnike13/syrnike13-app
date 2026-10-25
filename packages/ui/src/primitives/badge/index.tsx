@@ -26,9 +26,17 @@ const badgeVariants = cva(
           "bg-warning/10 text-warning dark:bg-warning/20 [a]:hover:bg-warning/20",
         info: "bg-chart-2/10 text-chart-2 dark:bg-chart-2/20 [a]:hover:bg-chart-2/20",
       },
+      // Not in base-nova: unread markers. `count` is the 16px number pill,
+      // `dot` the bare 8px dot.
+      size: {
+        default: "",
+        count: "h-4 min-w-4 px-1 leading-none",
+        dot: "size-2 min-w-0 p-0",
+      },
     },
     defaultVariants: {
       variant: "default",
+      size: "default",
     },
   }
 )
@@ -36,6 +44,7 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant = "default",
+  size = "default",
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
@@ -43,7 +52,7 @@ function Badge({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(badgeVariants({ variant, size }), className),
       },
       props
     ),

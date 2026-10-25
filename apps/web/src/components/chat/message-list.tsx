@@ -216,6 +216,7 @@ function ChatScrollbar({
       }
       aria-hidden="true"
     >
+      {/* eslint-disable-next-line design/no-lookalike -- drag thumb of the custom chat scrollbar */}
       <div
         className="pointer-events-auto absolute right-0.5 top-(--chat-scroll-thumb-top) h-(--chat-scroll-thumb-height) w-1 cursor-grab rounded-full bg-foreground/25 transition-colors hover:bg-foreground/40 active:cursor-grabbing"
         style={
@@ -431,6 +432,7 @@ function MessageListBody({
   return (
     <TooltipProvider delay={300}>
       <MessageScroller className="min-h-0 flex-1" style={scrollVars}>
+        {/* eslint-disable-next-line design/no-restyle -- the feed hides the native scrollbar and draws its own overlay one */}
         <MessageScrollerViewport
           ref={viewportRef}
           aria-label={t('messagesLabel')}

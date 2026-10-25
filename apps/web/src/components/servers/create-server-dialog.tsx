@@ -179,6 +179,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         render={
           trigger ?? (
             <Squircle asChild {...railIconSquircleProps}>
+              {/* eslint-disable-next-line design/no-lookalike -- server rail tile, shared with the server icons */}
               <button
                 type="button"
                 className={railIconClass(false)}

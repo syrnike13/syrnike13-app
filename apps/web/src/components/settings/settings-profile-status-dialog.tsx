@@ -215,6 +215,7 @@ export function ProfileStatusBubbleTrigger({
   const text = status.trim()
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- status bubble preview
     <button
       type="button"
       title={text ? t('edit') : t('add')}

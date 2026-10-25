@@ -16,14 +16,17 @@ const buttonVariants = cva(
         // Hover fills use the Prism `hover` surface: `muted` is nearly the
         // card colour in dark themes, so the upstream hover was invisible.
         outline:
-          'border-border bg-background hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-hover',
+          'border-border bg-background hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground aria-pressed:border-primary aria-pressed:ring-3 aria-pressed:ring-primary/20 dark:border-input dark:bg-input/30 dark:hover:bg-hover dark:aria-pressed:border-primary',
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
         ghost:
-          'hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground',
+          'hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground aria-[current=true]:bg-selection aria-[current=true]:text-selection-foreground',
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline',
+        // Not in base-nova: text that opens something (author names, mentions,
+        // inline actions). Keeps the surrounding colour; underlines on hover.
+        plain: 'underline-offset-2 hover:underline',
         // Not in base-nova: controls over images and banners (profile
         // banner actions, media tiles) on the Prism media backdrop.
         overlay:
@@ -41,12 +44,17 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-8 gap-1.5 rounded-[min(var(--radius-md),12px)] px-3 text-sm in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: 'h-11 gap-2 px-5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4',
+        // Not in base-nova: the landing page call to action, 56px.
+        xl: 'h-14 gap-2.5 px-6 text-base font-semibold',
         icon: 'size-8',
         'icon-xs':
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         'icon-sm':
           'size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg',
         'icon-lg': 'size-9',
+        // Not in base-nova: sits in a line of text and takes its font.
+        inline:
+          'h-auto gap-1 rounded-sm p-0 align-baseline text-[length:inherit] leading-[inherit] [font-weight:inherit]! active:not-aria-[haspopup]:translate-y-0',
         // Not in base-nova: wide call control (voice stage), 48×36.
         'icon-wide':
           "h-9 min-w-12 px-2 [&_svg:not([class*='size-'])]:size-5",

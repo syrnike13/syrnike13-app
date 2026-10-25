@@ -62,13 +62,13 @@ export function DirectMessageProfilePanel({
       inert={!open}
       data-state={open ? 'open' : 'closed'}
       className={cn(
-        'hidden shrink-0 overflow-hidden transition-[width] duration-300 ease-out-expo motion-reduce:transition-none lg:flex',
+        'hidden shrink-0 overflow-hidden transition-all duration-300 ease-out-expo motion-reduce:transition-none lg:flex',
         open ? 'w-85' : 'w-0',
       )}
     >
       <FloatingBarShell
         className={cn(
-          'flex min-h-0 w-85 shrink-0 py-2 pr-2 transition-[opacity,translate] duration-300 ease-out-expo motion-reduce:transition-none',
+          'flex min-h-0 w-85 shrink-0 py-2 pr-2 transition-all duration-300 ease-out-expo motion-reduce:transition-none',
           open ? 'translate-x-0 opacity-100' : 'translate-x-6 opacity-0',
         )}
         surfaceClassName="h-full"

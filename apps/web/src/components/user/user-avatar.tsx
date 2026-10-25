@@ -254,7 +254,7 @@ export function UserAvatar({
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>
       {showDot ? (
-        // design-allow restyle-shared: app-level presence dot wrapper
+        // eslint-disable-next-line design/no-restyle -- presence dot sized by the avatar layout helper, ringed by the surface colour
         <AvatarBadge
           className={cn(
             'presence-dot size-(--dot-size) ring-0',

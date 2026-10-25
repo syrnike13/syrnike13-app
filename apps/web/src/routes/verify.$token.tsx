@@ -105,7 +105,7 @@ function VerifyEmailPage() {
           </CardDescription>
         </CardHeader>
         {state.status === 'loading' ? (
-          <CardContent className="flex justify-center py-6">
+          <CardContent className="flex justify-center">
             <Spinner className="size-8 text-muted-foreground" />
           </CardContent>
         ) : null}

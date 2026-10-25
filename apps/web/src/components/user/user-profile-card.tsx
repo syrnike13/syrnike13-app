@@ -262,15 +262,17 @@ export function UserProfileCard({
               {bio}
             </p>
             {canViewProfile ? (
-              <Button
-                type="button"
-                variant="link"
-                size="xs"
-                className="px-0 text-muted-foreground"
-                onClick={handleViewProfile}
-              >
-                {t('viewFullProfile')}
-              </Button>
+              <p className="text-xs">
+                <Button
+                  type="button"
+                  variant="link"
+                  size="inline"
+                  className="text-muted-foreground"
+                  onClick={handleViewProfile}
+                >
+                  {t('viewFullProfile')}
+                </Button>
+              </p>
             ) : null}
           </div>
         ) : null}

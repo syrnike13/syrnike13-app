@@ -100,7 +100,6 @@ function useMessageSearch(scope: MessageSearchScope, token: string, query: strin
       Effect.runFork(Fiber.interrupt(fiber))
     }
     // `scope` is identified by `scopeKey`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, auth.user?._id, query, scopeKey, token])
 
   return { hits, searching }
@@ -174,13 +173,14 @@ export function MessageSearch({
   token,
   users,
   variant = 'field',
-  triggerClassName,
+  triggerVariant = 'ghost',
 }: {
   scope: MessageSearchScope
   token: string
   users: Record<string, User>
   variant?: 'field' | 'icon'
-  triggerClassName?: string
+  /** `media` on the voice stage header. */
+  triggerVariant?: 'ghost' | 'media'
 }) {
   const t = useTranslations('chat')
   const navigate = useNavigate()
@@ -243,9 +243,8 @@ export function MessageSearch({
           render={
             <Button
               type="button"
-              variant="ghost"
+              variant={triggerVariant}
               size="icon"
-              className={triggerClassName}
               title={t('searchMessages')}
               aria-label={t('searchMessages')}
             />

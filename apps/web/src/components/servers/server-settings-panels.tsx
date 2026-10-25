@@ -184,6 +184,7 @@ function ServerProfilePreview({
       </p>
       <div className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm">
         <DropdownMenu>
+          {/* eslint-disable-next-line design/no-lookalike -- banner preview opens the image menu */}
           <DropdownMenuTrigger render={<button
               type="button"
               aria-label={t('bannerMenuAria')}
@@ -240,6 +241,7 @@ function ServerProfilePreview({
         <div className="relative px-4 pb-5 pt-11">
           <div className="absolute -top-8 left-4 z-10">
             <DropdownMenu>
+              {/* eslint-disable-next-line design/no-lookalike -- icon preview opens the image menu */}
               <DropdownMenuTrigger render={<button
                   type="button"
                   aria-label={t('iconMenuAria')}
@@ -878,7 +880,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               id="emoji-name"
               value={emojiName}
               maxLength={32}
-              // design-allow hardcoded-string: example emoji identifier, not UI copy
+              // eslint-disable-next-line design/no-hardcoded-text -- example emoji identifier, not UI copy
               placeholder="party_parrot"
               onChange={(event) => setEmojiName(event.target.value)}
             />

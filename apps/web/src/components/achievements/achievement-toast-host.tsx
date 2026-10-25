@@ -130,6 +130,7 @@ function AchievementToast({ unlock }: { unlock: AchievementUnlock }) {
   }, [exiting])
 
   return (
+    // eslint-disable-next-line design/no-lookalike -- the whole toast card is the dismiss target
     <button
       type="button"
       data-phase={exiting ? 'exiting' : 'visible'}

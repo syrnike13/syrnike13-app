@@ -458,19 +458,22 @@ export function ServerInviteDialog({
               {t('copy')}
             </Button>
           </div>
-          <button
-            type="button"
-            className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            onClick={() => setSettingsOpen((current) => !current)}
-          >
-            {t('editLink')}
-            <ChevronDownIcon
-              className={cn(
-                'size-3.5 transition-transform',
-                settingsOpen && 'rotate-180',
-              )}
-            />
-          </button>
+          <p className="mt-2 text-xs">
+            <Button
+              type="button"
+              variant="link"
+              size="inline"
+              onClick={() => setSettingsOpen((current) => !current)}
+            >
+              {t('editLink')}
+              <ChevronDownIcon
+                className={cn(
+                  'size-3.5 transition-transform',
+                  settingsOpen && 'rotate-180',
+                )}
+              />
+            </Button>
+          </p>
 
           {settingsOpen ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

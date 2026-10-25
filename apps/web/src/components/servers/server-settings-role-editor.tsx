@@ -20,10 +20,11 @@ import { Tabs, TabsList, TabsTrigger } from '@syrnike13/ui/primitives/tabs'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@syrnike13/ui/primitives/popover'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@syrnike13/ui/primitives/dropdown-menu'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
@@ -343,30 +344,30 @@ export function ServerSettingsRoleEditor({
             {t('editTitle', { name: headerRoleName })}
           </h2>
           {canEditRole ? (
-            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <PopoverTrigger render={<Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title={t('roleActions')} />}>
-                  <MoreHorizontalIcon className="size-4" />
-                </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="end">
-                <Button
-                  type="button"
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-muted-foreground"
+                    title={t('roleActions', { name: headerRoleName })}
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48" align="end">
+                <DropdownMenuItem
                   variant="destructive"
-                  className="h-9 w-full justify-start px-2 font-normal"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onDeleteRequested()
-                  }}
+                  onClick={() => onDeleteRequested()}
                 >
-                  <Trash2Icon className="size-4" />
+                  <Trash2Icon />
                   {t('deleteRole')}
-                </Button>
-              </PopoverContent>
-            </Popover>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
 

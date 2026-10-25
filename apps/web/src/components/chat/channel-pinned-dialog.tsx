@@ -9,6 +9,12 @@ import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+} from '@syrnike13/ui/primitives/item'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import {
   Dialog,
@@ -30,14 +36,15 @@ type ChannelPinnedDialogProps = {
   channelId: string
   token: string
   users: Record<string, User>
-  triggerClassName?: string
+  /** `media` on the voice stage header. */
+  triggerVariant?: 'ghost' | 'media'
 }
 
 export function ChannelPinnedDialog({
   channelId,
   token,
   users,
-  triggerClassName,
+  triggerVariant = 'ghost',
 }: ChannelPinnedDialogProps) {
   const t = useTranslations('chat')
   const navigate = useNavigate()
@@ -80,10 +87,8 @@ export function ChannelPinnedDialog({
         render={
           <Button
             type="button"
-            variant="ghost"
+            variant={triggerVariant}
             size="icon"
-            // eslint-disable-next-line shadcn/require-static-classes -- voice-stage header passes its on-media colours
-            className={triggerClassName}
             title={t('pinnedTitle')}
             aria-label={t('pinnedTitle')}
           />
@@ -117,69 +122,61 @@ export function ChannelPinnedDialog({
               author?.display_name ?? author?.username ?? t('unknownAuthor')
 
             return (
-              <article
-                key={message._id}
-                role="button"
-                tabIndex={0}
-                className="cursor-pointer rounded-lg border bg-muted/40 p-3 text-sm transition-colors hover:bg-muted/70"
-                onClick={() => {
-                  setOpen(false)
-                  void navigate({
-                    to: `${prefix}/c/$channelId`,
-                    params: { channelId },
-                    search: { m: message._id },
-                  })
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    setOpen(false)
-                    void navigate({
-                      to: `${prefix}/c/$channelId`,
-                      params: { channelId },
-                      search: { m: message._id },
-                    })
-                  }
-                }}
-              >
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  {name}
-                </p>
-                {message.content ? (
-                  <div className="select-text">
-                    {renderMessageContent(message.content, users, emojis, {
-                      channels,
-                      roles: server?.roles,
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground italic">{t('noText')}</p>
-                )}
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="mt-2 h-auto px-0"
-                  onClick={() => {
-                    Effect.runFork(
-                      writeClipboardTextEffect(message._id).pipe(
-                        Effect.matchEffect({
-                          onFailure: () =>
-                            Effect.sync(() => {
-                              toast.error(t('copyError'))
-                            }),
-                          onSuccess: () =>
-                            Effect.sync(() => {
-                              toast.success(t('idCopied'))
-                            }),
-                        }),
-                      ),
-                    )
-                  }}
-                >
-                  {t('copyId')}
-                </Button>
-              </article>
+              <Item key={message._id} variant="outline" render={<article />}>
+                <ItemContent>
+                  <ItemDescription>{name}</ItemDescription>
+                  {message.content ? (
+                    <div className="select-text">
+                      {renderMessageContent(message.content, users, emojis, {
+                        channels,
+                        roles: server?.roles,
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground italic">{t('noText')}</p>
+                  )}
+                </ItemContent>
+                <ItemActions>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      Effect.runFork(
+                        writeClipboardTextEffect(message._id).pipe(
+                          Effect.matchEffect({
+                            onFailure: () =>
+                              Effect.sync(() => {
+                                toast.error(t('copyError'))
+                              }),
+                            onSuccess: () =>
+                              Effect.sync(() => {
+                                toast.success(t('idCopied'))
+                              }),
+                          }),
+                        ),
+                      )
+                    }}
+                  >
+                    {t('copyId')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setOpen(false)
+                      void navigate({
+                        to: `${prefix}/c/$channelId`,
+                        params: { channelId },
+                        search: { m: message._id },
+                      })
+                    }}
+                  >
+                    {t('jump')}
+                  </Button>
+                </ItemActions>
+              </Item>
             )
           })}
         </div>

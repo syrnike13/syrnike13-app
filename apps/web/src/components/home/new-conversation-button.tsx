@@ -194,7 +194,7 @@ export function NewConversationButton() {
               onValueChange={setFilter}
               placeholder={t('searchByName')}
             />
-            <CommandList className="max-h-72 px-2 pb-3">
+            <CommandList className="max-h-72">
               {filteredFriends.length === 0 ? (
                 <Empty size="sm">
                   <EmptyDescription>{t('noFriends')}</EmptyDescription>
@@ -239,7 +239,6 @@ export function NewConversationButton() {
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
                 placeholder={t('groupNamePlaceholder')}
-                className="h-9"
               />
             </div>
           </div>
@@ -249,7 +248,7 @@ export function NewConversationButton() {
               onValueChange={setFilter}
               placeholder={t('searchFriends')}
             />
-            <CommandList className="max-h-52 px-2 pb-3">
+            <CommandList className="max-h-52">
               {filteredFriends.length === 0 ? (
                 <Empty size="sm">
                   <EmptyDescription>{t('noFriendsToAdd')}</EmptyDescription>

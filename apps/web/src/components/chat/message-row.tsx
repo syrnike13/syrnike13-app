@@ -48,6 +48,7 @@ import { messageCreatedAt } from '#/lib/message-time'
 import { useMessageTimeShort, useMessageTimestamp } from '#/lib/use-message-time'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
+import { Button } from '@syrnike13/ui/primitives/button'
 
 export type MessageRowProps = {
   message: Message
@@ -243,10 +244,12 @@ export function MessageRow({
       roles={authorRoles}
       hideMessage={hideAuthorMessage}
     >
-      <button
+      <Button
         type="button"
+        variant="plain"
+        size="inline"
         className={cn(
-          'min-w-0 truncate rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          'min-w-0 truncate',
           nameColor && 'text-(--author-name-color)',
         )}
         style={
@@ -256,7 +259,7 @@ export function MessageRow({
         }
       >
         {name}
-      </button>
+      </Button>
     </MessageAuthorProfileTrigger>
   ) : (
     <span className="min-w-0 truncate">{name}</span>
@@ -297,6 +300,7 @@ export function MessageRow({
               roles={authorRoles}
               hideMessage={hideAuthorMessage}
             >
+              {/* eslint-disable-next-line design/no-lookalike -- avatar opens the author profile; hidden from the tab order */}
               <button
                 type="button"
                 tabIndex={-1}
