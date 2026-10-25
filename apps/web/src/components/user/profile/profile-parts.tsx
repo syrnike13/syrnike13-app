@@ -105,7 +105,6 @@ export function ProfileHeader({
       fallbackClassName={lg ? 'size-30 text-3xl' : 'size-20 text-xl'}
       animated="always"
       showPresence
-      presenceRingClassName="border-(--profile-surface)"
     />
   )
 

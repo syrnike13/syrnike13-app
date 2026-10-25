@@ -165,3 +165,33 @@ export function resolvePresenceBadgeLayoutForAvatar(
 ) {
   return resolvePresenceBadgeLayout(resolveAvatarSizePx(...classNames))
 }
+
+export type PresenceDotLayout = {
+  sizePx: number
+  /** Transparent gap cut into the avatar around the dot. */
+  gapPx: number
+}
+
+/** Discord-like status dot sizes; the dot's centre sits at 85% of the avatar. */
+const PRESENCE_DOT_TIERS = [
+  { maxAvatarPx: 20, sizePx: 6, gapPx: 1.5 },
+  { maxAvatarPx: 28, sizePx: 8, gapPx: 2 },
+  { maxAvatarPx: 36, sizePx: 10, gapPx: 3 },
+  { maxAvatarPx: 44, sizePx: 12, gapPx: 3 },
+  { maxAvatarPx: 56, sizePx: 14, gapPx: 3 },
+  { maxAvatarPx: 88, sizePx: 16, gapPx: 4 },
+  { maxAvatarPx: Infinity, sizePx: 24, gapPx: 5 },
+] as const
+
+export function resolvePresenceDotLayout(avatarPx: number): PresenceDotLayout {
+  const tier =
+    PRESENCE_DOT_TIERS.find((entry) => avatarPx <= entry.maxAvatarPx) ??
+    PRESENCE_DOT_TIERS[PRESENCE_DOT_TIERS.length - 1]
+  return { sizePx: tier.sizePx, gapPx: tier.gapPx }
+}
+
+export function resolvePresenceDotLayoutForAvatar(
+  ...classNames: Array<string | undefined>
+) {
+  return resolvePresenceDotLayout(resolveAvatarSizePx(...classNames))
+}

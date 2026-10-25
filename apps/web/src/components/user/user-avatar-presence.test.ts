@@ -6,6 +6,7 @@ import {
   resolveAvatarSizePx,
   resolvePresenceBadgeLayout,
   resolvePresenceBadgeLayoutForAvatar,
+  resolvePresenceDotLayout,
 } from '#/components/user/user-avatar-presence'
 
 describe('presenceRingColorVar', () => {
@@ -61,5 +62,13 @@ describe('resolvePresenceBadgeLayoutForAvatar', () => {
         'size-[88px] text-2xl',
       ).sizePx,
     ).toBe(Math.round(16 * PRESENCE_BADGE_SIZE_SCALE))
+  })
+})
+
+describe('resolvePresenceDotLayout', () => {
+  it('keeps the status dot Discord-sized for each avatar size', () => {
+    expect(resolvePresenceDotLayout(32)).toEqual({ sizePx: 10, gapPx: 3 })
+    expect(resolvePresenceDotLayout(80)).toEqual({ sizePx: 16, gapPx: 4 })
+    expect(resolvePresenceDotLayout(120)).toEqual({ sizePx: 24, gapPx: 5 })
   })
 })

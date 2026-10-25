@@ -23,3 +23,50 @@
   --color-on-media: var(--on-media);
   --color-media-backdrop: var(--media-backdrop);
 }
+
+/*
+ * Avatar presence (not in base-nova), like Discord: the status dot's centre
+ * sits at 85% of the avatar and the avatar is cut out around it, so the dot
+ * reads as part of the avatar on any background. Sizes come from
+ * `--avatar-dot-size` and `--avatar-dot-gap`. Masks only use alpha, so
+ * `currentColor` stands for "opaque".
+ */
+@utility avatar-presence-cutout {
+  --avatar-dot-cut: calc(var(--avatar-dot-size) / 2 + var(--avatar-dot-gap));
+  mask-image: radial-gradient(
+    circle at 85% 85%,
+    transparent var(--avatar-dot-cut),
+    currentColor calc(var(--avatar-dot-cut) + 0.5px)
+  );
+}
+
+/* Status shapes carved out of the dot: moon, no-entry bar and hollow ring. */
+@utility avatar-presence-dot {
+  right: calc(15% - var(--avatar-dot-size) / 2);
+  bottom: calc(15% - var(--avatar-dot-size) / 2);
+  width: var(--avatar-dot-size);
+  height: var(--avatar-dot-size);
+
+  &[data-presence='idle'] {
+    mask-image: radial-gradient(
+      circle at 20% 20%,
+      transparent 37%,
+      currentColor 38%
+    );
+  }
+
+  &[data-presence='dnd'] {
+    mask-image:
+      linear-gradient(currentColor 0 0), linear-gradient(currentColor 0 0);
+    mask-size:
+      100% 100%,
+      62% 24%;
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-composite: exclude;
+  }
+
+  &[data-presence='offline'] {
+    mask-image: radial-gradient(circle, transparent 32%, currentColor 33%);
+  }
+}

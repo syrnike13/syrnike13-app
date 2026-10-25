@@ -790,7 +790,6 @@ export function VoiceStageView({
               className="size-8 shrink-0"
               fallbackClassName="size-8 text-xs"
               showPresence
-              presenceRingClassName="border-media-backdrop"
             />
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <h1 className="min-w-0 text-base font-semibold text-on-media">

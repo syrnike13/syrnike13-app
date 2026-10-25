@@ -66,7 +66,6 @@ export function MobileUserPanel() {
               className="size-14 shrink-0"
               fallbackClassName="size-14 text-base"
               showPresence
-              presenceRingClassName="border-background"
             />
             <span className="min-w-0 flex-1 pl-2">
               <span className="flex min-w-0 items-center gap-0.5">

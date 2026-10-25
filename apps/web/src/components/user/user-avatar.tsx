@@ -12,6 +12,7 @@ import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import {
   presenceRingColorVar,
   resolvePresenceBadgeLayoutForAvatar,
+  resolvePresenceDotLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
 import { useImageRetry } from '#/hooks/use-image-retry'
 import { userAvatarUrl } from '#/lib/media'
@@ -99,8 +100,6 @@ type UserAvatarProps = {
    */
   hoverScope?: 'self' | 'parent'
   speaking?: boolean
-  /** Кольцо вокруг точки статуса (фон под аватаром) */
-  presenceRingClassName?: string
   /** Кольцо вокруг бейджа уведомлений */
   notificationRingClassName?: string
   /** Сообщает о загрузке основного изображения аватара. */
@@ -119,7 +118,6 @@ export function UserAvatar({
   animated = 'hover',
   hoverScope = 'self',
   speaking = false,
-  presenceRingClassName = 'border-card',
   notificationRingClassName = 'border-card',
   onImageLoadingChange,
 }: UserAvatarProps) {
@@ -165,21 +163,21 @@ export function UserAvatar({
       ? animatedAvatarSrc
       : staticAvatarSrc
   const animatedRetry = useImageRetry(animatedAvatarSrc)
-  const presenceBadge = resolvePresenceBadgeLayoutForAvatar(
+  const presenceDot = resolvePresenceDotLayoutForAvatar(
     className,
     fallbackClassName,
   )
   const presence = getUserPresence(user)
-  const dotClass =
+  const presenceKind =
     !user || !user.online || presence === 'Invisible'
-      ? 'bg-muted-foreground'
+      ? 'offline'
       : presence === 'Idle' || presence === 'SystemIdle'
-        ? 'bg-chart-2'
+        ? 'idle'
         : presence === 'Focus'
-          ? 'bg-chart-5'
+          ? 'focus'
           : presence === 'Busy'
-            ? 'bg-destructive'
-            : 'bg-chart-3'
+            ? 'dnd'
+            : 'online'
 
   function startHoverAnimation() {
     setHovered(true)
@@ -216,13 +214,24 @@ export function UserAvatar({
         'relative shrink-0',
         hasNotificationBadge && 'overflow-visible',
       )}
+      style={
+        showDot
+          ? ({
+              '--avatar-dot-size': `${presenceDot.sizePx}px`,
+              '--avatar-dot-gap': `${presenceDot.gapPx}px`,
+            } as CSSVars)
+          : undefined
+      }
       onPointerEnter={hoverFollowsSelf ? startHoverAnimation : undefined}
       onPointerLeave={hoverFollowsSelf ? () => setHovered(false) : undefined}
       onFocus={hoverFollowsSelf ? startHoverAnimation : undefined}
       onBlur={hoverFollowsSelf ? () => setHovered(false) : undefined}
     >
-      {/* eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing */}
-      <Avatar className={cn(className, fallbackClassName)}>
+      <Avatar
+        presenceCutout={Boolean(showDot)}
+        // eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing
+        className={cn(className, fallbackClassName)}
+      >
         {avatarSrc ? (
           <RetryingAvatarImage
             src={avatarSrc}
@@ -254,21 +263,8 @@ export function UserAvatar({
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>
       {showDot ? (
-        // eslint-disable-next-line design/no-restyle -- presence dot sized by the avatar layout helper, ringed by the surface colour
         <AvatarBadge
-          className={cn(
-            'presence-dot size-(--dot-size) ring-0',
-            // eslint-disable-next-line shadcn/require-static-classes -- static offset class from layout helper
-            presenceBadge.offsetClass,
-            dotClass,
-          )}
-          style={
-            {
-              '--dot-size': `${presenceBadge.sizePx}px`,
-              '--dot-ring': `${presenceBadge.ringPx}px`,
-              '--dot-ring-color': presenceRingColorVar(presenceRingClassName),
-            } as CSSVars
-          }
+          presence={presenceKind}
           title={presenceDotTitle(user, t)}
         />
       ) : null}

@@ -408,7 +408,6 @@ export function ChannelView({
                 className="size-6"
                 fallbackClassName="size-6 text-xs"
                 showPresence
-                presenceRingClassName="border-card"
               />
             ) : channel.channel_type === 'Group' ? (
               channel.icon ? (

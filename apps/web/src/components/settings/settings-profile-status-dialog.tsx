@@ -190,7 +190,6 @@ function ProfileStatusLivePreview({
             fallbackClassName="size-20 bg-card text-xl ring-5 ring-card"
             animated="always"
             showPresence
-            presenceRingClassName="border-card"
           />
         </div>
       </div>

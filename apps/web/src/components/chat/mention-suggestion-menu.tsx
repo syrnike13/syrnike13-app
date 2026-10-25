@@ -81,7 +81,6 @@ function MentionSuggestionRow({
           user={item.user}
           className="size-8"
           showPresence
-          presenceRingClassName="border-popover"
         />
       ) : null}
 
