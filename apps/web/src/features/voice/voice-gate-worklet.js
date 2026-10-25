@@ -22,6 +22,9 @@ const NOISE_FLOOR_ALPHA = 0.05
 const OPEN_TIME_CONSTANT_S = 0.008
 const CLOSE_TIME_CONSTANT_S = 0.02
 const METRICS_INTERVAL_S = 0.033
+// The quiet history and noise-floor smoothing were tuned for one level sample
+// per animation frame; sample at that rate, not once per render quantum.
+const AUTO_THRESHOLD_INTERVAL_S = 1 / 60
 
 function clampDb(value) {
   if (!Number.isFinite(value)) return DEFAULT_THRESHOLD_DB
@@ -72,6 +75,7 @@ class SyrnikeVoiceGateProcessor extends AudioWorkletProcessor {
     this.gain = 1
     this.frames = 0
     this.lastMetricsFrame = 0
+    this.nextAutoThresholdFrame = 0
   }
 
   process(inputs, outputs, parameters) {
@@ -91,7 +95,15 @@ class SyrnikeVoiceGateProcessor extends AudioWorkletProcessor {
 
     const inputDb = this.measureDb(input)
     if (enabled && autoDynamic) {
-      this.updateAutoThreshold(inputDb)
+      if (this.frames >= this.nextAutoThresholdFrame) {
+        const interval = AUTO_THRESHOLD_INTERVAL_S * sampleRate
+        this.nextAutoThresholdFrame += interval
+        // Resume the cadence after the gate ran without the auto threshold.
+        if (this.nextAutoThresholdFrame <= this.frames) {
+          this.nextAutoThresholdFrame = this.frames + interval
+        }
+        this.updateAutoThreshold(inputDb)
+      }
     } else {
       this.thresholdDb = manualThresholdDb
     }

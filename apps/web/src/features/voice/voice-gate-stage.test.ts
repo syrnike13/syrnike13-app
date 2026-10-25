@@ -172,6 +172,7 @@ function createWorkletHarness() {
   type WorkletProcessor = {
     gain: number
     frames: number
+    quietLevelHistory: number[]
     process: (
       inputs: Float32Array[][],
       outputs: Float32Array[][],
@@ -323,5 +324,24 @@ describe('voice gate worklet', () => {
     expect(processor.gain).toBeGreaterThan(0.8)
     expect(audible).toBeGreaterThan(0)
     expect(messages.length).toBeGreaterThan(0)
+  })
+
+  it('samples the auto threshold at the animation-frame rate', () => {
+    const { Processor } = createWorkletHarness()
+    const processor = new Processor()
+    const parameters = {
+      enabled: new Float32Array([1]),
+      autoDynamic: new Float32Array([1]),
+      thresholdDb: new Float32Array([-28]),
+    }
+    const quiet = [Float32Array.from({ length: 128 }, (_, index) => 0.003 * Math.sin(index / 4))]
+
+    // Half a second of render quanta at 48 kHz.
+    for (let block = 0; block < 188; block += 1) {
+      processor.process([quiet], [[new Float32Array(128)]], parameters)
+    }
+
+    expect(processor.quietLevelHistory.length).toBeGreaterThanOrEqual(29)
+    expect(processor.quietLevelHistory.length).toBeLessThanOrEqual(31)
   })
 })
