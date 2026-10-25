@@ -1135,11 +1135,6 @@ html {
   width: calc(100% + 0.25rem);
 }
 
-@utility avatar-badge {
-  font-size: var(--badge-font);
-  box-shadow: 0 0 0 var(--badge-ring) var(--badge-ring-color);
-}
-
 @utility motion-width {
   transition-property: width;
 }

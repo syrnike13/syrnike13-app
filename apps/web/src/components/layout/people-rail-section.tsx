@@ -4,8 +4,16 @@ import type { Channel } from '@syrnike13/api-types'
 import { HeadphonesIcon, UsersIcon } from '#/components/icons'
 import {
   AvatarNotificationBadge,
+  hasNotificationBadge,
+  notificationBadgeText,
   UserAvatar,
 } from '#/components/user/user-avatar'
+import {
+  avatarBadgeVars,
+  resolveAvatarBadgeLayout,
+} from '#/components/user/user-avatar-presence'
+import { Avatar, AvatarFallback } from '@syrnike13/ui/primitives/avatar'
+import type { CSSVars } from '#/lib/css-vars'
 import { useAuth } from '#/features/auth/auth-context'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
@@ -140,25 +148,32 @@ function PeopleRailButton({
           fallbackClassName="size-10 text-xs"
           showPresence={false}
           notificationBadge={railNotificationBadge}
-          notificationRingClassName="border-background"
           animated="never"
         />
       ) : channel.channel_type === 'Group' ? (
-        <span className="relative shrink-0">
-          <span
-            className={cn(
-              'flex items-center justify-center rounded-full bg-muted text-muted-foreground',
-              railAvatarClass,
-            )}
+        <span
+          className="relative shrink-0"
+          style={
+            railNotificationBadge && hasNotificationBadge(railNotificationBadge)
+              ? (avatarBadgeVars(
+                  resolveAvatarBadgeLayout(40, {
+                    kind: 'count',
+                    label: notificationBadgeText(railNotificationBadge),
+                  }),
+                ) as CSSVars)
+              : undefined
+          }
+        >
+          <Avatar
+            className={railAvatarClass}
+            badgeCutout={hasNotificationBadge(railNotificationBadge)}
           >
-            <UsersIcon aria-hidden="true" className="size-5.5" />
-          </span>
+            <AvatarFallback>
+              <UsersIcon aria-hidden="true" className="size-5.5" />
+            </AvatarFallback>
+          </Avatar>
           {railNotificationBadge ? (
-            <AvatarNotificationBadge
-              badge={railNotificationBadge}
-              className={railAvatarClass}
-              ringClassName="border-background"
-            />
+            <AvatarNotificationBadge badge={railNotificationBadge} />
           ) : null}
         </span>
       ) : (

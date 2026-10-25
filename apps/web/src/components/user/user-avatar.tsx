@@ -10,9 +10,9 @@ import {
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import {
-  presenceRingColorVar,
-  resolvePresenceBadgeLayoutForAvatar,
-  resolvePresenceDotLayoutForAvatar,
+  avatarBadgeVars,
+  resolveAvatarBadgeLayout,
+  resolveAvatarSizePx,
 } from '#/components/user/user-avatar-presence'
 import { useImageRetry } from '#/hooks/use-image-retry'
 import { userAvatarUrl } from '#/lib/media'
@@ -31,56 +31,38 @@ function initials(name: string) {
 
 export type UserAvatarAnimationMode = 'never' | 'hover' | 'always' | 'speaking'
 
-type AvatarCornerBadgeProps = {
-  className?: string
-  fallbackClassName?: string
-  ringClassName?: string
+/** Text shown in an unread badge: the count, capped, or `!` for a bare mention. */
+export function notificationBadgeText(badge: NotificationBadgeState, max = 99) {
+  return badge.count > max ? `${max}+` : String(badge.count || '!')
 }
 
-type AvatarNotificationBadgeProps = AvatarCornerBadgeProps & {
-  badge: NotificationBadgeState
-  max?: number
+export function hasNotificationBadge(badge: NotificationBadgeState | undefined) {
+  return Boolean(badge?.hasUnread || badge?.urgent)
 }
 
+/**
+ * Unread count in the avatar's corner. Place it next to an `Avatar` with
+ * `badgeCutout` inside a wrapper that sets `avatarBadgeVars` for the count.
+ */
 export function AvatarNotificationBadge({
   badge,
-  className,
-  fallbackClassName,
-  ringClassName = 'border-card',
   max = 99,
-}: AvatarNotificationBadgeProps) {
+}: {
+  badge: NotificationBadgeState
+  max?: number
+}) {
   const t = useTranslations('notifications')
-  if (!badge.hasUnread && !badge.urgent) return null
+  if (!hasNotificationBadge(badge)) return null
 
-  const layout = resolvePresenceBadgeLayoutForAvatar(className, fallbackClassName)
   const countLabel =
     badge.count > 0 ? t('count', { count: badge.count }) : t('hasUnread')
-  const display = badge.count > max ? `${max}+` : String(badge.count || '!')
 
   return (
-    <span
+    <AvatarBadge
+      count={notificationBadgeText(badge, max)}
       aria-label={countLabel}
       title={countLabel}
-      data-slot="avatar-badge"
-      className={cn(
-        'avatar-badge absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full leading-none select-none',
-        'border-0 bg-destructive-contrast font-bold text-destructive-foreground tabular-nums',
-        layout.offsetClass,
-        badge.count > 9
-          ? 'h-(--badge-w) min-w-(--badge-w) px-0.5'
-          : 'aspect-square size-(--badge-w)',
-      )}
-      style={
-        {
-          '--badge-w': `${layout.sizePx}px`,
-          '--badge-font': `${Math.round(layout.sizePx * 0.62)}px`,
-          '--badge-ring': `${layout.ringPx}px`,
-          '--badge-ring-color': presenceRingColorVar(ringClassName),
-        } as CSSVars
-      }
-    >
-      <span className="block translate-y-px leading-none">{display}</span>
-    </span>
+    />
   )
 }
 
@@ -100,8 +82,6 @@ type UserAvatarProps = {
    */
   hoverScope?: 'self' | 'parent'
   speaking?: boolean
-  /** Кольцо вокруг бейджа уведомлений */
-  notificationRingClassName?: string
   /** Сообщает о загрузке основного изображения аватара. */
   onImageLoadingChange?: (
     status: 'idle' | 'loading' | 'loaded' | 'error',
@@ -118,7 +98,6 @@ export function UserAvatar({
   animated = 'hover',
   hoverScope = 'self',
   speaking = false,
-  notificationRingClassName = 'border-card',
   onImageLoadingChange,
 }: UserAvatarProps) {
   const t = useTranslations('chat')
@@ -126,11 +105,10 @@ export function UserAvatar({
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
-  const hasNotificationBadge = Boolean(
-    notificationBadge?.hasUnread || notificationBadge?.urgent,
+  const showCount = hasNotificationBadge(notificationBadge)
+  const showDot = Boolean(
+    showPresence && user && user.relationship !== 'Blocked' && !showCount,
   )
-  const showDot =
-    showPresence && user && user.relationship !== 'Blocked' && !hasNotificationBadge
   const useImageSrcOverride = imageSrc != null
   const hoverFollowsSelf =
     animated === 'hover' && hoverScope === 'self' && !useImageSrcOverride
@@ -163,10 +141,15 @@ export function UserAvatar({
       ? animatedAvatarSrc
       : staticAvatarSrc
   const animatedRetry = useImageRetry(animatedAvatarSrc)
-  const presenceDot = resolvePresenceDotLayoutForAvatar(
-    className,
-    fallbackClassName,
-  )
+  const avatarPx = resolveAvatarSizePx(className, fallbackClassName)
+  const badgeLayout = showCount
+    ? resolveAvatarBadgeLayout(avatarPx, {
+        kind: 'count',
+        label: notificationBadgeText(notificationBadge!),
+      })
+    : showDot
+      ? resolveAvatarBadgeLayout(avatarPx, { kind: 'presence' })
+      : null
   const presence = getUserPresence(user)
   const presenceKind =
     !user || !user.online || presence === 'Invisible'
@@ -212,23 +195,16 @@ export function UserAvatar({
       ref={setContainer}
       className={cn(
         'relative shrink-0',
-        hasNotificationBadge && 'overflow-visible',
+        showCount && 'overflow-visible',
       )}
-      style={
-        showDot
-          ? ({
-              '--avatar-dot-size': `${presenceDot.sizePx}px`,
-              '--avatar-dot-gap': `${presenceDot.gapPx}px`,
-            } as CSSVars)
-          : undefined
-      }
+      style={badgeLayout ? (avatarBadgeVars(badgeLayout) as CSSVars) : undefined}
       onPointerEnter={hoverFollowsSelf ? startHoverAnimation : undefined}
       onPointerLeave={hoverFollowsSelf ? () => setHovered(false) : undefined}
       onFocus={hoverFollowsSelf ? startHoverAnimation : undefined}
       onBlur={hoverFollowsSelf ? () => setHovered(false) : undefined}
     >
       <Avatar
-        presenceCutout={Boolean(showDot)}
+        badgeCutout={badgeLayout != null}
         // eslint-disable-next-line shadcn/require-static-classes -- caller-owned avatar sizing
         className={cn(className, fallbackClassName)}
       >
@@ -268,13 +244,8 @@ export function UserAvatar({
           title={presenceDotTitle(user, t)}
         />
       ) : null}
-      {notificationBadge ? (
-        <AvatarNotificationBadge
-          badge={notificationBadge}
-          className={className}
-          fallbackClassName={fallbackClassName}
-          ringClassName={notificationRingClassName}
-        />
+      {showCount && notificationBadge ? (
+        <AvatarNotificationBadge badge={notificationBadge} />
       ) : null}
     </div>
   )

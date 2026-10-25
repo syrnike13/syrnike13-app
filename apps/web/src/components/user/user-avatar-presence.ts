@@ -35,76 +35,6 @@ const TAILWIND_SIZE_PX: Record<string, number> = {
   '96': 384,
 }
 
-export const PRESENCE_BADGE_SIZE_SCALE = 1.3
-
-type PresenceBadgeTier = {
-  maxAvatarPx: number
-  badgePx: number
-  ringPx: number
-  offsetClass: string
-}
-
-export type PresenceBadgeLayout = {
-  sizePx: number
-  ringPx: number
-  offsetClass: string
-}
-
-function scaledBadgePx(px: number) {
-  return Math.round(px * PRESENCE_BADGE_SIZE_SCALE)
-}
-
-const PRESENCE_BADGE_TIERS: PresenceBadgeTier[] = [
-  {
-    maxAvatarPx: 20,
-    badgePx: 4,
-    ringPx: 1,
-    offsetClass: 'translate-x-11/50 translate-y-11/50',
-  },
-  {
-    maxAvatarPx: 28,
-    badgePx: 6,
-    ringPx: 1,
-    offsetClass: 'translate-x-1/5 translate-y-1/5',
-  },
-  {
-    maxAvatarPx: 36,
-    badgePx: 8,
-    ringPx: 2,
-    offsetClass: 'translate-x-9/50 translate-y-9/50',
-  },
-  {
-    maxAvatarPx: 44,
-    badgePx: 10,
-    ringPx: 2,
-    offsetClass: 'translate-x-9/50 translate-y-9/50',
-  },
-  {
-    maxAvatarPx: 56,
-    badgePx: 12,
-    ringPx: 2,
-    offsetClass: 'translate-x-4/25 translate-y-4/25',
-  },
-  {
-    maxAvatarPx: 72,
-    badgePx: 14,
-    ringPx: 3,
-    offsetClass: 'translate-x-3/20 translate-y-3/20',
-  },
-  {
-    maxAvatarPx: 88,
-    badgePx: 16,
-    ringPx: 3,
-    offsetClass: 'translate-x-7/50 translate-y-7/50',
-  },
-  {
-    maxAvatarPx: Infinity,
-    badgePx: 20,
-    ringPx: 4,
-    offsetClass: 'translate-x-7/50 translate-y-7/50',
-  },
-]
-
 /** Оценка диаметра аватарки в px по tailwind-классам size-*. */
 export function resolveAvatarSizePx(
   ...classNames: Array<string | undefined>
@@ -129,51 +59,10 @@ export function resolveAvatarSizePx(
   return 32
 }
 
-export function presenceRingColorVar(presenceRingClassName: string) {
-  // `border-(--profile-surface)`: the ring follows a surface variable.
-  const variable = presenceRingClassName.match(/^border-\((--[\w-]+)\)$/)
-  if (variable) return `var(${variable[1]})`
-  switch (presenceRingClassName) {
-    case 'border-muted':
-      return 'var(--muted)'
-    case 'border-secondary':
-      return 'var(--secondary)'
-    case 'border-background':
-      return 'var(--background)'
-    case 'border-popover':
-      return 'var(--popover)'
-    default:
-      return 'var(--card)'
-  }
-}
+type BadgeTier = { maxAvatarPx: number; sizePx: number; gapPx: number }
 
-/** Размеры бейджа статуса пропорционально диаметру аватарки (~22–26% × scale). */
-export function resolvePresenceBadgeLayout(avatarPx: number): PresenceBadgeLayout {
-  const tier =
-    PRESENCE_BADGE_TIERS.find((entry) => avatarPx <= entry.maxAvatarPx) ??
-    PRESENCE_BADGE_TIERS[PRESENCE_BADGE_TIERS.length - 1]!
-
-  return {
-    sizePx: scaledBadgePx(tier.badgePx),
-    ringPx: scaledBadgePx(tier.ringPx),
-    offsetClass: tier.offsetClass,
-  }
-}
-
-export function resolvePresenceBadgeLayoutForAvatar(
-  ...classNames: Array<string | undefined>
-) {
-  return resolvePresenceBadgeLayout(resolveAvatarSizePx(...classNames))
-}
-
-export type PresenceDotLayout = {
-  sizePx: number
-  /** Transparent gap cut into the avatar around the dot. */
-  gapPx: number
-}
-
-/** Discord-like status dot sizes; the dot's centre sits at 85% of the avatar. */
-const PRESENCE_DOT_TIERS = [
+/** Discord-like status dot sizes. */
+const PRESENCE_DOT_TIERS: readonly BadgeTier[] = [
   { maxAvatarPx: 20, sizePx: 6, gapPx: 1.5 },
   { maxAvatarPx: 28, sizePx: 8, gapPx: 2 },
   { maxAvatarPx: 36, sizePx: 10, gapPx: 3 },
@@ -181,17 +70,56 @@ const PRESENCE_DOT_TIERS = [
   { maxAvatarPx: 56, sizePx: 14, gapPx: 3 },
   { maxAvatarPx: 88, sizePx: 16, gapPx: 4 },
   { maxAvatarPx: Infinity, sizePx: 24, gapPx: 5 },
-] as const
+]
 
-export function resolvePresenceDotLayout(avatarPx: number): PresenceDotLayout {
-  const tier =
-    PRESENCE_DOT_TIERS.find((entry) => avatarPx <= entry.maxAvatarPx) ??
-    PRESENCE_DOT_TIERS[PRESENCE_DOT_TIERS.length - 1]
-  return { sizePx: tier.sizePx, gapPx: tier.gapPx }
+/** Discord-like unread count pill heights. */
+const COUNT_BADGE_TIERS: readonly BadgeTier[] = [
+  { maxAvatarPx: 28, sizePx: 12, gapPx: 2 },
+  { maxAvatarPx: 44, sizePx: 16, gapPx: 3 },
+  { maxAvatarPx: 64, sizePx: 18, gapPx: 3 },
+  { maxAvatarPx: Infinity, sizePx: 20, gapPx: 4 },
+]
+
+function tierFor(tiers: readonly BadgeTier[], avatarPx: number) {
+  return (
+    tiers.find((tier) => avatarPx <= tier.maxAvatarPx) ?? tiers[tiers.length - 1]!
+  )
 }
 
-export function resolvePresenceDotLayoutForAvatar(
-  ...classNames: Array<string | undefined>
-) {
-  return resolvePresenceDotLayout(resolveAvatarSizePx(...classNames))
+export type AvatarBadgeLayout = {
+  sizePx: number
+  widthPx: number
+  gapPx: number
+  fontPx?: number
+}
+
+/**
+ * Geometry for the avatar's corner badge: a status dot, or an unread count
+ * pill that widens with its label. Feeds the `avatar-badge-*` CSS variables.
+ */
+export function resolveAvatarBadgeLayout(
+  avatarPx: number,
+  badge: { kind: 'presence' } | { kind: 'count'; label: string },
+): AvatarBadgeLayout {
+  if (badge.kind === 'presence') {
+    const tier = tierFor(PRESENCE_DOT_TIERS, avatarPx)
+    return { sizePx: tier.sizePx, widthPx: tier.sizePx, gapPx: tier.gapPx }
+  }
+  const tier = tierFor(COUNT_BADGE_TIERS, avatarPx)
+  const extraChars = Math.max(0, badge.label.length - 1)
+  return {
+    sizePx: tier.sizePx,
+    widthPx: Math.round(tier.sizePx * (1 + 0.45 * extraChars)),
+    gapPx: tier.gapPx,
+    fontPx: Math.round(tier.sizePx * 0.68),
+  }
+}
+
+export function avatarBadgeVars(layout: AvatarBadgeLayout) {
+  return {
+    '--avatar-badge-size': `${layout.sizePx}px`,
+    '--avatar-badge-width': `${layout.widthPx}px`,
+    '--avatar-badge-gap': `${layout.gapPx}px`,
+    ...(layout.fontPx ? { '--avatar-badge-font': `${layout.fontPx}px` } : {}),
+  }
 }

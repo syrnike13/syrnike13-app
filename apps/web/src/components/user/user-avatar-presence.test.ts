@@ -1,19 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  PRESENCE_BADGE_SIZE_SCALE,
-  presenceRingColorVar,
+  avatarBadgeVars,
+  resolveAvatarBadgeLayout,
   resolveAvatarSizePx,
-  resolvePresenceBadgeLayout,
-  resolvePresenceBadgeLayoutForAvatar,
-  resolvePresenceDotLayout,
 } from '#/components/user/user-avatar-presence'
-
-describe('presenceRingColorVar', () => {
-  it('matches presence rings to popover surfaces', () => {
-    expect(presenceRingColorVar('border-popover')).toBe('var(--popover)')
-  })
-})
 
 describe('resolveAvatarSizePx', () => {
   it('parses tailwind size tokens', () => {
@@ -31,44 +22,34 @@ describe('resolveAvatarSizePx', () => {
   })
 })
 
-describe('resolvePresenceBadgeLayout', () => {
-  it('scales badge size with PRESENCE_BADGE_SIZE_SCALE', () => {
-    expect(resolvePresenceBadgeLayout(24)).toEqual({
-      sizePx: Math.round(6 * PRESENCE_BADGE_SIZE_SCALE),
-      ringPx: Math.round(1 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-1/5 translate-y-1/5',
-    })
-    expect(resolvePresenceBadgeLayout(32)).toEqual({
-      sizePx: Math.round(8 * PRESENCE_BADGE_SIZE_SCALE),
-      ringPx: Math.round(2 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-9/50 translate-y-9/50',
-    })
-    expect(resolvePresenceBadgeLayout(88)).toEqual({
-      sizePx: Math.round(16 * PRESENCE_BADGE_SIZE_SCALE),
-      ringPx: Math.round(3 * PRESENCE_BADGE_SIZE_SCALE),
-      offsetClass: 'translate-x-7/50 translate-y-7/50',
-    })
-  })
-})
-
-describe('resolvePresenceBadgeLayoutForAvatar', () => {
-  it('derives badge size from avatar class names', () => {
-    expect(
-      resolvePresenceBadgeLayoutForAvatar('size-6', 'size-6 text-[10px]').sizePx,
-    ).toBe(Math.round(6 * PRESENCE_BADGE_SIZE_SCALE))
-    expect(
-      resolvePresenceBadgeLayoutForAvatar(
-        'size-[88px]',
-        'size-[88px] text-2xl',
-      ).sizePx,
-    ).toBe(Math.round(16 * PRESENCE_BADGE_SIZE_SCALE))
-  })
-})
-
-describe('resolvePresenceDotLayout', () => {
+describe('resolveAvatarBadgeLayout', () => {
   it('keeps the status dot Discord-sized for each avatar size', () => {
-    expect(resolvePresenceDotLayout(32)).toEqual({ sizePx: 10, gapPx: 3 })
-    expect(resolvePresenceDotLayout(80)).toEqual({ sizePx: 16, gapPx: 4 })
-    expect(resolvePresenceDotLayout(120)).toEqual({ sizePx: 24, gapPx: 5 })
+    const presence = { kind: 'presence' } as const
+    expect(resolveAvatarBadgeLayout(32, presence)).toEqual({
+      sizePx: 10,
+      widthPx: 10,
+      gapPx: 3,
+    })
+    expect(resolveAvatarBadgeLayout(80, presence).sizePx).toBe(16)
+    expect(resolveAvatarBadgeLayout(120, presence).sizePx).toBe(24)
+  })
+
+  it('widens the unread pill with its label', () => {
+    const one = resolveAvatarBadgeLayout(40, { kind: 'count', label: '1' })
+    const many = resolveAvatarBadgeLayout(40, { kind: 'count', label: '99+' })
+    expect(one.widthPx).toBe(one.sizePx)
+    expect(many.sizePx).toBe(one.sizePx)
+    expect(many.widthPx).toBeGreaterThan(one.widthPx)
+  })
+
+  it('exposes the geometry as avatar-badge CSS variables', () => {
+    expect(
+      avatarBadgeVars({ sizePx: 16, widthPx: 23, gapPx: 3, fontPx: 11 }),
+    ).toEqual({
+      '--avatar-badge-size': '16px',
+      '--avatar-badge-width': '23px',
+      '--avatar-badge-gap': '3px',
+      '--avatar-badge-font': '11px',
+    })
   })
 })

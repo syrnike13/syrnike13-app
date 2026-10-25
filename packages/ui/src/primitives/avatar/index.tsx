@@ -7,21 +7,21 @@ import { cn } from "../../lib/cn"
 function Avatar({
   className,
   size = "default",
-  presenceCutout = false,
+  badgeCutout = false,
   ...props
 }: AvatarPrimitive.Root.Props & {
   /** `xs` (not in base-nova): 16px, inline with text (mutual friends). */
   size?: "default" | "xs" | "sm" | "lg"
-  /** Not in base-nova: cut the avatar out around a sibling presence badge. */
-  presenceCutout?: boolean
+  /** Not in base-nova: cut the avatar out around a sibling `AvatarBadge`. */
+  badgeCutout?: boolean
 }) {
   return (
     <AvatarPrimitive.Root
       data-slot="avatar"
       data-size={size}
-      data-presence-cutout={presenceCutout ? "" : undefined}
+      data-badge-cutout={badgeCutout ? "" : undefined}
       className={cn(
-        "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 data-[size=xs]:size-4 dark:after:mix-blend-lighten data-presence-cutout:avatar-presence-cutout",
+        "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 data-[size=xs]:size-4 dark:after:mix-blend-lighten data-badge-cutout:avatar-badge-cutout",
         className
       )}
       {...props}
@@ -63,29 +63,38 @@ export type AvatarPresence = "online" | "idle" | "focus" | "dnd" | "offline"
 function AvatarBadge({
   className,
   presence,
+  count,
+  children,
   ...props
 }: React.ComponentProps<"span"> & {
-  /**
-   * Not in base-nova: a Discord-like status dot. Placed next to an `Avatar`
-   * with `presenceCutout`; sized by `--avatar-dot-size`.
-   */
+  /** Not in base-nova: a Discord-like status dot (see `avatar-badge-anchor`). */
   presence?: AvatarPresence
+  /** Not in base-nova: an unread count pill in the same corner. */
+  count?: string
 }) {
+  const anchored = presence != null || count != null
   return (
     <span
       data-slot="avatar-badge"
       data-presence={presence}
+      data-count={count != null ? "" : undefined}
       className={cn(
         "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground bg-blend-color ring-2 ring-background select-none",
         "group-data-[size=sm]/avatar:size-2 group-data-[size=sm]/avatar:[&>svg]:hidden",
         "group-data-[size=default]/avatar:size-2.5 group-data-[size=default]/avatar:[&>svg]:size-2",
         "group-data-[size=lg]/avatar:size-3 group-data-[size=lg]/avatar:[&>svg]:size-2",
+        anchored &&
+          "data-presence:avatar-badge-anchor data-count:avatar-badge-anchor data-presence:ring-0 data-count:ring-0",
         presence &&
-          "data-presence:avatar-presence-dot data-presence:ring-0 data-[presence=dnd]:bg-destructive data-[presence=focus]:bg-chart-5 data-[presence=idle]:bg-chart-2 data-[presence=offline]:bg-muted-foreground data-[presence=online]:bg-chart-3",
+          "data-presence:avatar-presence-dot data-[presence=dnd]:bg-destructive data-[presence=focus]:bg-chart-5 data-[presence=idle]:bg-chart-2 data-[presence=offline]:bg-muted-foreground data-[presence=online]:bg-chart-3",
+        count != null &&
+          "bg-destructive-contrast leading-none font-bold text-destructive-foreground tabular-nums",
         className
       )}
       {...props}
-    />
+    >
+      {count ?? children}
+    </span>
   )
 }
 
