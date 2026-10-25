@@ -21,6 +21,8 @@ COPY packages/api-types packages/api-types
 COPY packages/platform packages/platform
 COPY packages/ui packages/ui
 COPY tooling tooling
+# The emoji picker offers only emoji the backend accepts (src/lib/emoji-catalog.ts).
+COPY services/backend/crates/core/database/src/models/emojis/unicode_emoji.txt services/backend/crates/core/database/src/models/emojis/
 
 ENV NODE_ENV=production
 ARG VITE_APP_TITLE=syrnike13
