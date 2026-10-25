@@ -84,12 +84,13 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+// Not in base-nova: no top border or tint, the footer continues the card.
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)",
+        "flex items-center rounded-b-xl p-(--card-spacing)",
         className
       )}
       {...props}
