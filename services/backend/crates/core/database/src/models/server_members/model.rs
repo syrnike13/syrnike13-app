@@ -4,7 +4,7 @@ use syrnike_result::{create_error, Result};
 
 use crate::{
     events::client::EventV1, util::permissions::DatabasePermissionQuery, Channel, Database, File,
-    PartialUser, Server, SystemMessage, User,
+    PartialUser, ProfileColours, Server, SystemMessage, User,
 };
 
 fn default_true() -> bool {
@@ -35,6 +35,15 @@ auto_derived_partial!(
         /// Avatar attachment
         #[serde(skip_serializing_if = "Option::is_none")]
         pub avatar: Option<File>,
+        /// Server profile banner
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub banner: Option<File>,
+        /// Server profile "about me"
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub bio: Option<String>,
+        /// Server profile theme colours
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub colours: Option<ProfileColours>,
 
         /// Member's roles
         #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -73,6 +82,9 @@ auto_derived!(
     pub enum FieldsMember {
         Nickname,
         Avatar,
+        Banner,
+        Bio,
+        Colours,
         Roles,
         Timeout,
         CanReceive,
@@ -96,6 +108,9 @@ impl Default for Member {
             joined_at: Timestamp::now_utc(),
             nickname: None,
             avatar: None,
+            banner: None,
+            bio: None,
+            colours: None,
             roles: vec![],
             timeout: None,
             can_publish: true,
@@ -257,6 +272,9 @@ impl Member {
         match field {
             FieldsMember::JoinedAt => {}
             FieldsMember::Avatar => self.avatar = None,
+            FieldsMember::Banner => self.banner = None,
+            FieldsMember::Bio => self.bio = None,
+            FieldsMember::Colours => self.colours = None,
             FieldsMember::Nickname => self.nickname = None,
             FieldsMember::Roles => self.roles.clear(),
             FieldsMember::Timeout => self.timeout = None,

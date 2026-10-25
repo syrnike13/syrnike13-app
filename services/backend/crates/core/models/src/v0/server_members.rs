@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{File, Role, User};
+use super::{File, ProfileColours, Role, User};
 
 use iso8601_timestamp::Timestamp;
 use once_cell::sync::Lazy;
@@ -55,6 +55,15 @@ auto_derived_partial!(
         /// Avatar attachment
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub avatar: Option<File>,
+        /// Server profile banner
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub banner: Option<File>,
+        /// Server profile "about me"
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub bio: Option<String>,
+        /// Server profile theme colours
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub colours: Option<ProfileColours>,
 
         /// Member's roles
         #[cfg_attr(
@@ -96,6 +105,9 @@ auto_derived!(
     pub enum FieldsMember {
         Nickname,
         Avatar,
+        Banner,
+        Bio,
+        Colours,
         Roles,
         Timeout,
         CanReceive,
@@ -144,6 +156,15 @@ auto_derived!(
         pub nickname: Option<String>,
         /// Attachment Id to set for avatar
         pub avatar: Option<String>,
+        /// Attachment Id to set for the server profile banner
+        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 128)))]
+        pub banner: Option<String>,
+        /// Server profile "about me"
+        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 2000)))]
+        pub bio: Option<String>,
+        /// Server profile theme colours
+        #[cfg_attr(feature = "validator", validate)]
+        pub colours: Option<ProfileColours>,
         /// Array of role ids
         pub roles: Option<Vec<String>>,
         /// Timestamp this member is timed out until

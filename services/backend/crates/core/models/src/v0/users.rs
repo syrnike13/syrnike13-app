@@ -13,6 +13,9 @@ use validator::Validate;
 /// Block lookalike characters
 pub static RE_USERNAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\p{L}|[\d_.-])+$").unwrap());
 
+/// Regex for profile colours: `#RRGGBB`
+pub static RE_PROFILE_COLOUR: Lazy<Regex> = Lazy::new(|| Regex::new(r"^#[0-9a-fA-F]{6}$").unwrap());
+
 /// Regex for valid display names
 ///
 /// Block zero width space
@@ -86,6 +89,7 @@ auto_derived!(
         StatusPresence,
         ProfileContent,
         ProfileBackground,
+        ProfileColours,
         DisplayName,
 
         /// Internal field, ignore this.
@@ -163,6 +167,20 @@ auto_derived!(
         /// Background visible on user's profile
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub background: Option<File>,
+        /// Profile theme colours
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub colours: Option<ProfileColours>,
+    }
+
+    /// Profile theme colours, like Discord's profile themes
+    #[cfg_attr(feature = "validator", derive(Validate))]
+    pub struct ProfileColours {
+        /// Main colour, used for the top of the profile (`#RRGGBB`)
+        #[cfg_attr(feature = "validator", validate(regex = "RE_PROFILE_COLOUR"))]
+        pub primary: String,
+        /// Accent colour, used for the bottom of the profile (`#RRGGBB`)
+        #[cfg_attr(feature = "validator", validate(regex = "RE_PROFILE_COLOUR"))]
+        pub accent: String,
     }
 
     /// Who can reach a user; only returned to the user themselves
@@ -213,6 +231,10 @@ auto_derived!(
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         #[cfg_attr(feature = "validator", validate(length(min = 1, max = 128)))]
         pub background: Option<String>,
+        /// Profile theme colours
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        #[cfg_attr(feature = "validator", validate)]
+        pub colours: Option<ProfileColours>,
     }
 
     /// New user information

@@ -289,7 +289,20 @@
       "removeAvatar": "Remove avatar",
       "addAvatar": "Add avatar",
       "avatar": "Avatar",
-      "banner": "Banner"
+      "banner": "Banner",
+      "tabsAria": "Profile type",
+      "userProfileTab": "User profile",
+      "serverProfilesTab": "Server profiles",
+      "colours": "Profile colours",
+      "primaryColour": "Primary",
+      "accentColour": "Accent",
+      "resetColours": "Reset"
+    },
+    "serverProfile": {
+      "server": "Server",
+      "hint": "Empty fields use your user profile.",
+      "nickname": "Nickname",
+      "noServers": "Join a server to set up a server profile."
     },
     "desktop": {
       "app": "Application",

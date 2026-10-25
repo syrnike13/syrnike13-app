@@ -1064,6 +1064,19 @@ html {
   grid-template-columns: minmax(0, 1fr) 17.5rem;
 }
 
+/*
+ * Profile theme (Discord profile colours). The API colours arrive as
+ * --profile-primary / --profile-accent and are mixed into the card surface
+ * so text keeps the surface's contrast.
+ */
+@utility profile-theme {
+  --profile-surface: color-mix(in oklab, var(--profile-primary) 35%, var(--profile-base));
+  background-image: linear-gradient(
+    color-mix(in oklab, var(--profile-primary) 35%, var(--profile-base)),
+    color-mix(in oklab, var(--profile-accent) 35%, var(--profile-base))
+  );
+}
+
 @utility settings-hotkeys-grid {
   grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) auto auto;
 }

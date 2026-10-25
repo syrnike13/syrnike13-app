@@ -343,6 +343,9 @@ impl IntoDocumentPath for FieldsMember {
         match self {
             FieldsMember::JoinedAt => Some("joined_at"),
             FieldsMember::Avatar => Some("avatar"),
+            FieldsMember::Banner => Some("banner"),
+            FieldsMember::Bio => Some("bio"),
+            FieldsMember::Colours => Some("colours"),
             FieldsMember::Nickname => Some("nickname"),
             FieldsMember::Roles => Some("roles"),
             FieldsMember::Timeout => Some("timeout"),

@@ -10254,6 +10254,15 @@
             "maxLength": 128,
             "minLength": 1,
             "nullable": true
+          },
+          "colours": {
+            "description": "Profile theme colours",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileColours"
+              }
+            ],
+            "nullable": true
           }
         }
       },
@@ -10268,6 +10277,7 @@
               "StatusPresence",
               "ProfileContent",
               "ProfileBackground",
+              "ProfileColours",
               "DisplayName"
             ]
           },
@@ -10358,6 +10368,26 @@
           }
         }
       },
+      "ProfileColours": {
+        "description": "Profile theme colours, like Discord's profile themes",
+        "type": "object",
+        "required": [
+          "accent",
+          "primary"
+        ],
+        "properties": {
+          "primary": {
+            "description": "Main colour, used for the top of the profile (`#RRGGBB`)",
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "accent": {
+            "description": "Accent colour, used for the bottom of the profile (`#RRGGBB`)",
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        }
+      },
       "UserProfile": {
         "description": "User's profile",
         "type": "object",
@@ -10374,6 +10404,15 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "colours": {
+            "description": "Profile theme colours",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileColours"
               }
             ],
             "nullable": true
@@ -11260,6 +11299,29 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "banner": {
+            "description": "Server profile banner",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "bio": {
+            "description": "Server profile \"about me\"",
+            "type": "string",
+            "nullable": true
+          },
+          "colours": {
+            "description": "Server profile theme colours",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileColours"
               }
             ],
             "nullable": true
@@ -13322,6 +13384,29 @@
             "type": "string",
             "nullable": true
           },
+          "banner": {
+            "description": "Attachment Id to set for the server profile banner",
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "nullable": true
+          },
+          "bio": {
+            "description": "Server profile \"about me\"",
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "nullable": true
+          },
+          "colours": {
+            "description": "Server profile theme colours",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileColours"
+              }
+            ],
+            "nullable": true
+          },
           "roles": {
             "description": "Array of role ids",
             "type": "array",
@@ -13370,6 +13455,9 @@
         "enum": [
           "Nickname",
           "Avatar",
+          "Banner",
+          "Bio",
+          "Colours",
           "Roles",
           "Timeout",
           "CanReceive",

@@ -61,10 +61,10 @@ export function CurrentUserProfileMenu({
     }
   }
 
-  const { bio } = useUserProfileData(user._id)
+  const { bio, colours } = useUserProfileData(user._id)
 
   return (
-    <ProfileSurface surface="popover">
+    <ProfileSurface colours={colours} surface="popover">
       <ProfileHeader
         user={user}
         actions={bannerOverlay}

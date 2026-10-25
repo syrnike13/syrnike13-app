@@ -365,6 +365,7 @@ impl IntoDocumentPath for FieldsUser {
             FieldsUser::Avatar => "avatar",
             FieldsUser::ProfileBackground => "profile.background",
             FieldsUser::ProfileContent => "profile.content",
+            FieldsUser::ProfileColours => "profile.colours",
             FieldsUser::StatusPresence => "status.presence",
             FieldsUser::StatusText => "status.text",
             FieldsUser::DisplayName => "display_name",

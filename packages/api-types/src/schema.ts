@@ -1332,6 +1332,8 @@ export interface components {
       content?: string | null;
       /** @description Attachment Id for background */
       background?: string | null;
+      /** @description Profile theme colours */
+      colours?: components["schemas"]["ProfileColours"] | null;
     };
     /** @description Optional fields on user object */
     FieldsUser:
@@ -1341,6 +1343,7 @@ export interface components {
           | "StatusPresence"
           | "ProfileContent"
           | "ProfileBackground"
+          | "ProfileColours"
           | "DisplayName"
         )
       | "Internal";
@@ -1382,12 +1385,21 @@ export interface components {
        */
       friend_requests?: components["schemas"]["FriendRequestPrivacy"];
     };
+    /** @description Profile theme colours, like Discord's profile themes */
+    ProfileColours: {
+      /** @description Main colour, used for the top of the profile (`#RRGGBB`) */
+      primary: string;
+      /** @description Accent colour, used for the bottom of the profile (`#RRGGBB`) */
+      accent: string;
+    };
     /** @description User's profile */
     UserProfile: {
       /** @description Text content on user's profile */
       content?: string | null;
       /** @description Background visible on user's profile */
       background?: components["schemas"]["File"] | null;
+      /** @description Profile theme colours */
+      colours?: components["schemas"]["ProfileColours"] | null;
     };
     /** @description Channel */
     Channel:
@@ -1740,6 +1752,12 @@ export interface components {
       nickname?: string | null;
       /** @description Avatar attachment */
       avatar?: components["schemas"]["File"] | null;
+      /** @description Server profile banner */
+      banner?: components["schemas"]["File"] | null;
+      /** @description Server profile "about me" */
+      bio?: string | null;
+      /** @description Server profile theme colours */
+      colours?: components["schemas"]["ProfileColours"] | null;
       /** @description Member's roles */
       roles?: string[];
       /** @description Timestamp this member is timed out until */
@@ -2471,6 +2489,12 @@ export interface components {
       nickname?: string | null;
       /** @description Attachment Id to set for avatar */
       avatar?: string | null;
+      /** @description Attachment Id to set for the server profile banner */
+      banner?: string | null;
+      /** @description Server profile "about me" */
+      bio?: string | null;
+      /** @description Server profile theme colours */
+      colours?: components["schemas"]["ProfileColours"] | null;
       /** @description Array of role ids */
       roles?: string[] | null;
       /** @description Timestamp this member is timed out until */
@@ -2494,6 +2518,9 @@ export interface components {
     FieldsMember:
       | "Nickname"
       | "Avatar"
+      | "Banner"
+      | "Bio"
+      | "Colours"
       | "Roles"
       | "Timeout"
       | "CanReceive"

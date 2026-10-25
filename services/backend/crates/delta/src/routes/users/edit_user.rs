@@ -131,6 +131,10 @@ pub async fn edit(
                 Some(File::use_background(db, &background, &user.id, &user.id).await?);
         }
 
+        if let Some(colours) = profile.colours {
+            new_profile.colours = Some(colours.into());
+        }
+
         partial.profile = Some(new_profile);
     }
 

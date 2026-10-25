@@ -53,9 +53,15 @@ fn changes_explicit_voice_membership(data: &v0::DataMemberEdit) -> bool {
 fn changes_persisted_member(data: &v0::DataMemberEdit) -> bool {
     data.nickname.is_some()
         || data.avatar.is_some()
+        || data.banner.is_some()
+        || data.bio.is_some()
+        || data.colours.is_some()
         || changes_voice_permissions(data)
         || data.remove.contains(&FieldsMember::Nickname)
         || data.remove.contains(&FieldsMember::Avatar)
+        || data.remove.contains(&FieldsMember::Banner)
+        || data.remove.contains(&FieldsMember::Bio)
+        || data.remove.contains(&FieldsMember::Colours)
 }
 
 /// Enforce an authority directive that was already delivered to the owning
@@ -211,6 +217,34 @@ pub async fn edit(
         }
     }
 
+    // Server profile: only the member edits it; moderators may only clear it.
+    if data.banner.is_some() || data.remove.contains(&v0::FieldsMember::Banner) {
+        if user.id == member.id.user {
+            permissions.throw_if_lacking_channel_permission(ChannelPermission::ChangeAvatar)?;
+        } else if data.banner.is_none() {
+            permissions.throw_if_lacking_channel_permission(ChannelPermission::RemoveAvatars)?;
+        } else {
+            return Err(create_error!(InvalidOperation));
+        }
+    }
+
+    if data.bio.is_some() || data.remove.contains(&v0::FieldsMember::Bio) {
+        if user.id == member.id.user {
+            permissions.throw_if_lacking_channel_permission(ChannelPermission::ChangeNickname)?;
+        } else if data.bio.is_none() {
+            permissions.throw_if_lacking_channel_permission(ChannelPermission::ManageNicknames)?;
+        } else {
+            return Err(create_error!(InvalidOperation));
+        }
+    }
+
+    if data.colours.is_some() || data.remove.contains(&v0::FieldsMember::Colours) {
+        if user.id != member.id.user {
+            return Err(create_error!(InvalidOperation));
+        }
+        permissions.throw_if_lacking_channel_permission(ChannelPermission::ChangeNickname)?;
+    }
+
     if data.roles.is_some() || data.remove.contains(&v0::FieldsMember::Roles) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::AssignRoles)?;
     }
@@ -298,6 +332,8 @@ pub async fn edit(
         || data.remove.contains(&v0::FieldsMember::Nickname)
         || data.avatar.is_some()
         || data.remove.contains(&v0::FieldsMember::Avatar)
+        || data.remove.contains(&v0::FieldsMember::Banner)
+        || data.remove.contains(&v0::FieldsMember::Bio)
         || data.timeout.is_some()
         || data.remove.contains(&v0::FieldsMember::Timeout)
         || (changes_voice_moderation && member.id.user != server.owner);
@@ -343,6 +379,23 @@ pub async fn edit(
                 member.avatar.as_ref().map(|avatar| avatar.id.clone()),
                 data.avatar.clone(),
             )?,
+        ));
+    }
+
+    if data.banner.is_some() || data.remove.contains(&v0::FieldsMember::Banner) {
+        change_entries.push((
+            "banner",
+            audit_mutation::audit_change(
+                member.banner.as_ref().map(|banner| banner.id.clone()),
+                data.banner.clone(),
+            )?,
+        ));
+    }
+
+    if data.bio.is_some() || data.remove.contains(&v0::FieldsMember::Bio) {
+        change_entries.push((
+            "bio",
+            audit_mutation::audit_change(member.bio.clone(), data.bio.clone())?,
         ));
     }
 
@@ -424,6 +477,9 @@ pub async fn edit(
         let v0::DataMemberEdit {
             nickname,
             avatar,
+            banner,
+            bio,
+            colours,
             roles,
             timeout,
             remove,
@@ -436,6 +492,8 @@ pub async fn edit(
             member.temporary && roles.as_ref().is_some_and(|roles| !roles.is_empty());
         let mut partial = PartialMember {
             nickname,
+            bio,
+            colours: colours.map(Into::into),
             roles,
             timeout,
             can_publish,
@@ -451,9 +509,19 @@ pub async fn edit(
             }
         }
 
-        // 2. Apply new avatar
+        if remove.contains(&v0::FieldsMember::Banner) {
+            if let Some(banner) = &member.banner {
+                db.mark_attachment_as_deleted(&banner.id).await?;
+            }
+        }
+
+        // 2. Apply new avatar and banner
         if let Some(avatar) = avatar {
             partial.avatar = Some(File::use_user_avatar(db, &avatar, &user.id, &user.id).await?);
+        }
+
+        if let Some(banner) = banner {
+            partial.banner = Some(File::use_background(db, &banner, &user.id, &user.id).await?);
         }
 
         if !explicit_voice_membership_change {
@@ -794,6 +862,74 @@ mod test {
 
             (account, session)
         }
+    }
+
+    #[rocket::async_test]
+    async fn server_profile_is_edited_by_the_member_and_only_cleared_by_moderators() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            target user 2
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let (_, target_session) = context.account_from_user(target.id.clone()).await;
+        let edit = |session: String, body: serde_json::Value| {
+            context
+                .client
+                .patch(format!("/servers/{}/members/{}", server.id, target.id))
+                .header(ContentType::JSON)
+                .body(body.to_string())
+                .header(Header::new("x-session-token", session))
+                .dispatch()
+        };
+
+        let response = edit(
+            target_session.token.to_string(),
+            serde_json::json!({
+                "bio": "Hello server",
+                "colours": { "primary": "#112233", "accent": "#aabbcc" }
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), Status::Ok);
+        drop(response);
+
+        let response = edit(
+            owner_session.token.to_string(),
+            serde_json::json!({ "bio": "Not yours" }),
+        )
+        .await;
+        assert_eq!(response.status(), Status::BadRequest);
+        drop(response);
+
+        let member = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("member fetched");
+        assert_eq!(member.bio.as_deref(), Some("Hello server"));
+        assert_eq!(
+            member.colours.map(|colours| colours.accent).as_deref(),
+            Some("#aabbcc")
+        );
+
+        let response = edit(
+            owner_session.token.to_string(),
+            serde_json::json!({ "remove": ["Bio"] }),
+        )
+        .await;
+        assert_eq!(response.status(), Status::Ok);
+        drop(response);
+
+        let member = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("member fetched");
+        assert_eq!(member.bio, None);
+        assert!(member.colours.is_some());
     }
 
     #[rocket::async_test]
@@ -1391,6 +1527,9 @@ mod test {
         let body = serde_json::to_string(&syrnike_models::v0::DataMemberEdit {
             nickname: None,
             avatar: None,
+            banner: None,
+            bio: None,
+            colours: None,
             roles: None,
             timeout: None,
             can_publish: None,
@@ -1429,6 +1568,9 @@ mod test {
             &syrnike_models::v0::DataMemberEdit {
                 nickname: None,
                 avatar: None,
+                banner: None,
+                bio: None,
+                colours: None,
                 roles: Some(vec!["role-a".to_string()]),
                 timeout: None,
                 can_publish: None,
@@ -1442,6 +1584,9 @@ mod test {
             &syrnike_models::v0::DataMemberEdit {
                 nickname: None,
                 avatar: None,
+                banner: None,
+                bio: None,
+                colours: None,
                 roles: None,
                 timeout: None,
                 can_publish: None,
@@ -1455,6 +1600,9 @@ mod test {
             &syrnike_models::v0::DataMemberEdit {
                 nickname: None,
                 avatar: None,
+                banner: None,
+                bio: None,
+                colours: None,
                 roles: None,
                 timeout: Some(Timestamp::now_utc()),
                 can_publish: None,
@@ -1468,6 +1616,9 @@ mod test {
             &syrnike_models::v0::DataMemberEdit {
                 nickname: None,
                 avatar: None,
+                banner: None,
+                bio: None,
+                colours: None,
                 roles: None,
                 timeout: None,
                 can_publish: None,
@@ -1481,6 +1632,9 @@ mod test {
             &syrnike_models::v0::DataMemberEdit {
                 nickname: Some("Renamed".to_string()),
                 avatar: None,
+                banner: None,
+                bio: None,
+                colours: None,
                 roles: None,
                 timeout: None,
                 can_publish: None,
@@ -1496,6 +1650,9 @@ mod test {
         let voice_only = syrnike_models::v0::DataMemberEdit {
             nickname: None,
             avatar: None,
+            banner: None,
+            bio: None,
+            colours: None,
             roles: None,
             timeout: None,
             can_publish: None,

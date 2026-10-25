@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import type { User } from '@syrnike13/api-types'
+import type { ProfileColours, User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PencilFillIcon } from '#/components/icons'
@@ -35,11 +35,14 @@ const SURFACE_VAR: Record<ProfileSurfaceColor, string> = {
 export function ProfileSurface({
   size = 'sm',
   surface,
+  colours,
   className,
   children,
 }: {
   size?: ProfileSize
   surface: ProfileSurfaceColor
+  /** Profile theme; the card keeps its plain surface without one. */
+  colours?: ProfileColours | null
   className?: string
   children: ReactNode
 }) {
@@ -47,8 +50,21 @@ export function ProfileSurface({
     <ProfileSizeContext.Provider value={size}>
       <div
         data-profile-size={size}
-        className={cn('relative flex min-w-0 flex-col', className)}
-        style={{ '--profile-surface': SURFACE_VAR[surface] } as CSSVars}
+        className={cn(
+          'relative flex min-w-0 flex-col',
+          colours && 'profile-theme',
+          className,
+        )}
+        // Profile colours come from the API, like role colours.
+        style={
+          colours
+            ? ({
+                '--profile-base': SURFACE_VAR[surface],
+                '--profile-primary': colours.primary,
+                '--profile-accent': colours.accent,
+              } as CSSVars)
+            : ({ '--profile-surface': SURFACE_VAR[surface] } as CSSVars)
+        }
       >
         {children}
       </div>

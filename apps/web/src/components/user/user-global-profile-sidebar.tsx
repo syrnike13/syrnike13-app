@@ -81,7 +81,7 @@ export function UserGlobalProfileSidebar({
   const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
-  const { bio } = useUserProfileData(user._id)
+  const { bio, colours } = useUserProfileData(user._id)
   const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
 
   const server = useSyncStore((state) =>
@@ -112,6 +112,7 @@ export function UserGlobalProfileSidebar({
 
   return (
     <ProfileSurface
+      colours={colours}
       size="lg"
       surface="secondary"
       className="min-h-0 flex-1 overflow-y-auto rounded-xl bg-secondary"
