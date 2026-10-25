@@ -151,6 +151,13 @@ int scan(Output& output, const std::string& path) {
 
 // Per-slot control record. The slot itself is shared with the chains that the
 // realtime thread runs; this thread is the only one that releases it.
+// Set by the component handler, which plugins may call from process() on the
+// realtime thread; the control thread consumes them in tick().
+struct SlotSignals {
+  std::atomic<bool> edited{false};
+  std::atomic<bool> restart{false};
+};
+
 struct SlotRecord {
   std::string id;
   std::string kind;      // "builtin" or "vst3"
@@ -160,7 +167,7 @@ struct SlotRecord {
   BuiltinEffect* builtin = nullptr;
   Vst3Effect* vst = nullptr;
   std::optional<Clock::time_point> state_due;
-  bool restart = false;
+  std::shared_ptr<SlotSignals> signals = std::make_shared<SlotSignals>();
 };
 
 class Host {
@@ -208,6 +215,7 @@ class Host {
     for (auto& record : records_) {
       PluginActivity activity(record.slot->label().c_str());
       if (record.vst) record.vst->pumpOutputChanges();
+      if (record.signals->edited.exchange(false)) record.state_due = now + kStateDebounce;
       if (record.state_due && now >= *record.state_due) {
         record.state_due.reset();
         if (record.vst)
@@ -245,13 +253,12 @@ class Host {
       for (const auto& [name, value] : *params)
         if (const auto number = value.number()) record.builtin->setParameter(name, static_cast<float>(*number));
   }
-  Vst3Effect::Notify notifier(const std::string& id) {
-    // Plugins call the component handler on this thread; only flag here.
-    return [this, id](Vst3Notice notice) {
-      const auto found = std::ranges::find(records_, id, &SlotRecord::id);
-      if (found == records_.end()) return;
-      if (notice == Vst3Notice::restart) found->restart = true;
-      found->state_due = Clock::now() + kStateDebounce;
+  static Vst3Effect::Notify notifier(std::shared_ptr<SlotSignals> signals) {
+    // Plugins may call the component handler from any thread, the realtime
+    // one included; only raise flags here.
+    return [signals = std::move(signals)](Vst3Notice notice) {
+      if (notice == Vst3Notice::restart) signals->restart.store(true);
+      signals->edited.store(true);
     };
   }
   SlotRecord create(const Json& slot, const std::string& id, std::string& error) {
@@ -277,7 +284,7 @@ class Host {
         if (!path || !class_id) throw std::runtime_error("The plugin is not specified");
         std::optional<std::vector<std::uint8_t>> state;
         if (const auto* encoded = slot["state"].string()) state = decodeBase64(*encoded);
-        auto value = Vst3Effect::create(*path, *class_id, state ? &*state : nullptr, notifier(id));
+        auto value = Vst3Effect::create(*path, *class_id, state ? &*state : nullptr, notifier(record.signals));
         crash_reporting::rearm();
         record.identity = *path + "|" + *class_id;
         record.vst = value.get();
@@ -433,15 +440,14 @@ class Host {
   void restartPlugins() {
     bool changed = false;
     for (auto& record : records_) {
-      if (!record.restart || !record.vst) continue;
-      record.restart = false;
+      if (!record.vst || !record.signals->restart.exchange(false)) continue;
       const auto state = record.vst->saveState();
       const auto separator = record.identity.find('|');
       const bool reopen = record.vst->editorOpen();
       PluginActivity activity(record.slot->label().c_str());
       try {
         auto effect = Vst3Effect::create(record.identity.substr(0, separator), record.identity.substr(separator + 1),
-                                         &state, notifier(record.id));
+                                         &state, notifier(record.signals));
         auto* vst = effect.get();
         crash_reporting::rearm();
         auto slot = std::make_shared<EffectSlot>(std::move(effect), record.slot->mix(), record.slot->enabled(),

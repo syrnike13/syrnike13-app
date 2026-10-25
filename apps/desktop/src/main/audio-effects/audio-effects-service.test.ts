@@ -83,6 +83,13 @@ function setup(storageDir: string, overrides: { scan?: (args: string[]) => unkno
     spawnHost,
   })
   service.onBusChange(bus => buses.push(bus))
+  // As if the effect list had been opened and the scan had found the plugin.
+  service['catalog'] = {
+    scanning: false,
+    failures: [],
+    plugins: [{ path: 'C:/VST3/Room.vst3', classId: '0123456789ABCDEF0123456789ABCDEF', name: 'Room',
+      vendor: 'Vendor', version: '1', subCategories: 'Fx' }],
+  }
   return { service, hosts, states, buses, spawnHost }
 }
 
@@ -108,6 +115,19 @@ describe('AudioEffectsService', () => {
     await service.setChain([])
     expect(buses).toEqual([busId, null])
     expect(hosts[0]!.exitCode).toBe(0)
+    await service.dispose()
+  })
+
+  it('refuses plugins the scan did not find', async () => {
+    const { service, hosts } = setup(storageDir)
+    const remote = { ...plugin('x'), path: String.raw`\\attacker\share\Evil.vst3` } as AudioEffectSlot
+    const state = await service.setChain([plugin('p'), remote, builtin('a')])
+    expect(state.slots.map(slot => slot.slotId)).toEqual(['p', 'a'])
+    const setChain = hosts[0]!.commands.find(command => command.type === 'setChain')
+    expect((setChain?.slots as AudioEffectSlot[]).map(slot => slot.slotId)).toEqual(['p', 'a'])
+    // A plugin already in the chain stays when the list changes around it.
+    service['catalog'] = { scanning: false, plugins: [], failures: [] }
+    expect((await service.setChain([plugin('p')])).slots.map(slot => slot.slotId)).toEqual(['p'])
     await service.dispose()
   })
 

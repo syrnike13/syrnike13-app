@@ -122,7 +122,11 @@ export class AudioEffectsService {
     return () => this.busListeners.delete(listener)
   }
 
-  async setChain(slots: readonly AudioEffectSlot[]): Promise<AudioEffectsState> {
+  async setChain(requested: readonly AudioEffectSlot[]): Promise<AudioEffectsState> {
+    // The renderer names the module the host loads as a DLL. Accept only
+    // plugins the scan found in the standard VST3 folders, or ones already in
+    // the chain, so a compromised page cannot load code from any path.
+    const slots = requested.filter(slot => slot.kind === 'builtin' || this.isKnownPlugin(slot))
     const ids = new Set(slots.map(slot => slot.slotId))
     this.slots = [...slots]
     for (const id of Object.keys(this.states)) if (!ids.has(id)) delete this.states[id]
@@ -134,6 +138,13 @@ export class AudioEffectsService {
     this.schedulePersist()
     await this.apply()
     return this.state()
+  }
+
+  private isKnownPlugin(slot: { path: string, classId: string }): boolean {
+    const matches = (value: { path: string, classId: string }) =>
+      value.path === slot.path && value.classId === slot.classId
+    return this.catalog.plugins.some(matches)
+      || this.slots.some(value => value.kind === 'vst3' && matches(value))
   }
 
   updateSlot(update: AudioEffectSlotUpdate): void {

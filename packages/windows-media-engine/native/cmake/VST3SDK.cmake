@@ -73,6 +73,16 @@ function(windows_media_setup_vst3_sdk)
     _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING NOMINMAX WIN32_LEAN_AND_MEAN)
   if(MSVC)
     target_compile_options(vst3_hosting PRIVATE /W0 /EHsc /permissive- /utf-8)
+    # Match windows_media_target(): the host links this library, so the CRT
+    # and the sanitizer annotations must agree.
+    if(WINDOWS_MEDIA_ENABLE_ASAN)
+      set_property(TARGET vst3_hosting PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+      )
+      target_compile_options(vst3_hosting PRIVATE /fsanitize=address)
+    else()
+      target_compile_options(vst3_hosting PRIVATE /guard:cf)
+    endif()
   endif()
   target_link_libraries(vst3_hosting PUBLIC ole32 shell32)
 endfunction()
