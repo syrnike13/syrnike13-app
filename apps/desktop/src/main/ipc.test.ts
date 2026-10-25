@@ -130,6 +130,23 @@ describe('registerDesktopIpc', () => {
     }
   })
 
+  it('ends a self-monitoring check when the renderer goes away', async () => {
+    const { registerNativeMediaRuntimeIpc } = await import('./native-media-engine')
+    const { desktopVoiceService } = await import('./voice/desktop-voice-service')
+    const { registerDesktopIpc } = await import('./ipc')
+    const dispatch = vi.spyOn(desktopVoiceService, 'dispatch').mockResolvedValue(
+      desktopVoiceService.snapshot(),
+    )
+    try {
+      registerDesktopIpc(() => null, ipcOptions())
+      const rendererGone = vi.mocked(registerNativeMediaRuntimeIpc).mock.calls.at(-1)?.[1]
+      rendererGone?.()
+      expect(dispatch).toHaveBeenCalledWith({ type: 'setSelfMonitoringActive', active: false })
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
+
   it('writes copied text through the native Electron clipboard', async () => {
     const { IPC } = await import('@syrnike13/platform')
     const { registerDesktopIpc } = await import('./ipc')

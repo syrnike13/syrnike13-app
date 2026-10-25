@@ -198,6 +198,29 @@ describe('DesktopVoiceService session scope', () => {
     await service.dispose()
   })
 
+  it('ends a self-monitoring check from the mic hotkey without saving a mute', async () => {
+    const service = new DesktopVoiceService()
+    const persist = vi.fn()
+    service.setPreferencePersistence(persist)
+    service.startSystemLifecycle()
+    const activate = vi.mocked(subscribeHotkeyActivations).mock.calls.at(-1)![0]
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    await service.dispatch({ type: 'setSelfMonitoringActive', active: true })
+
+    activate({ action: 'toggle-mic', phase: 'pressed' })
+    expect(service.snapshot()).toMatchObject({
+      selfMonitoringActive: false,
+      userMuted: false,
+      effectiveMuted: false,
+    })
+    expect(persist).not.toHaveBeenCalled()
+
+    activate({ action: 'toggle-mic', phase: 'pressed' })
+    expect(service.snapshot().userMuted).toBe(true)
+    expect(persist).toHaveBeenCalledWith({ micEnabled: false })
+    await service.dispose()
+  })
+
   it('forwards the current native RTC telemetry snapshot', async () => {
     const service = new DesktopVoiceService()
     const telemetry = {

@@ -303,6 +303,7 @@ void MicrophoneOwner::run() noexcept {
       MicrophoneOwnerSnapshot current;
       current.pipeline = pipeline ? pipeline->stats() : MicrophonePipelineStats{};
       current.sender = sender ? sender->stats() : MicrophoneSenderStats{};
+      if (monitor) current.monitor = monitor->stats();
       if (current.sender.failure != MicrophonePublicationFailure::none) {
         problem = EngineFailure{"microphone_sender_failed", "Microphone publication stopped progressing", "microphone", true};
         stopSender();

@@ -13,6 +13,7 @@ import {
   GatewayVoiceAuthorityAdapter,
   VoiceDirector,
   deafenToggleCommand,
+  micToggleCommand,
   type DesktopStoredSession,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
@@ -420,20 +421,13 @@ export class DesktopVoiceService {
     }
     if (phase !== 'pressed') return
     if (action === 'toggle-mic') {
-      if (snapshot.userDeafened) {
-        this.runtime.director.dispatch({
-          type: 'setUserDeafened',
-          deafened: false,
-        })
-        this.persistPreference({ deafened: false })
-        return
+      const command = micToggleCommand(snapshot)
+      this.runtime.director.dispatch(command)
+      if (command.type === 'setUserDeafened') {
+        this.persistPreference({ deafened: command.deafened })
+      } else if (command.type === 'setUserMuted') {
+        this.persistPreference({ micEnabled: !command.muted })
       }
-      const micEnabled = snapshot.userMuted
-      this.runtime.director.dispatch({
-        type: 'setUserMuted',
-        muted: !micEnabled,
-      })
-      this.persistPreference({ micEnabled })
     } else if (action === 'toggle-deafen') {
       const command = deafenToggleCommand(snapshot)
       this.runtime.director.dispatch(command)

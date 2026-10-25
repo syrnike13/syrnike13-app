@@ -44,7 +44,7 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
-import { useSelfMonitoringEnded } from '#/features/voice/use-self-monitoring-ended'
+import { useSelfMonitoringCheck } from '#/features/voice/use-self-monitoring-check'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
@@ -183,7 +183,6 @@ export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
   const { capabilities, os } = usePlatform()
   const { selfMonitoringActive, setSelfMonitoringActive } = useVoiceMedia()
-  const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
   const cameraDevices = useMediaDevices('videoinput')
@@ -205,19 +204,13 @@ export function SettingsVoicePanel() {
     }
   }, [av1Supported, prefs.screenShareCodec])
 
-  useEffect(() => {
-    setSelfMonitoringActiveRef.current = setSelfMonitoringActive
-  }, [setSelfMonitoringActive])
-
-  useEffect(() => {
-    setSelfMonitoringActiveRef.current(micTestActive)
-    return () => {
-      setSelfMonitoringActiveRef.current(false)
-    }
-  }, [micTestActive])
-
   // The deafen button and the desktop hotkey can end the check elsewhere.
-  useSelfMonitoringEnded(selfMonitoringActive, () => setMicTestActive(false))
+  useSelfMonitoringCheck(
+    micTestActive,
+    selfMonitoringActive,
+    setSelfMonitoringActive,
+    () => setMicTestActive(false),
+  )
 
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'

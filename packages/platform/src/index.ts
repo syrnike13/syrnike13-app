@@ -262,6 +262,7 @@ export {
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
   deafenToggleCommand,
+  micToggleCommand,
   isVoiceCommand,
   isVoiceRemoteAudioSettings,
   isVoiceSnapshot,
