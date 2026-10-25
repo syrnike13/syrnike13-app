@@ -1,6 +1,7 @@
 import type {
   DataEditUser,
   DataSendFriendRequest,
+  UserPrivacy,
 } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect } from 'effect'
@@ -222,3 +223,21 @@ export function unblockUser(
     signal ? { signal } : undefined,
   )
 }
+
+export const fetchPrivacyEffect = Effect.fn('web.users.fetchPrivacy')(
+  function*(token: string) {
+    return yield* apiRequestEffect('/users/@me/privacy', ApiSchema.PrivacyFetch200, {
+      token,
+    })
+  },
+)
+
+export const updatePrivacyEffect = Effect.fn('web.users.updatePrivacy')(
+  function*(token: string, data: UserPrivacy) {
+    return yield* apiRequestEffect('/users/@me/privacy', ApiSchema.PrivacyEdit200, {
+      method: 'PUT',
+      token,
+      body: data,
+    })
+  },
+)

@@ -108,8 +108,6 @@ auto_derived!(
         Incoming,
         /// Blocked this user
         Blocked,
-        /// Blocked by this user
-        BlockedOther,
     }
 
     /// Relationship entry indicating current status with other user
@@ -165,6 +163,30 @@ auto_derived!(
         /// Background visible on user's profile
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub background: Option<File>,
+    }
+
+    /// Who can reach a user; only returned to the user themselves
+    #[derive(Default)]
+    pub struct UserPrivacy {
+        /// Servers whose members cannot open direct messages with this user
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub dm_restricted_servers: Vec<String>,
+        /// Restrict direct messages from members of servers joined from now on
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub restrict_dms_in_new_servers: bool,
+        /// Who can send friend requests
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub friend_requests: FriendRequestPrivacy,
+    }
+
+    /// Who can send friend requests to a user
+    pub struct FriendRequestPrivacy {
+        /// Anyone who knows the username
+        pub everyone: bool,
+        /// Users who share a friend
+        pub friends_of_friends: bool,
+        /// Users who share a server
+        pub server_members: bool,
     }
 
     /// User flag enum
@@ -289,5 +311,15 @@ impl CheckRelationship for Vec<Relationship> {
         }
 
         RelationshipStatus::None
+    }
+}
+
+impl Default for FriendRequestPrivacy {
+    fn default() -> Self {
+        Self {
+            everyone: true,
+            friends_of_friends: true,
+            server_members: true,
+        }
     }
 }

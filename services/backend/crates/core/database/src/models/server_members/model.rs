@@ -4,7 +4,7 @@ use syrnike_result::{create_error, Result};
 
 use crate::{
     events::client::EventV1, util::permissions::DatabasePermissionQuery, Channel, Database, File,
-    Server, SystemMessage, User,
+    PartialUser, Server, SystemMessage, User,
 };
 
 fn default_true() -> bool {
@@ -134,6 +134,22 @@ impl Member {
 
         if let Some(updated) = db.insert_or_merge_member(&member).await? {
             member = updated;
+        }
+
+        let mut privacy = user.privacy();
+        if privacy.restrict_dms_in_new_servers
+            && !privacy.dm_restricted_servers.contains(&server.id)
+        {
+            privacy.dm_restricted_servers.push(server.id.clone());
+            db.update_user(
+                &user.id,
+                &PartialUser {
+                    privacy: Some(privacy),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await?;
         }
 
         let should_fetch = channels.is_none();

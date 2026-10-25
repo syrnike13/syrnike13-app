@@ -43,6 +43,10 @@ async fn validate_user_permissions() {
             false
         }
 
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
+        }
+
         async fn are_we_server_owner(&mut self) -> bool {
             unreachable!()
         }
@@ -142,6 +146,10 @@ async fn validate_group_permissions() {
 
         async fn have_mutual_connection(&mut self) -> bool {
             unreachable!()
+        }
+
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
         }
 
         async fn are_we_server_owner(&mut self) -> bool {
@@ -254,6 +262,10 @@ async fn validate_server_permissions() {
             unreachable!()
         }
 
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
+        }
+
         async fn are_we_server_owner(&mut self) -> bool {
             false
         }
@@ -359,6 +371,10 @@ async fn channel_role_override_allow_wins_over_other_role_deny() {
 
         async fn have_mutual_connection(&mut self) -> bool {
             unreachable!()
+        }
+
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
         }
 
         async fn are_we_server_owner(&mut self) -> bool {
@@ -468,6 +484,10 @@ async fn channel_user_override_applies_after_role_overrides() {
             unreachable!()
         }
 
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
+        }
+
         async fn are_we_server_owner(&mut self) -> bool {
             false
         }
@@ -570,6 +590,10 @@ async fn validate_timed_out_member() {
 
         async fn have_mutual_connection(&mut self) -> bool {
             unreachable!()
+        }
+
+        async fn do_they_accept_server_dms(&mut self) -> bool {
+            false
         }
 
         async fn are_we_server_owner(&mut self) -> bool {
@@ -688,6 +712,10 @@ impl PermissionQuery for AccessAdminWithoutMembership {
         false
     }
 
+    async fn do_they_accept_server_dms(&mut self) -> bool {
+        false
+    }
+
     async fn are_we_server_owner(&mut self) -> bool {
         false
     }
@@ -782,6 +810,10 @@ impl PermissionQuery for ServerChannelAccessScenario {
     }
 
     async fn have_mutual_connection(&mut self) -> bool {
+        false
+    }
+
+    async fn do_they_accept_server_dms(&mut self) -> bool {
         false
     }
 
@@ -931,5 +963,127 @@ async fn voice_moderation_preserves_video_and_overrides_channel_grants() {
         assert!(restored.has_channel_permission(ChannelPermission::Speak));
         assert!(restored.has_channel_permission(ChannelPermission::Listen));
         assert!(restored.has_channel_permission(ChannelPermission::Video));
+    }
+}
+
+/// A user we are not friends with
+struct StrangerScenario {
+    relationship: fn() -> RelationshipStatus,
+    mutual_connection: bool,
+    accepts_server_dms: bool,
+}
+
+#[async_trait]
+impl PermissionQuery for StrangerScenario {
+    async fn are_we_a_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn are_the_users_same(&mut self) -> bool {
+        false
+    }
+
+    async fn user_relationship(&mut self) -> RelationshipStatus {
+        (self.relationship)()
+    }
+
+    async fn user_is_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn have_mutual_connection(&mut self) -> bool {
+        self.mutual_connection
+    }
+
+    async fn do_they_accept_server_dms(&mut self) -> bool {
+        self.accepts_server_dms
+    }
+
+    async fn are_we_server_owner(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn are_we_a_member(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn get_default_server_permissions(&mut self) -> u64 {
+        unreachable!()
+    }
+
+    async fn get_our_server_role_permissions(&mut self) -> u64 {
+        unreachable!()
+    }
+
+    async fn are_we_timed_out(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn do_we_have_publish_overwrites(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn do_we_have_receive_overwrites(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn get_channel_type(&mut self) -> ChannelType {
+        unreachable!()
+    }
+
+    async fn get_default_channel_permissions(&mut self) -> Override {
+        unreachable!()
+    }
+
+    async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
+        unreachable!()
+    }
+
+    async fn get_our_channel_user_override(&mut self) -> Option<Override> {
+        unreachable!()
+    }
+
+    async fn do_we_own_the_channel(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn are_we_part_of_the_channel(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn have_voice_channel_membership(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn set_recipient_as_user(&mut self) {
+        unreachable!()
+    }
+
+    async fn set_server_from_channel(&mut self) {
+        unreachable!()
+    }
+}
+
+#[async_std::test]
+async fn server_members_can_message_each_other_unless_the_recipient_opted_out() {
+    for (relationship, mutual_connection, accepts_server_dms, can_message) in [
+        ((|| RelationshipStatus::None) as fn() -> _, true, true, true),
+        (|| RelationshipStatus::None, true, false, false),
+        (|| RelationshipStatus::None, false, false, false),
+        (|| RelationshipStatus::Blocked, true, true, false),
+        (|| RelationshipStatus::BlockedOther, true, true, false),
+    ] {
+        let mut query = StrangerScenario {
+            relationship,
+            mutual_connection,
+            accepts_server_dms,
+        };
+
+        assert_eq!(
+            calculate_user_permissions(&mut query)
+                .await
+                .has_user_permission(UserPermission::SendMessage),
+            can_message
+        );
     }
 }

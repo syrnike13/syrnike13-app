@@ -19,6 +19,7 @@ import { SettingsOverlayPanel } from '#/components/settings/settings-overlay-pan
 import { NotificationSettings } from '#/components/notifications/notification-settings'
 import { SettingsProfilePanel } from '#/components/settings/settings-profile-panel'
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
+import { SettingsPrivacyPanel } from '#/components/settings/settings-privacy-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
@@ -53,6 +54,7 @@ const SECTION_TITLE_KEYS: Record<SettingsSection, string> = {
   account: 'sections.account',
   voice: 'sections.voice',
   sessions: 'sections.sessions',
+  privacy: 'sections.privacy',
   notifications: 'sections.notifications',
   appearance: 'sections.appearance',
   language: 'sections.language',
@@ -405,6 +407,8 @@ export function SettingsPanelContent({ section }: { section: SettingsSection }) 
       return <SettingsVoicePanel />
     case 'sessions':
       return <SettingsSessionsPanel />
+    case 'privacy':
+      return <SettingsPrivacyPanel />
     case 'notifications':
       return <SettingsNotificationsPanel />
     case 'appearance':

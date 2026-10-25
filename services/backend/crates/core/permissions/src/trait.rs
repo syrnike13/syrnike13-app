@@ -19,6 +19,10 @@ pub trait PermissionQuery {
     /// Do we have a mutual connection with the currently selected user?
     async fn have_mutual_connection(&mut self) -> bool;
 
+    /// Does the currently selected user accept direct messages from members
+    /// of a server we share with them?
+    async fn do_they_accept_server_dms(&mut self) -> bool;
+
     // * For calculating server permission
 
     /// Is our perspective user the server's owner?

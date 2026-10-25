@@ -126,7 +126,7 @@ describe('FriendshipAction', () => {
     })
   })
 
-  it('does not render for self, current user relationship, or users who blocked the session user', () => {
+  it('does not render for self or the current user relationship', () => {
     const { container, rerender } = render(
       <FriendshipAction user={user('None', 'current-user')} />,
     )
@@ -134,9 +134,6 @@ describe('FriendshipAction', () => {
     expect(container.firstChild).toBeNull()
 
     rerender(<FriendshipAction user={user('User')} />)
-    expect(container.firstChild).toBeNull()
-
-    rerender(<FriendshipAction user={user('BlockedOther')} />)
     expect(container.firstChild).toBeNull()
   })
 })

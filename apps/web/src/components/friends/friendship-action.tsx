@@ -36,7 +36,6 @@ function shouldHideFriendshipAction(
   return (
     user._id === currentUserId ||
     user.relationship === 'User' ||
-    user.relationship === 'BlockedOther' ||
     Boolean(user.bot)
   )
 }

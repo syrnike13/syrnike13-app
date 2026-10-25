@@ -17,7 +17,7 @@ impl IntoResponse for Error {
             ErrorType::AlreadyFriends => StatusCode::CONFLICT,
             ErrorType::AlreadySentRequest => StatusCode::CONFLICT,
             ErrorType::Blocked => StatusCode::CONFLICT,
-            ErrorType::BlockedByOther => StatusCode::FORBIDDEN,
+            ErrorType::FriendRequestRejected => StatusCode::FORBIDDEN,
             ErrorType::NotFriends => StatusCode::FORBIDDEN,
             ErrorType::TooManyPendingFriendRequests { .. } => StatusCode::BAD_REQUEST,
 

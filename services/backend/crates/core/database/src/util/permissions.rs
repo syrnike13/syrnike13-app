@@ -108,6 +108,21 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
+    /// Does the selected user accept direct messages from members of a server we share?
+    async fn do_they_accept_server_dms(&mut self) -> bool {
+        let Some(user) = &self.user else {
+            return false;
+        };
+        let restricted = user.privacy().dm_restricted_servers;
+
+        self.database
+            .fetch_mutual_server_ids(&self.perspective.id, &user.id)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .any(|server_id| !restricted.contains(server_id))
+    }
+
     // * For calculating server permission
 
     /// Is our perspective user the server's owner?
