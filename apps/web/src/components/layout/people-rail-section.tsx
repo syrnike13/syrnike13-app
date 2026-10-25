@@ -9,7 +9,6 @@ import {
   UserAvatar,
 } from '#/components/user/user-avatar'
 import {
-  avatarBadgeVars,
   resolveAvatarBadgeLayout,
 } from '#/components/user/user-avatar-presence'
 import { Avatar, AvatarFallback } from '@syrnike13/ui/primitives/avatar'
@@ -126,6 +125,10 @@ function PeopleRailButton({
   const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
+  const railBadge = resolveAvatarBadgeLayout(40, {
+    kind: 'count',
+    label: railNotificationBadge ? notificationBadgeText(railNotificationBadge) : '',
+  })
 
   return (
     <Link
@@ -154,18 +157,17 @@ function PeopleRailButton({
         <span
           className="relative shrink-0"
           style={
-            railNotificationBadge && hasNotificationBadge(railNotificationBadge)
-              ? (avatarBadgeVars(
-                  resolveAvatarBadgeLayout(40, {
-                    kind: 'count',
-                    label: notificationBadgeText(railNotificationBadge),
-                  }),
-                ) as CSSVars)
-              : undefined
+            {
+              '--avatar-badge-size': `${railBadge.sizePx}px`,
+              '--avatar-badge-width': `${railBadge.widthPx}px`,
+              '--avatar-badge-gap': `${railBadge.gapPx}px`,
+              '--avatar-badge-font': `${railBadge.fontPx ?? 0}px`,
+            } as CSSVars
           }
         >
+          {/* `lg` is the 40px rail avatar size (railAvatarClass). */}
           <Avatar
-            className={railAvatarClass}
+            size="lg"
             badgeCutout={hasNotificationBadge(railNotificationBadge)}
           >
             <AvatarFallback>

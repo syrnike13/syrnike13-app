@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  avatarBadgeVars,
   resolveAvatarBadgeLayout,
   resolveAvatarSizePx,
 } from '#/components/user/user-avatar-presence'
@@ -42,14 +41,4 @@ describe('resolveAvatarBadgeLayout', () => {
     expect(many.widthPx).toBeGreaterThan(one.widthPx)
   })
 
-  it('exposes the geometry as avatar-badge CSS variables', () => {
-    expect(
-      avatarBadgeVars({ sizePx: 16, widthPx: 23, gapPx: 3, fontPx: 11 }),
-    ).toEqual({
-      '--avatar-badge-size': '16px',
-      '--avatar-badge-width': '23px',
-      '--avatar-badge-gap': '3px',
-      '--avatar-badge-font': '11px',
-    })
-  })
 })

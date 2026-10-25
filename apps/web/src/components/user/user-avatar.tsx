@@ -10,7 +10,6 @@ import {
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import { RetryingAvatarImage } from '#/components/user/retrying-avatar-image'
 import {
-  avatarBadgeVars,
   resolveAvatarBadgeLayout,
   resolveAvatarSizePx,
 } from '#/components/user/user-avatar-presence'
@@ -42,7 +41,7 @@ export function hasNotificationBadge(badge: NotificationBadgeState | undefined) 
 
 /**
  * Unread count in the avatar's corner. Place it next to an `Avatar` with
- * `badgeCutout` inside a wrapper that sets `avatarBadgeVars` for the count.
+ * `badgeCutout` inside a wrapper that sets the `--avatar-badge-*` variables.
  */
 export function AvatarNotificationBadge({
   badge,
@@ -197,7 +196,16 @@ export function UserAvatar({
         'relative shrink-0',
         showCount && 'overflow-visible',
       )}
-      style={badgeLayout ? (avatarBadgeVars(badgeLayout) as CSSVars) : undefined}
+      style={
+        {
+          '--avatar-badge-size': `${badgeLayout?.sizePx ?? 0}px`,
+          '--avatar-badge-width': `${badgeLayout?.widthPx ?? 0}px`,
+          '--avatar-badge-gap': `${badgeLayout?.gapPx ?? 0}px`,
+          '--avatar-badge-font': badgeLayout?.fontPx
+            ? `${badgeLayout.fontPx}px`
+            : 'inherit',
+        } as CSSVars
+      }
       onPointerEnter={hoverFollowsSelf ? startHoverAnimation : undefined}
       onPointerLeave={hoverFollowsSelf ? () => setHovered(false) : undefined}
       onFocus={hoverFollowsSelf ? startHoverAnimation : undefined}

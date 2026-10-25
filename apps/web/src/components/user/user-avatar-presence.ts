@@ -114,12 +114,3 @@ export function resolveAvatarBadgeLayout(
     fontPx: Math.round(tier.sizePx * 0.68),
   }
 }
-
-export function avatarBadgeVars(layout: AvatarBadgeLayout) {
-  return {
-    '--avatar-badge-size': `${layout.sizePx}px`,
-    '--avatar-badge-width': `${layout.widthPx}px`,
-    '--avatar-badge-gap': `${layout.gapPx}px`,
-    ...(layout.fontPx ? { '--avatar-badge-font': `${layout.fontPx}px` } : {}),
-  }
-}
