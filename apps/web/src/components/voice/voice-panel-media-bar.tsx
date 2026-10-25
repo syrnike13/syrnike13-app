@@ -23,6 +23,7 @@ import { isActivityStageItemId } from '#/features/activities/activity-stage'
 import { useActivityInstance } from '#/features/activities/use-activities'
 import { canUseActivities } from '#/features/authorization/authorization'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'
 
@@ -176,52 +177,54 @@ export function VoicePanelMediaBar() {
           )}
         </PanelMediaButton>
 
-        <PanelMediaButton
-          title={
-            activityRunning || activitiesAllowed
-              ? t('actions.activities')
-              : t('actions.activitiesNoPermission')
-          }
-          active={
-            voiceStage.activityLauncherOpen ||
-            isActivityStageItemId(voiceStage.focusedMediaId)
-          }
-          disabled={
-            voiceSession.status !== 'connected' ||
-            (!activityRunning && !activitiesAllowed)
-          }
-          onClick={() => {
-            if (voiceStage.activityLauncherOpen) {
-              voiceStage.setActivityLauncherOpen(false)
-              return
+        {uiFeatureFlags.channelActivities ? (
+          <PanelMediaButton
+            title={
+              activityRunning || activitiesAllowed
+                ? t('actions.activities')
+                : t('actions.activitiesNoPermission')
             }
-            const channelId = voiceSession.channelId
-            if (!channelId) return
-            Effect.runFork(
-              Effect.tryPromise({
-                try: () =>
-                  navigate({
-                    to:
-                      routePrefix === '/m'
-                        ? '/m/c/$channelId'
-                        : '/c/$channelId',
-                    params: { channelId },
-                    search: { m: undefined },
-                  }),
-                catch: (cause) => cause,
-              }).pipe(
-                Effect.tap(() =>
-                  Effect.sync(() => {
-                    voiceStage.setActivityLauncherOpen(true)
-                  }),
+            active={
+              voiceStage.activityLauncherOpen ||
+              isActivityStageItemId(voiceStage.focusedMediaId)
+            }
+            disabled={
+              voiceSession.status !== 'connected' ||
+              (!activityRunning && !activitiesAllowed)
+            }
+            onClick={() => {
+              if (voiceStage.activityLauncherOpen) {
+                voiceStage.setActivityLauncherOpen(false)
+                return
+              }
+              const channelId = voiceSession.channelId
+              if (!channelId) return
+              Effect.runFork(
+                Effect.tryPromise({
+                  try: () =>
+                    navigate({
+                      to:
+                        routePrefix === '/m'
+                          ? '/m/c/$channelId'
+                          : '/c/$channelId',
+                      params: { channelId },
+                      search: { m: undefined },
+                    }),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.tap(() =>
+                    Effect.sync(() => {
+                      voiceStage.setActivityLauncherOpen(true)
+                    }),
+                  ),
+                  Effect.ignore,
                 ),
-                Effect.ignore,
-              ),
-            )
-          }}
-        >
-          <ActivityIcon className="size-4.5" />
-        </PanelMediaButton>
+              )
+            }}
+          >
+            <ActivityIcon className="size-4.5" />
+          </PanelMediaButton>
+        ) : null}
 
         <PanelMediaButtonSoon title={t('actions.soundboard')}>
           <SoundboardIcon className="size-4.5" />

@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 import { attachmentPreviewUrl } from '#/lib/media'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import {
   fetchActivityApplicationsEffect,
   type ActivityApplication,
@@ -17,7 +18,7 @@ const CATALOG_STALE_MS = 10 * 60_000
 export function useActivityInstance(channelId: string | null | undefined) {
   const getSnapshot = useCallback(
     () =>
-      channelId
+      uiFeatureFlags.channelActivities && channelId
         ? activityStore.instanceForChannel(channelId)
         : null,
     [channelId],
@@ -37,7 +38,7 @@ export function useActivityApplications(enabled = true) {
     queryKey: queryKeys.activities.applications,
     queryFn: ({ signal }) =>
       Effect.runPromise(fetchActivityApplicationsEffect(token!), { signal }),
-    enabled: enabled && Boolean(token),
+    enabled: enabled && uiFeatureFlags.channelActivities && Boolean(token),
     staleTime: CATALOG_STALE_MS,
   })
 }

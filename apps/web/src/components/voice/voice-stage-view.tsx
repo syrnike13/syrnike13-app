@@ -98,6 +98,7 @@ import {
   canEndActivities,
   canInviteToChannel,
 } from '#/features/authorization/authorization'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {
@@ -188,8 +189,9 @@ export function VoiceStageView({
         : syncedUsers,
     [devGhosts.users, syncedUsers],
   )
+  const channelActivitiesEnabled = uiFeatureFlags.channelActivities
   const activityInstance = useActivityInstance(
-    inThisVoiceCall ? channelId : null,
+    channelActivitiesEnabled && inThisVoiceCall ? channelId : null,
   )
   const activityApplication = useActivityApplication(
     activityInstance?.application_id,
@@ -204,10 +206,14 @@ export function VoiceStageView({
   }, [voiceStage.setActivityLauncherOpen])
 
   useEffect(() => {
-    if (!inThisVoiceCall && voiceStage.activityLauncherOpen) {
+    if (
+      (!channelActivitiesEnabled || !inThisVoiceCall) &&
+      voiceStage.activityLauncherOpen
+    ) {
       voiceStage.setActivityLauncherOpen(false)
     }
   }, [
+    channelActivitiesEnabled,
     inThisVoiceCall,
     voiceStage.activityLauncherOpen,
     voiceStage.setActivityLauncherOpen,
@@ -683,7 +689,8 @@ export function VoiceStageView({
             : voiceStageContentInsetClass,
         )}
       >
-        {voiceStage.activityLauncherOpen &&
+        {channelActivitiesEnabled &&
+        voiceStage.activityLauncherOpen &&
         currentUserId ? (
           <Suspense
             fallback={
