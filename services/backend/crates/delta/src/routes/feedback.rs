@@ -383,10 +383,20 @@ fn page_into_api(page: FeedbackSuggestionPage, user: &User) -> v0::FeedbackSugge
 }
 
 fn view_into_api(view: FeedbackSuggestionView, user: &User) -> v0::FeedbackSuggestion {
-    let reveal_author =
-        user.privileged || view.suggestion.author_id == user.id || !view.suggestion.anonymous;
-    view.suggestion
-        .into_api(view.vote_count, view.voted, reveal_author)
+    let own_or_staff = user.privileged || view.suggestion.author_id == user.id;
+    let reveal_author = own_or_staff || !view.suggestion.anonymous;
+    let mut suggestion = view
+        .suggestion
+        .into_api(view.vote_count, view.voted, reveal_author);
+    // Report evidence and the author's hardware stay with the author and the
+    // team even after publication; a hardware profile can identify an
+    // anonymous author.
+    if !own_or_staff {
+        suggestion.attachments = None;
+        suggestion.system = None;
+        suggestion.peripherals = None;
+    }
+    suggestion
 }
 
 fn parse_product_status(value: Option<String>) -> Result<Option<v0::FeedbackProductStatus>> {
@@ -1048,6 +1058,66 @@ mod tests {
             peripherals[2].connection,
             v0::FeedbackPeripheralConnection::AudioCard
         );
+    }
+
+    #[rocket::async_test]
+    async fn feedback_report_details_stay_private_after_approval() {
+        let context = FeedbackTestContext::new().await;
+        let (author, author_session) = context.user(false).await;
+        let (_, other_session) = context.user(false).await;
+        let (_, admin_session) = context.user(true).await;
+        let video = insert_upload(&context.db, "feedback", &author.id).await;
+
+        let mut body: serde_json::Value = serde_json::from_str(&bug_body(serde_json::json!({
+            "system": { "cpu": "AMD Ryzen 7 5800X3D" },
+            "peripherals": [{ "device": "HyperX Cloud II", "connection": "wireless_2_4_ghz" }],
+        })))
+        .expect("json body");
+        body["attachments"] = serde_json::json!([video.id]);
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(body.to_string()),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+        let created: v0::FeedbackSuggestion = created.into_json().await.expect("response body");
+
+        let approved = FeedbackTestContext::request_with_session(
+            &admin_session,
+            context
+                .client
+                .post(format!("/feedback/admin/{}/approve", created.id)),
+        )
+        .await;
+        assert_eq!(approved.status(), Status::Ok);
+
+        let detail = |session| {
+            FeedbackTestContext::request_with_session(
+                session,
+                context.client.get(format!("/feedback/{}", created.id)),
+            )
+        };
+
+        let other: v0::FeedbackSuggestion = detail(&other_session)
+            .await
+            .into_json()
+            .await
+            .expect("response body");
+        assert!(other.attachments.is_none());
+        assert!(other.system.is_none());
+        assert!(other.peripherals.is_none());
+
+        for session in [&author_session, &admin_session] {
+            let visible: v0::FeedbackSuggestion =
+                detail(session).await.into_json().await.expect("response body");
+            assert!(visible.attachments.is_some());
+            assert!(visible.system.is_some());
+            assert!(visible.peripherals.is_some());
+        }
     }
 
     #[rocket::async_test]
