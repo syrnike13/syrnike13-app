@@ -93,9 +93,20 @@ export function voiceAudioProcessingConstraints(
   >,
 ): AudioCaptureOptions {
   return {
+    // Every other microphone path is 48 kHz mono: native capture via
+    // AUTOCONVERTPCM, the DSP and publication, and the browser preview
+    // contexts. Pin the browser capture too, so a device that opens at its
+    // own rate cannot leave the raw track and the processed track on
+    // different rates after the processor is attached on join.
     channelCount: 1,
+    sampleRate: 48_000,
     echoCancellation: prefs.echoCancellation,
     noiseSuppression: false,
+    // The app owns voice processing (the voice gate here, AEC/NS on the
+    // native engine). Never let the platform voice-isolation denoiser stand
+    // in for noiseSuppression: it ignores that flag and can colour the first
+    // seconds of a freshly opened microphone.
+    voiceIsolation: false,
     autoGainControl: prefs.automaticGainControl,
   }
 }
