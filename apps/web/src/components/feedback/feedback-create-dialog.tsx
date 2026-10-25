@@ -1,11 +1,13 @@
 import type {
   FeedbackArea,
   FeedbackCategory,
+  FeedbackPeripheral,
   FeedbackPlatform,
+  FeedbackSystem,
 } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
-import { Option, Schema } from 'effect'
-import { useMemo, useState } from 'react'
+import { Effect, Option, Schema } from 'effect'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
@@ -22,6 +24,14 @@ import {
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
 import {
+  FeedbackPeripheralsSummary,
+  FeedbackSystemFields,
+  FeedbackSystemSummary,
+  PERIPHERALS_MAX,
+  type EditablePeripheral,
+} from '#/components/feedback/feedback-system'
+import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
+import {
   AndroidIcon,
   AppleIcon,
   ArrowUpIcon,
@@ -33,6 +43,7 @@ import {
   GlobeIcon,
   LightbulbIcon,
   LinuxIcon,
+  PaperclipIcon,
   UserIcon,
   WindowsIcon,
 } from '#/components/icons'
@@ -45,6 +56,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@syrnike13/ui/primitives/dialog'
+import { FieldError } from '@syrnike13/ui/primitives/field'
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from '@syrnike13/ui/primitives/item'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
@@ -59,16 +78,40 @@ import {
 } from '@syrnike13/ui/primitives/select'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import { useAuth } from '#/features/auth/auth-context'
+import { useSyrnikeConfig } from '#/features/auth/use-syrnike-config'
 import {
   createFeedbackSuggestion,
   fetchFeedbackSuggestions,
 } from '#/features/api/feedback-api'
+import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import {
+  collectFeedbackSystem,
+  hasSystemDetails,
+} from '#/features/feedback/system-info'
+import {
+  readSystemProfile,
+  writeSystemProfile,
+} from '#/features/feedback/system-profile'
 import { queryKeys } from '#/lib/api/query-keys'
 import { cn } from '#/lib/utils'
 
 const TITLE_MAX = 120
 const DESCRIPTION_MAX = 2_000
+/** Mirrors the `maxItems` of `DataCreateFeedbackSuggestion.attachments`. */
+const ATTACHMENTS_MAX = 10
+/** Used until `GET /` reports the configured `feedback` upload limit. */
+const FALLBACK_ATTACHMENT_MAX_BYTES = 200_000_000
+
+let peripheralKeySeed = 0
+
+/** Stable React key for an editable device row. */
+function nextPeripheralKey() {
+  peripheralKeySeed += 1
+  return `peripheral-${peripheralKeySeed}`
+}
+
+class FeedbackAttachmentsError extends Error {}
 
 const PLATFORM_ICONS = {
   windows: WindowsIcon,
@@ -141,6 +184,35 @@ export function FeedbackCreateDialog({
   const [area, setArea] = useState<FeedbackArea | ''>('')
   const [platform, setPlatform] = useState<FeedbackPlatform | ''>('')
   const [anonymous, setAnonymous] = useState(false)
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const {
+    files,
+    append: appendFiles,
+    remove: removeFile,
+    reset: resetFiles,
+    start: startUploads,
+    uploadAll: uploadFiles,
+  } = useComposerAttachments(undefined, { tag: 'feedback' })
+  const fileCountRef = useRef(files.length)
+  fileCountRef.current = files.length
+  const [system, setSystem] = useState<FeedbackSystem | null>(null)
+  const [systemBusy, setSystemBusy] = useState(false)
+  const [systemError, setSystemError] = useState<string | null>(null)
+  const [peripherals, setPeripherals] = useState<EditablePeripheral[]>([])
+  const [profileSaved, setProfileSaved] = useState(false)
+  const limits = useSyrnikeConfig().data?.features.limits
+  const attachmentMaxBytes = limits
+    ? Math.min(
+        limits.new_user.file_upload_size_limits.feedback ??
+          FALLBACK_ATTACHMENT_MAX_BYTES,
+        limits.default.file_upload_size_limits.feedback ??
+          FALLBACK_ATTACHMENT_MAX_BYTES,
+      )
+    : FALLBACK_ATTACHMENT_MAX_BYTES
+  const attachmentMaxMb = Math.floor(attachmentMaxBytes / 1_000_000)
   const normalizedTitle = title.trim()
   const selectedPlatform = FEEDBACK_PLATFORMS.find(
     (item) => item.value === platform,
@@ -193,19 +265,159 @@ export function FeedbackCreateDialog({
     setArea('')
     setPlatform('')
     setAnonymous(false)
+    setAttachmentNotice(null)
+    setSubmitError(null)
+    setSystem(null)
+    setSystemError(null)
+    setSystemBusy(false)
+    setPeripherals([])
+    setProfileSaved(false)
+    resetFiles()
+  }
+
+  /** Devices the author actually named; blank rows are never submitted. */
+  function namedPeripherals(): FeedbackPeripheral[] {
+    return peripherals
+      .map(({ device, connection }) => ({ device: device.trim(), connection }))
+      .filter((peripheral) => peripheral.device.length > 0)
+      .slice(0, PERIPHERALS_MAX)
+  }
+
+  const submittedSystem = category === 'bug' ? system : null
+  const submittedPeripherals = category === 'bug' ? namedPeripherals() : []
+  const canSaveProfile = Boolean(system) || namedPeripherals().length > 0
+
+  // Prefill the machine profile saved by an earlier report on this device.
+  useEffect(() => {
+    if (!open) return
+
+    const saved = readSystemProfile()
+    if (!saved) return
+
+    setSystem((current) => current ?? saved.system)
+    setPeripherals((current) =>
+      current.length > 0
+        ? current
+        : saved.peripherals.map((peripheral) => ({
+            ...peripheral,
+            key: nextPeripheralKey(),
+          })),
+    )
+    setProfileSaved(Boolean(saved.system) || saved.peripherals.length > 0)
+  }, [open])
+
+  async function collectSystem() {
+    setSystemBusy(true)
+    setSystemError(null)
+    setProfileSaved(false)
+
+    try {
+      const collected = await collectFeedbackSystem()
+      if (!hasSystemDetails(collected)) {
+        setSystem(null)
+        setSystemError(t('systemFailed'))
+        return
+      }
+      setSystem(collected)
+    } catch {
+      setSystemError(t('systemFailed'))
+    } finally {
+      setSystemBusy(false)
+    }
+  }
+
+  function saveProfile() {
+    const saved = writeSystemProfile({
+      system,
+      peripherals: namedPeripherals(),
+    })
+    setProfileSaved(saved)
+    setSystemError(saved ? null : t('systemSaveFailed'))
+  }
+
+  function addPeripheral() {
+    setPeripherals((current) =>
+      current.length >= PERIPHERALS_MAX
+        ? current
+        : [...current, { key: nextPeripheralKey(), device: '', connection: 'wired' }],
+    )
+  }
+
+  function changePeripheral(
+    key: string,
+    patch: Partial<Omit<EditablePeripheral, 'key'>>,
+  ) {
+    setProfileSaved(false)
+    setPeripherals((current) =>
+      current.map((peripheral) =>
+        peripheral.key === key ? { ...peripheral, ...patch } : peripheral,
+      ),
+    )
+  }
+
+  function removePeripheral(key: string) {
+    setProfileSaved(false)
+    setPeripherals((current) =>
+      current.filter((peripheral) => peripheral.key !== key),
+    )
+  }
+
+  function addFiles(fileList: FileList | File[]) {
+    const accepted: File[] = []
+    let notice: string | null = null
+    for (const file of Array.from(fileList)) {
+      if (file.size > attachmentMaxBytes) {
+        notice = t('attachmentTooLarge', { name: file.name, size: attachmentMaxMb })
+        continue
+      }
+      accepted.push(file)
+    }
+
+    // The ref also counts files appended earlier in this render cycle.
+    const free = Math.max(0, ATTACHMENTS_MAX - fileCountRef.current)
+    if (accepted.length > free) {
+      notice = t('attachmentsLimit', { count: ATTACHMENTS_MAX })
+    }
+    setAttachmentNotice(notice)
+    const added = accepted.slice(0, free)
+    fileCountRef.current += added.length
+    appendFiles(added)
+  }
+
+  // Upload right after selection so large videos are ready by submission.
+  useEffect(() => {
+    if (token && files.some((file) => file.status === 'pending')) {
+      startUploads(token)
+    }
+  })
+
+  function handleDrop(event: DragEvent) {
+    event.preventDefault()
+    setDragActive(false)
+    if (createMutation.isPending) return
+    if (event.dataTransfer.files.length > 0) addFiles(event.dataTransfer.files)
   }
 
   const createMutation = useMutation({
-    mutationFn: (isAnonymous: boolean) => {
+    mutationFn: async (isAnonymous: boolean) => {
       if (!category || !platform) {
         throw new Error('Feedback category and platform are required')
       }
+      const attachments = await Effect.runPromise(uploadFiles(token!)).catch(
+        (error: unknown) => {
+          throw new FeedbackAttachmentsError(String(error))
+        },
+      )
       return createFeedbackSuggestion(token!, {
         title: normalizedTitle,
         description: description.trim(),
         category,
         area: area || undefined,
         platform,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        system: submittedSystem ?? undefined,
+        peripherals:
+          submittedPeripherals.length > 0 ? submittedPeripherals : undefined,
         anonymous: isAnonymous,
       })
     },
@@ -215,13 +427,19 @@ export function FeedbackCreateDialog({
       onOpenChange(false)
       onCreated?.()
     },
-    onError: () => {
+    onError: (error) => {
+      setSubmitError(
+        error instanceof FeedbackAttachmentsError
+          ? t('attachmentsFailed')
+          : t('sendError'),
+      )
     },
   })
 
   function handleNext() {
     if (!stepValid || createMutation.isPending) return
     if (isLastStep) {
+      setSubmitError(null)
       createMutation.mutate(anonymous)
       return
     }
@@ -229,7 +447,16 @@ export function FeedbackCreateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        // Closing would hide a submission that still creates the suggestion.
+        if (!nextOpen && createMutation.isPending) return
+        // A closed dialog must not keep a draft or uploads running in the background.
+        if (!nextOpen) resetWizard()
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent className="flex max-h-dialog-sm flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 gap-1 px-6 pt-4 pb-3">
           <DialogTitle>{t('title')}</DialogTitle>
@@ -450,6 +677,89 @@ export function FeedbackCreateDialog({
                     onChange={(event) => setDescription(event.target.value)}
                   />
                 </div>
+
+                <section className="space-y-2" aria-labelledby="feedback-attachments-label">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label id="feedback-attachments-label">
+                      {t('attachmentsLabel')}{' '}
+                      <span className="font-normal text-muted-foreground">
+                        {t('optional')}
+                      </span>
+                    </Label>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {files.length}/{ATTACHMENTS_MAX}
+                    </span>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden
+                    onChange={(event) => {
+                      if (event.target.files) addFiles(event.target.files)
+                      event.target.value = ''
+                    }}
+                  />
+                  <Item
+                    variant={dragActive ? 'muted' : 'outline'}
+                    render={
+                      <button
+                        type="button"
+                        disabled={files.length >= ATTACHMENTS_MAX}
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          setDragActive(true)
+                        }}
+                        onDragLeave={() => setDragActive(false)}
+                        onDrop={handleDrop}
+                      />
+                    }
+                  >
+                    <ItemMedia variant="icon">
+                      <PaperclipIcon className="size-5" aria-hidden />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>{t('addAttachments')}</ItemTitle>
+                      <ItemDescription>
+                        {t('attachmentsHint', { size: attachmentMaxMb })}
+                      </ItemDescription>
+                    </ItemContent>
+                  </Item>
+                  {files.length > 0 ? (
+                    <div className="-mx-3">
+                      <ComposerAttachmentStrip
+                        files={files}
+                        sending={createMutation.isPending}
+                        onRemove={removeFile}
+                      />
+                    </div>
+                  ) : null}
+                  <FieldError>{attachmentNotice}</FieldError>
+                </section>
+
+                {category === 'bug' ? (
+                  <FeedbackSystemFields
+                    system={system}
+                    busy={systemBusy}
+                    error={systemError}
+                    peripherals={peripherals}
+                    profileSaved={profileSaved}
+                    canSaveProfile={canSaveProfile}
+                    onCollect={() => void collectSystem()}
+                    onClear={() => {
+                      setSystem(null)
+                      setSystemError(null)
+                      setProfileSaved(false)
+                    }}
+                    onAddPeripheral={addPeripheral}
+                    onChangePeripheral={changePeripheral}
+                    onRemovePeripheral={removePeripheral}
+                    onSaveProfile={saveProfile}
+                  />
+                ) : null}
               </>
             ) : null}
 
@@ -482,6 +792,36 @@ export function FeedbackCreateDialog({
                       {description.trim()}
                     </dd>
                   </div>
+                  {files.length > 0 ? (
+                    <div>
+                      <dt className="text-muted-foreground">{t('attachmentsSummary')}</dt>
+                      <dd className="-mx-3">
+                        <ComposerAttachmentStrip
+                          files={files}
+                          sending={createMutation.isPending}
+                          onRemove={removeFile}
+                        />
+                      </dd>
+                    </div>
+                  ) : null}
+                  {submittedSystem ? (
+                    <div>
+                      <dt className="text-muted-foreground">{t('systemSummary')}</dt>
+                      <dd className="mt-1">
+                        <FeedbackSystemSummary system={submittedSystem} />
+                      </dd>
+                    </div>
+                  ) : null}
+                  {submittedPeripherals.length > 0 ? (
+                    <div>
+                      <dt className="text-muted-foreground">{t('peripheralsTitle')}</dt>
+                      <dd className="mt-1">
+                        <FeedbackPeripheralsSummary
+                          peripherals={submittedPeripherals}
+                        />
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
 
                 <section className="space-y-3" aria-labelledby="feedback-author-label">
@@ -515,6 +855,7 @@ export function FeedbackCreateDialog({
                 </section>
               </>
             ) : null}
+            {step === 2 ? <FieldError>{submitError}</FieldError> : null}
           </form>
         </ScrollArea>
 

@@ -11,6 +11,7 @@ import {
   screenShareAudioPublishOptions,
   screenShareCaptureOptions,
   screenShareCombinedPublishOptions,
+  voiceAudioProcessingConstraints,
   voiceMicPublishOptions,
 } from './voice-capture'
 import { voicePreferenceStore } from './voice-preference-store'
@@ -45,6 +46,13 @@ describe('createVoiceRoomOptions', () => {
     expect(createVoiceRoomOptions().audioCaptureDefaults?.autoGainControl).toBe(true)
   })
 
+  it('pins 48 kHz and disables platform voice isolation for voice capture', () => {
+    const options = createVoiceRoomOptions()
+
+    expect(options.audioCaptureDefaults?.sampleRate).toBe(48_000)
+    expect(options.audioCaptureDefaults?.voiceIsolation).toBe(false)
+  })
+
   it('does not configure browser audio capture defaults on Windows desktop', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       runtime: 'desktop',
@@ -69,6 +77,24 @@ describe('voiceMicPublishOptions', () => {
   it('keeps the bitrate inside the channel setting range', () => {
     expect(voiceMicPublishOptions(512_000).audioPreset?.maxBitrate).toBe(96_000)
     expect(voiceMicPublishOptions(6_000).audioPreset?.maxBitrate).toBe(8_000)
+  })
+})
+
+describe('voiceAudioProcessingConstraints', () => {
+  it('keeps platform processing off while honouring the voice preferences', () => {
+    expect(
+      voiceAudioProcessingConstraints({
+        echoCancellation: true,
+        automaticGainControl: false,
+      }),
+    ).toEqual({
+      channelCount: 1,
+      sampleRate: 48_000,
+      echoCancellation: true,
+      noiseSuppression: false,
+      voiceIsolation: false,
+      autoGainControl: false,
+    })
   })
 })
 

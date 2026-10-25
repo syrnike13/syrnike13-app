@@ -469,6 +469,24 @@ export function deafenToggleCommand(
 }
 
 /**
+ * What the microphone control does. A running self-monitoring check shows the
+ * microphone as off, so the control ends the check and returns to the saved
+ * state; a deafened user is undeafened first.
+ */
+export function micToggleCommand(
+  state: Pick<
+    VoiceMediaDesiredState,
+    'userMuted' | 'userDeafened' | 'selfMonitoringActive'
+  >,
+): VoiceCommand {
+  if (state.selfMonitoringActive && !state.userDeafened) {
+    return { type: 'setSelfMonitoringActive', active: false }
+  }
+  if (state.userDeafened) return { type: 'setUserDeafened', deafened: false }
+  return { type: 'setUserMuted', muted: !state.userMuted }
+}
+
+/**
  * Self flags other participants see. A self-monitoring check is a full mute,
  * so it reports the user as deafened without changing the saved preference.
  */

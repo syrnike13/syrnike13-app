@@ -187,6 +187,7 @@ max_pixel_side = 10_000
 [files.preview]
 # Maximum image resolution
 attachments = [1280, 1280]
+feedback = [1280, 1280]
 avatars = [256, 256]
 backgrounds = [1280, 720]
 icons = [128, 128]
@@ -290,6 +291,7 @@ screen_share_bitrate = 10_000_000
 [features.limits.new_user.file_upload_size_limit]
 # Maximum file size limits (in bytes)
 attachments = 20_000_000
+feedback = 200_000_000
 avatars = 4_000_000
 backgrounds = 6_000_000
 icons = 2_500_000
@@ -336,6 +338,7 @@ screen_share_bitrate = 10_000_000
 [features.limits.default.file_upload_size_limit]
 # Maximum file size limits (in bytes)
 attachments = 20_000_000
+feedback = 200_000_000
 avatars = 4_000_000
 backgrounds = 6_000_000
 icons = 2_500_000

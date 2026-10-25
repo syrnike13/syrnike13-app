@@ -1,6 +1,6 @@
 use rocket::{State, serde::json::Json};
 use syrnike_database::{
-    Database, FeedbackSuggestion, FeedbackSuggestionPage, FeedbackSuggestionQuery,
+    Database, FeedbackSuggestion, File, FeedbackSuggestionPage, FeedbackSuggestionQuery,
     FeedbackSuggestionView, User,
 };
 use syrnike_models::v0;
@@ -128,7 +128,7 @@ pub async fn create(
     }
 
     let data = normalise_create_data(data.into_inner())?;
-    let suggestion = FeedbackSuggestion::new(
+    let mut suggestion = FeedbackSuggestion::new(
         user.id.clone(),
         user.username.clone(),
         data.title,
@@ -138,6 +138,23 @@ pub async fn create(
         data.platform,
         data.anonymous,
     );
+
+    let attachment_ids = data.attachments.unwrap_or_default();
+    ensure_attachments_usable(db, &attachment_ids, &user.id).await?;
+
+    let mut attachments = vec![];
+    for attachment_id in &attachment_ids {
+        attachments.push(
+            File::use_feedback_attachment(db, attachment_id, &suggestion.id, &user.id).await?,
+        );
+    }
+    if !attachments.is_empty() {
+        suggestion.attachments = Some(attachments);
+    }
+
+    suggestion.system = data.system;
+    suggestion.peripherals = data.peripherals;
+
     db.insert_feedback_suggestion(&suggestion).await?;
 
     Ok(Json(view_into_api(
@@ -317,6 +334,24 @@ pub async fn update_publication(
     )))
 }
 
+/// Check every attachment before any of them is claimed, so a bad id cannot
+/// leave earlier files bound to a suggestion that is never stored.
+async fn ensure_attachments_usable(db: &Database, ids: &[String], user_id: &str) -> Result<()> {
+    for (index, id) in ids.iter().enumerate() {
+        if ids[..index].contains(id) {
+            return validation_error("attachments must not repeat");
+        }
+
+        let file = db.fetch_attachment("feedback", id).await?;
+        let owned = file.uploader_id.as_deref() == Some(user_id);
+        if !owned || file.used_for.is_some() || file.deleted == Some(true) {
+            return Err(create_error!(NotFound));
+        }
+    }
+
+    Ok(())
+}
+
 fn require_privileged(user: &User) -> Result<()> {
     if user.privileged {
         Ok(())
@@ -348,10 +383,20 @@ fn page_into_api(page: FeedbackSuggestionPage, user: &User) -> v0::FeedbackSugge
 }
 
 fn view_into_api(view: FeedbackSuggestionView, user: &User) -> v0::FeedbackSuggestion {
-    let reveal_author =
-        user.privileged || view.suggestion.author_id == user.id || !view.suggestion.anonymous;
-    view.suggestion
-        .into_api(view.vote_count, view.voted, reveal_author)
+    let own_or_staff = user.privileged || view.suggestion.author_id == user.id;
+    let reveal_author = own_or_staff || !view.suggestion.anonymous;
+    let mut suggestion = view
+        .suggestion
+        .into_api(view.vote_count, view.voted, reveal_author);
+    // Report evidence and the author's hardware stay with the author and the
+    // team even after publication; a hardware profile can identify an
+    // anonymous author.
+    if !own_or_staff {
+        suggestion.attachments = None;
+        suggestion.system = None;
+        suggestion.peripherals = None;
+    }
+    suggestion
 }
 
 fn parse_product_status(value: Option<String>) -> Result<Option<v0::FeedbackProductStatus>> {
@@ -380,8 +425,96 @@ fn normalise_create_data(
 ) -> Result<v0::DataCreateFeedbackSuggestion> {
     data.title = normalise_required(data.title, "title")?;
     data.description = normalise_required(data.description, "description")?;
+    data.system = normalise_system(data.system)?;
+    data.peripherals = normalise_peripherals(data.peripherals)?;
     data.validate().map_err(validation_from)?;
     Ok(data)
+}
+
+/// Upper bound for one hardware line; long enough for a full model name.
+const MAX_SYSTEM_FIELD_LENGTH: usize = 120;
+/// 4 TiB, far above any consumer machine.
+const MAX_SYSTEM_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024 * 1024;
+const MAX_SYSTEM_CPU_THREADS: u16 = 1024;
+const MAX_PERIPHERAL_DEVICE_LENGTH: usize = 80;
+const MAX_PERIPHERALS: usize = 8;
+
+/// Trim the hardware summary and drop the blanks a client may send.
+fn normalise_system(system: Option<v0::FeedbackSystem>) -> Result<Option<v0::FeedbackSystem>> {
+    let Some(system) = system else {
+        return Ok(None);
+    };
+
+    let system = v0::FeedbackSystem {
+        os: normalise_system_line(system.os, "os")?,
+        cpu: normalise_system_line(system.cpu, "cpu")?,
+        cpu_threads: system.cpu_threads.filter(|threads| *threads > 0),
+        gpu: normalise_system_line(system.gpu, "gpu")?,
+        memory_bytes: system.memory_bytes.filter(|bytes| *bytes > 0),
+        display: normalise_system_line(system.display, "display")?,
+    };
+
+    if system
+        .cpu_threads
+        .is_some_and(|threads| threads > MAX_SYSTEM_CPU_THREADS)
+    {
+        return validation_error("system.cpu_threads is too large");
+    }
+    if system
+        .memory_bytes
+        .is_some_and(|bytes| bytes > MAX_SYSTEM_MEMORY_BYTES)
+    {
+        return validation_error("system.memory_bytes is too large");
+    }
+
+    let empty = system.os.is_none()
+        && system.cpu.is_none()
+        && system.cpu_threads.is_none()
+        && system.gpu.is_none()
+        && system.memory_bytes.is_none()
+        && system.display.is_none();
+    Ok((!empty).then_some(system))
+}
+
+fn normalise_system_line(value: Option<String>, name: &str) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    // Clients send empty strings for fields they could not read; drop them.
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.chars().count() > MAX_SYSTEM_FIELD_LENGTH {
+        return validation_error(&format!("system.{name} is too long"));
+    }
+    Ok(Some(value.to_string()))
+}
+
+/// Trim the free-form device list and reject entries the UI does not allow.
+fn normalise_peripherals(
+    peripherals: Option<Vec<v0::FeedbackPeripheral>>,
+) -> Result<Option<Vec<v0::FeedbackPeripheral>>> {
+    let Some(peripherals) = peripherals else {
+        return Ok(None);
+    };
+    if peripherals.len() > MAX_PERIPHERALS {
+        return validation_error("peripherals must contain at most 8 devices");
+    }
+
+    let mut normalised = Vec::with_capacity(peripherals.len());
+    for peripheral in peripherals {
+        let device = normalise_required(peripheral.device, "peripherals.device")?;
+        if device.chars().count() > MAX_PERIPHERAL_DEVICE_LENGTH {
+            return validation_error("peripherals.device is too long");
+        }
+        normalised.push(v0::FeedbackPeripheral {
+            device,
+            connection: peripheral.connection,
+        });
+    }
+
+    Ok((!normalised.is_empty()).then_some(normalised))
 }
 
 fn normalise_search(search: Option<String>) -> Result<Option<String>> {
@@ -486,7 +619,7 @@ mod tests {
         http::{ContentType, Header, Status},
         local::asynchronous::{Client, LocalRequest, LocalResponse},
     };
-    use syrnike_database::{Database, DatabaseInfo, FeedbackSuggestion, User};
+    use syrnike_database::{Database, DatabaseInfo, FeedbackSuggestion, File, Metadata, User};
     use syrnike_models::v0;
     use ulid::Ulid;
 
@@ -722,5 +855,330 @@ mod tests {
         let page: v0::FeedbackSuggestionPage = mine.into_json().await.expect("response body");
         assert_eq!(page.total, 0);
         assert!(page.suggestions.is_empty());
+    }
+
+    async fn insert_upload(db: &Database, tag: &str, uploader_id: &str) -> File {
+        let file = File {
+            id: Ulid::new().to_string(),
+            tag: tag.to_string(),
+            filename: "screen-recording.mp4".to_string(),
+            hash: None,
+            uploaded_at: None,
+            uploader_id: Some(uploader_id.to_string()),
+            used_for: None,
+            deleted: None,
+            reported: None,
+            metadata: Metadata::Video {
+                width: 1920,
+                height: 1080,
+            },
+            content_type: "video/mp4".to_string(),
+            size: 150_000_000,
+            message_id: None,
+            user_id: None,
+            server_id: None,
+            object_id: None,
+        };
+        db.insert_attachment(&file).await.expect("file inserted");
+        file
+    }
+
+    fn create_body(attachments: &[&str]) -> String {
+        serde_json::json!({
+            "title": "Screen share freezes",
+            "description": "Screen share freezes after a few minutes.",
+            "category": "bug",
+            "platform": "windows",
+            "attachments": attachments,
+        })
+        .to_string()
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_attaches_only_feedback_uploads() {
+        let context = FeedbackTestContext::new().await;
+        let (author, author_session) = context.user(false).await;
+        let video = insert_upload(&context.db, "feedback", &author.id).await;
+        let message_file = insert_upload(&context.db, "attachments", &author.id).await;
+
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&video.id])),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+        let suggestion: v0::FeedbackSuggestion =
+            created.into_json().await.expect("response body");
+        let attachments = suggestion.attachments.expect("attachments");
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].id, video.id);
+        assert_eq!(attachments[0].tag, "feedback");
+
+        let wrong_tag = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&message_file.id])),
+        )
+        .await;
+        assert_eq!(wrong_tag.status(), Status::NotFound);
+
+        let (_, other_session) = context.user(false).await;
+        let foreign = FeedbackTestContext::request_with_session(
+            &other_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&insert_upload(&context.db, "feedback", &author.id).await.id])),
+        )
+        .await;
+        assert_eq!(foreign.status(), Status::NotFound);
+
+        let reused = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&video.id])),
+        )
+        .await;
+        assert_eq!(reused.status(), Status::NotFound);
+
+        let fresh = insert_upload(&context.db, "feedback", &author.id).await;
+        let duplicated = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&fresh.id, &fresh.id])),
+        )
+        .await;
+        assert_eq!(duplicated.status(), Status::BadRequest);
+
+        let partial = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&[&fresh.id, "missing"])),
+        )
+        .await;
+        assert_eq!(partial.status(), Status::NotFound);
+        let fresh_after = context
+            .db
+            .fetch_attachment("feedback", &fresh.id)
+            .await
+            .expect("file exists");
+        assert!(fresh_after.used_for.is_none(), "rejected request must not claim files");
+
+        let too_many = vec![video.id.as_str(); 11];
+        let rejected = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(create_body(&too_many)),
+        )
+        .await;
+        assert_eq!(rejected.status(), Status::BadRequest);
+    }
+
+    fn bug_body(value: serde_json::Value) -> String {
+        let mut body = serde_json::json!({
+            "title": "Screen share freezes",
+            "description": "Screen share freezes after a few minutes.",
+            "category": "bug",
+            "platform": "windows",
+        });
+        body.as_object_mut()
+            .expect("object body")
+            .extend(value.as_object().cloned().unwrap_or_default());
+        body.to_string()
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_keeps_system_and_peripherals() {
+        let context = FeedbackTestContext::new().await;
+        let (_, author_session) = context.user(false).await;
+
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": {
+                        "os": "  Windows 11 24H2  ",
+                        "cpu": "AMD Ryzen 7 5800X3D",
+                        "cpu_threads": 16,
+                        "gpu": "NVIDIA GeForce RTX 3070",
+                        "memory_bytes": 34_359_738_368_u64,
+                        "display": "2560x1440 @ 165 Hz",
+                        "cpu_cores": 8,
+                    },
+                    "peripherals": [
+                        { "device": " HyperX Cloud II ", "connection": "wireless_2_4_ghz" },
+                        { "device": "Keychron K8", "connection": "bluetooth" },
+                        { "device": "Focusrite Scarlett", "connection": "audio_card" },
+                    ],
+                }))),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+
+        let suggestion: v0::FeedbackSuggestion =
+            created.into_json().await.expect("response body");
+        let system = suggestion.system.expect("system");
+        assert_eq!(system.os.as_deref(), Some("Windows 11 24H2"));
+        assert_eq!(system.cpu.as_deref(), Some("AMD Ryzen 7 5800X3D"));
+        assert_eq!(system.cpu_threads, Some(16));
+        assert_eq!(system.memory_bytes, Some(34_359_738_368));
+        assert_eq!(system.display.as_deref(), Some("2560x1440 @ 165 Hz"));
+
+        let peripherals = suggestion.peripherals.expect("peripherals");
+        assert_eq!(peripherals.len(), 3);
+        assert_eq!(peripherals[0].device, "HyperX Cloud II");
+        assert_eq!(
+            peripherals[0].connection,
+            v0::FeedbackPeripheralConnection::Wireless24Ghz
+        );
+        assert_eq!(
+            peripherals[2].connection,
+            v0::FeedbackPeripheralConnection::AudioCard
+        );
+    }
+
+    #[rocket::async_test]
+    async fn feedback_report_details_stay_private_after_approval() {
+        let context = FeedbackTestContext::new().await;
+        let (author, author_session) = context.user(false).await;
+        let (_, other_session) = context.user(false).await;
+        let (_, admin_session) = context.user(true).await;
+        let video = insert_upload(&context.db, "feedback", &author.id).await;
+
+        let mut body: serde_json::Value = serde_json::from_str(&bug_body(serde_json::json!({
+            "system": { "cpu": "AMD Ryzen 7 5800X3D" },
+            "peripherals": [{ "device": "HyperX Cloud II", "connection": "wireless_2_4_ghz" }],
+        })))
+        .expect("json body");
+        body["attachments"] = serde_json::json!([video.id]);
+        let created = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(body.to_string()),
+        )
+        .await;
+        assert_eq!(created.status(), Status::Ok);
+        let created: v0::FeedbackSuggestion = created.into_json().await.expect("response body");
+
+        let approved = FeedbackTestContext::request_with_session(
+            &admin_session,
+            context
+                .client
+                .post(format!("/feedback/admin/{}/approve", created.id)),
+        )
+        .await;
+        assert_eq!(approved.status(), Status::Ok);
+
+        let detail = |session| {
+            FeedbackTestContext::request_with_session(
+                session,
+                context.client.get(format!("/feedback/{}", created.id)),
+            )
+        };
+
+        let other: v0::FeedbackSuggestion = detail(&other_session)
+            .await
+            .into_json()
+            .await
+            .expect("response body");
+        assert!(other.attachments.is_none());
+        assert!(other.system.is_none());
+        assert!(other.peripherals.is_none());
+
+        for session in [&author_session, &admin_session] {
+            let visible: v0::FeedbackSuggestion =
+                detail(session).await.into_json().await.expect("response body");
+            assert!(visible.attachments.is_some());
+            assert!(visible.system.is_some());
+            assert!(visible.peripherals.is_some());
+        }
+    }
+
+    #[rocket::async_test]
+    async fn feedback_create_drops_blank_system_and_rejects_invalid_peripherals() {
+        let context = FeedbackTestContext::new().await;
+        let (_, author_session) = context.user(false).await;
+
+        let blank = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": { "os": "   ", "cpu": null, "cpu_threads": 0 },
+                    "peripherals": [],
+                }))),
+        )
+        .await;
+        assert_eq!(blank.status(), Status::Ok);
+        let suggestion: v0::FeedbackSuggestion =
+            blank.into_json().await.expect("response body");
+        assert!(suggestion.system.is_none(), "blank system must be dropped");
+        assert!(suggestion.peripherals.is_none(), "empty list must be dropped");
+
+        let too_long_device = "g".repeat(81);
+        for invalid in [
+            serde_json::json!([{ "device": "  ", "connection": "wired" }]),
+            serde_json::json!([{ "device": too_long_device, "connection": "wired" }]),
+            serde_json::json!(
+                (0..9)
+                    .map(|index| serde_json::json!({
+                        "device": format!("device {index}"),
+                        "connection": "wired",
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+        ] {
+            let rejected = FeedbackTestContext::request_with_session(
+                &author_session,
+                context
+                    .client
+                    .post("/feedback")
+                    .header(ContentType::JSON)
+                    .body(bug_body(serde_json::json!({ "peripherals": invalid }))),
+            )
+            .await;
+            assert_eq!(rejected.status(), Status::BadRequest);
+        }
+
+        let huge_memory = FeedbackTestContext::request_with_session(
+            &author_session,
+            context
+                .client
+                .post("/feedback")
+                .header(ContentType::JSON)
+                .body(bug_body(serde_json::json!({
+                    "system": { "memory_bytes": 5_000_000_000_000_u64 },
+                }))),
+        )
+        .await;
+        assert_eq!(huge_memory.status(), Status::BadRequest);
     }
 }

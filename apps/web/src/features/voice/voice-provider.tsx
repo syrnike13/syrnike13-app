@@ -21,6 +21,7 @@ import {
   computeEffectiveDeafened,
   createInactiveMediaSnapshot,
   deafenToggleCommand,
+  micToggleCommand,
   type VoiceCommand,
   type VoiceMediaState,
   type VoiceSnapshot,
@@ -762,15 +763,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [dispatchVoice, resetRemoteStageMedia])
 
   const toggleMic = useCallback(() => {
-    if (snapshot.userDeafened) {
-      voicePreferenceStore.setDeafened(false)
-      void dispatchVoice({ type: 'setUserDeafened', deafened: false })
-      return
+    const command = micToggleCommand(snapshot)
+    if (command.type === 'setUserDeafened') {
+      voicePreferenceStore.setDeafened(command.deafened)
+    } else if (command.type === 'setUserMuted') {
+      voicePreferenceStore.setMicEnabled(!command.muted)
     }
-    const enabled = snapshot.userMuted
-    voicePreferenceStore.setMicEnabled(enabled)
-    void dispatchVoice({ type: 'setUserMuted', muted: !enabled })
-  }, [dispatchVoice, snapshot.userDeafened, snapshot.userMuted])
+    void dispatchVoice(command)
+  }, [dispatchVoice, snapshot])
 
   const toggleDeafen = useCallback(() => {
     const command = deafenToggleCommand(snapshot)
@@ -1419,7 +1419,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       status,
       connectionPhase,
       localVoiceReady: snapshot.connection === 'connected',
-      micEnabled: !snapshot.userMuted,
+      // A self-monitoring check is a full mute others see; show it here too.
+      micEnabled: !snapshot.userMuted && !snapshot.selfMonitoringActive,
       micPublishing: snapshot.microphone.state === 'running',
       deafened: computeEffectiveDeafened(snapshot),
       participantCount: participants.length,

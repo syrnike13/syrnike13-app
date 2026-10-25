@@ -3546,6 +3546,44 @@ export interface components {
      * @enum {string}
      */
     FeedbackSort: "popular" | "new";
+    /**
+     * @description How a peripheral is connected to the computer that produced the report.
+     * @enum {string}
+     */
+    FeedbackPeripheralConnection:
+      | "wireless_2_4_ghz"
+      | "bluetooth"
+      | "wired"
+      | "audio_card"
+      | "other";
+    /** @description Hardware summary the author chose to attach to a bug report. */
+    FeedbackSystem: {
+      /** @description Operating system name and version, for example `Windows 11 24H2`. */
+      os?: string | null;
+      /** @description Processor model. */
+      cpu?: string | null;
+      /**
+       * Format: uint16
+       * @description Logical processor count.
+       */
+      cpu_threads?: number | null;
+      /** @description Graphics card model. */
+      gpu?: string | null;
+      /**
+       * Format: uint64
+       * @description Total memory in bytes.
+       */
+      memory_bytes?: number | null;
+      /** @description Primary display, for example `2560x1440 @ 165 Hz`. */
+      display?: string | null;
+    };
+    /** @description Peripheral the author uses together with the reported bug. */
+    FeedbackPeripheral: {
+      /** @description Free-form device name, for example `HyperX Cloud II`. */
+      device: string;
+      /** @description How the device is connected to the computer. */
+      connection: components["schemas"]["FeedbackPeripheralConnection"];
+    };
     /** @description A product feedback suggestion visible to the requesting user. */
     FeedbackSuggestion: {
       _id: string;
@@ -3557,6 +3595,12 @@ export interface components {
       category: components["schemas"]["FeedbackCategory"];
       area?: components["schemas"]["FeedbackArea"];
       platform?: components["schemas"]["FeedbackPlatform"];
+      /** @description Files, screenshots and videos attached by the author. */
+      attachments?: components["schemas"]["File"][] | null;
+      /** @description Hardware summary the author attached to a bug report. */
+      system?: components["schemas"]["FeedbackSystem"] | null;
+      /** @description Peripherals the author uses together with the affected feature. */
+      peripherals?: components["schemas"]["FeedbackPeripheral"][] | null;
       moderation_status: components["schemas"]["FeedbackModerationStatus"];
       status: components["schemas"]["FeedbackProductStatus"];
       team_response?: string | null;
@@ -3586,6 +3630,12 @@ export interface components {
       category: components["schemas"]["FeedbackCategory"];
       area?: components["schemas"]["FeedbackArea"];
       platform: components["schemas"]["FeedbackPlatform"];
+      /** @description Ids of files uploaded to the `feedback` tag. */
+      attachments?: string[] | null;
+      /** @description Hardware summary the author chose to attach to a bug report. */
+      system?: components["schemas"]["FeedbackSystem"] | null;
+      /** @description Peripherals the author uses together with the affected feature. */
+      peripherals?: components["schemas"]["FeedbackPeripheral"][] | null;
       /** @default false */
       anonymous?: boolean;
     };

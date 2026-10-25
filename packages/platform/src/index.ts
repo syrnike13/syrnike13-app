@@ -148,6 +148,10 @@ export {
   AudioPluginInfoSchema,
 } from './audio-effects'
 export {
+  DesktopSystemInfoSchema,
+  type DesktopSystemInfo,
+} from './system'
+export {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
   DiagnosticCorrelationIdSchema,
@@ -287,6 +291,7 @@ export {
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
   deafenToggleCommand,
+  micToggleCommand,
   isVoiceCommand,
   isVoiceRemoteAudioSettings,
   isVoiceSnapshot,

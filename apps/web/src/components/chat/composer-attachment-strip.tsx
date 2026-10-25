@@ -15,7 +15,7 @@ import {
   stripSpoilerFilename,
   type PendingComposerFile,
 } from '#/lib/composer-files'
-import { formatFileSize } from '#/lib/file-size'
+import { formatFileSize } from '@syrnike13/ui/lib/file-size'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
@@ -35,7 +35,7 @@ export function ComposerAttachmentStrip({
   files: PendingComposerFile[]
   sending: boolean
   onRemove: (id: string) => void
-  onToggleSpoiler: (id: string) => void
+  onToggleSpoiler?: (id: string) => void
 }) {
   const t = useTranslations('chat')
   if (files.length === 0) return null
@@ -51,7 +51,9 @@ export function ComposerAttachmentStrip({
           pending={pending}
           removeDisabled={sending && pending.status !== 'uploading'}
           onRemove={() => onRemove(pending.id)}
-          onToggleSpoiler={() => onToggleSpoiler(pending.id)}
+          onToggleSpoiler={
+            onToggleSpoiler ? () => onToggleSpoiler(pending.id) : undefined
+          }
         />
       ))}
     </div>
@@ -67,7 +69,7 @@ function ComposerAttachmentTile({
   pending: PendingComposerFile
   removeDisabled: boolean
   onRemove: () => void
-  onToggleSpoiler: () => void
+  onToggleSpoiler?: () => void
 }) {
   const t = useTranslations('chat')
   const isSpoiler = Boolean(pending.spoiler)
@@ -118,21 +120,23 @@ function ComposerAttachmentTile({
       </AttachmentMedia>
 
       <AttachmentActions>
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon-xs"
-          onClick={onToggleSpoiler}
-          aria-pressed={isSpoiler}
-          aria-label={
-            isSpoiler
-              ? t('removeSpoilerFrom', { name: displayName })
-              : t('markAsSpoiler', { name: displayName })
-          }
-          title={isSpoiler ? t('removeSpoiler') : t('spoiler')}
-        >
-          <EyeIcon className="size-3.5" />
-        </Button>
+        {onToggleSpoiler ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon-xs"
+            onClick={onToggleSpoiler}
+            aria-pressed={isSpoiler}
+            aria-label={
+              isSpoiler
+                ? t('removeSpoilerFrom', { name: displayName })
+                : t('markAsSpoiler', { name: displayName })
+            }
+            title={isSpoiler ? t('removeSpoiler') : t('spoiler')}
+          >
+            <EyeIcon className="size-3.5" />
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="destructive"

@@ -155,6 +155,13 @@ describe('FeedbackModerationPage', () => {
     vi.clearAllMocks()
   })
 
+  it('renders localized category and status labels', async () => {
+    await openPublishedFeedback()
+
+    expect(screen.getAllByText('Идея').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Запланировано').length).toBeGreaterThan(0)
+  })
+
   it('keeps a dirty published editor mounted until reset or save', async () => {
     await openPublishedFeedback()
 

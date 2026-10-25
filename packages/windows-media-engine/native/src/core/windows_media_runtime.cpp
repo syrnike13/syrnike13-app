@@ -317,6 +317,17 @@ void WindowsMediaRuntime::run() noexcept {
           {"pending_frames", static_cast<double>(microphone.sender.pending_frames)},
         }};
       } else snapshot_.microphone_metrics.reset();
+      if (microphone.monitor) {
+        const auto& monitor = *microphone.monitor;
+        snapshot_.microphone_monitor_metrics = std::array<DiagnosticMetric, 6>{{
+          {"device_open", monitor.device_open ? 1.0 : 0.0},
+          {"device_opens", static_cast<double>(monitor.device_opens)},
+          {"device_platform_result", static_cast<double>(static_cast<std::uint32_t>(monitor.device_platform_result))},
+          {"rendered_frames", static_cast<double>(monitor.rendered_frames)},
+          {"silent_frames", static_cast<double>(monitor.silent_frames)},
+          {"dropped_frames", static_cast<double>(monitor.dropped_frames)},
+        }};
+      } else snapshot_.microphone_monitor_metrics.reset();
       if (desired_.output.state == OutputIntentState::on && room_generation_) {
         const auto& audio_stats = output.stats;
         snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 14>{{

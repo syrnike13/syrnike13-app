@@ -78,7 +78,7 @@ impl AbstractAttachments for ReferenceDb {
     ) -> Result<File> {
         let mut files = self.files.lock().await;
         if let Some(file) = files.get_mut(id) {
-            if file.tag == tag {
+            if file.tag == tag && file.used_for.is_none() {
                 file.uploader_id = Some(uploader_id);
                 file.used_for = Some(used_for);
 
