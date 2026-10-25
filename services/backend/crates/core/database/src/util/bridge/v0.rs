@@ -182,6 +182,7 @@ impl From<crate::Channel> for Channel {
                 ..
             } => Channel::DirectMessage {
                 id,
+                active: true,
                 recipients,
                 last_message_id,
             },
@@ -246,6 +247,7 @@ impl From<Channel> for crate::Channel {
                 id,
                 recipients,
                 last_message_id,
+                ..
             } => crate::Channel::DirectMessage {
                 id,
                 closed_by: vec![],

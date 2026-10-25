@@ -27,6 +27,9 @@ auto_derived!(
             #[cfg_attr(feature = "serde", serde(rename = "_id"))]
             id: String,
 
+            /// Always true: closed conversations are not sent to the user who closed them.
+            /// Kept for clients that still require this field.
+            active: bool,
             /// 2-tuple of user ids participating in direct message
             recipients: Vec<String>,
             /// Id of the last message sent in this channel

@@ -1368,6 +1368,8 @@ export interface components {
           channel_type: "DirectMessage";
           /** @description Unique Id */
           _id: string;
+          /** @description Always true: closed conversations are not sent to the user who closed them. Kept for clients that still require this field. */
+          active: boolean;
           /** @description 2-tuple of user ids participating in direct message */
           recipients: string[];
           /** @description Id of the last message sent in this channel */

@@ -23,6 +23,7 @@ const openDirectMessageChannelMock = vi.hoisted(() => vi.fn())
 const directMessageChannel = {
   _id: 'dm-1',
   channel_type: 'DirectMessage',
+  active: true,
   recipients: ['current-user', '01JVOICETARGET0000001'],
 } as Channel
 

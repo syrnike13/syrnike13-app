@@ -31,6 +31,7 @@ function dmChannel(
   return {
     _id: id,
     channel_type: 'DirectMessage',
+    active: true,
     recipients: [CURRENT_USER_ID, otherUserId],
     last_message_id: lastMessageId,
   } as Channel

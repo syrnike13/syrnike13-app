@@ -10283,6 +10283,7 @@
             "type": "object",
             "required": [
               "_id",
+              "active",
               "channel_type",
               "recipients"
             ],
@@ -10296,6 +10297,10 @@
               "_id": {
                 "description": "Unique Id",
                 "type": "string"
+              },
+              "active": {
+                "description": "Always true: closed conversations are not sent to the user who closed them. Kept for clients that still require this field.",
+                "type": "boolean"
               },
               "recipients": {
                 "description": "2-tuple of user ids participating in direct message",

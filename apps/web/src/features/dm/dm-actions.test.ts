@@ -9,6 +9,7 @@ describe('dm actions', () => {
     const channel = {
       _id: 'dm-1',
       channel_type: 'DirectMessage',
+      active: true,
       recipients: ['current-user', 'target-user'],
     } as Channel
 

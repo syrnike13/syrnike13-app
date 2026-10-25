@@ -78,6 +78,7 @@ function directMessageChannel(): Channel {
   return {
     _id: 'dm-1',
     channel_type: 'DirectMessage',
+    active: true,
     recipients: [CURRENT_USER_ID, TARGET_USER_ID],
   } as Channel
 }

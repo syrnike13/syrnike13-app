@@ -53,6 +53,7 @@ const secondCaller = {
 const dmChannel = {
   _id: CHANNEL_ID,
   channel_type: 'DirectMessage',
+  active: true,
   recipients: [CURRENT_USER_ID, CALLER_ID],
 } as Channel
 

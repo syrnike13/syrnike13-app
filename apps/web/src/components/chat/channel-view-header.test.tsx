@@ -117,6 +117,7 @@ const targetUser = {
 const directMessageChannel = {
   _id: CHANNEL_ID,
   channel_type: 'DirectMessage',
+  active: true,
   recipients: [CURRENT_USER_ID, TARGET_USER_ID],
 } as Channel
 

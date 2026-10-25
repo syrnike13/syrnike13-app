@@ -464,6 +464,7 @@ describe('ServerRail', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
+          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-2',
         },
@@ -509,6 +510,7 @@ describe('ServerRail', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
+          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-1',
         },
@@ -559,6 +561,7 @@ describe('ServerRail', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
+          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-2',
         },
@@ -614,6 +617,7 @@ describe('ServerRail', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
+          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-2',
         },

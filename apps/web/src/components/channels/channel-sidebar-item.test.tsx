@@ -177,6 +177,7 @@ const textServerChannel = {
 const directMessageChannel = {
   _id: 'dm-call',
   channel_type: 'DirectMessage',
+  active: true,
   recipients: ['user-1', 'caller-user'],
 } as Channel
 
