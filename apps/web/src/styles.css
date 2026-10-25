@@ -1140,10 +1140,6 @@ html {
   box-shadow: 0 0 0 var(--badge-ring) var(--badge-ring-color);
 }
 
-@utility presence-dot {
-  box-shadow: 0 0 0 var(--dot-ring) var(--dot-ring-color);
-}
-
 @utility motion-width {
   transition-property: width;
 }
