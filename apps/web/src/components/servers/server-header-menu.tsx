@@ -28,6 +28,7 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -40,6 +41,7 @@ import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
+import { usePrivacy } from '#/features/privacy/use-privacy'
 import { cn } from '#/lib/utils'
 
 type ServerHeaderMenuProps = {
@@ -70,6 +72,19 @@ export function ServerHeaderMenu({
       )
     : null
   const canLeave = Boolean(menuPermissions?.leave && !isOwner)
+  const privacy = usePrivacy()
+  const dmsAllowed =
+    !privacy.privacy.dm_restricted_servers.includes(serverId)
+
+  function setDmsAllowed(allowed: boolean) {
+    const restricted = privacy.privacy.dm_restricted_servers.filter(
+      (id) => id !== serverId,
+    )
+    privacy.update({
+      ...privacy.privacy,
+      dm_restricted_servers: allowed ? restricted : [...restricted, serverId],
+    })
+  }
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
@@ -229,6 +244,17 @@ export function ServerHeaderMenu({
           {showAdminSection &&
           (canLeave || menuPermissions?.copyId) ? (
             <DropdownMenuSeparator />
+          ) : null}
+          {member ? (
+            <DropdownMenuCheckboxItem
+              checked={dmsAllowed}
+              closeOnClick={false}
+              disabled={!privacy.loaded}
+              description={t('allowDirectMessagesHint')}
+              onCheckedChange={setDmsAllowed}
+            >
+              {t('allowDirectMessages')}
+            </DropdownMenuCheckboxItem>
           ) : null}
           {canLeave ? (
             <DropdownMenuItem

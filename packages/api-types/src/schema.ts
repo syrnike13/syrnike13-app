@@ -27,6 +27,12 @@ export interface paths {
     /** Mark badge unlock notifications as shown. */
     put: operations["unseen_badges_acknowledge"];
   };
+  "/users/@me/privacy": {
+    /** Retrieve who can send you direct messages and friend requests. */
+    get: operations["privacy_fetch"];
+    /** Replace who can send you direct messages and friend requests. */
+    put: operations["privacy_edit"];
+  };
   "/users/@me": {
     /** Retrieve your user information. */
     get: operations["fetch_self_fetch"];
@@ -845,7 +851,7 @@ export interface components {
         }
       | {
           /** @enum {string} */
-          type: "BlockedByOther";
+          type: "FriendRequestRejected";
         }
       | {
           /** @enum {string} */
@@ -1254,8 +1260,7 @@ export interface components {
       | "Friend"
       | "Outgoing"
       | "Incoming"
-      | "Blocked"
-      | "BlockedOther";
+      | "Blocked";
     /** @description User's active status */
     UserStatus: {
       /** @description Custom status text */
@@ -1345,6 +1350,37 @@ export interface components {
       username: string;
       /** @description Current account password */
       password: string;
+    };
+    /** @description Who can send friend requests to a user */
+    FriendRequestPrivacy: {
+      /** @description Anyone who knows the username */
+      everyone: boolean;
+      /** @description Users who share a friend */
+      friends_of_friends: boolean;
+      /** @description Users who share a server */
+      server_members: boolean;
+    };
+    /** @description Who can reach a user; only returned to the user themselves */
+    UserPrivacy: {
+      /**
+       * @description Servers whose members cannot open direct messages with this user
+       * @default []
+       */
+      dm_restricted_servers?: string[];
+      /**
+       * @description Restrict direct messages from members of servers joined from now on
+       * @default false
+       */
+      restrict_dms_in_new_servers?: boolean;
+      /**
+       * @description Who can send friend requests
+       * @default {
+       *   "everyone": true,
+       *   "friends_of_friends": true,
+       *   "server_members": true
+       * }
+       */
+      friend_requests?: components["schemas"]["FriendRequestPrivacy"];
     };
     /** @description User's profile */
     UserProfile: {
@@ -3665,6 +3701,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["DataAcknowledgeBadges"];
+      };
+    };
+  };
+  /** Retrieve who can send you direct messages and friend requests. */
+  privacy_fetch: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["UserPrivacy"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Replace who can send you direct messages and friend requests. */
+  privacy_edit: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["UserPrivacy"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserPrivacy"];
       };
     };
   };

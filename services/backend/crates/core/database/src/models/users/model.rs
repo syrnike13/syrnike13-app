@@ -55,6 +55,9 @@ auto_derived_partial!(
         /// Time until user is unsuspended
         #[serde(skip_serializing_if = "Option::is_none")]
         pub suspended_until: Option<Timestamp>,
+        /// Who can reach this user; never sent to other users
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub privacy: Option<UserPrivacy>,
         /// Last acknowledged policy change
         pub last_acknowledged_policy_change: Timestamp,
     },
@@ -136,6 +139,30 @@ auto_derived!(
         pub background: Option<File>,
     }
 
+    /// Who can reach this user
+    #[derive(Default)]
+    pub struct UserPrivacy {
+        /// Servers whose members cannot open direct messages with this user
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub dm_restricted_servers: Vec<String>,
+        /// Restrict direct messages from members of servers joined from now on
+        #[serde(default, skip_serializing_if = "crate::if_false")]
+        pub restrict_dms_in_new_servers: bool,
+        /// Who can send friend requests
+        #[serde(default)]
+        pub friend_requests: FriendRequestPrivacy,
+    }
+
+    /// Who can send friend requests to this user
+    pub struct FriendRequestPrivacy {
+        /// Anyone who knows the username
+        pub everyone: bool,
+        /// Users who share a friend
+        pub friends_of_friends: bool,
+        /// Users who share a server
+        pub server_members: bool,
+    }
+
     /// Bot information for if the user is a bot
     pub struct BotInformation {
         /// Id of the owner of this bot
@@ -152,6 +179,40 @@ auto_derived!(
         User,
     }
 );
+
+impl Default for FriendRequestPrivacy {
+    fn default() -> Self {
+        Self {
+            everyone: true,
+            friends_of_friends: true,
+            server_members: true,
+        }
+    }
+}
+
+impl User {
+    /// Privacy settings, with defaults for users who never changed them
+    pub fn privacy(&self) -> UserPrivacy {
+        self.privacy.clone().unwrap_or_default()
+    }
+
+    /// Whether this user's privacy settings let `sender` send them a friend request
+    pub async fn accepts_friend_request_from(&self, db: &Database, sender: &User) -> Result<bool> {
+        let sources = self.privacy().friend_requests;
+
+        Ok(sources.everyone
+            || (sources.friends_of_friends
+                && !db
+                    .fetch_mutual_user_ids(&self.id, &sender.id)
+                    .await?
+                    .is_empty())
+            || (sources.server_members
+                && !db
+                    .fetch_mutual_server_ids(&self.id, &sender.id)
+                    .await?
+                    .is_empty()))
+    }
+}
 
 impl Presence {
     pub fn is_online_like(&self) -> bool {
@@ -230,6 +291,7 @@ impl Default for User {
             privileged: Default::default(),
             bot: Default::default(),
             suspended_until: Default::default(),
+            privacy: Default::default(),
             last_acknowledged_policy_change: Timestamp::UNIX_EPOCH,
         }
     }
@@ -639,6 +701,10 @@ impl User {
                 if outgoing >= max {
                     return Err(create_error!(TooManyPendingFriendRequests { max }));
                 }
+
+                if !other.accepts_friend_request_from(db, &user).await? {
+                    return Err(create_error!(FriendRequestRejected));
+                }
             }
 
             other.set_relationship(db, &user, next_remote).await?;
@@ -918,7 +984,7 @@ fn next_relationship(
             if we_block {
                 Err(create_error!(Blocked))
             } else if they_block {
-                Err(create_error!(BlockedByOther))
+                Err(create_error!(FriendRequestRejected))
             } else if *local == Friend && *remote == Friend {
                 Err(create_error!(AlreadyFriends))
             } else if *local == Friend
@@ -1057,6 +1123,171 @@ mod relationship_tests {
         let bob = db.fetch_user(&bob.id).await.expect("bob stored");
         assert_eq!(alice.relationship_with(&bob.id), Friend);
         assert_eq!(bob.relationship_with(&alice.id), Friend);
+    }
+
+    async fn users_sharing_a_server(
+        db: &crate::Database,
+    ) -> (crate::User, crate::User, crate::Server) {
+        let owner = crate::User::create(db, "Owner".to_string(), Option::None, Option::None)
+            .await
+            .expect("owner");
+        let member = crate::User::create(db, "Member".to_string(), Option::None, Option::None)
+            .await
+            .expect("member");
+        let (server, _) = Box::pin(crate::Server::create(
+            db,
+            syrnike_models::v0::DataCreateServer {
+                name: "Server".to_string(),
+                description: Option::None,
+                nsfw: Option::None,
+            },
+            &owner,
+            false,
+        ))
+        .await
+        .expect("server");
+        for user in [&owner, &member] {
+            Box::pin(crate::Member::create(
+                db,
+                &server,
+                user,
+                Option::None,
+                false,
+            ))
+            .await
+            .expect("membership");
+        }
+
+        (owner, member, server)
+    }
+
+    async fn set_privacy(db: &crate::Database, user: &crate::User, privacy: crate::UserPrivacy) {
+        db.update_user(
+            &user.id,
+            &crate::PartialUser {
+                privacy: Some(privacy),
+                ..Default::default()
+            },
+            vec![],
+        )
+        .await
+        .expect("privacy saved");
+    }
+
+    #[async_std::test]
+    async fn friend_requests_follow_the_recipients_privacy() {
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let (owner, member, _) = Box::pin(users_sharing_a_server(&db)).await;
+        let stranger = crate::User::create(&db, "Stranger".to_string(), Option::None, Option::None)
+            .await
+            .expect("stranger");
+
+        set_privacy(
+            &db,
+            &owner,
+            crate::UserPrivacy {
+                friend_requests: crate::FriendRequestPrivacy {
+                    everyone: false,
+                    friends_of_friends: false,
+                    server_members: true,
+                },
+                ..Default::default()
+            },
+        )
+        .await;
+        let owner = db.fetch_user(&owner.id).await.expect("owner stored");
+
+        assert!(owner
+            .accepts_friend_request_from(&db, &member)
+            .await
+            .expect("checked"));
+        assert!(!owner
+            .accepts_friend_request_from(&db, &stranger)
+            .await
+            .expect("checked"));
+    }
+
+    #[async_std::test]
+    async fn server_members_can_open_dms_until_the_server_is_restricted() {
+        use syrnike_permissions::{calculate_user_permissions, UserPermission};
+
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let (owner, member, server) = Box::pin(users_sharing_a_server(&db)).await;
+        let can_message = |db: crate::Database, member: crate::User, owner: crate::User| async move {
+            let mut query = crate::util::permissions::perms(&db, &member).user(&owner);
+            calculate_user_permissions(&mut query)
+                .await
+                .has_user_permission(UserPermission::SendMessage)
+        };
+
+        assert!(Box::pin(can_message(db.clone(), member.clone(), owner.clone())).await);
+
+        set_privacy(
+            &db,
+            &owner,
+            crate::UserPrivacy {
+                dm_restricted_servers: vec![server.id.clone()],
+                ..Default::default()
+            },
+        )
+        .await;
+        let owner = db.fetch_user(&owner.id).await.expect("owner stored");
+        assert!(!Box::pin(can_message(db.clone(), member, owner)).await);
+    }
+
+    #[async_std::test]
+    async fn joining_a_server_can_restrict_its_dms_by_default() {
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let owner = crate::User::create(&db, "Owner".to_string(), Option::None, Option::None)
+            .await
+            .expect("owner");
+        let joiner = crate::User::create(&db, "Joiner".to_string(), Option::None, Option::None)
+            .await
+            .expect("joiner");
+        set_privacy(
+            &db,
+            &joiner,
+            crate::UserPrivacy {
+                restrict_dms_in_new_servers: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let joiner = db.fetch_user(&joiner.id).await.expect("joiner stored");
+        let (server, _) = Box::pin(crate::Server::create(
+            &db,
+            syrnike_models::v0::DataCreateServer {
+                name: "Server".to_string(),
+                description: Option::None,
+                nsfw: Option::None,
+            },
+            &owner,
+            false,
+        ))
+        .await
+        .expect("server");
+
+        Box::pin(crate::Member::create(
+            &db,
+            &server,
+            &joiner,
+            Option::None,
+            false,
+        ))
+        .await
+        .expect("membership");
+
+        let joiner = db.fetch_user(&joiner.id).await.expect("joiner stored");
+        assert_eq!(joiner.privacy().dm_restricted_servers, vec![server.id]);
     }
 }
 

@@ -30,20 +30,17 @@ pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> Pe
     if query.have_mutual_connection().await {
         permissions = UserPermission::Access as u64 + UserPermission::ViewProfile as u64;
 
-        if query.user_is_bot().await || query.are_we_a_bot().await {
+        // Like Discord, members of a shared server may message each other
+        // unless the recipient turned that off for every server they share.
+        if query.user_is_bot().await
+            || query.are_we_a_bot().await
+            || query.do_they_accept_server_dms().await
+        {
             permissions += UserPermission::SendMessage as u64;
         }
-
-        permissions.into()
-    } else {
-        permissions.into()
     }
 
-    // TODO: add boolean switch for permission for users to globally message a user
-    // maybe an enum?
-    // PrivacyLevel { Private, Friends, Mutual, Public, Global }
-
-    // TODO: add boolean switch for permission for users to mutually DM a user
+    permissions.into()
 }
 
 /// Calculate permissions against a server

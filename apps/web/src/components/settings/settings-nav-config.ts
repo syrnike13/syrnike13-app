@@ -4,6 +4,7 @@ import {
   MonitorIcon,
   PaletteIcon,
   PencilFillIcon,
+  ShieldIcon,
   Volume2Icon,
 } from '#/components/icons'
 import type { AppIcon } from '#/components/icons'
@@ -19,6 +20,7 @@ export const GENERAL_SETTINGS_NAV: {
   { id: 'account', labelKey: 'sections.account', icon: PencilFillIcon },
   { id: 'voice', labelKey: 'sections.voice', icon: Volume2Icon },
   { id: 'sessions', labelKey: 'sections.sessions', icon: MonitorIcon },
+  { id: 'privacy', labelKey: 'sections.privacy', icon: ShieldIcon },
   {
     id: 'notifications',
     labelKey: 'sections.notifications',

@@ -1099,11 +1099,7 @@ impl crate::User {
             avatar: self.avatar.map(|file| file.into()),
             relations: if let Some(crate::User { id, .. }) = perspective {
                 if id == &self.id {
-                    self.relations
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|relation| relation.into())
-                        .collect()
+                    visible_relations(self.relations.unwrap_or_default())
                 } else {
                     vec![]
                 }
@@ -1147,20 +1143,9 @@ impl crate::User {
             if perspective.id == self.id {
                 (RelationshipStatus::User, true)
             } else {
-                let relationship = perspective
-                    .relations
-                    .as_ref()
-                    .map(|relations| {
-                        relations
-                            .iter()
-                            .find(|relationship| relationship.id == self.id)
-                            .map(|relationship| relationship.status.clone().into())
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default();
-
-                let can_see_profile = relationship != RelationshipStatus::BlockedOther;
-                (relationship, can_see_profile)
+                let relationship = perspective.relationship_with(&self.id);
+                let can_see_profile = relationship != crate::RelationshipStatus::BlockedOther;
+                (relationship.into(), can_see_profile)
             }
         } else {
             (RelationshipStatus::None, false)
@@ -1227,15 +1212,7 @@ impl crate::User {
             discriminator: self.discriminator,
             display_name: self.display_name,
             avatar: self.avatar.map(|file| file.into()),
-            relations: self
-                .relations
-                .map(|relationships| {
-                    relationships
-                        .into_iter()
-                        .map(|relationship| relationship.into())
-                        .collect()
-                })
-                .unwrap_or_default(),
+            relations: visible_relations(self.relations.unwrap_or_default()),
             badges: vec![],
             online: (force_online || syrnike_presence::is_online(&self.id).await)
                 && !matches!(
@@ -1284,6 +1261,7 @@ impl From<User> for crate::User {
             privileged: value.privileged,
             bot: value.bot.map(Into::into),
             suspended_until: None,
+            privacy: None,
             last_acknowledged_policy_change: Timestamp::UNIX_EPOCH,
         }
     }
@@ -1296,12 +1274,7 @@ impl From<crate::PartialUser> for PartialUser {
             discriminator: value.discriminator,
             display_name: value.display_name,
             avatar: value.avatar.map(|file| file.into()),
-            relations: value.relations.map(|relationships| {
-                relationships
-                    .into_iter()
-                    .map(|relationship| relationship.into())
-                    .collect()
-            }),
+            relations: value.relations.map(visible_relations),
             badges: None,
             status: value.status.and_then(|status| status.into(false)),
             flags: value.flags.map(|flags| flags as u32),
@@ -1354,9 +1327,19 @@ impl From<crate::RelationshipStatus> for RelationshipStatus {
             crate::RelationshipStatus::Outgoing => RelationshipStatus::Outgoing,
             crate::RelationshipStatus::Incoming => RelationshipStatus::Incoming,
             crate::RelationshipStatus::Blocked => RelationshipStatus::Blocked,
-            crate::RelationshipStatus::BlockedOther => RelationshipStatus::BlockedOther,
+            // Like Discord, users are never told that someone blocked them.
+            crate::RelationshipStatus::BlockedOther => RelationshipStatus::None,
         }
     }
+}
+
+/// Relationships as the user sees them: being blocked by someone is not shown
+fn visible_relations(relations: Vec<crate::Relationship>) -> Vec<Relationship> {
+    relations
+        .into_iter()
+        .filter(|relation| relation.status != crate::RelationshipStatus::BlockedOther)
+        .map(Into::into)
+        .collect()
 }
 
 impl From<crate::Relationship> for Relationship {
@@ -1442,6 +1425,34 @@ impl From<UserProfile> for crate::UserProfile {
         crate::UserProfile {
             content: value.content,
             background: value.background.map(|file| file.into()),
+        }
+    }
+}
+
+impl From<crate::UserPrivacy> for UserPrivacy {
+    fn from(value: crate::UserPrivacy) -> Self {
+        UserPrivacy {
+            dm_restricted_servers: value.dm_restricted_servers,
+            restrict_dms_in_new_servers: value.restrict_dms_in_new_servers,
+            friend_requests: FriendRequestPrivacy {
+                everyone: value.friend_requests.everyone,
+                friends_of_friends: value.friend_requests.friends_of_friends,
+                server_members: value.friend_requests.server_members,
+            },
+        }
+    }
+}
+
+impl From<UserPrivacy> for crate::UserPrivacy {
+    fn from(value: UserPrivacy) -> crate::UserPrivacy {
+        crate::UserPrivacy {
+            dm_restricted_servers: value.dm_restricted_servers,
+            restrict_dms_in_new_servers: value.restrict_dms_in_new_servers,
+            friend_requests: crate::FriendRequestPrivacy {
+                everyone: value.friend_requests.everyone,
+                friends_of_friends: value.friend_requests.friends_of_friends,
+                server_members: value.friend_requests.server_members,
+            },
         }
     }
 }

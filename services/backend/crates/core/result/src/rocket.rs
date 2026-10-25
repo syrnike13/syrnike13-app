@@ -23,7 +23,7 @@ impl<'r> Responder<'r, 'static> for Error {
             ErrorType::AlreadyFriends => Status::Conflict,
             ErrorType::AlreadySentRequest => Status::Conflict,
             ErrorType::Blocked => Status::Conflict,
-            ErrorType::BlockedByOther => Status::Forbidden,
+            ErrorType::FriendRequestRejected => Status::Forbidden,
             ErrorType::NotFriends => Status::Forbidden,
             ErrorType::TooManyPendingFriendRequests { .. } => Status::BadRequest,
 

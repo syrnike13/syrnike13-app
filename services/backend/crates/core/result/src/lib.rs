@@ -68,7 +68,7 @@ pub enum ErrorType {
     AlreadyFriends,
     AlreadySentRequest,
     Blocked,
-    BlockedByOther,
+    FriendRequestRejected,
     NotFriends,
     TooManyPendingFriendRequests {
         max: usize,

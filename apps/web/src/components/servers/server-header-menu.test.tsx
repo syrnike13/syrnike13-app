@@ -19,7 +19,22 @@ import { grantAllAuthorizationForTest } from '#/features/authorization/authoriza
 const mocks = vi.hoisted(() => ({
   deleteOrLeaveServer: vi.fn(),
   navigate: vi.fn(),
+  updatePrivacy: vi.fn(),
 }))
+
+vi.mock('#/features/privacy/use-privacy', async () => {
+  const actual = await vi.importActual<
+    typeof import('#/features/privacy/use-privacy')
+  >('#/features/privacy/use-privacy')
+  return {
+    ...actual,
+    usePrivacy: () => ({
+      privacy: actual.DEFAULT_PRIVACY,
+      loaded: true,
+      update: mocks.updatePrivacy,
+    }),
+  }
+})
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
@@ -150,6 +165,19 @@ describe('ServerHeaderMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: 'Покинуть сервер' }),
     ).toBeNull()
+  })
+
+  it('turns off direct messages from this server for the current user', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: /Личные сообщения/ }),
+    )
+
+    expect(mocks.updatePrivacy).toHaveBeenCalledWith(
+      expect.objectContaining({ dm_restricted_servers: ['server-1'] }),
+    )
   })
 
   it('keeps the leave label for non-owner members', () => {

@@ -257,11 +257,9 @@ export function ChannelView({
   const dmDisabledPlaceholder =
     dmRecipient?.relationship === 'Blocked'
       ? t('blockedByYou')
-      : dmRecipient?.relationship === 'BlockedOther'
-        ? t('blockedYou')
-        : dmMessagesBlocked
-          ? t('cannotSend')
-          : undefined
+      : dmMessagesBlocked
+        ? t('cannotSend')
+        : undefined
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'

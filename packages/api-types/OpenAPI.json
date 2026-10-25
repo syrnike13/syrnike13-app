@@ -248,6 +248,88 @@
         ]
       }
     },
+    "/users/@me/privacy": {
+      "get": {
+        "tags": [
+          "User Information"
+        ],
+        "summary": "Fetch Privacy Settings",
+        "description": "Retrieve who can send you direct messages and friend requests.",
+        "operationId": "privacy_fetch",
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPrivacy"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "User Information"
+        ],
+        "summary": "Edit Privacy Settings",
+        "description": "Replace who can send you direct messages and friend requests.",
+        "operationId": "privacy_edit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPrivacy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPrivacy"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
     "/users/@me": {
       "get": {
         "tags": [
@@ -8534,7 +8616,7 @@
               "type": {
                 "type": "string",
                 "enum": [
-                  "BlockedByOther"
+                  "FriendRequestRejected"
                 ]
               }
             }
@@ -9924,13 +10006,6 @@
             "enum": [
               "Blocked"
             ]
-          },
-          {
-            "description": "Blocked by this user",
-            "type": "string",
-            "enum": [
-              "BlockedOther"
-            ]
           }
         ]
       },
@@ -10225,6 +10300,61 @@
             "type": "string",
             "maxLength": 1024,
             "minLength": 8
+          }
+        }
+      },
+      "FriendRequestPrivacy": {
+        "description": "Who can send friend requests to a user",
+        "type": "object",
+        "required": [
+          "everyone",
+          "friends_of_friends",
+          "server_members"
+        ],
+        "properties": {
+          "everyone": {
+            "description": "Anyone who knows the username",
+            "type": "boolean"
+          },
+          "friends_of_friends": {
+            "description": "Users who share a friend",
+            "type": "boolean"
+          },
+          "server_members": {
+            "description": "Users who share a server",
+            "type": "boolean"
+          }
+        }
+      },
+      "UserPrivacy": {
+        "description": "Who can reach a user; only returned to the user themselves",
+        "type": "object",
+        "properties": {
+          "dm_restricted_servers": {
+            "description": "Servers whose members cannot open direct messages with this user",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restrict_dms_in_new_servers": {
+            "description": "Restrict direct messages from members of servers joined from now on",
+            "default": false,
+            "type": "boolean"
+          },
+          "friend_requests": {
+            "description": "Who can send friend requests",
+            "default": {
+              "everyone": true,
+              "friends_of_friends": true,
+              "server_members": true
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FriendRequestPrivacy"
+              }
+            ]
           }
         }
       },

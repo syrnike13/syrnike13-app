@@ -112,11 +112,9 @@ export function ChannelChatPanel({
   const dmDisabledPlaceholder =
     dmRecipientRelationship === 'Blocked'
       ? t('blockedByYou')
-      : dmRecipientRelationship === 'BlockedOther'
-        ? t('blockedYou')
-        : dmMessagesBlocked
-          ? t('cannotSend')
-          : undefined
+      : dmMessagesBlocked
+        ? t('cannotSend')
+        : undefined
 
   return (
     <>
