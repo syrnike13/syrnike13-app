@@ -11,7 +11,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
-import { toast } from 'sonner'
 
 import { config } from '#/lib/config'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -172,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         predicate: (query) =>
           query.queryKey[0] === 'auth' && query.queryKey[1] === 'onboarding',
       })
-      if (message) toast.error(message)
+      if (message) {}
     },
     [applySession, queryClient],
   )
@@ -267,7 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isLoginSuccess(response)) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
-          yield* Effect.sync(() => toast.success(t('toast.loggedIn')))
+          yield* Effect.sync(() => {})
           return { needsOnboarding: needsOnboard }
         }
 
@@ -277,12 +276,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.message(t('toast.mfaRequired'))
           })
           return
         }
 
-        yield* Effect.sync(() => toast.error(t('toast.accountDisabled')))
+        yield* Effect.sync(() => {})
       }),
     [applySuccessSession, syncOnboardingStatus, t],
   )
@@ -302,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isLoginSuccess(response)) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
-          yield* Effect.sync(() => toast.success(t('toast.loggedIn')))
+          yield* Effect.sync(() => {})
           return { needsOnboarding: needsOnboard }
         }
 
@@ -312,12 +310,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.error(t('toast.mfaFailed'))
           })
           return
         }
 
-        yield* Effect.sync(() => toast.error(t('toast.accountDisabled')))
+        yield* Effect.sync(() => {})
       }),
     [applySuccessSession, mfaChallenge, syncOnboardingStatus, t],
   )
@@ -352,7 +349,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           queryClient.setQueryData(queryKeys.auth.onboarding(token), {
             onboarding: false,
           })
-          toast.success(t('toast.usernameSet'))
         })
       }),
     [queryClient, session?.token, t],
@@ -367,7 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const token = yield* applySuccessSession(response)
           const needsOnboard = yield* syncOnboardingStatus(token)
           yield* Effect.sync(() =>
-            toast.success(t('toast.emailVerified')),
+            {},
           )
           return { needsOnboarding: needsOnboard }
         }
@@ -378,13 +374,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ticket: response.ticket,
               allowedMethods: response.allowed_methods,
             })
-            toast.message(t('toast.mfaPassword'))
           })
           return
         }
 
         yield* Effect.sync(() =>
-          toast.error(t('toast.verifyLoginFailed')),
+          {},
         )
       }),
     [applySuccessSession, syncOnboardingStatus, t],
@@ -400,7 +395,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         yield* clearSessionEffect().pipe(Effect.ignore)
         yield* Effect.sync(() => {
           resetSessionState()
-          toast.success(t('toast.loggedOut'))
         })
       }),
     [resetSessionState, session?.token, t],

@@ -3,7 +3,6 @@ import { Effect, Option, Schema } from 'effect'
 import { useState } from 'react'
 import { HashIcon, Volume2BoldIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -29,7 +28,6 @@ import {
 } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
 
@@ -90,11 +88,8 @@ export function CreateChannelDialog({
               Effect.tap((updated) =>
                 Effect.sync(() => syncStore.upsertServer(updated)),
               ),
-              Effect.catch((error) =>
+              Effect.catch(() =>
                 Effect.sync(() => {
-                  toast.error(
-                    apiErrorMessage(error, t('categoryError')),
-                  )
                 }),
               ),
             )
@@ -105,7 +100,6 @@ export function CreateChannelDialog({
           onOpenChange(false)
           setName('')
           setType('Text')
-          toast.success(t('created', { name: trimmed }))
         })
         yield* Effect.tryPromise({
           try: () =>
@@ -117,11 +111,8 @@ export function CreateChannelDialog({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSaving(false))),

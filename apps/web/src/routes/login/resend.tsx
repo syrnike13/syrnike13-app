@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   executeHcaptcha,
@@ -36,7 +35,6 @@ import {
 } from '#/features/auth/use-syrnike-config'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { loadSession } from '#/lib/session'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/resend')({
   beforeLoad: () => {
@@ -49,7 +47,6 @@ export const Route = createFileRoute('/login/resend')({
 
 function ResendVerificationPage() {
   const t = useTranslations('auth')
-  const tValidation = useTranslations('validation')
   const configQuery = useSyrnikeConfig()
   const features = configQuery.data?.features
   const siteKey = resolveHcaptchaSiteKey(features)
@@ -65,12 +62,10 @@ function ResendVerificationPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 
       if (captchaRequired && !siteKey) {
-        toast.error(t('register.captchaNotConfigured'))
         return
       }
 
@@ -95,18 +90,14 @@ function ResendVerificationPage() {
           })
           yield* Effect.sync(() => {
             setPendingVerifyEmail(parsed.data.email)
-            toast.success(t('resend.sent'))
           })
           yield* Effect.tryPromise({
             try: () => navigate({ to: '/login/check', replace: true }),
             catch: (cause) => cause,
           })
         }).pipe(
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('resend.error')),
-              )
             }),
           ),
           Effect.ensuring(Effect.sync(() => setSubmitting(false))),

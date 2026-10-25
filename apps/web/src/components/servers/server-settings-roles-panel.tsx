@@ -24,7 +24,6 @@ import {
   Trash2Icon,
 } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -391,7 +390,6 @@ function DefaultPermissionsEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] default permissions save failed', error)
-            toast.error(t('savePermissionsError'))
             return false
           }),
         ),
@@ -569,7 +567,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] create failed', error)
-            toast.error(t('createRoleError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setCreating(false))),
@@ -627,7 +624,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] delete failed', error)
-            toast.error(t('deleteRoleError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingRole(false))),
@@ -656,7 +652,6 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[roles] reorder failed', error)
-            toast.error(t('reorderError'))
           }),
         ),
         Effect.ensuring(

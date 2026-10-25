@@ -3,7 +3,6 @@ import { SearchInput } from '#/components/ui/search-input'
 import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -18,7 +17,6 @@ import {
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBansEffect,
@@ -131,11 +129,8 @@ export function ServerSettingsBansPanel({
         })
         yield* Effect.sync(closeUnbanDialog)
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('unbanError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRemovingUserId(null))),

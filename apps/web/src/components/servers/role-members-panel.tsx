@@ -3,7 +3,6 @@ import { SearchInput } from '#/components/ui/search-input'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { XIcon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
@@ -14,7 +13,6 @@ import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { canAssignRole } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -129,11 +127,8 @@ export function RoleMembersPanel({
         Effect.tap((updated) =>
           Effect.sync(() => syncStore.upsertMembers([updated])),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('updateError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingMemberId(null))),

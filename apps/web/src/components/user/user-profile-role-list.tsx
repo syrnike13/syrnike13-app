@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon, XIcon } from '#/components/icons'
 
@@ -20,7 +19,6 @@ import {
   canEditAnyMemberRole,
   canToggleMemberRole,
 } from '#/lib/member-roles'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 
@@ -115,11 +113,8 @@ export function UserProfileRoleList({
         Effect.tap((updated) =>
           Effect.sync(() => syncStore.upsertMembers([updated])),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('removeRoleError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRemovingRoleId(null))),

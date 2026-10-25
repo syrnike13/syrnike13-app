@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   useAdminDraftRegistration,
@@ -182,7 +181,6 @@ export function ActivityEditorPage({
           queryKeys.admin.activities,
           (current = []) => [...current, saved],
         )
-        toast.success(t('created'))
         void navigate({
           to: '/activities/$activityId',
           params: { activityId: saved._id },
@@ -191,16 +189,8 @@ export function ActivityEditorPage({
         return
       }
       replaceCached(saved)
-      toast.success(t('saved'))
     },
-    onError: (e) => {
-      toast.error(
-        e instanceof Error
-          ? e.message
-          : mode === 'create'
-            ? t('createError')
-            : t('saveError'),
-      )
+    onError: () => {
     },
   })
 
@@ -220,11 +210,9 @@ export function ActivityEditorPage({
         queryKeys.admin.activities,
         (current = []) => current.filter((item) => item._id !== deleted._id),
       )
-      toast.success(t('deleted'))
       void navigate({ to: '/activities', ignoreBlocker: true })
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('deleteError'))
+    onError: () => {
     },
   })
 
@@ -243,8 +231,7 @@ export function ActivityEditorPage({
       setRotateOpen(false)
       setClientSecret(client_secret)
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('secretError'))
+    onError: () => {
     },
   })
 
@@ -257,7 +244,6 @@ export function ActivityEditorPage({
     if (saveMutation.isPending) return false
     if (hasActivityFormErrors(errors)) {
       setShowErrors(true)
-      toast.error(t('invalid'))
       return false
     }
     try {
@@ -307,9 +293,7 @@ export function ActivityEditorPage({
     if (!clientSecret) return
     try {
       await navigator.clipboard.writeText(clientSecret)
-      toast.success(t('secretCopied'))
     } catch {
-      toast.error(t('secretCopyError'))
     }
   }
 

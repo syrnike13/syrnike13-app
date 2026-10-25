@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { MessageCircleIcon, PlusIcon, UsersIcon } from '#/components/icons'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -34,7 +33,6 @@ import { useAuth } from '#/features/auth/auth-context'
 import { createGroupChannelEffect } from '#/features/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 
@@ -42,7 +40,6 @@ type DialogMode = 'dm' | 'group' | null
 
 export function NewConversationButton() {
   const t = useTranslations('home.newConversation')
-  const tu = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -105,7 +102,7 @@ export function NewConversationButton() {
             params: { channelId },
             search: { m: undefined },
           })
-        }, tu),
+        }),
       )
     } catch {
       // dm-actions already shows the concrete error toast.
@@ -131,7 +128,6 @@ export function NewConversationButton() {
           syncStore.upsertChannel(channel)
           syncStore.setSelectedServerId(null)
           closeDialog()
-          toast.success(t('created'))
         })
         yield* Effect.tryPromise({
           try: () =>
@@ -143,9 +139,8 @@ export function NewConversationButton() {
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(apiErrorMessage(error, t('createError')))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),

@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import {
@@ -24,7 +23,6 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { sendPasswordResetEffect } from '#/features/api/account-api'
 import { resetEmailSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/login/reset')({
   beforeLoad: () => {
@@ -37,7 +35,6 @@ export const Route = createFileRoute('/login/reset')({
 
 function ResetRequestPage() {
   const t = useTranslations('auth')
-  const tValidation = useTranslations('validation')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
 
@@ -46,7 +43,6 @@ function ResetRequestPage() {
     onSubmit: async ({ value }) => {
       const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(tValidation(parsed.issues[0]?.message ?? 'email'))
         return
       }
 
@@ -56,14 +52,10 @@ function ResetRequestPage() {
           Effect.tap(() =>
             Effect.sync(() => {
               setSent(true)
-              toast.success(t('reset.sent'))
             }),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('reset.error')),
-              )
             }),
           ),
           Effect.ensuring(Effect.sync(() => setSubmitting(false))),

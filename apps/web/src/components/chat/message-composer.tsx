@@ -12,7 +12,6 @@ import { useLocale, useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { ArrowUpIcon, PlusIcon, XIcon } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
 import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'
@@ -26,7 +25,6 @@ import {
   memberDisplayColour,
   normalizeRoleColour,
 } from '#/features/sync/member-list-groups'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { loadEmojiCatalog, searchEmoji } from '#/lib/emoji-catalog'
@@ -522,13 +520,11 @@ export function MessageComposer({
     }
 
     if (!token) {
-      toast.error(t('noSession'))
       return
     }
 
     if (isEditing && editingMessage) {
       if (!content) {
-        toast.error(t('emptyMessage'))
         return
       }
       if (!onEdit) return
@@ -543,9 +539,6 @@ export function MessageComposer({
         )
         onCancelAction?.()
       } catch (error) {
-        toast.error(
-          apiErrorMessage(error, t('editError')),
-        )
       } finally {
         setSending(false)
         requestAnimationFrame(() => composerRef.current?.focus())
@@ -606,9 +599,6 @@ export function MessageComposer({
         }),
       )
     } catch (error) {
-      toast.error(
-        apiErrorMessage(error, t('sendError')),
-      )
     } finally {
       setSending(false)
       requestAnimationFrame(() => composerRef.current?.focus())

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Badge, User } from '@syrnike13/api-types'
 import { Effect, Schema } from 'effect'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { BadgeIcon } from '#/components/badge-icon'
@@ -78,9 +77,8 @@ function UsersPage() {
       setSelectedUser(user)
       void navigate({ search: { u: user._id }, replace: true })
     },
-    onError: (e) => {
+    onError: () => {
       setSelectedUser(null)
-      toast.error(e instanceof Error ? e.message : t('notFound'))
     },
   })
 
@@ -101,8 +99,7 @@ function UsersPage() {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('error'))
+    onError: () => {
     },
   })
 
@@ -117,8 +114,7 @@ function UsersPage() {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('error'))
+    onError: () => {
     },
   })
 

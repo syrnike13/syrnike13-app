@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -20,7 +19,6 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -145,12 +143,9 @@ export function useChannelChat({
             }
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
             if (activeChannelIdRef.current === requestChannelId) {
-              toast.error(
-                apiErrorMessage(error, t('messagesLoadError')),
-              )
             }
           }),
         ),
@@ -182,12 +177,9 @@ export function useChannelChat({
               }
             }),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.upsertMessage(message)
-              toast.error(
-                apiErrorMessage(error, t('deleteMessageError')),
-              )
             }),
           ),
         ),
@@ -203,16 +195,13 @@ export function useChannelChat({
       await Effect.runPromise(
         pinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success(t('messagePinned'))),
+            Effect.sync(() => {}),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.patchMessage(channelId, message._id, {
                 pinned: message.pinned,
               })
-              toast.error(
-                apiErrorMessage(error, t('pinMessageError')),
-              )
             }),
           ),
         ),
@@ -240,16 +229,13 @@ export function useChannelChat({
       await Effect.runPromise(
         unpinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success(t('messageUnpinned'))),
+            Effect.sync(() => {}),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               syncStore.patchMessage(channelId, message._id, {
                 pinned: message.pinned,
               })
-              toast.error(
-                apiErrorMessage(error, t('unpinMessageError')),
-              )
             }),
           ),
         ),

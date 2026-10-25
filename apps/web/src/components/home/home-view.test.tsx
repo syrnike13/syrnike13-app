@@ -80,7 +80,6 @@ describe('HomeView', () => {
         'session-token',
         'friend-1',
         expect.any(Function),
-        expect.anything(),
       )
     })
   })

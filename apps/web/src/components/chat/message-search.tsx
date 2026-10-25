@@ -3,7 +3,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
-import { toast } from 'sonner'
 
 import { SearchIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -31,7 +30,6 @@ import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { searchServerMessages } from '#/features/search/server-message-search'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -82,9 +80,8 @@ function useMessageSearch(scope: MessageSearchScope, token: string, query: strin
         Effect.andThen(Effect.sync(() => setSearching(true))),
         Effect.andThen(search),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(apiErrorMessage(error, t('searchFailed')))
               setSearching(false)
             }),
           onSuccess: (result) =>

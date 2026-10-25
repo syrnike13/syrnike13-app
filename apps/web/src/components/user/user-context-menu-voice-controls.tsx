@@ -6,7 +6,6 @@ import type {
   Server,
 } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -33,7 +32,6 @@ import {
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
 import { runtimeChannelName } from '#/lib/channel-voice'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   canDeafenServerMember,
   canMoveServerMember,
@@ -125,7 +123,6 @@ export function UserContextMenuVoiceControls({
   async function editTargetMember(
     action: ServerVoiceAction,
     data: DataMemberEdit,
-    successMessage: string,
   ) {
     if (!token || !server || !targetMember || pendingAction) return
 
@@ -171,14 +168,10 @@ export function UserContextMenuVoiceControls({
                 )
               }
             }
-            toast.success(successMessage)
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('updateError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setPendingAction(null))),
@@ -222,7 +215,6 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'mute',
                   { can_publish: checked !== true },
-                  checked === true ? t('micOff') : t('micOn'),
                 )
               }}
             >
@@ -240,7 +232,6 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'deafen',
                   { can_receive: checked !== true },
-                  checked === true ? t('soundOff') : t('soundOn'),
                 )
               }}
             >
@@ -268,7 +259,6 @@ export function UserContextMenuVoiceControls({
                         void editTargetMember(
                           'move',
                           { voice_channel: channel._id },
-                          t('moved', { channel: channelName }),
                         )
                       }}
                     >
@@ -287,7 +277,6 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'disconnect',
                   { remove: ['VoiceChannel'] },
-                  t('disconnected'),
                 )
               }}
             >

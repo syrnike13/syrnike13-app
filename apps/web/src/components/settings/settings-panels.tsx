@@ -12,7 +12,6 @@ import {
 } from '@syrnike13/ui/i18n'
 import { useState } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
 import { SettingsHotkeysPanel } from '#/components/settings/settings-hotkeys-panel'
@@ -43,7 +42,6 @@ import type { SettingsSection } from '#/features/settings/settings-modal-context
 import { changeAccountPasswordEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   readBrowserDiagnosticReportsEnabled,
   writeBrowserDiagnosticReportsEnabled,
@@ -177,11 +175,9 @@ export function SettingsAccountPanel() {
             const token = auth.session?.token
             if (!token) return
             if (newPassword.length < 8) {
-              toast.error(t('passwordMin'))
               return
             }
             if (!currentPassword) {
-              toast.error(t('currentPasswordRequired'))
               return
             }
             setPasswordSaving(true)
@@ -192,17 +188,13 @@ export function SettingsAccountPanel() {
                 currentPassword,
               ).pipe(
                 Effect.matchEffect({
-                  onFailure: (error) =>
+                  onFailure: () =>
                     Effect.sync(() => {
-                      toast.error(
-                        apiErrorMessage(error, t('passwordChangeError')),
-                      )
                     }),
                   onSuccess: () =>
                     Effect.sync(() => {
                       setCurrentPassword('')
                       setNewPassword('')
-                      toast.success(t('passwordChanged'))
                     }),
                 }),
                 Effect.ensuring(
@@ -262,7 +254,6 @@ export function SettingsAccountPanel() {
             onCheckedChange={(checked) => {
               setDiagnosticReports(checked)
               if (!writeBrowserDiagnosticReportsEnabled(checked)) {
-                toast.warning(t('storageDenied'))
               }
             }}
           />
@@ -288,16 +279,12 @@ export function SettingsAccountPanel() {
                     description: 'Manual diagnostic report',
                   }).pipe(
                     Effect.matchEffect({
-                      onFailure: (error) =>
+                      onFailure: () =>
                         Effect.sync(() => {
-                          toast.error(
-                            apiErrorMessage(error, t('reportError')),
-                          )
                         }),
                       onSuccess: (report) =>
                         Effect.sync(() => {
                           if (report) {
-                            toast.success(t('reportSent', { id: report.id }))
                           }
                         }),
                     }),

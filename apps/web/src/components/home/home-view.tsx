@@ -12,7 +12,6 @@ import {
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { SyrnikScene } from '#/components/mascot/syrnik-scene'
@@ -93,7 +92,6 @@ function HomeFriendRow({
   actions?: ReactNode
 }) {
   const t = useTranslations('home.friends')
-  const tf = useTranslations('friends')
   const tc = useTranslations('chat')
   const [blockDialogOpen, setBlockDialogOpen] = useState(false)
   const [blocking, setBlocking] = useState(false)
@@ -102,9 +100,7 @@ function HomeFriendRow({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success(t('idCopied'))
     } catch {
-      toast.error(t('copyError'))
     }
   }
 
@@ -112,7 +108,7 @@ function HomeFriendRow({
     if (!token) return
     setBlocking(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      await Effect.runPromise(blockUserRelationship(token, user._id))
       setBlockDialogOpen(false)
     } catch {
       // friend-actions already shows the error toast.
@@ -171,7 +167,7 @@ function HomeFriendRow({
                 <DropdownMenuItem
                   onClick={() => {
                     Effect.runFork(
-                      declineIncomingFriendRequest(token, user._id, tf).pipe(Effect.ignore),
+                      declineIncomingFriendRequest(token, user._id).pipe(Effect.ignore),
                     )
                   }}
                 >
@@ -183,7 +179,7 @@ function HomeFriendRow({
                 <DropdownMenuItem
                   onClick={() => {
                     Effect.runFork(
-                      cancelOutgoingFriendRequest(token, user._id, tf).pipe(Effect.ignore),
+                      cancelOutgoingFriendRequest(token, user._id).pipe(Effect.ignore),
                     )
                   }}
                 >
@@ -194,7 +190,7 @@ function HomeFriendRow({
               {user.relationship === 'Friend' ? (
                 <DropdownMenuItem
                   onClick={() => {
-                    Effect.runFork(removeFriend(token, user._id, tf).pipe(Effect.ignore))
+                    Effect.runFork(removeFriend(token, user._id).pipe(Effect.ignore))
                   }}
                 >
                   <UserMinusIcon />
@@ -316,7 +312,6 @@ function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
 
 function AddFriendPanel() {
   const t = useTranslations('home.friends')
-  const tf = useTranslations('friends')
   const auth = useAuth()
   const token = auth.session?.token
   const [username, setUsername] = useState('')
@@ -328,7 +323,7 @@ function AddFriendPanel() {
     if (!token || !trimmed) return
     setSending(true)
     try {
-      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed, tf))
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed))
       setUsername('')
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -371,8 +366,6 @@ function AddFriendPanel() {
 
 function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists }) {
   const t = useTranslations('home.friends')
-  const tf = useTranslations('friends')
-  const tu = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -400,7 +393,6 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
             params: { channelId },
             search: { m: undefined },
           }),
-        tu,
       ).pipe(Effect.ignore),
     )
   }
@@ -414,7 +406,7 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
           size="sm"
           variant="secondary"
           onClick={() => {
-            Effect.runFork(unblockBlockedUser(token, user._id, tf).pipe(Effect.ignore))
+            Effect.runFork(unblockBlockedUser(token, user._id).pipe(Effect.ignore))
           }}
         >
           {t('unblock')}
@@ -430,7 +422,7 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
             type="button"
             size="sm"
             onClick={() => {
-              Effect.runFork(acceptIncomingFriendRequest(token, user._id, tf).pipe(Effect.ignore))
+              Effect.runFork(acceptIncomingFriendRequest(token, user._id).pipe(Effect.ignore))
             }}
           >
             {t('accept')}
@@ -442,7 +434,7 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
           variant="secondary"
           onClick={() => {
             const action = incoming ? declineIncomingFriendRequest : cancelOutgoingFriendRequest
-            Effect.runFork(action(token, user._id, tf).pipe(Effect.ignore))
+            Effect.runFork(action(token, user._id).pipe(Effect.ignore))
           }}
         >
           {incoming ? t('decline') : t('cancel')}

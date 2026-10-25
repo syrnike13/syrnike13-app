@@ -26,10 +26,8 @@ import {
   type VoiceSnapshot,
 } from '@syrnike13/platform'
 import { Effect, Fiber, Schedule } from 'effect'
-import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { callAudioBitrateBps } from '#/lib/channel-audio-bitrate'
 import {
@@ -633,7 +631,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ? `${snapshot.failure.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousFailureRef.current) {
-      toast.error(snapshot.failure?.message ?? t('errors.connectVoice'))
       // A native cause is already queued by main and leased by the renderer.
       // Keep its snapshot projection without enqueuing a second root report.
       if (auth.session?.token && snapshot.failure && !snapshot.failure.diagnosticCorrelationId) {
@@ -666,10 +663,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const fallbackKey = DEVICE_FALLBACK_WARNING_KEYS[error?.code ?? '']
       const fallback = fallbackKey ? t(fallbackKey) : undefined
       if (fallback) {
-        toast.warning(desktop ? fallback : error?.message ?? fallback)
       } else if (!desktop) {
         // Desktop path failures already have localized, actionable runtime banners.
-        toast.error(error?.message ?? t('errors.mediaUnavailable'))
       }
       if (!fallback && auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
@@ -734,7 +729,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     async (channelId: string) => {
       const channel = syncStore.getState().channels[channelId]
       if (!canJoinVoiceChannel(channel)) {
-        toast.error(t('errors.voiceUnavailable'))
         return false
       }
       try {
@@ -756,7 +750,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         await dispatchVoice({ type: 'join', channelId, recipients })
         return true
       } catch (error) {
-        toast.error(apiErrorMessage(error, t('errors.noSession')))
         return false
       }
     },
@@ -836,11 +829,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           ),
         catch: (cause) => cause,
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('errors.openPicker')),
-            )
           }),
         ),
       ),
@@ -1635,11 +1625,8 @@ function createDesktopVoiceClient(
           try: () => desktop.voice.dispatch(command),
           catch: (cause) => cause,
         }).pipe(
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, 'Native voice command failed'),
-              )
             }),
           ),
         ),

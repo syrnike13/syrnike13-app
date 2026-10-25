@@ -7,7 +7,6 @@ import type {
   FieldsServer,
   SystemMessageChannels,
 } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
@@ -58,7 +57,6 @@ import {
   SelectValue,
 } from '@syrnike13/ui/primitives/select'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -449,10 +447,7 @@ function ServerSettingsGeneralPanel({
         })
       }).pipe(
         Effect.match({
-          onFailure: (error) => {
-            toast.error(
-              apiErrorMessage(error, t('saveError')),
-            )
+          onFailure: () => {
             return false
           },
           onSuccess: () => true,
@@ -644,10 +639,7 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
           }),
         ),
         Effect.match({
-          onFailure: (error) => {
-            toast.error(
-              apiErrorMessage(error, t('saveError')),
-            )
+          onFailure: () => {
             return false
           },
           onSuccess: () => true,
@@ -769,11 +761,8 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     const fiber = Effect.runFork(
       fetchServerEmojisEffect(token, serverId).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('emojiLoadError')),
-              )
               setEmojiLoading(false)
             }),
           onSuccess: (list) =>
@@ -798,12 +787,10 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     // Discord: without a typed name the file name becomes the emoji name.
     const trimmedName = emojiName.trim() || emojiNameFromFile(file)
     if (!token || !trimmedName) {
-      toast.error(t('emojiNameRequired'))
       if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
     if (!SERVER_EMOJI_NAME_PATTERN.test(trimmedName)) {
-      toast.error(t('emojiNameError'))
       if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
@@ -825,11 +812,8 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
           if (emojiFileRef.current) emojiFileRef.current.value = ''
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('emojiCreateError')),
-            )
             if (emojiFileRef.current) emojiFileRef.current.value = ''
           }),
         ),
@@ -855,11 +839,8 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
             setEmojiPendingDeletion(null)
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('emojiDeleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setEmojiDeleting(false))),

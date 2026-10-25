@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { SearchInput } from '#/components/ui/search-input'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { Effect, Exit } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -23,7 +22,6 @@ import { useAuth } from '#/features/auth/auth-context'
 import { editServerMemberEffect } from '#/features/api/servers-api'
 import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { canToggleMemberRole } from '#/lib/member-roles'
 import { cn } from '#/lib/utils'
 
@@ -183,13 +181,11 @@ export function AddRoleMembersDialog({
       }
 
       if (hasFailures) {
-        toast.error(t('addSomeError'))
         return
       }
 
       onOpenChange(false)
     } catch (error) {
-      toast.error(apiErrorMessage(error, t('addError')))
     } finally {
       setSaving(false)
     }

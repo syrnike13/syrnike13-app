@@ -2,7 +2,6 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   Button,
@@ -26,7 +25,6 @@ import {
 } from '#/features/api/invites-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { loadSession } from '#/lib/session'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export const Route = createFileRoute('/invite/$code')({
   component: InviteJoinPage,
@@ -82,13 +80,13 @@ function InviteJoinPage() {
             })
         }
           yield* Effect.sync(() =>
-            toast.success(t('serverJoined')),
+            {},
           )
         return
       }
 
       if (isGroupInviteJoin(response)) {
-          yield* Effect.sync(() => toast.success(t('accepted')))
+          yield* Effect.sync(() => {})
           yield* Effect.tryPromise({
             try: () =>
               navigate({
@@ -102,14 +100,11 @@ function InviteJoinPage() {
       }
 
         yield* Effect.sync(() =>
-          toast.error(t('unknown')),
+          {},
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('error')),
-            )
           }),
         ),
       ),

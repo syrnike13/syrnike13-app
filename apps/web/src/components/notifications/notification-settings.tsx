@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
@@ -23,7 +22,6 @@ import {
   subscribePushEffect,
   unsubscribePushEffect,
 } from '#/features/api/push-api'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -99,7 +97,6 @@ export function NotificationSettings({
 
   function enableDesktop() {
     if (!('Notification' in window)) {
-      toast.error(t('unsupported'))
       return
     }
 
@@ -112,9 +109,7 @@ export function NotificationSettings({
           Effect.sync(() => {
             setPermission(result)
             if (result === 'granted') {
-              toast.success(t('granted'))
             } else if (result === 'denied') {
-              toast.error(t('denied'))
             }
           }),
         ),
@@ -126,7 +121,6 @@ export function NotificationSettings({
   function enablePush() {
     const token = auth.session?.token
     if (!token || !vapidKey) {
-      toast.error(t('pushUnavailable'))
       return
     }
 
@@ -172,14 +166,10 @@ export function NotificationSettings({
         })
         yield* Effect.sync(() => {
           setPushSubscribed(true)
-          toast.success(t('pushEnabled'))
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('pushError')),
-            )
           }),
         ),
       ),
@@ -221,14 +211,10 @@ export function NotificationSettings({
         }
         yield* Effect.sync(() => {
           setPushSubscribed(false)
-          toast.success(t('pushDisabled'))
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('disableError')),
-            )
           }),
         ),
       ),

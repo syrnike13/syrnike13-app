@@ -106,7 +106,6 @@ describe('UserProfileCard', () => {
         'session-token',
         'target-user',
         expect.any(Function),
-        expect.anything(),
       )
     })
     expect(navigateMock).toHaveBeenCalledWith({

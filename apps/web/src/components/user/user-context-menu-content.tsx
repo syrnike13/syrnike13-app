@@ -11,7 +11,6 @@ import {
   UserMinusIcon,
 } from '#/components/icons'
 import type { Member, Server, User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -190,7 +189,6 @@ function UserRolesContextMenuSub({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[user-context-menu] role update failed', error)
-            toast.error(t('rolesUpdateError'))
           }),
         ),
         Effect.ensuring(
@@ -286,7 +284,6 @@ export function UserContextMenuContent({
   onOpenProfile,
 }: UserContextMenuContentProps) {
   const t = useTranslations('users')
-  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -369,7 +366,6 @@ export function UserContextMenuContent({
               params: { channelId },
               search: { m: undefined },
             }),
-          t,
         ),
       )
     } catch {
@@ -390,7 +386,6 @@ export function UserContextMenuContent({
               params: { channelId },
               search: { m: undefined },
             }),
-          t,
         ),
       )
       await voice.join(channel._id)
@@ -418,13 +413,11 @@ export function UserContextMenuContent({
           Effect.sync(() => {
             syncStore.removeServerMember(serverId, user._id)
             handleKickDialogOpenChange(false)
-            toast.success(t('kickSuccess'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[user-context-menu] kick failed', error)
-            toast.error(t('kickError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setKicking(false))),
@@ -458,13 +451,11 @@ export function UserContextMenuContent({
           Effect.sync(() => {
             syncStore.removeServerMember(serverId, user._id)
             handleBanDialogOpenChange(false)
-            toast.success(t('banSuccess'))
           }),
         ),
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[user-context-menu] ban failed', error)
-            toast.error(t('banError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBanning(false))),
@@ -476,7 +467,7 @@ export function UserContextMenuContent({
     if (!token || isSelf) return
     setBlocking(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
+      await Effect.runPromise(blockUserRelationship(token, user._id))
       setBlockDialogOpen(false)
     } catch {
       // friend-actions already shows the error toast.
@@ -488,9 +479,7 @@ export function UserContextMenuContent({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success(t('idCopied'))
     } catch {
-      toast.error(t('copyError'))
     }
   }
 

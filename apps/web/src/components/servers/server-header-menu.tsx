@@ -12,7 +12,6 @@ import {
 } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
@@ -40,7 +39,6 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -96,7 +94,6 @@ export function ServerHeaderMenu({
         yield* Effect.sync(() => {
           syncStore.removeServer(serverId)
           syncStore.setSelectedServerId(null)
-          toast.success(t('left'))
           setRemoveDialogOpen(false)
         })
         yield* Effect.tryPromise({
@@ -104,11 +101,8 @@ export function ServerHeaderMenu({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('leaveError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setRemovingServer(false))),
@@ -129,10 +123,9 @@ export function ServerHeaderMenu({
       writeClipboardTextEffect(serverId).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error(t('copyError'))),
+            Effect.sync(() => {}),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success(t('copied'))
               setMenuOpen(false)
             }),
         }),

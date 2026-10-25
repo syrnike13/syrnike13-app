@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { toast } from 'sonner'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import { MetaFlag } from '#/components/meta-flag'
@@ -125,10 +124,8 @@ function ActivityRow({ activity }: { activity: AdminActivityApplication }) {
         (current = []) =>
           current.map((item) => (item._id === updated._id ? updated : item)),
       )
-      toast.success(updated.enabled ? t('enabledToast') : t('disabledToast'))
     },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : t('toggleError'))
+    onError: () => {
     },
   })
 

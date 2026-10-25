@@ -9,7 +9,6 @@ import {
 import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Effect, Option, Schema } from 'effect'
-import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -228,7 +227,6 @@ function FeedbackModerationContent() {
 
   function canLeaveActiveDraft() {
     if (!draftController?.isDirty) return true
-    toast.warning(t('draftWarning'))
     return false
   }
 
@@ -250,33 +248,30 @@ function FeedbackModerationContent() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => approveFeedback(token!, id),
     onSuccess: () => {
-      toast.success(t('approved'))
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('approveError')),
+    onError: () => {},
   })
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       rejectFeedback(token!, id, { reason }),
     onSuccess: () => {
-      toast.success(t('rejected'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('rejectError')),
+    onError: () => {},
   })
   const mergeMutation = useMutation({
     mutationFn: ({ source, target }: { source: FeedbackSuggestion; target: FeedbackSuggestion }) =>
       mergeFeedback(token!, source._id, { target_id: target._id }),
     onSuccess: () => {
-      toast.success(t('merged'))
       closeDialog()
       resetMergeDraft()
       void invalidate()
     },
-    onError: () => toast.error(t('mergeError')),
+    onError: () => {},
   })
 
   const pendingTotal = pendingQuery.data?.pages[0]?.total ?? 0
@@ -1006,15 +1001,12 @@ function PublishedFeedbackEditor({
       setBaseline(next)
       setStatus(next.status)
       setResponse(next.response)
-      toast.success(t('updated'))
       onSaved()
     },
     onError: (error) => {
       if (error instanceof ApiError && error.message === 'InvalidOperation') {
-        toast.error(t('staleError'))
         return
       }
-      toast.error(t('saveError'))
     },
   })
   const hideMutation = useMutation({
@@ -1025,10 +1017,9 @@ function PublishedFeedbackEditor({
           : Effect.fail(new Error(t('missingToken'))),
       ),
     onSuccess: () => {
-      toast.success(t('hidden'))
       onSaved()
     },
-    onError: () => toast.error(t('hideError')),
+    onError: () => {},
   })
 
   const saveDraft = useCallback(async () => {

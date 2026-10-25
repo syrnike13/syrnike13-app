@@ -12,7 +12,6 @@ import {
 } from '#/components/icons'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
@@ -48,7 +47,6 @@ import {
 } from '#/features/authorization/authorization'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 type ServerSettingsPageProps = {
   serverId: string
@@ -138,18 +136,14 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           syncStore.removeServer(serverId)
           syncStore.setSelectedServerId(null)
           setDeleteDialogOpen(false)
-          toast.success(t('serverDeleted'))
         })
         yield* Effect.tryPromise({
           try: () => navigate({ to: prefix || '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingServer(false))),

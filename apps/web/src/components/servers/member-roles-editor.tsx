@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Member, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -137,7 +136,6 @@ export function MemberRolesEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[member-roles] update failed', error)
-            toast.error(t('updateRolesError'))
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSavingRoleId(null))),

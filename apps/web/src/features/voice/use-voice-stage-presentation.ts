@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 export function useVoiceStagePresentation(channelId: string | null) {
@@ -41,7 +40,6 @@ export function useVoiceStagePresentation(channelId: string | null) {
         'popup=yes,width=1280,height=720',
       )
       if (!child) {
-        toast.error(t('errors.popoutBlocked'))
         return
       }
       windowRef.current = child

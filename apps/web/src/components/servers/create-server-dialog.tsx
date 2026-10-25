@@ -3,7 +3,6 @@ import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 
 import {
   railGlyphClass,
@@ -31,7 +30,6 @@ import {
 import { createServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {
@@ -74,7 +72,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           syncStore.applyServerJoinBundle({ server, member, channels })
           syncStore.setSelectedServerId(server._id)
           handleOpenChange(false)
-          toast.success(t('created', { name: server.name }))
         })
 
         const firstChannel = channels[0]
@@ -90,11 +87,8 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setSaving(false))),
@@ -107,7 +101,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     const code = parseInviteCode(inviteInput)
     if (!token) return
     if (!code) {
-      toast.error(t('inviteRequired'))
       return
     }
 
@@ -122,7 +115,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           yield* Effect.sync(() => {
             syncStore.setSelectedServerId(response.server._id)
             handleOpenChange(false)
-            toast.success(t('joinSuccess'))
           })
 
           const channel = response.channels[0]
@@ -143,7 +135,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         if (isGroupInviteJoin(response)) {
           yield* Effect.sync(() => {
             handleOpenChange(false)
-            toast.success(t('inviteAccepted'))
           })
           yield* Effect.tryPromise({
             try: () =>
@@ -158,14 +149,11 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         }
 
         yield* Effect.sync(() =>
-          toast.error(t('unknownInvite')),
+          {},
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('joinError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setJoining(false))),

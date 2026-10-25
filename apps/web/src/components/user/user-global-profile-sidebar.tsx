@@ -78,7 +78,6 @@ export function UserGlobalProfileSidebar({
   onEditProfile,
 }: UserGlobalProfileSidebarProps) {
   const t = useTranslations('users')
-  const tf = useTranslations('friends')
   const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
@@ -143,7 +142,7 @@ export function UserGlobalProfileSidebar({
                   disabled={actionsDisabled}
                   onClick={() =>
                     void runFriendAction(() =>
-                      acceptIncomingFriendRequest(token!, user._id, tf),
+                      acceptIncomingFriendRequest(token!, user._id),
                     )
                   }
                 >
@@ -173,7 +172,7 @@ export function UserGlobalProfileSidebar({
                   aria-label={t('addFriend')}
                   onClick={() =>
                     void runFriendAction(() =>
-                      sendFriendRequestToUser(token!, user, tf),
+                      sendFriendRequestToUser(token!, user),
                     )
                   }
                 >
@@ -205,7 +204,7 @@ export function UserGlobalProfileSidebar({
                     <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          declineIncomingFriendRequest(token!, user._id, tf),
+                          declineIncomingFriendRequest(token!, user._id),
                         )
                       }
                     >
@@ -217,7 +216,7 @@ export function UserGlobalProfileSidebar({
                     <DropdownMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          cancelOutgoingFriendRequest(token!, user._id, tf),
+                          cancelOutgoingFriendRequest(token!, user._id),
                         )
                       }
                     >

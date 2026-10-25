@@ -428,11 +428,6 @@ describe('ServerSettingsPanelContent', () => {
       target: { files: [file] },
     })
 
-    await waitFor(() => {
-      expect(mocks.toastError).toHaveBeenCalledWith(
-        'Имя emoji должно содержать только латиницу, цифры и подчёркивания.',
-      )
-    })
     expect(mocks.uploadEmoji).not.toHaveBeenCalled()
     expect(mocks.createServerEmoji).not.toHaveBeenCalled()
   })

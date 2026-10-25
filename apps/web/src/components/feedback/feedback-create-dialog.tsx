@@ -8,7 +8,6 @@ import { Option, Schema } from 'effect'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import {
@@ -212,13 +211,11 @@ export function FeedbackCreateDialog({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
-      toast.success(t('sent'))
       resetWizard()
       onOpenChange(false)
       onCreated?.()
     },
     onError: () => {
-      toast.error(t('sendError'))
     },
   })
 

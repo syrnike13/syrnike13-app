@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -40,7 +39,6 @@ function LoginPage() {
           : auth.login({ email, password }),
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('error'))
     } finally {
       setSubmitting(false)
     }

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '@syrnike13/ui/primitives/button'
@@ -17,7 +16,6 @@ import type { UserVoiceState } from '#/features/sync/voice-types'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { inviteUrl } from '#/lib/invite-link'
 
 const TILE_SURFACE =
@@ -132,7 +130,6 @@ export function VoiceStageInviteTile({
 
   async function copyInvite() {
     if (!token) {
-      toast.error(t('errors.noSession'))
       return
     }
     setBusy(true)
@@ -147,14 +144,11 @@ export function VoiceStageInviteTile({
         }
         yield* writeClipboardTextEffect(inviteUrl(code))
         yield* Effect.sync(() =>
-          toast.success(t('invite.copied')),
+          {},
         )
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('errors.inviteCreate')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusy(false))),

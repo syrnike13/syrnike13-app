@@ -7,7 +7,6 @@ import type {
 } from '@syrnike13/api-types'
 import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
@@ -221,7 +220,6 @@ export function ServerSettingsRoleEditor({
   const save = useCallback(async (): Promise<boolean> => {
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error(t('nameRequired'))
       return false
     }
 
@@ -302,7 +300,6 @@ export function ServerSettingsRoleEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[role-editor] save failed', error)
-            toast.error(t('saveError'))
             return false
           }),
         ),

@@ -14,7 +14,6 @@ import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { RailUnreadIndicator } from '#/components/layout/rail-icon-button'
 import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
@@ -63,7 +62,6 @@ import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
@@ -164,7 +162,6 @@ export function ChannelSidebarItem({
         yield* deleteChannelEffect(token, channel._id)
         yield* Effect.sync(() => {
           syncStore.removeChannel(channel._id)
-          toast.success(t('deleted'))
           setDeleteDialogOpen(false)
         })
 
@@ -194,11 +191,8 @@ export function ChannelSidebarItem({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingChannel(false))),
@@ -245,11 +239,11 @@ export function ChannelSidebarItem({
         Effect.matchEffect({
           onFailure: () =>
             Effect.sync(() =>
-              toast.error(t('markReadError')),
+              {},
             ),
           onSuccess: () =>
             Effect.sync(() =>
-              toast.success(t('markedRead')),
+              {},
             ),
         }),
       ),
@@ -262,9 +256,9 @@ export function ChannelSidebarItem({
       writeClipboardTextEffect(url).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error(t('copyError'))),
+            Effect.sync(() => {}),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -282,13 +276,10 @@ export function ChannelSidebarItem({
         const code = '_id' in invite ? invite._id : ''
         if (!code) return
         yield* writeClipboardTextEffect(inviteUrl(code))
-        yield* Effect.sync(() => toast.success(t('inviteCopied')))
+        yield* Effect.sync(() => {})
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('createError')),
-            )
           }),
         ),
       ),
@@ -401,7 +392,6 @@ export function ChannelSidebarItem({
       targetMember,
     )
     if (!mayMove) {
-      toast.error(t('moveNoPermission'))
       return
     }
 
@@ -414,14 +404,11 @@ export function ChannelSidebarItem({
         { voice_channel: channel._id },
       ).pipe(
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('moveError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('moved'))),
+            Effect.sync(() => {}),
         }),
         Effect.ensuring(Effect.sync(() => setMovingVoiceMember(false))),
       ),

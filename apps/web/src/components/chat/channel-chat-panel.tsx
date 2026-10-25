@@ -57,7 +57,6 @@ export function ChannelChatPanel({
   onClose,
 }: ChannelChatPanelProps) {
   const t = useTranslations('chat')
-  const tf = useTranslations('friends')
   const tu = useTranslations('users')
   const [composerHeight, setComposerHeight] = useState(56)
   const [blockUserId, setBlockUserId] = useState<string | null>(null)
@@ -310,7 +309,7 @@ export function ChannelChatPanel({
               const userId = blockUserId
               setBlockUserId(null)
               Effect.runFork(
-                blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+                blockUserRelationship(token, userId).pipe(Effect.ignore),
               )
             }}
           >

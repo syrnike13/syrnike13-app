@@ -5,7 +5,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
@@ -147,11 +146,9 @@ export function ChannelPinnedDialog({
                           Effect.matchEffect({
                             onFailure: () =>
                               Effect.sync(() => {
-                                toast.error(t('copyError'))
                               }),
                             onSuccess: () =>
                               Effect.sync(() => {
-                                toast.success(t('idCopied'))
                               }),
                           }),
                         ),

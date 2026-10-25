@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ManualPresence } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { updateCurrentUserEffect } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -39,7 +38,6 @@ export function useSetPresence() {
     },
     onError: (error) => {
       console.error('[presence] update failed', error)
-      toast.error(t('presenceUpdateError'))
     },
   })
 

@@ -2,7 +2,6 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { PermissionStateButton } from '#/components/servers/permission-state-button'
@@ -126,7 +125,6 @@ function ChannelPermissionEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             console.error('[channel-permissions] save failed', error)
-            toast.error(t('saveError'))
             return false
           }),
         ),

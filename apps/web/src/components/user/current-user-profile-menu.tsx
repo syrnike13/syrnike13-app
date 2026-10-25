@@ -1,7 +1,6 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { ChevronDownIcon, CopyIcon, PencilFillIcon, SettingsIcon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import { useState } from 'react'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { useNavigate } from '@tanstack/react-router'
@@ -58,9 +57,7 @@ export function CurrentUserProfileMenu({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success(t('idCopied'))
     } catch {
-      toast.error(t('copyError'))
     }
   }
 

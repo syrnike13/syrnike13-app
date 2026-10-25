@@ -1,11 +1,8 @@
 import type { Channel } from '@syrnike13/api-types'
-import type { Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import { openDirectMessageEffect } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 type NavigateToDmChannel = (channelId: string) => Promise<void> | void
 
@@ -13,18 +10,12 @@ export type DmActionDeps = {
   openDirectMessage: typeof openDirectMessageEffect
   upsertChannel: (channel: Channel) => void
   setSelectedServerId: (serverId: string | null) => void
-  toastError: (message: string) => void
 }
 
 const defaultDeps: DmActionDeps = {
   openDirectMessage: openDirectMessageEffect,
   upsertChannel: syncStore.upsertChannel,
   setSelectedServerId: syncStore.setSelectedServerId,
-  toastError: toast.error,
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  return apiErrorMessage(error, fallback)
 }
 
 const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
@@ -32,7 +23,6 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
     token: string,
     userId: string,
     navigateToChannel: NavigateToDmChannel,
-    t: Translator,
     deps: DmActionDeps,
   ) {
     const action = Effect.gen(function*() {
@@ -51,13 +41,7 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
       return channel
     })
 
-    return yield* action.pipe(
-      Effect.tapError((error) =>
-        Effect.sync(() => {
-          deps.toastError(errorMessage(error, t('dmOpenError')))
-        }),
-      ),
-    )
+    return yield* action
   },
 )
 
@@ -65,14 +49,12 @@ export function openDirectMessageChannel(
   token: string,
   userId: string,
   navigateToChannel: NavigateToDmChannel,
-  t: Translator,
   deps: DmActionDeps = defaultDeps,
 ) {
   return openDirectMessageChannelEffect(
     token,
     userId,
     navigateToChannel,
-    t,
     deps,
   )
 }

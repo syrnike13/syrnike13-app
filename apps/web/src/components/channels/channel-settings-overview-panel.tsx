@@ -4,7 +4,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
 import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   Alert,
@@ -47,7 +46,6 @@ import {
 } from '#/features/api/channels-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { pickDefaultChannelId } from '#/features/sync/selectors'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
@@ -186,7 +184,6 @@ export function ChannelSettingsOverviewPanel({
     const trimmedName = name.trim()
     const trimmedTopic = topic.trim()
     if (!token || !trimmedName) {
-      toast.error(t('nameRequired'))
       return false
     }
 
@@ -235,11 +232,8 @@ export function ChannelSettingsOverviewPanel({
           Effect.sync(() => syncStore.patchChannel(channel._id, updated)),
         ),
         Effect.as(true),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('saveError')),
-            )
             return false
           }),
         ),
@@ -283,7 +277,6 @@ export function ChannelSettingsOverviewPanel({
         yield* Effect.sync(() => {
           syncStore.removeChannel(channel._id)
           setDeleteDialogOpen(false)
-          toast.success(t('deleted'))
         })
 
         const fallback = pickDefaultChannelId(
@@ -302,11 +295,8 @@ export function ChannelSettingsOverviewPanel({
           catch: (cause) => cause,
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('deleteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setDeletingChannel(false))),

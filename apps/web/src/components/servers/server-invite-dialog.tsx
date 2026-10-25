@@ -9,7 +9,6 @@ import {
   HashIcon,
   SearchIcon,
 } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -30,7 +29,6 @@ import {
   NativeSelectOption,
 } from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { useAuth } from '#/features/auth/auth-context'
 import { sendChannelMessageEffect } from '#/features/api/messages-api'
 import { fetchServerInvitesEffect } from '#/features/api/servers-api'
@@ -190,11 +188,8 @@ export function ServerInviteDialog({
         const loadedInvites = yield* fetchServerInvitesEffect(token, serverId)
         yield* Effect.sync(() => setInvites(loadedInvites))
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('loadError')),
-            )
           }),
         ),
       ),
@@ -298,14 +293,11 @@ export function ServerInviteDialog({
       ensureInviteLink().pipe(
         Effect.flatMap(writeClipboardTextEffect),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('copyError')),
-              )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success(t('copied'))),
+            Effect.sync(() => {}),
         }),
       ),
     )
@@ -335,14 +327,10 @@ export function ServerInviteDialog({
           setSentUserIds((current) =>
             current.includes(user._id) ? current : [...current, user._id],
           )
-          toast.success(t('sent'))
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('inviteError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setBusyUserId(null))),

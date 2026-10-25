@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import {
@@ -9,7 +8,6 @@ import {
   MESSAGE_PAGE_SIZE,
 } from '#/features/api/messages-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { apiErrorMessage } from '#/lib/api/error-message'
 
 export function useJumpToMessage(
   channelId: string,
@@ -72,17 +70,13 @@ export function useJumpToMessage(
         yield* nextAnimationFrame
         yield* Effect.sync(() => {
           if (!isRendered()) {
-            toast.error(t('messageNotFound'))
           } else {
             lastJumped.current = messageId
           }
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
-            toast.error(
-              apiErrorMessage(error, t('openMessageError')),
-            )
           }),
         ),
       ),

@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
@@ -51,7 +50,6 @@ function VerifyEmailPage() {
         if (!ticket) {
           yield* Effect.sync(() => {
             setState({ status: 'success', hasTicket: false })
-            toast.success(t('verify.successTitle'))
           })
           return
         }

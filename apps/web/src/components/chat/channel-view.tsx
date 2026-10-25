@@ -113,7 +113,6 @@ export function ChannelView({
 }: ChannelViewProps) {
   const t = useTranslations('chat')
   const tVoice = useTranslations('chat.voice')
-  const tf = useTranslations('friends')
   const tu = useTranslations('users')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
@@ -778,7 +777,7 @@ export function ChannelView({
                 const userId = blockUserId
                 setBlockUserId(null)
                 Effect.runFork(
-                  blockUserRelationship(token, userId, tf).pipe(Effect.ignore),
+                  blockUserRelationship(token, userId).pipe(Effect.ignore),
                 )
               }}
             >

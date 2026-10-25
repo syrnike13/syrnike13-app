@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DataEditUser, FieldsUser } from '@syrnike13/api-types'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 
 import {
   ProfileBody,
@@ -34,7 +33,6 @@ import {
 } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema, validateForm } from '#/features/auth/schemas'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
 import {
@@ -60,7 +58,6 @@ function revokeObjectUrl(url: string | null) {
 
 export function SettingsProfilePanel() {
   const t = useTranslations('settings.profile')
-  const tValidation = useTranslations('validation')
   const tm = useTranslations('media')
   const auth = useAuth()
   const queryClient = useQueryClient()
@@ -215,11 +212,8 @@ export function SettingsProfilePanel() {
               return true
             }),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
-              toast.error(
-                apiErrorMessage(error, t('saveError')),
-              )
               return false
             }),
           ),
@@ -258,13 +252,11 @@ export function SettingsProfilePanel() {
       bio,
     })
     if (!parsed.success) {
-      toast.error(tValidation(parsed.issues[0]?.message ?? 'profileFields'))
       return false
     }
 
     const trimmedName = parsed.data.display_name.trim()
     if (trimmedName.length > 0 && trimmedName.length < 2) {
-      toast.error(tValidation('profileNameMin'))
       return false
     }
 
@@ -339,12 +331,9 @@ export function SettingsProfilePanel() {
               ? Effect.sync(() => setAvatarPreviewOverride(undefined))
               : Effect.succeed(undefined),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               setAvatarPreviewOverride(undefined)
-              toast.error(
-                apiErrorMessage(error, t('avatarUploadError')),
-              )
             }),
           ),
         ),
@@ -382,12 +371,9 @@ export function SettingsProfilePanel() {
               ? Effect.sync(() => setBannerPreviewOverride(undefined))
               : Effect.succeed(undefined),
           ),
-          Effect.catch((error) =>
+          Effect.catch(() =>
             Effect.sync(() => {
               setBannerPreviewOverride(undefined)
-              toast.error(
-                apiErrorMessage(error, t('bannerUploadError')),
-              )
             }),
           ),
         ),

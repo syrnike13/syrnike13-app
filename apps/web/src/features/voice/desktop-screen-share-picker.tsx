@@ -7,7 +7,6 @@ import {
   MonitorIcon,
   Settings2Icon,
 } from '#/components/icons'
-import { toast } from 'sonner'
 import type {
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSource,
@@ -41,7 +40,6 @@ import {
   ItemTitle,
 } from '@syrnike13/ui/primitives/item'
 import { usePlatform } from '#/platform/use-platform'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import {
   Popover,
   PopoverContent,
@@ -226,12 +224,9 @@ export function DesktopScreenSharePicker({
             })
           }),
         ),
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
             if (!current) return
-            toast.error(
-              apiErrorMessage(error, t('sharePicker.loadError')),
-            )
             setLoading(false)
           }),
         ),
@@ -321,7 +316,6 @@ export function DesktopScreenSharePicker({
           selectedAudioRequested,
         )
         if (!selected) {
-          toast.error(t('sharePicker.sourceGone'))
           setSubmittingSourceId(null)
           return
         }
@@ -334,9 +328,6 @@ export function DesktopScreenSharePicker({
         setHasNextPage(false)
         setSubmittingSourceId(null)
       } catch (error) {
-        toast.error(
-          apiErrorMessage(error, t('sharePicker.startError')),
-        )
         setSubmittingSourceId(null)
       }
     },

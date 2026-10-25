@@ -11,7 +11,6 @@ import {
   ReplyIcon,
   Trash2Icon,
 } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { messageDeepLink } from '#/lib/message-link'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
@@ -26,12 +25,10 @@ export type MessageActionItem = {
   onSelect: () => void
 }
 
-async function copyText(label: string, value: string, errorLabel: string) {
+async function copyText(value: string) {
   try {
     await Effect.runPromise(writeClipboardTextEffect(value))
-    toast.success(label)
   } catch {
-    toast.error(errorLabel)
   }
 }
 
@@ -78,7 +75,7 @@ export function useMessageActions({
       label: t('copyText'),
       icon: <CopyIcon className="size-4" />,
       onSelect: () =>
-        void copyText(t('textCopied'), message.content!, t('copyError')),
+        void copyText(message.content!),
     })
   }
 
@@ -87,7 +84,7 @@ export function useMessageActions({
     label: t('copyId'),
     icon: <CopyIcon className="size-4" />,
     onSelect: () =>
-      void copyText(t('idCopied'), message._id, t('copyError')),
+      void copyText(message._id),
   })
 
   actions.push({
@@ -95,11 +92,7 @@ export function useMessageActions({
     label: t('copyLink'),
     icon: <LinkIcon className="size-4" />,
     onSelect: () =>
-      void copyText(
-        t('linkCopied'),
-        messageDeepLink(channelId, message._id),
-        t('copyError'),
-      ),
+      void copyText(messageDeepLink(channelId, message._id)),
   })
 
   if (pinned && onUnpin) {

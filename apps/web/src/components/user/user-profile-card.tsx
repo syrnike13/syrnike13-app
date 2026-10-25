@@ -12,7 +12,6 @@ import {
 } from '#/components/icons'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserBlockDialog } from '#/components/user/user-block-dialog'
@@ -80,7 +79,6 @@ export function UserProfileCard({
   onOpenGlobalProfile,
 }: UserProfileCardProps) {
   const t = useTranslations('users')
-  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -118,7 +116,7 @@ export function UserProfileCard({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, profile._id, tf))
+      await Effect.runPromise(blockUserRelationship(token, profile._id))
       setBlockOpen(false)
       dismiss()
     } catch {
@@ -133,7 +131,7 @@ export function UserProfileCard({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await Effect.runPromise(unblockBlockedUser(token, profile._id, tf))
+      await Effect.runPromise(unblockBlockedUser(token, profile._id))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -146,7 +144,7 @@ export function UserProfileCard({
     if (!token || !canAddFriend) return
     setBusy(true)
     try {
-      await Effect.runPromise(sendFriendRequestToUser(token, profile, tf))
+      await Effect.runPromise(sendFriendRequestToUser(token, profile))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -154,15 +152,10 @@ export function UserProfileCard({
     }
   }
 
-  async function copyToClipboard(
-    value: string,
-    successKey: 'idCopied' | 'usernameCopied',
-  ) {
+  async function copyToClipboard(value: string) {
     try {
       await Effect.runPromise(writeClipboardTextEffect(value))
-      toast.success(t(successKey))
     } catch {
-      toast.error(t('copyError'))
     }
   }
 
@@ -184,13 +177,9 @@ export function UserProfileCard({
               search: { m: undefined },
             })
           },
-          t,
         ),
       )
       if (prefill?.trim()) {
-        toast.message(t('openChatHint'), {
-          description: prefill.trim(),
-        })
       }
     } catch {
       // dm-actions already shows the concrete error toast.
@@ -228,9 +217,9 @@ export function UserProfileCard({
         onBlock={() => setBlockOpen(true)}
         onUnblock={() => void handleUnblock()}
         onCopyUsername={() =>
-          void copyToClipboard(profile.username, 'usernameCopied')
+          void copyToClipboard(profile.username)
         }
-        onCopyUserId={() => void copyToClipboard(profile._id, 'idCopied')}
+        onCopyUserId={() => void copyToClipboard(profile._id)}
       />
     </>
   ) : undefined

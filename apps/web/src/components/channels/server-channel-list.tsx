@@ -17,7 +17,6 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd'
 import { FolderPlusIcon, PlusCircleIcon } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { ChannelCategoryHeader } from '#/components/channels/channel-category-header'
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
@@ -49,7 +48,6 @@ import {
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -558,12 +556,9 @@ export function ServerChannelList({
           setOptimisticSections(null)
         })
       }).pipe(
-        Effect.catch((error) =>
+        Effect.catch(() =>
           Effect.sync(() => {
             setOptimisticSections(null)
-            toast.error(
-              apiErrorMessage(error, t('list.orderError')),
-            )
           }),
         ),
         Effect.ensuring(Effect.sync(() => setReordering(false))),

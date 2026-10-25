@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { MonitorIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
-import { toast } from 'sonner'
 import {
   useLocale,
   useTranslations,
@@ -38,7 +37,6 @@ import {
   fetchSessions,
   revokeOtherSessionsEffect,
 } from '#/features/api/sessions-api'
-import { apiErrorMessage } from '#/lib/api/error-message'
 import { loadSession } from '#/lib/session'
 
 /** Session ids are ULIDs: the creation time is in the id. */
@@ -80,13 +78,11 @@ export function SettingsSessionsPanel() {
           }),
         ),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(apiErrorMessage(error, t('revokeError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success(t('revokeSuccess'))
             }),
         }),
       ),
@@ -108,13 +104,11 @@ export function SettingsSessionsPanel() {
           }),
         ),
         Effect.matchEffect({
-          onFailure: (error) =>
+          onFailure: () =>
             Effect.sync(() => {
-              toast.error(apiErrorMessage(error, t('revokeOthersError')))
             }),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success(t('revokeOthersSuccess'))
             }),
         }),
       ),
