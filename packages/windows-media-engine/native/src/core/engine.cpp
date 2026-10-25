@@ -1113,6 +1113,7 @@ private:
         emit("screen", "screen_load_metrics", media.screen_load_metrics);
         emit("camera", "camera_metrics", media.camera_metrics);
         emit("microphone", "microphone_metrics", media.microphone_metrics);
+        emit("microphone", "microphone_monitor_metrics", media.microphone_monitor_metrics);
         emit("remote_audio", "remote_audio_ingress_metrics", media.remote_audio_ingress_metrics);
         emit("remote_audio", "remote_audio_output_metrics", media.remote_audio_output_metrics);
         emit("remote_video", "remote_video_metrics", media.remote_video_metrics);

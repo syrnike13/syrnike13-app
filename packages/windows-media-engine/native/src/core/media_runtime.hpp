@@ -23,6 +23,7 @@ struct MediaRuntimeSnapshot {
   std::optional<std::array<DiagnosticMetric, 6>> screen_load_metrics;
   std::optional<std::array<DiagnosticMetric, 15>> camera_metrics;
   std::optional<std::array<DiagnosticMetric, 15>> microphone_metrics;
+  std::optional<std::array<DiagnosticMetric, 6>> microphone_monitor_metrics;
   std::optional<std::array<DiagnosticMetric, 14>> remote_audio_ingress_metrics;
   std::optional<std::array<DiagnosticMetric, 7>> remote_audio_output_metrics;
   std::optional<std::array<DiagnosticMetric, 16>> remote_video_metrics;

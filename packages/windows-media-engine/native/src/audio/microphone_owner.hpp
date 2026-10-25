@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/microphone_monitor.hpp"
 #include "audio/microphone_pipeline.hpp"
 #include "audio/microphone_sender.hpp"
 
@@ -9,6 +10,8 @@ struct MicrophoneOwnerSnapshot {
   MediaPathSnapshot path;
   MicrophonePipelineStats pipeline;
   MicrophoneSenderStats sender;
+  // Present while self-monitoring renders; a failed output shows only here.
+  std::optional<MicrophoneMonitorStats> monitor;
   bool publication_stopped = true;
   bool stopped = true;
 };
