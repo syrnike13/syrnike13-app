@@ -1,17 +1,10 @@
-use std::{
-    collections::HashSet,
-    future::Future,
-    sync::{
-        Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::future::Future;
 
 use crate::{
     AMQP, Database, RemovalIntention, User, VoiceCallEndReason,
     events::client::EventV1,
     models::Channel,
-    util::{permissions::perms, reference::Reference},
+    util::{lock::with_lock, permissions::perms, reference::Reference},
     voice::{
         UserVoiceChannel, VOICE_SESSION_TTL_SECONDS, VoiceClient, VoiceParticipantReconciliation,
         VoiceParticipantReconciliationVerdict, VoiceRtcCredential, VoiceRtcEngine, VoiceSession,
@@ -32,65 +25,9 @@ use crate::{
     },
 };
 use iso8601_timestamp::{Duration, Timestamp};
-use redis_kiss::{
-    AsyncCommands,
-    redis::{ExistenceCheck, SetExpiry, SetOptions, cmd},
-};
 use syrnike_config::config;
 use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{ErrorType, Result, ToSyrnikeError, create_error};
-
-const TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS: usize = 120;
-const TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT: usize = 200;
-const TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS: u64 = 10;
-const TEMPORARY_VOICE_MEMBER_LOCK_RENEW_INTERVAL_SECONDS: u64 = 30;
-const RENEW_TEMPORARY_VOICE_MEMBER_LOCK: &str = r#"
-local key = KEYS[1]
-local token = ARGV[1]
-local ttl = ARGV[2]
-
-if redis.call('GET', key) == token then
-    return redis.call('EXPIRE', key, ttl)
-end
-
-return 0
-"#;
-const RELEASE_TEMPORARY_VOICE_MEMBER_LOCK: &str = r#"
-local key = KEYS[1]
-local token = ARGV[1]
-
-if redis.call('GET', key) == token then
-    return redis.call('DEL', key)
-end
-
-return 0
-"#;
-
-static REFERENCE_TEMPORARY_VOICE_USER_LOCKS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-
-struct ReferenceTemporaryVoiceUserLock {
-    user_id: String,
-}
-
-impl Drop for ReferenceTemporaryVoiceUserLock {
-    fn drop(&mut self) {
-        REFERENCE_TEMPORARY_VOICE_USER_LOCKS
-            .get_or_init(|| Mutex::new(HashSet::new()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&self.user_id);
-    }
-}
-
-struct TemporaryVoiceLockRenewalGuard {
-    stopped: Arc<AtomicBool>,
-}
-
-impl Drop for TemporaryVoiceLockRenewalGuard {
-    fn drop(&mut self) {
-        self.stopped.store(true, Ordering::Release);
-    }
-}
+use syrnike_result::{ErrorType, Result, create_error};
 
 pub async fn with_temporary_voice_user_lock<T, F, Fut>(
     db: &Database,
@@ -101,116 +38,7 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<T>>,
 {
-    if matches!(db, Database::Reference(_)) {
-        for _ in 0..TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT {
-            let acquired = REFERENCE_TEMPORARY_VOICE_USER_LOCKS
-                .get_or_init(|| Mutex::new(HashSet::new()))
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .insert(user_id.to_string());
-            if acquired {
-                let _guard = ReferenceTemporaryVoiceUserLock {
-                    user_id: user_id.to_string(),
-                };
-                return operation().await;
-            }
-            async_std::task::sleep(std::time::Duration::from_millis(
-                TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS,
-            ))
-            .await;
-        }
-        return Err(create_error!(InternalError));
-    }
-
-    let key = format!("temporary_voice_member_lock:{user_id}");
-    let token = uuid::Uuid::new_v4().to_string();
-    let mut acquired = false;
-    let mut connection = super::get_connection().await?.into_inner();
-
-    for _ in 0..TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT {
-        let set_result: Option<String> = connection
-            .set_options(
-                &key,
-                &token,
-                SetOptions::default()
-                    .conditional_set(ExistenceCheck::NX)
-                    .with_expiration(SetExpiry::EX(TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS)),
-            )
-            .await
-            .to_internal_error()?;
-        if set_result.is_some() {
-            acquired = true;
-            break;
-        }
-
-        async_std::task::sleep(std::time::Duration::from_millis(
-            TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS,
-        ))
-        .await;
-    }
-    drop(connection);
-
-    if !acquired {
-        return Err(create_error!(InternalError));
-    }
-
-    let stop_renewal = Arc::new(AtomicBool::new(false));
-    let renewal_guard = TemporaryVoiceLockRenewalGuard {
-        stopped: Arc::clone(&stop_renewal),
-    };
-    let renewal_stopped = Arc::clone(&stop_renewal);
-    let renewal_key = key.clone();
-    let renewal_token = token.clone();
-    async_std::task::spawn(async move {
-        while !renewal_stopped.load(Ordering::Acquire) {
-            async_std::task::sleep(std::time::Duration::from_secs(
-                TEMPORARY_VOICE_MEMBER_LOCK_RENEW_INTERVAL_SECONDS,
-            ))
-            .await;
-            if renewal_stopped.load(Ordering::Acquire) {
-                break;
-            }
-
-            let renewal_result: Result<i64> = async {
-                cmd("EVAL")
-                    .arg(RENEW_TEMPORARY_VOICE_MEMBER_LOCK)
-                    .arg(1)
-                    .arg(&renewal_key)
-                    .arg(&renewal_token)
-                    .arg(TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS)
-                    .query_async::<_, i64>(&mut super::get_connection().await?.into_inner())
-                    .await
-                    .to_internal_error()
-            }
-            .await;
-            match renewal_result {
-                Ok(1) => {}
-                Ok(_) => break,
-                Err(error) => {
-                    syrnike_config::capture_internal_error!(&error);
-                }
-            }
-        }
-    });
-
-    let result = operation().await;
-    drop(renewal_guard);
-    let release_result: Result<i64> = async {
-        cmd("EVAL")
-            .arg(RELEASE_TEMPORARY_VOICE_MEMBER_LOCK)
-            .arg(1)
-            .arg(&key)
-            .arg(&token)
-            .query_async::<_, i64>(&mut super::get_connection().await?.into_inner())
-            .await
-            .to_internal_error()
-    }
-    .await;
-    if let Err(error) = release_result {
-        syrnike_config::capture_internal_error!(&error);
-    }
-
-    result
+    with_lock(db, &format!("temporary_voice_member_lock:{user_id}"), operation).await
 }
 
 /// LiveKit credentials returned to the client after a successful voice join request.
