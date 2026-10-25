@@ -73,7 +73,7 @@ function DialogContent({
         data-slot="dialog-content"
         data-size={size}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none sm:max-w-sm",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] grid-cols-1 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none sm:max-w-sm",
           "data-[size=page]:h-dvh data-[size=page]:w-screen data-[size=page]:max-w-none data-[size=page]:gap-0 data-[size=page]:overflow-hidden data-[size=page]:rounded-none data-[size=page]:p-0 data-[size=page]:transition-[opacity,scale] data-[size=page]:duration-120 data-[size=page]:ease-out data-[size=page]:data-ending-style:scale-[0.985] data-[size=page]:data-ending-style:opacity-0 data-[size=page]:data-starting-style:scale-[0.985] data-[size=page]:data-starting-style:opacity-0 sm:data-[size=page]:max-w-none xl:data-[size=page]:h-[88vh] xl:data-[size=page]:w-[min(92vw,76rem)] xl:data-[size=page]:rounded-xl motion-reduce:data-[size=page]:transition-none",
           "data-[size=screen]:inset-0 data-[size=screen]:max-w-none data-[size=screen]:translate-x-0 data-[size=screen]:translate-y-0 data-[size=screen]:overflow-hidden data-[size=screen]:rounded-none data-[size=screen]:bg-transparent data-[size=screen]:p-0 data-[size=screen]:ring-0 sm:data-[size=screen]:max-w-none",
           className
