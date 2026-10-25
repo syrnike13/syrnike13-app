@@ -543,7 +543,13 @@ impl User {
     ) -> Result<()> {
         target.set_relationship(db, self, remote).await?;
         self.set_relationship(db, target, local).await?;
+        self.publish_relationship(db, target).await;
 
+        Ok(())
+    }
+
+    /// Tell both users about their current relationship with each other
+    async fn publish_relationship(&self, db: &Database, target: &User) {
         EventV1::UserRelationship {
             id: target.id.clone(),
             user: self.clone().into(db, Some(&*target)).await,
@@ -557,141 +563,109 @@ impl User {
         }
         .private(self.id.clone())
         .await;
-
-        Ok(())
     }
 
-    /// Add another user as a friend
+    /// Add another user as a friend, or accept their friend request
     pub async fn add_friend(
         &mut self,
         db: &Database,
         amqp: &AMQP,
         target: &mut User,
     ) -> Result<()> {
-        match self.relationship_with(&target.id) {
-            RelationshipStatus::User => Err(create_error!(NoEffect)),
-            RelationshipStatus::Friend => Err(create_error!(AlreadyFriends)),
-            RelationshipStatus::Outgoing => Err(create_error!(AlreadySentRequest)),
-            RelationshipStatus::Blocked => Err(create_error!(Blocked)),
-            RelationshipStatus::BlockedOther => Err(create_error!(BlockedByOther)),
-            RelationshipStatus::Incoming => {
-                // Accept incoming friend request
-                _ = amqp.friend_request_accepted(self, target).await;
+        self.change_relationship(db, Some(amqp), target, RelationshipChange::AddFriend)
+            .await
+    }
 
-                self.apply_relationship(
-                    db,
-                    target,
-                    RelationshipStatus::Friend,
-                    RelationshipStatus::Friend,
-                )
-                .await
-            }
-            RelationshipStatus::None => {
-                // Get this user's current count of outgoing friend requests
-                let count = self
+    /// Remove another user as a friend, or cancel a pending friend request
+    pub async fn remove_friend(&mut self, db: &Database, target: &mut User) -> Result<()> {
+        self.change_relationship(db, None, target, RelationshipChange::RemoveFriend)
+            .await
+    }
+
+    /// Block another user
+    pub async fn block_user(&mut self, db: &Database, target: &mut User) -> Result<()> {
+        self.change_relationship(db, None, target, RelationshipChange::Block)
+            .await
+    }
+
+    /// Unblock another user
+    pub async fn unblock_user(&mut self, db: &Database, target: &mut User) -> Result<()> {
+        self.change_relationship(db, None, target, RelationshipChange::Unblock)
+            .await
+    }
+
+    /// Apply a relationship change while holding the lock for this pair of users.
+    ///
+    /// Both users are re-read under the lock, so concurrent requests from either
+    /// side are applied one after another against the current stored state.
+    /// Notifications are sent after the lock is released.
+    async fn change_relationship(
+        &mut self,
+        db: &Database,
+        amqp: Option<&AMQP>,
+        target: &mut User,
+        change: RelationshipChange,
+    ) -> Result<()> {
+        if self.id == target.id {
+            return Err(create_error!(NoEffect));
+        }
+
+        let lock_key = if self.id < target.id {
+            format!("relationship_lock:{}:{}", self.id, target.id)
+        } else {
+            format!("relationship_lock:{}:{}", target.id, self.id)
+        };
+
+        let (user, other, previous) = crate::util::lock::with_lock(db, &lock_key, || async {
+            let mut user = db.fetch_user(&self.id).await?;
+            let mut other = db.fetch_user(&target.id).await?;
+            let local = user.relationship_with(&other.id);
+            let remote = other.relationship_with(&user.id);
+            let (next_local, next_remote) = next_relationship(change, &local, &remote)?;
+
+            if next_local == RelationshipStatus::Outgoing && local != RelationshipStatus::Outgoing {
+                let outgoing = user
                     .relations
                     .as_ref()
                     .map(|relations| {
                         relations
                             .iter()
-                            .filter(|r| matches!(r.status, RelationshipStatus::Outgoing))
+                            .filter(|r| r.status == RelationshipStatus::Outgoing)
                             .count()
                     })
                     .unwrap_or_default();
 
-                // If we're over the limit, don't allow creating more requests
-                if count >= self.limits().await.outgoing_friend_requests {
-                    return Err(create_error!(TooManyPendingFriendRequests {
-                        max: self.limits().await.outgoing_friend_requests
-                    }));
+                let max = user.limits().await.outgoing_friend_requests;
+                if outgoing >= max {
+                    return Err(create_error!(TooManyPendingFriendRequests { max }));
                 }
-
-                _ = amqp.friend_request_received(target, self).await;
-
-                // Send the friend request
-                self.apply_relationship(
-                    db,
-                    target,
-                    RelationshipStatus::Outgoing,
-                    RelationshipStatus::Incoming,
-                )
-                .await
             }
-        }
-    }
 
-    /// Remove another user as a friend
-    pub async fn remove_friend(&mut self, db: &Database, target: &mut User) -> Result<()> {
-        match self.relationship_with(&target.id) {
-            RelationshipStatus::Friend
-            | RelationshipStatus::Outgoing
-            | RelationshipStatus::Incoming => {
-                self.apply_relationship(
-                    db,
-                    target,
-                    RelationshipStatus::None,
-                    RelationshipStatus::None,
-                )
-                .await
-            }
-            _ => Err(create_error!(NoEffect)),
-        }
-    }
+            other.set_relationship(db, &user, next_remote).await?;
+            user.set_relationship(db, &other, next_local).await?;
+            Ok((user, other, local))
+        })
+        .await?;
 
-    /// Block another user
-    pub async fn block_user(&mut self, db: &Database, target: &mut User) -> Result<()> {
-        match self.relationship_with(&target.id) {
-            RelationshipStatus::User | RelationshipStatus::Blocked => Err(create_error!(NoEffect)),
-            RelationshipStatus::BlockedOther => {
-                self.apply_relationship(
-                    db,
-                    target,
-                    RelationshipStatus::Blocked,
-                    RelationshipStatus::Blocked,
-                )
-                .await
-            }
-            RelationshipStatus::None
-            | RelationshipStatus::Friend
-            | RelationshipStatus::Incoming
-            | RelationshipStatus::Outgoing => {
-                self.apply_relationship(
-                    db,
-                    target,
-                    RelationshipStatus::Blocked,
-                    RelationshipStatus::BlockedOther,
-                )
-                .await
-            }
-        }
-    }
-
-    /// Unblock another user
-    pub async fn unblock_user(&mut self, db: &Database, target: &mut User) -> Result<()> {
-        match self.relationship_with(&target.id) {
-            RelationshipStatus::Blocked => match target.relationship_with(&self.id) {
-                RelationshipStatus::Blocked => {
-                    self.apply_relationship(
-                        db,
-                        target,
-                        RelationshipStatus::BlockedOther,
-                        RelationshipStatus::Blocked,
-                    )
-                    .await
+        if let Some(amqp) = amqp {
+            match (user.relationship_with(&other.id), previous) {
+                (RelationshipStatus::Friend, RelationshipStatus::Friend) => {}
+                (RelationshipStatus::Friend, _) => {
+                    _ = amqp.friend_request_accepted(&user, &other).await;
                 }
-                RelationshipStatus::BlockedOther => {
-                    self.apply_relationship(
-                        db,
-                        target,
-                        RelationshipStatus::None,
-                        RelationshipStatus::None,
-                    )
-                    .await
+                (RelationshipStatus::Outgoing, RelationshipStatus::Outgoing) => {}
+                (RelationshipStatus::Outgoing, _) => {
+                    _ = amqp.friend_request_received(&other, &user).await;
                 }
-                _ => Err(create_error!(InternalError)),
-            },
-            _ => Err(create_error!(NoEffect)),
+                _ => {}
+            }
         }
+
+        user.publish_relationship(db, &other).await;
+
+        *self = user;
+        *target = other;
+        Ok(())
     }
 
     /// Update user data
@@ -912,6 +886,177 @@ impl User {
             ],
         )
         .await
+    }
+}
+
+/// Relationship change requested by one user towards another
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelationshipChange {
+    AddFriend,
+    RemoveFriend,
+    Block,
+    Unblock,
+}
+
+/// Compute the next `(local, remote)` relationship pair, where `local` is the
+/// acting user's entry and `remote` is the other user's entry.
+///
+/// The decision uses both stored sides, so a pair left half-written by an
+/// earlier failure is repaired by the next change instead of getting stuck.
+fn next_relationship(
+    change: RelationshipChange,
+    local: &RelationshipStatus,
+    remote: &RelationshipStatus,
+) -> Result<(RelationshipStatus, RelationshipStatus)> {
+    use RelationshipStatus::*;
+
+    let we_block = *local == Blocked;
+    let they_block = *remote == Blocked;
+
+    match change {
+        RelationshipChange::AddFriend => {
+            if we_block {
+                Err(create_error!(Blocked))
+            } else if they_block {
+                Err(create_error!(BlockedByOther))
+            } else if *local == Friend && *remote == Friend {
+                Err(create_error!(AlreadyFriends))
+            } else if *local == Friend
+                || *remote == Friend
+                || *local == Incoming
+                || *remote == Outgoing
+            {
+                // Accept their request, including crossed requests sent at the same time.
+                Ok((Friend, Friend))
+            } else if *local == Outgoing && *remote == Incoming {
+                Err(create_error!(AlreadySentRequest))
+            } else {
+                Ok((Outgoing, Incoming))
+            }
+        }
+        RelationshipChange::RemoveFriend => {
+            if we_block || they_block {
+                Err(create_error!(NoEffect))
+            } else if matches!(local, Friend | Outgoing | Incoming)
+                || matches!(remote, Friend | Outgoing | Incoming)
+            {
+                Ok((None, None))
+            } else {
+                Err(create_error!(NoEffect))
+            }
+        }
+        RelationshipChange::Block => {
+            if we_block && matches!(remote, Blocked | BlockedOther) {
+                Err(create_error!(NoEffect))
+            } else if they_block {
+                Ok((Blocked, Blocked))
+            } else {
+                Ok((Blocked, BlockedOther))
+            }
+        }
+        RelationshipChange::Unblock => {
+            if !we_block {
+                Err(create_error!(NoEffect))
+            } else if they_block {
+                Ok((BlockedOther, Blocked))
+            } else {
+                Ok((None, None))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod relationship_tests {
+    use super::{next_relationship, RelationshipChange::*};
+    use crate::RelationshipStatus::{self, *};
+
+    fn next(
+        change: super::RelationshipChange,
+        local: RelationshipStatus,
+        remote: RelationshipStatus,
+    ) -> Option<(RelationshipStatus, RelationshipStatus)> {
+        next_relationship(change, &local, &remote).ok()
+    }
+
+    #[test]
+    fn friend_requests_follow_both_sides() {
+        assert_eq!(next(AddFriend, None, None), Some((Outgoing, Incoming)));
+        assert_eq!(next(AddFriend, Incoming, Outgoing), Some((Friend, Friend)));
+        assert_eq!(next(AddFriend, Outgoing, Incoming), Option::None);
+        assert_eq!(next(AddFriend, Friend, Friend), Option::None);
+    }
+
+    #[test]
+    fn crossed_or_half_written_requests_become_friends() {
+        assert_eq!(next(AddFriend, Outgoing, Outgoing), Some((Friend, Friend)));
+        assert_eq!(next(AddFriend, None, Outgoing), Some((Friend, Friend)));
+        assert_eq!(next(AddFriend, Incoming, None), Some((Friend, Friend)));
+        assert_eq!(next(AddFriend, Friend, None), Some((Friend, Friend)));
+        assert_eq!(next(AddFriend, Outgoing, None), Some((Outgoing, Incoming)));
+    }
+
+    #[test]
+    fn blocks_win_over_friend_requests() {
+        assert_eq!(next(AddFriend, Blocked, BlockedOther), Option::None);
+        assert_eq!(next(AddFriend, BlockedOther, Blocked), Option::None);
+        assert_eq!(next(AddFriend, None, Blocked), Option::None);
+        assert_eq!(next(RemoveFriend, BlockedOther, Blocked), Option::None);
+    }
+
+    #[test]
+    fn removing_clears_both_sides() {
+        assert_eq!(next(RemoveFriend, Friend, Friend), Some((None, None)));
+        assert_eq!(next(RemoveFriend, Outgoing, Incoming), Some((None, None)));
+        assert_eq!(next(RemoveFriend, None, Friend), Some((None, None)));
+        assert_eq!(next(RemoveFriend, None, None), Option::None);
+    }
+
+    #[test]
+    fn blocking_and_unblocking_keep_the_other_users_block() {
+        assert_eq!(next(Block, Friend, Friend), Some((Blocked, BlockedOther)));
+        assert_eq!(next(Block, BlockedOther, Blocked), Some((Blocked, Blocked)));
+        assert_eq!(next(Block, Blocked, BlockedOther), Option::None);
+        assert_eq!(next(Block, Blocked, None), Some((Blocked, BlockedOther)));
+        assert_eq!(
+            next(Unblock, Blocked, Blocked),
+            Some((BlockedOther, Blocked))
+        );
+        assert_eq!(next(Unblock, Blocked, BlockedOther), Some((None, None)));
+        assert_eq!(next(Unblock, Blocked, None), Some((None, None)));
+        assert_eq!(next(Unblock, None, None), Option::None);
+    }
+
+    #[async_std::test]
+    async fn friend_requests_from_both_sides_become_friends() {
+        let db = crate::DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let mut alice = crate::User::create(&db, "Alice".to_string(), Option::None, Option::None)
+            .await
+            .expect("alice");
+        let mut bob = crate::User::create(&db, "Bob".to_string(), Option::None, Option::None)
+            .await
+            .expect("bob");
+        let (mut alice_view_of_bob, mut bob_view_of_alice) = (bob.clone(), alice.clone());
+
+        let (alice_result, bob_result) = futures::join!(
+            Box::pin(alice.change_relationship(
+                &db,
+                Option::None,
+                &mut alice_view_of_bob,
+                AddFriend
+            )),
+            Box::pin(bob.change_relationship(&db, Option::None, &mut bob_view_of_alice, AddFriend)),
+        );
+        alice_result.expect("alice request");
+        bob_result.expect("bob request");
+
+        let alice = db.fetch_user(&alice.id).await.expect("alice stored");
+        let bob = db.fetch_user(&bob.id).await.expect("bob stored");
+        assert_eq!(alice.relationship_with(&bob.id), Friend);
+        assert_eq!(bob.relationship_with(&alice.id), Friend);
     }
 }
 

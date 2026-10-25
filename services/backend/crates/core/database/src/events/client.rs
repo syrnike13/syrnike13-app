@@ -497,6 +497,13 @@ pub enum EventV1 {
         id: String,
     },
 
+    /// Direct message was closed by the receiving user
+    ///
+    /// The channel stays subscribed so a new message can reopen it.
+    DirectMessageClose {
+        id: String,
+    },
+
     /// User joins a group
     ChannelGroupJoin {
         id: String,

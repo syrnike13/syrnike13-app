@@ -27,7 +27,8 @@ auto_derived!(
             #[cfg_attr(feature = "serde", serde(rename = "_id"))]
             id: String,
 
-            /// Whether this direct message channel is currently open on both sides
+            /// Always true: closed conversations are not sent to the user who closed them.
+            /// Kept for clients that still require this field.
             active: bool,
             /// 2-tuple of user ids participating in direct message
             recipients: Vec<String>,
@@ -158,8 +159,6 @@ auto_derived!(
         pub icon: Option<File>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub nsfw: Option<bool>,
-        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-        pub active: Option<bool>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub permissions: Option<i64>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]

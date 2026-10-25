@@ -12,7 +12,7 @@ pub async fn direct_messages(db: &State<Database>, user: User) -> Result<Json<Ve
     let mut channels = Vec::new();
 
     for channel in db.find_direct_messages(&user.id).await? {
-        if !channel.has_bot_recipient(db).await? {
+        if !channel.is_closed_by(&user.id) && !channel.has_bot_recipient(db).await? {
             channels.push(channel.into());
         }
     }

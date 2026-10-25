@@ -263,7 +263,6 @@ mod test {
             description: None,
             icon: None,
             nsfw: None,
-            active: None,
             permissions: None,
             role_permissions: Some(overrides),
             user_permissions: None,

@@ -104,6 +104,62 @@ impl AbstractChannels for MongoDb {
         query!(self, find_one, COL, doc)?.ok_or_else(|| create_error!(NotFound))
     }
 
+    async fn close_direct_message(&self, channel_id: &str, user_id: &str) -> Result<()> {
+        self.col::<Document>(COL)
+            .update_one(
+                doc! {
+                    "_id": channel_id,
+                    "channel_type": "DirectMessage",
+                    "recipients": user_id
+                },
+                doc! {
+                    "$addToSet": {
+                        "closed_by": user_id
+                    }
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|_| create_database_error!("update_one", "channel"))
+    }
+
+    async fn reopen_direct_message(
+        &self,
+        channel_id: &str,
+        user_id: Option<&str>,
+    ) -> Result<Option<Channel>> {
+        let (filter, update) = if let Some(user_id) = user_id {
+            (
+                doc! {
+                    "_id": channel_id,
+                    "closed_by": user_id
+                },
+                doc! {
+                    "$pull": {
+                        "closed_by": user_id
+                    }
+                },
+            )
+        } else {
+            (
+                doc! {
+                    "_id": channel_id,
+                    "closed_by.0": { "$exists": true }
+                },
+                doc! {
+                    "$unset": {
+                        "closed_by": ""
+                    }
+                },
+            )
+        };
+
+        self.col::<Channel>(COL)
+            .find_one_and_update(filter, update)
+            .await
+            .map_err(|_| create_database_error!("find_one_and_update", "channel"))
+    }
+
     /// Insert a user to a group
     async fn add_user_to_group(&self, channel: &str, user: &str) -> Result<()> {
         self.col::<Document>(COL)

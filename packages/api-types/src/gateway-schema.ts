@@ -109,7 +109,6 @@ const PartialChannel = Schema.Struct({
   description: Schema.optionalKey(Api.Channel.members[3].fields.description),
   icon: Schema.optionalKey(Api.Channel.members[3].fields.icon),
   nsfw: Schema.optionalKey(Api.Channel.members[3].fields.nsfw),
-  active: Schema.optionalKey(Api.Channel.members[1].fields.active),
   permissions: Schema.optionalKey(Api.Channel.members[2].fields.permissions),
   role_permissions: Schema.optionalKey(
     Api.Channel.members[3].fields.role_permissions,
@@ -310,6 +309,10 @@ const GatewayEventItemSchema = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal('ChannelDelete'),
+    id: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('DirectMessageClose'),
     id: Schema.String,
   }),
   Schema.Struct({

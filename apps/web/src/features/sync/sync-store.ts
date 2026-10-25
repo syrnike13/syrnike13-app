@@ -1346,7 +1346,8 @@ export const syncStore = {
         }
         break
       }
-      case 'ChannelDelete': {
+      case 'ChannelDelete':
+      case 'DirectMessageClose': {
         const { id } = event
         this.removeChannel(id)
         break
