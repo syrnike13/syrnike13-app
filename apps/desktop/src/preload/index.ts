@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
+  AudioEffectsStateSchema,
+  AudioEffectsStatsSchema,
+  AudioPluginCatalogSchema,
+  type AudioEffectSlot,
+  type AudioEffectSlotUpdate,
+  type AudioEffectsState,
+  type AudioPluginCatalog,
   DesktopDisplayMediaRequestSchema,
   DesktopDisplayMediaSelectionSchema,
   DesktopDisplayMediaSourcePageSchema,
@@ -425,6 +432,49 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.updatesStateChanged, listener)
       return () => {
         ipcRenderer.removeListener(IPC.updatesStateChanged, listener)
+      }
+    },
+  },
+  audioEffects: {
+    getState() {
+      return invokeDecoded(IPC.audioEffectsGetState, AudioEffectsStateSchema)
+    },
+    setChain(slots: readonly AudioEffectSlot[]) {
+      return invokeDecoded(IPC.audioEffectsSetChain, AudioEffectsStateSchema, slots)
+    },
+    updateSlot(update: AudioEffectSlotUpdate) {
+      return invokeDecoded(IPC.audioEffectsUpdateSlot, Schema.Void, update)
+    },
+    openEditor(slotId: string) {
+      return invokeDecoded(IPC.audioEffectsOpenEditor, Schema.Boolean, slotId)
+    },
+    getStats() {
+      return invokeDecoded(IPC.audioEffectsGetStats, Schema.Union([AudioEffectsStatsSchema, Schema.Null]))
+    },
+    onStateChange(handler: (state: AudioEffectsState) => void) {
+      const isState = Schema.is(AudioEffectsStateSchema)
+      const listener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+        if (isState(state)) handler(state)
+      }
+      ipcRenderer.on(IPC.audioEffectsStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.audioEffectsStateChanged, listener)
+      }
+    },
+    getCatalog() {
+      return invokeDecoded(IPC.audioPluginsGetCatalog, AudioPluginCatalogSchema)
+    },
+    scanPlugins() {
+      return invokeDecoded(IPC.audioPluginsScan, AudioPluginCatalogSchema)
+    },
+    onCatalogChange(handler: (catalog: AudioPluginCatalog) => void) {
+      const isCatalog = Schema.is(AudioPluginCatalogSchema)
+      const listener = (_event: Electron.IpcRendererEvent, catalog: unknown) => {
+        if (isCatalog(catalog)) handler(catalog)
+      }
+      ipcRenderer.on(IPC.audioPluginsCatalogChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.audioPluginsCatalogChanged, listener)
       }
     },
   },

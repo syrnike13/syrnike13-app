@@ -17,7 +17,8 @@ bool MicrophoneDsp::configure(std::uint64_t revision, const MicrophoneDspConfig&
   return true;
 }
 void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, EchoReferencePort* port,
-                            std::array<std::int16_t, kMicrophoneFrameSamples>* monitor) noexcept {
+                            std::array<std::int16_t, kMicrophoneFrameSamples>* monitor,
+                            audio_plugins::EffectBusClient* effects) noexcept {
   std::optional<EchoReferenceFrame> reference = port ? port->take() : std::nullopt;
   bool unsupported_reference = false;
   if (reference) {
@@ -42,6 +43,7 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
   stats_.echo = enhancement_->process(frame.samples, reference ? &*reference : nullptr,
                                       config_.noise_suppression, config_.echo_cancellation);
   if (config_.echo_cancellation && unsupported_reference) stats_.echo = EchoAvailability::unsupported;
+  if (effects) effects->process(frame.samples);
   std::array<float, kMicrophoneFrameSamples> samples{};
   float energy = 0;
   for (std::size_t index = 0; index < samples.size(); ++index) {

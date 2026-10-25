@@ -184,10 +184,31 @@ target_link_libraries(media_microphone_capture PUBLIC media_audio_devices PRIVAT
 add_library(media_microphone_dsp STATIC src/audio/microphone_dsp.cpp)
 windows_media_target(media_microphone_dsp)
 target_include_directories(media_microphone_dsp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_microphone_dsp PUBLIC media_audio_effects)
+
+add_library(media_audio_effects STATIC
+  src/audio_plugins/effect_bus.cpp
+  src/audio_plugins/effect_chain.cpp
+  src/audio_plugins/builtin_effects.cpp
+  src/audio_plugins/json.cpp
+)
+windows_media_target(media_audio_effects)
+target_include_directories(media_audio_effects PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/VST3SDK.cmake")
+windows_media_setup_vst3_sdk()
+add_executable(syrnike_audio_plugin_host
+  src/audio_plugins/plugin_host_main.cpp
+  src/audio_plugins/vst3_effect.cpp
+  src/audio_plugins/host_crash.cpp
+)
+windows_media_target(syrnike_audio_plugin_host)
+target_compile_definitions(syrnike_audio_plugin_host PRIVATE UNICODE _UNICODE)
+target_link_libraries(syrnike_audio_plugin_host PRIVATE media_audio_effects vst3_hosting avrt user32 shell32 ole32 dbghelp psapi)
 
 add_library(media_microphone_pipeline STATIC src/audio/microphone_pipeline.cpp)
 windows_media_target(media_microphone_pipeline)
-target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp PRIVATE avrt)
+target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp media_audio_effects PRIVATE avrt)
 
 add_library(media_audio_render STATIC src/audio/shared_render_client.cpp)
 windows_media_target(media_audio_render)
@@ -310,6 +331,18 @@ windows_media_target(microphone_dsp_tests)
 target_link_libraries(microphone_dsp_tests PRIVATE media_microphone_dsp)
 add_test(NAME microphone-dsp COMMAND microphone_dsp_tests)
 set_tests_properties(microphone-dsp PROPERTIES TIMEOUT 10)
+
+add_executable(audio_effects_tests tests/audio_effects_test.cpp)
+windows_media_target(audio_effects_tests)
+target_link_libraries(audio_effects_tests PRIVATE media_audio_effects)
+add_test(NAME audio-effects COMMAND audio_effects_tests)
+set_tests_properties(audio-effects PROPERTIES TIMEOUT 20)
+add_executable(audio_plugin_host_tests tests/audio_plugin_host_test.cpp)
+windows_media_target(audio_plugin_host_tests)
+target_link_libraries(audio_plugin_host_tests PRIVATE media_audio_effects)
+add_dependencies(audio_plugin_host_tests syrnike_audio_plugin_host)
+add_test(NAME audio-plugin-host COMMAND audio_plugin_host_tests)
+set_tests_properties(audio-plugin-host PROPERTIES TIMEOUT 60)
 
 add_executable(microphone_dsp_bench tests/microphone_dsp_bench.cpp)
 windows_media_target(microphone_dsp_bench)

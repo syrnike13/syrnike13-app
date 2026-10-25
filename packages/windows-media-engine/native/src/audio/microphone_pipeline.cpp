@@ -30,7 +30,7 @@ std::int64_t timestamp() noexcept {
 }
 }  // namespace
 struct MicrophonePipeline::State {
-  enum class CommandKind { input, config, echo_reference };
+  enum class CommandKind { input, config, echo_reference, effects };
   struct Command {
     CommandKind kind = CommandKind::input;
     MicrophonePcmPort* input = nullptr;
@@ -38,6 +38,7 @@ struct MicrophonePipeline::State {
     std::uint64_t generation = 0;
     MicrophoneDspConfig config;
     EchoReferencePort* echo_reference = nullptr;
+    audio_plugins::EffectBusClient* effects = nullptr;
   } command;
   Event control, acknowledged, ready{true}, stop{true}, done{true}, output_event;
   std::atomic<std::uint64_t> posted{0}, applied{0};
@@ -200,6 +201,16 @@ MicrophonePipelineFailure MicrophonePipeline::setEchoReference(std::shared_ptr<E
   echo_reference_ = std::move(pending_echo_reference_);
   return MicrophonePipelineFailure::none;
 }
+MicrophonePipelineFailure MicrophonePipeline::setEffects(std::shared_ptr<audio_plugins::EffectBusClient> effects) {
+  if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
+  if (effects == effects_) return MicrophonePipelineFailure::none;
+  pending_effects_ = std::move(effects);
+  state_->command.kind = State::CommandKind::effects;
+  state_->command.effects = pending_effects_.get();
+  if (!submit()) return MicrophonePipelineFailure::command_timeout;
+  effects_ = std::move(pending_effects_);
+  return MicrophonePipelineFailure::none;
+}
 MicrophonePipelineStats MicrophonePipeline::stats() {
   if (owner_ != std::this_thread::get_id()) throw std::logic_error("Microphone pipeline owner mismatch");
   stats_.capture = active_ ? active_->stats() : MicrophoneCaptureStats{};
@@ -232,6 +243,8 @@ bool MicrophonePipeline::stop(Clock::time_point deadline) noexcept {
   active_.reset();
   pending_echo_reference_.reset();
   echo_reference_.reset();
+  pending_effects_.reset();
+  effects_.reset();
   return true;
 }
 std::shared_ptr<MicrophonePcmPort> MicrophonePipeline::output() const noexcept { return state_->output; }
@@ -244,6 +257,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
     Mmcss mmcss;  // Scheduling hint only; absent when the MMCSS service is disabled.
     MicrophonePcmPort* input = nullptr;
     EchoReferencePort* echo_reference = nullptr;
+    audio_plugins::EffectBusClient* effects = nullptr;
     HANDLE frame_event = nullptr;
     std::uint64_t generation = 0;
     auto next_meter = Clock::now();
@@ -260,6 +274,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
         bool accepted = true;
         if (command.kind == State::CommandKind::config) accepted = dsp.configure(revision, command.config);
         else if (command.kind == State::CommandKind::echo_reference) echo_reference = command.echo_reference;
+        else if (command.kind == State::CommandKind::effects) effects = command.effects;
         else {
           input = command.input;
           frame_event = command.frame_event;
@@ -280,7 +295,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
           continue;
         }
         const bool monitor = state->monitor.load(std::memory_order_relaxed);
-        dsp.process(*frame, now, echo_reference, monitor ? &monitor_frame.samples : nullptr);
+        dsp.process(*frame, now, echo_reference, monitor ? &monitor_frame.samples : nullptr, effects);
         if (monitor) {
           monitor_frame.generation = frame->generation;
           monitor_frame.sequence = frame->sequence;

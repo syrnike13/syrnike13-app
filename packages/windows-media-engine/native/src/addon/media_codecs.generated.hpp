@@ -190,6 +190,7 @@ inline MicrophoneIntent readMicrophoneIntent(Napi::Env env, const Napi::Value& v
   result.monitor = readBoolean(env, object.Get("monitor"));
   if (!object.Get("monitorDeviceId").IsNull()) result.monitor_device_id = readIdentifier(env, object.Get("monitorDeviceId"));
   result.monitor_volume = readNumber(env, object.Get("monitorVolume"), 0, 3, false);
+  if (!object.Get("effectBusId").IsNull()) result.effect_bus_id = readIdentifier(env, object.Get("effectBusId"));
   result.bitrate = static_cast<std::uint64_t>(readNumber(env, object.Get("bitrate"), 6000, 512000, true));
   result.retry_revision = static_cast<std::uint64_t>(readNumber(env, object.Get("retryRevision"), 0, 9007199254740991, true));
   return result;
@@ -216,6 +217,8 @@ inline Napi::Object writeModel(Napi::Env env, const MicrophoneIntent& value) {
   if (value.monitor_device_id) object.Set("monitorDeviceId", *value.monitor_device_id);
   else object.Set("monitorDeviceId", env.Null());
   object.Set("monitorVolume", value.monitor_volume);
+  if (value.effect_bus_id) object.Set("effectBusId", *value.effect_bus_id);
+  else object.Set("effectBusId", env.Null());
   object.Set("bitrate", Napi::Number::New(env, static_cast<double>(value.bitrate)));
   object.Set("retryRevision", Napi::Number::New(env, static_cast<double>(value.retry_revision)));
   return object;

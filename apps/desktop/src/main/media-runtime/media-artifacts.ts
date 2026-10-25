@@ -80,6 +80,10 @@ export const MediaArtifactManifestSchema = Schema.Struct({
       name: Schema.Literal('windows_media_texture_broker.node'),
       sha256: MediaSha256Schema,
     }),
+    Schema.Struct({
+      name: Schema.Literal('syrnike_audio_plugin_host.exe'),
+      sha256: MediaSha256Schema,
+    }),
   ]),
 })
 
@@ -112,6 +116,7 @@ export function verifyMediaArtifactDistribution(
       'livekit.dll',
       'livekit_ffi.dll',
       'media-manifest.json',
+      'syrnike_audio_plugin_host.exe',
       'windows_media.node',
       'windows_media_texture_broker.node',
     ])

@@ -8,4 +8,6 @@ export const uiFeatureFlags = {
   channelActivities: config.releaseChannel === 'nightly',
   /** Страница и команда для ручной проверки уведомлений о бейджах. */
   achievementDebug: import.meta.env.DEV || config.releaseChannel === 'nightly',
+  /** Цепочка эффектов микрофона и VST3-плагины (Windows desktop). */
+  microphoneEffects: import.meta.env.DEV || config.releaseChannel === 'nightly',
 } as const

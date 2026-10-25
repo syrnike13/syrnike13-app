@@ -39,6 +39,7 @@ struct MicrophoneIntent {
   bool monitor{};
   std::optional<std::string> monitor_device_id{};
   double monitor_volume{};
+  std::optional<std::string> effect_bus_id{};
   std::uint64_t bitrate{};
   std::uint64_t retry_revision{};
   bool operator==(const MicrophoneIntent&) const = default;
@@ -102,6 +103,7 @@ inline bool validMediaModel(const MicrophoneIntent& value) {
   if (!(std::isfinite(value.gate_threshold_db) && value.gate_threshold_db >= -100 && value.gate_threshold_db <= 0)) return false;
   if (value.monitor_device_id && !validMediaIdentifier(*value.monitor_device_id)) return false;
   if (!(std::isfinite(value.monitor_volume) && value.monitor_volume >= 0 && value.monitor_volume <= 3)) return false;
+  if (value.effect_bus_id && !validMediaIdentifier(*value.effect_bus_id)) return false;
   if (!(value.bitrate >= 6000ULL && value.bitrate <= 512000ULL)) return false;
   if (!(value.retry_revision >= 0ULL && value.retry_revision <= 9007199254740991ULL)) return false;
   return true;

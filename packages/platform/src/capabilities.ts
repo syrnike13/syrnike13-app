@@ -15,6 +15,8 @@ export type PlatformCapabilities = {
   desktopOverlay: boolean
   /** Собственные кнопки окна (macOS traffic lights остаются системными). */
   customWindowChrome: boolean
+  /** Эффекты микрофона и VST3-плагины через нативный хост (Windows). */
+  audioEffects: boolean
 }
 
 export function getCapabilities(
@@ -30,5 +32,6 @@ export function getCapabilities(
     nativeScreenShare: desktop && os === 'win32',
     desktopOverlay: desktop && os === 'win32',
     customWindowChrome: desktop,
+    audioEffects: desktop && os === 'win32',
   }
 }

@@ -49,6 +49,8 @@ class MicrophonePipeline final {
   // Commit between DSP frames. This retains the projection, never its renderer.
   // A null/retired port makes AEC unavailable without changing capture/sender.
   MicrophonePipelineFailure setEchoReference(std::shared_ptr<EchoReferencePort>);
+  // Same commit rule for the plugin host bus. Null keeps every frame dry.
+  MicrophonePipelineFailure setEffects(std::shared_ptr<audio_plugins::EffectBusClient>);
   MicrophonePipelineStats stats();
   bool stop(std::chrono::steady_clock::time_point) noexcept;
   // One independent publication consumer; it never owns the capture device.
@@ -75,6 +77,8 @@ class MicrophonePipeline final {
   std::unique_ptr<MicrophoneCapture> candidate_;
   std::shared_ptr<EchoReferencePort> echo_reference_;
   std::shared_ptr<EchoReferencePort> pending_echo_reference_;
+  std::shared_ptr<audio_plugins::EffectBusClient> effects_;
+  std::shared_ptr<audio_plugins::EffectBusClient> pending_effects_;
   MicrophonePipelineStats stats_;
   std::uint64_t generation_ = 0;
   std::uint64_t command_revision_ = 0;

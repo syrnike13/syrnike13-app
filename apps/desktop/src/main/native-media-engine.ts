@@ -12,6 +12,7 @@ import { createElectronMediaUtilityAdapterFactory, mediaUtilityAvailable } from 
 import { MediaFrameController } from './media-runtime/media-frame-controller'
 import { NativeScreenPicker } from './media-runtime/native-screen-picker'
 import { NativeRtcEngineAdapterV2 } from './voice/native-rtc-engine-adapter-v2'
+import { currentAudioEffectsBus, onAudioEffectsBusChange } from './audio-effects/audio-effects-ipc'
 import { decodeIpcInput } from './ipc-schema'
 import {
   createNativeDiagnosticLog, createNativeDiagnosticSession,
@@ -157,6 +158,8 @@ export function createNativeRtcEngineAdapter() {
   const picker = new NativeScreenPicker(runtime, () => windowGetter())
   active = { runtime, adapter, frames, picker }
   subscriptions.push(runtime.onStateChange(broadcastRuntimeState), adapter.onSnapshot(broadcastRuntimeState))
+  adapter.setMicrophoneEffectBus(currentAudioEffectsBus())
+  subscriptions.push(onAudioEffectsBusChange(busId => adapter.setMicrophoneEffectBus(busId)))
   subscriptions.push(runtime.onStateChange(state => {
     recordMediaDiagnostic({
       scope: 'native-runtime-supervisor', event: 'state_changed', runtime: 'media',

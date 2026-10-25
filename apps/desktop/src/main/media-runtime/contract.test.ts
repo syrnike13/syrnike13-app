@@ -82,7 +82,7 @@ describe('native media protocol contract', () => {
         automaticGainControl: true, noiseSuppression: true, echoCancellation: true,
         inputVolume: 1, gateEnabled: true, gateThresholdDb: -50,
         gateAutoThreshold: false, meterDemand: false, monitor: true, monitorDeviceId: 'speaker-1',
-        monitorVolume: 1.5, bitrate: 64_000, retryRevision: 0,
+        monitorVolume: 1.5, effectBusId: 'fx-0123', bitrate: 64_000, retryRevision: 0,
       },
       camera: {
         state: 'on', deviceId: 'camera-1', profile: 'hd1080p30',

@@ -8,6 +8,7 @@ import {
   SettingsRow,
   SettingsToggleRow,
 } from '#/components/settings/settings-panels'
+import { MicrophoneEffectsSettings } from '#/components/settings/microphone-effects-settings'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
 import { Field, FieldTitle } from '@syrnike13/ui/primitives/field'
 import { PresetSlider } from '#/components/ui/preset-slider'
@@ -53,6 +54,7 @@ import {
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
 import type { CSSVars } from '#/lib/css-vars'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
 function volumeToSlider(volume: number) {
@@ -415,6 +417,10 @@ export function SettingsVoicePanel() {
           }
         />
       </SettingsBlock>
+
+      {capabilities.audioEffects && uiFeatureFlags.microphoneEffects ? (
+        <MicrophoneEffectsSettings />
+      ) : null}
 
       <SettingsBlock title={ts('screenShare')}>
         <SettingsRow label={ts('defaultQuality')}>

@@ -14,6 +14,13 @@ import type {
   NativeDiagnosticIncidentBatch,
   RendererDiagnosticIncident,
 } from './diagnostics'
+import type {
+  AudioEffectSlot,
+  AudioEffectSlotUpdate,
+  AudioEffectsState,
+  AudioEffectsStats,
+  AudioPluginCatalog,
+} from './audio-effects'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { DesktopSystemInfo } from './system'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
@@ -368,6 +375,19 @@ export interface SyrnikeDesktopApi {
     getRuntimeStatus(): Promise<HotkeyRuntimeStatus>
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
+  }
+  /** Windows only; see `PlatformCapabilities.audioEffects`. */
+  audioEffects: {
+    getState(): Promise<AudioEffectsState>
+    setChain(slots: readonly AudioEffectSlot[]): Promise<AudioEffectsState>
+    updateSlot(update: AudioEffectSlotUpdate): Promise<void>
+    openEditor(slotId: string): Promise<boolean>
+    /** Load since the previous call; null while no plugin host runs. */
+    getStats(): Promise<AudioEffectsStats | null>
+    onStateChange(handler: (state: AudioEffectsState) => void): () => void
+    getCatalog(): Promise<AudioPluginCatalog>
+    scanPlugins(): Promise<AudioPluginCatalog>
+    onCatalogChange(handler: (catalog: AudioPluginCatalog) => void): () => void
   }
   overlay: {
     getState(): Promise<DesktopOverlayState>
