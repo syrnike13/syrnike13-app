@@ -7,7 +7,6 @@ import { activityStore } from '#/features/activities/activity-store'
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 import { config } from '#/lib/config'
-import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { queryKeys } from '#/lib/api/query-keys'
 
 import { useMessageNotifications } from '#/features/notifications/use-message-notifications'
@@ -53,7 +52,6 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const prevGatewayStateRef = useRef(eventsGateway.state)
 
   useEffect(() => {
-    if (!uiFeatureFlags.channelActivities) return
     activityStore.attach(eventsGateway)
     return () => activityStore.detach()
   }, [])

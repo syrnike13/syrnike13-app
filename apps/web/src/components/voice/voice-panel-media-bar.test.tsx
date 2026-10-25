@@ -20,7 +20,6 @@ vi.mock('#/components/icons', () => ({
 const testState = vi.hoisted(() => ({
   session: { status: 'connected', channelId: 'voice-a' },
   navigate: vi.fn(() => Promise.resolve()),
-  uiFeatures: { channelActivities: true },
   activitiesAllowed: true,
   activityRunning: false,
   stage: {
@@ -61,9 +60,6 @@ vi.mock('#/features/voice/voice-media-context', () => ({
   useVoiceMedia: () => testState.media,
 }))
 
-vi.mock('#/lib/ui-feature-flags', () => ({
-  uiFeatureFlags: testState.uiFeatures,
-}))
 
 vi.mock('#/features/authorization/authorization', () => ({
   canUseActivities: () => testState.activitiesAllowed,
@@ -80,7 +76,6 @@ vi.mock('#/features/activities/use-activities', () => ({
 describe('VoicePanelMediaBar Activities button', () => {
   beforeEach(() => {
     testState.session.status = 'connected'
-    testState.uiFeatures.channelActivities = true
     testState.activitiesAllowed = true
     testState.activityRunning = false
     testState.stage.activityLauncherOpen = false
@@ -139,13 +134,5 @@ describe('VoicePanelMediaBar Activities button', () => {
         .getByRole('button', { name: 'Активности' })
         .getAttribute('aria-disabled'),
     ).not.toBe('true')
-  })
-
-  it('hides Activities outside nightly builds', () => {
-    testState.uiFeatures.channelActivities = false
-
-    render(<VoicePanelMediaBar />)
-
-    expect(screen.queryByRole('button', { name: 'Активности' })).toBeNull()
   })
 })

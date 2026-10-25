@@ -5,7 +5,6 @@ import { config } from '#/lib/config'
  * Компоненты не должны самостоятельно читать env или releaseChannel.
  */
 export const uiFeatureFlags = {
-  channelActivities: config.releaseChannel === 'nightly',
   /** Страница и команда для ручной проверки уведомлений о бейджах. */
   achievementDebug: import.meta.env.DEV || config.releaseChannel === 'nightly',
 } as const

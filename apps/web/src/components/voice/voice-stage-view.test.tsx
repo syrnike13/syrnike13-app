@@ -61,7 +61,6 @@ const testState = vi.hoisted(() => ({
     },
   },
   activityHook: vi.fn(),
-  uiFeatures: { channelActivities: true },
   participants: {} as Record<string, Array<{ id: string }>>,
 }))
 
@@ -94,9 +93,6 @@ vi.mock('#/features/authorization/authorization', () => ({
   canInviteToChannel: () => false,
 }))
 
-vi.mock('#/lib/ui-feature-flags', () => ({
-  uiFeatureFlags: testState.uiFeatures,
-}))
 
 vi.mock('#/features/activities/activity-store', () => ({
   activityStore: { leave: vi.fn() },
@@ -241,7 +237,6 @@ describe('VoiceStageView channel media scope', () => {
     testState.session.status = 'connected'
     testState.stage.stageChannelId = 'voice-a'
     testState.stage.activityLauncherOpen = false
-    testState.uiFeatures.channelActivities = true
     testState.activityHook.mockReset()
     testState.activityHook.mockImplementation((channelId: string | null) =>
       channelId ? testState.activity.instance : null,
@@ -404,27 +399,6 @@ describe('VoiceStageView channel media scope', () => {
       />,
     )
     expect(screen.queryByTestId('activity-tile')).toBeNull()
-  })
-
-  it('hides Activity UI and disables its subscription outside nightly builds', () => {
-    testState.uiFeatures.channelActivities = false
-    testState.stage.activityLauncherOpen = true
-    testState.activity.instance = {
-      id: 'activity-1',
-      application_id: 'chess',
-      channel_id: 'voice-a',
-      revision: 1,
-      host_id: 'local',
-      participants: [{ user_id: 'local', joined_at: '2026-10-24T10:00:00Z' }],
-      started_by: 'local',
-      started_at: '2026-10-24T10:00:00Z',
-    }
-
-    renderStage(voiceChannel('voice-a', 'A'))
-
-    expect(testState.activityHook).toHaveBeenCalledWith(null)
-    expect(screen.queryByTestId('activity-tile')).toBeNull()
-    expect(screen.queryByTestId('activity-launcher')).toBeNull()
   })
 
   it('renders the empty channel title and joins from the centered action', () => {

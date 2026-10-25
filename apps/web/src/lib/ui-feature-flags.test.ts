@@ -1,35 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-const testState = vi.hoisted(() => ({
-  releaseChannel: 'stable' as 'stable' | 'nightly',
-}))
+import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('#/lib/config', () => ({
-  config: {
-    get releaseChannel() {
-      return testState.releaseChannel
-    },
-  },
+  config: { releaseChannel: 'nightly' },
 }))
 
 describe('uiFeatureFlags', () => {
-  afterEach(() => {
-    vi.resetModules()
-  })
-
-  it('hides experimental UI in stable builds', async () => {
-    testState.releaseChannel = 'stable'
-
+  it('enables the achievement debug tools in nightly builds', async () => {
     const { uiFeatureFlags } = await import('./ui-feature-flags')
 
-    expect(uiFeatureFlags.channelActivities).toBe(false)
-  })
-
-  it('enables experimental UI in nightly builds', async () => {
-    testState.releaseChannel = 'nightly'
-
-    const { uiFeatureFlags } = await import('./ui-feature-flags')
-
-    expect(uiFeatureFlags.channelActivities).toBe(true)
+    expect(uiFeatureFlags.achievementDebug).toBe(true)
   })
 })
