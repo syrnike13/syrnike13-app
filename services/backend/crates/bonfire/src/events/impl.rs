@@ -884,8 +884,15 @@ impl State {
             } else {
                 None
             },
+            // Closed DMs stay cached and subscribed so the next message can reopen them.
             channels: if fields.channels {
-                Some(channels.into_iter().map(Into::into).collect())
+                Some(
+                    channels
+                        .into_iter()
+                        .filter(|channel| !channel.is_closed_by(&self.cache.user_id))
+                        .map(Into::into)
+                        .collect(),
+                )
             } else {
                 None
             },

@@ -177,12 +177,11 @@ impl From<crate::Channel> for Channel {
             crate::Channel::SavedMessages { id, user } => Channel::SavedMessages { id, user },
             crate::Channel::DirectMessage {
                 id,
-                active,
                 recipients,
                 last_message_id,
+                ..
             } => Channel::DirectMessage {
                 id,
-                active,
                 recipients,
                 last_message_id,
             },
@@ -245,12 +244,11 @@ impl From<Channel> for crate::Channel {
             Channel::SavedMessages { id, user } => crate::Channel::SavedMessages { id, user },
             Channel::DirectMessage {
                 id,
-                active,
                 recipients,
                 last_message_id,
             } => crate::Channel::DirectMessage {
                 id,
-                active,
+                closed_by: vec![],
                 recipients,
                 last_message_id,
             },
@@ -314,7 +312,6 @@ impl From<crate::PartialChannel> for PartialChannel {
             description: value.description,
             icon: value.icon.map(|file| file.into()),
             nsfw: value.nsfw,
-            active: value.active,
             permissions: value.permissions,
             role_permissions: value.role_permissions,
             user_permissions: value.user_permissions,
@@ -334,7 +331,6 @@ impl From<PartialChannel> for crate::PartialChannel {
             description: value.description,
             icon: value.icon.map(|file| file.into()),
             nsfw: value.nsfw,
-            active: value.active,
             permissions: value.permissions,
             role_permissions: value.role_permissions,
             user_permissions: value.user_permissions,

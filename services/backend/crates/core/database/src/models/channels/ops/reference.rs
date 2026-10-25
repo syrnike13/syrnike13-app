@@ -63,13 +63,66 @@ impl AbstractChannels for ReferenceDb {
     // Fetch direct message channel (DM or Saved Messages)
     async fn find_direct_message_channel(&self, user_a: &str, user_b: &str) -> Result<Channel> {
         let channels = self.channels.lock().await;
-        for (_, data) in channels.iter() {
-            if data.contains_user(user_a) && data.contains_user(user_b) {
-                return Ok(data.to_owned());
+        channels
+            .values()
+            .find(|channel| match channel {
+                Channel::SavedMessages { user, .. } => user_a == user_b && user == user_a,
+                Channel::DirectMessage { recipients, .. } => {
+                    user_a != user_b
+                        && recipients.iter().any(|id| id == user_a)
+                        && recipients.iter().any(|id| id == user_b)
+                }
+                _ => false,
+            })
+            .cloned()
+            .ok_or_else(|| create_error!(NotFound))
+    }
+    async fn close_direct_message(&self, channel_id: &str, user_id: &str) -> Result<()> {
+        let mut channels = self.channels.lock().await;
+
+        if let Some(Channel::DirectMessage {
+            closed_by,
+            recipients,
+            ..
+        }) = channels.get_mut(channel_id)
+        {
+            if recipients.iter().any(|id| id == user_id)
+                && !closed_by.iter().any(|id| id == user_id)
+            {
+                closed_by.push(user_id.to_string());
             }
         }
-        Err(create_error!(NotFound))
+
+        Ok(())
     }
+
+    async fn reopen_direct_message(
+        &self,
+        channel_id: &str,
+        user_id: Option<&str>,
+    ) -> Result<Option<Channel>> {
+        let mut channels = self.channels.lock().await;
+
+        let Some(channel) = channels.get_mut(channel_id) else {
+            return Ok(None);
+        };
+        let before = channel.clone();
+        let Channel::DirectMessage { closed_by, .. } = channel else {
+            return Ok(None);
+        };
+
+        let reopened = match user_id {
+            Some(user_id) => {
+                let closed = closed_by.iter().any(|id| id == user_id);
+                closed_by.retain(|id| id != user_id);
+                closed
+            }
+            None => !std::mem::take(closed_by).is_empty(),
+        };
+
+        Ok(reopened.then_some(before))
+    }
+
     /// Insert a user to a group
     async fn add_user_to_group(&self, channel_id: &str, user_id: &str) -> Result<()> {
         let mut channels = self.channels.lock().await;

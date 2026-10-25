@@ -2142,7 +2142,8 @@
     },
     "dm": {
       "syncing": "Syncing…",
-      "empty": "No direct messages"
+      "empty": "No direct messages",
+      "close": "Close direct message"
     },
     "friends": {
       "tabs": {

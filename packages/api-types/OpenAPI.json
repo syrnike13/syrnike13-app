@@ -10283,7 +10283,6 @@
             "type": "object",
             "required": [
               "_id",
-              "active",
               "channel_type",
               "recipients"
             ],
@@ -10297,10 +10296,6 @@
               "_id": {
                 "description": "Unique Id",
                 "type": "string"
-              },
-              "active": {
-                "description": "Whether this direct message channel is currently open on both sides",
-                "type": "boolean"
               },
               "recipients": {
                 "description": "2-tuple of user ids participating in direct message",

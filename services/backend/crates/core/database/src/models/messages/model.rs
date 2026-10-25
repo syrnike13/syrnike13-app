@@ -665,6 +665,11 @@ impl Message {
     ) -> Result<()> {
         db.insert_message(self).await?;
 
+        // Bring the conversation back for anyone who closed it before they receive the message
+        if is_dm {
+            Channel::reopen_direct_message(db, &self.channel).await?;
+        }
+
         // Fan out events
         EventV1::Message(self.clone().into_model(user, member))
             .p(self.channel.to_string())
@@ -672,7 +677,7 @@ impl Message {
 
         // Update last_message_id
         #[cfg(feature = "tasks")]
-        tasks::last_message_id::queue(self.channel.to_string(), self.id.to_string(), is_dm).await;
+        tasks::last_message_id::queue(self.channel.to_string(), self.id.to_string()).await;
 
         // Add mentions for affected users
         #[cfg(feature = "tasks")]

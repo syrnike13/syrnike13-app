@@ -8,7 +8,6 @@ describe('channel voice capabilities', () => {
       channelHasVoice({
         _id: 'dm-channel',
         channel_type: 'DirectMessage',
-        active: true,
         recipients: ['user-1', 'user-2'],
       } as never),
     ).toBe(true)
@@ -29,7 +28,6 @@ describe('channel voice capabilities', () => {
       isServerVoiceChannel({
         _id: 'dm-channel',
         channel_type: 'DirectMessage',
-        active: true,
         recipients: ['user-1', 'user-2'],
       } as never),
     ).toBe(false)

@@ -1,12 +1,25 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DmChannelList } from '#/components/home/dm-channel-list'
 import { syncStore } from '#/features/sync/sync-store'
+
+const mocks = vi.hoisted(() => ({
+  deleteChannel: vi.fn(),
+  navigate: vi.fn(),
+}))
+
+vi.mock('#/features/api/channels-api', async () => {
+  const { Effect } = await import('effect')
+  return {
+    deleteChannelEffect: (...args: unknown[]) =>
+      Effect.sync(() => mocks.deleteChannel(...args)),
+  }
+})
 
 vi.mock('@tanstack/react-router', () => ({
   Link: forwardRef<
@@ -27,6 +40,7 @@ vi.mock('@tanstack/react-router', () => ({
       </a>
     )
   }),
+  useNavigate: () => mocks.navigate,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
     select({ location: { pathname: '/' } }),
 }))
@@ -46,6 +60,40 @@ describe('DmChannelList', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.clearAllMocks()
+  })
+
+  it('closes the open direct message and leaves it', async () => {
+    syncStore.applyReady({
+      users: [
+        {
+          _id: 'friend-1',
+          username: 'test_isa',
+          discriminator: '0002',
+          relationship: 'Friend',
+          online: false,
+        },
+      ],
+      servers: [],
+      channels: [
+        {
+          _id: 'dm-1',
+          channel_type: 'DirectMessage',
+          recipients: ['current-user', 'friend-1'],
+          last_message_id: 'message-1',
+        },
+      ],
+      members: [],
+      emojis: [],
+      voice_states: [],
+    } as never)
+
+    render(<DmChannelList activeChannelId="dm-1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть личные сообщения' }))
+
+    await waitFor(() => expect(syncStore.getState().channels['dm-1']).toBeUndefined())
+    expect(mocks.deleteChannel).toHaveBeenCalledWith('session-token', 'dm-1')
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/', search: { tab: 'online' } })
   })
 
   it('shows a read direct message after the first message exists', () => {
@@ -71,7 +119,6 @@ describe('DmChannelList', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
-          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-1',
         },
@@ -116,7 +163,6 @@ describe('DmChannelList', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
-          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-2',
         },
@@ -201,7 +247,6 @@ describe('DmChannelList', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
-          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-1',
         },
@@ -256,7 +301,6 @@ describe('DmChannelList', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
-          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-1',
         },
@@ -305,7 +349,6 @@ describe('DmChannelList', () => {
         {
           _id: 'dm-1',
           channel_type: 'DirectMessage',
-          active: true,
           recipients: ['current-user', 'friend-1'],
           last_message_id: 'message-1',
         },

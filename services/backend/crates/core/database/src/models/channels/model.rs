@@ -33,8 +33,9 @@ auto_derived!(
             #[serde(rename = "_id")]
             id: String,
 
-            /// Whether this direct message channel is currently open on both sides
-            active: bool,
+            /// Users who closed this conversation; it reopens for them on the next message
+            #[serde(default, skip_serializing_if = "Vec::is_empty")]
+            closed_by: Vec<String>,
             /// 2-tuple of user ids participating in direct message
             recipients: Vec<String>,
             /// Id of the last message sent in this channel
@@ -148,8 +149,6 @@ auto_derived!(
         pub icon: Option<File>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub nsfw: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub active: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub permissions: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -327,7 +326,14 @@ impl Channel {
         }
 
         // Try to find existing channel
-        if let Ok(channel) = db.find_direct_message_channel(&user_a.id, &user_b.id).await {
+        if let Ok(mut channel) = db.find_direct_message_channel(&user_a.id, &user_b.id).await {
+            if channel.is_closed_by(&user_a.id) {
+                Channel::reopen_direct_message_for(db, channel.id(), &user_a.id).await?;
+                if let Channel::DirectMessage { closed_by, .. } = &mut channel {
+                    closed_by.retain(|id| id != &user_a.id);
+                }
+            }
+
             Ok(channel)
         } else {
             let channel = if user_a.id == user_b.id {
@@ -340,7 +346,7 @@ impl Channel {
                 // Create a new DM channel
                 Channel::DirectMessage {
                     id: Ulid::new().to_string(),
-                    active: true, // show by default
+                    closed_by: vec![],
                     recipients: vec![user_a.id.clone(), user_b.id.clone()],
                     last_message_id: None,
                 }
@@ -356,6 +362,62 @@ impl Channel {
 
             Ok(channel)
         }
+    }
+
+    /// Whether this is a direct message the user has closed
+    pub fn is_closed_by(&self, user_id: &str) -> bool {
+        matches!(self, Channel::DirectMessage { closed_by, .. } if closed_by.iter().any(|id| id == user_id))
+    }
+
+    /// Hide a direct message for one participant until the next message
+    pub async fn close_direct_message(&self, db: &Database, user_id: &str) -> Result<()> {
+        if !matches!(self, Channel::DirectMessage { .. }) {
+            return Err(create_error!(InvalidOperation));
+        }
+
+        db.close_direct_message(self.id(), user_id).await?;
+
+        EventV1::DirectMessageClose {
+            id: self.id().to_string(),
+        }
+        .private(user_id.to_string())
+        .await;
+
+        Ok(())
+    }
+
+    /// Reopen a direct message for one participant who closed it
+    pub async fn reopen_direct_message_for(
+        db: &Database,
+        channel_id: &str,
+        user_id: &str,
+    ) -> Result<()> {
+        if let Some(channel) = db.reopen_direct_message(channel_id, Some(user_id)).await? {
+            EventV1::ChannelCreate(channel.into())
+                .private(user_id.to_string())
+                .await;
+        }
+
+        Ok(())
+    }
+
+    /// Reopen a direct message for every participant who closed it
+    pub async fn reopen_direct_message(db: &Database, channel_id: &str) -> Result<()> {
+        if let Some(channel) = db.reopen_direct_message(channel_id, None).await? {
+            let Channel::DirectMessage { closed_by, .. } = &channel else {
+                return Ok(());
+            };
+            let closed_by = closed_by.clone();
+            let channel: v0::Channel = channel.into();
+
+            for user_id in closed_by {
+                EventV1::ChannelCreate(channel.clone())
+                    .private(user_id)
+                    .await;
+            }
+        }
+
+        Ok(())
     }
 
     /// Add user to a group
@@ -658,11 +720,7 @@ impl Channel {
     pub fn apply_options(&mut self, partial: PartialChannel) {
         match self {
             Self::SavedMessages { .. } => {}
-            Self::DirectMessage { active, .. } => {
-                if let Some(v) = partial.active {
-                    *active = v;
-                }
-            }
+            Self::DirectMessage { .. } => {}
             Self::Group {
                 name,
                 owner,

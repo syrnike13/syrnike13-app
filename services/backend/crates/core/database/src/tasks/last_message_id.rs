@@ -13,8 +13,6 @@ struct Data {
     channel: String,
     /// Latest message ID
     id: String,
-    /// Whether the channel is a DM
-    is_dm: bool,
 }
 
 /// Task information
@@ -22,15 +20,13 @@ struct Data {
 struct Task {
     /// Latest message ID
     id: String,
-    /// Whether the channel is a DM
-    is_dm: bool,
 }
 
 static Q: Lazy<Queue<Data>> = Lazy::new(|| Queue::new(10_000));
 
 /// Queue a new task for a worker
-pub async fn queue(channel: String, id: String, is_dm: bool) {
-    Q.try_push(Data { channel, id, is_dm }).ok();
+pub async fn queue(channel: String, id: String) {
+    Q.try_push(Data { channel, id }).ok();
     info!("Queue is using {} slots from {}.", Q.len(), Q.capacity());
 }
 
@@ -50,16 +46,12 @@ pub async fn worker(db: Database) {
         // Commit any due tasks to the database.
         for key in &keys {
             if let Some(task) = tasks.remove(key) {
-                let Task { id, is_dm, .. } = task.data;
+                let Task { id } = task.data;
 
-                let mut channel = PartialChannel {
+                let channel = PartialChannel {
                     last_message_id: Some(id.to_string()),
                     ..Default::default()
                 };
-
-                if is_dm {
-                    channel.active = Some(true);
-                }
 
                 match db.update_channel(key, &channel, vec![]).await {
                     Ok(_) => info!("Updated last_message_id for {key} to {id}."),
@@ -72,12 +64,12 @@ pub async fn worker(db: Database) {
         keys.clear();
 
         // Queue incoming tasks.
-        while let Some(Data { channel, id, is_dm }) = Q.try_pop() {
+        while let Some(Data { channel, id }) = Q.try_pop() {
             if let Some(task) = tasks.get_mut(&channel) {
                 task.data.id = id;
                 task.delay();
             } else {
-                tasks.insert(channel, DelayedTask::new(Task { id, is_dm }));
+                tasks.insert(channel, DelayedTask::new(Task { id }));
             }
         }
 

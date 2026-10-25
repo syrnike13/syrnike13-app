@@ -1,20 +1,23 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
+import { Effect } from 'effect'
+import { HashIcon, HeadphonesIcon, UsersIcon, XIcon } from '#/components/icons'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import {
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@syrnike13/ui/primitives/sidebar'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { deleteChannelEffect } from '#/features/api/channels-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { listDmChannels } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
@@ -36,10 +39,32 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   const tSidebar = useTranslations('home.sidebar')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
+  const navigate = useNavigate()
   const syncState = useSyncStore((s) => s)
   const ready = syncState.ready
   const users = syncState.users
   const dmChannels = listDmChannels(syncState, auth.user?._id)
+  const token = auth.session?.token
+
+  function closeDirectMessage(channelId: string) {
+    if (!token) return
+
+    void Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteChannelEffect(token, channelId)
+        yield* Effect.sync(() => syncStore.removeChannel(channelId))
+        if (channelId !== activeChannelId) return
+        yield* Effect.tryPromise({
+          try: () => navigate({ to: prefix || '/', search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => console.error('[dm-list] close failed', error)),
+        ),
+      ),
+    )
+  }
 
   if (!ready) {
     return (
@@ -139,6 +164,16 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   />
                 ) : null}
               </SidebarMenuButton>
+              {channel.channel_type === 'DirectMessage' ? (
+                <SidebarMenuAction
+                  showOnHover
+                  aria-label={t('close')}
+                  title={t('close')}
+                  onClick={() => closeDirectMessage(channel._id)}
+                >
+                  <XIcon aria-hidden="true" />
+                </SidebarMenuAction>
+              ) : null}
             </SidebarMenuItem>
           )
         })}

@@ -2,7 +2,7 @@ use log::warn;
 use rocket::State;
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
-    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
+    Channel, Database, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{cleanup_removed_voice_channel, UserVoiceChannel, VoiceClient},
 };
@@ -30,7 +30,7 @@ pub async fn delete(
     target: Reference<'_>,
     options: v0::OptionsChannelDelete,
 ) -> Result<EmptyResponse> {
-    let mut channel = target.as_channel(db).await?;
+    let channel = target.as_channel(db).await?;
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     let permissions = calculate_channel_permissions(&mut query).await;
 
@@ -39,18 +39,7 @@ pub async fn delete(
     #[allow(deprecated)]
     match &channel {
         Channel::SavedMessages { .. } => Err(create_error!(NoEffect))?,
-        Channel::DirectMessage { .. } => {
-            channel
-                .update(
-                    db,
-                    PartialChannel {
-                        active: Some(false),
-                        ..Default::default()
-                    },
-                    vec![],
-                )
-                .await?
-        }
+        Channel::DirectMessage { .. } => channel.close_direct_message(db, &user.id).await?,
         Channel::Group {
             owner, recipients, ..
         } => {
@@ -137,7 +126,7 @@ mod test {
     };
     use rocket::http::{Header, Status};
     use rocket::local::asynchronous::Client;
-    use syrnike_database::{Channel, events::client::EventV1};
+    use syrnike_database::{Channel, RelationshipStatus, User, events::client::EventV1};
     use syrnike_database::{
         Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
         ServerAuditLogTarget, fixture, voice::VoiceClient,
@@ -289,9 +278,72 @@ mod test {
             .await;
     }
 
+    #[rocket::async_test]
+    async fn closing_dm_hides_it_only_for_the_closer_until_reopened() {
+        let context = ChannelDeleteTestContext::new().await;
+        let mut user = User::create(&context.db, "Closer".to_string(), None, None)
+            .await
+            .expect("user");
+        let mut other = User::create(&context.db, "Other".to_string(), None, None)
+            .await
+            .expect("other user");
+        #[allow(clippy::disallowed_methods)]
+        user.apply_relationship(
+            &context.db,
+            &mut other,
+            RelationshipStatus::Friend,
+            RelationshipStatus::Friend,
+        )
+        .await
+        .expect("friends");
+        let (_, session) = context.account_from_user(user.id.clone()).await;
+        let dm = Channel::create_dm(&context.db, &user, &other)
+            .await
+            .expect("dm");
+
+        let response = context
+            .client
+            .delete(format!("/channels/{}", dm.id()))
+            .header(Header::new("x-session-token", session.token.to_string()))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::NoContent);
+        drop(response);
+
+        let stored = context.db.fetch_channel(dm.id()).await.expect("dm stored");
+        assert!(stored.is_closed_by(&user.id));
+        assert!(!stored.is_closed_by(&other.id));
+
+        // Opening the DM again reopens it only for the user who closed it.
+        let reopened = Channel::create_dm(&context.db, &user, &other)
+            .await
+            .expect("dm reopened");
+        assert!(!reopened.is_closed_by(&user.id));
+        assert!(!context
+            .db
+            .fetch_channel(dm.id())
+            .await
+            .expect("dm stored")
+            .is_closed_by(&user.id));
+
+        // A new message reopens it for everyone who closed it.
+        stored
+            .close_direct_message(&context.db, &user.id)
+            .await
+            .expect("closed again");
+        Channel::reopen_direct_message(&context.db, dm.id())
+            .await
+            .expect("reopened by message");
+        assert!(!context
+            .db
+            .fetch_channel(dm.id())
+            .await
+            .expect("dm stored")
+            .is_closed_by(&user.id));
+    }
+
     // TEST: member leaves group (no delete)
     // TEST: no effect with saved messages
-    // TEST: DM set to inactive
 
     #[rocket::async_test]
     async fn success_delete_channel() {

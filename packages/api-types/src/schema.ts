@@ -1368,8 +1368,6 @@ export interface components {
           channel_type: "DirectMessage";
           /** @description Unique Id */
           _id: string;
-          /** @description Whether this direct message channel is currently open on both sides */
-          active: boolean;
           /** @description 2-tuple of user ids participating in direct message */
           recipients: string[];
           /** @description Id of the last message sent in this channel */

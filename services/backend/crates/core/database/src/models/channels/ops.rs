@@ -25,6 +25,18 @@ pub trait AbstractChannels: Sync + Send {
     // Fetch direct message channel (DM or Saved Messages)
     async fn find_direct_message_channel(&self, user_a: &str, user_b: &str) -> Result<Channel>;
 
+    /// Mark a direct message as closed by one of its participants
+    async fn close_direct_message(&self, channel_id: &str, user_id: &str) -> Result<()>;
+
+    /// Clear the closed mark of a direct message, for one user or for everyone.
+    ///
+    /// Returns the channel as it was before reopening, or `None` if no matching user had closed it.
+    async fn reopen_direct_message(
+        &self,
+        channel_id: &str,
+        user_id: Option<&str>,
+    ) -> Result<Option<Channel>>;
+
     /// Insert a user to a group
     async fn add_user_to_group(&self, channel_id: &str, user_id: &str) -> Result<()>;
 
