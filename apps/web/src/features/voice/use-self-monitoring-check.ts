@@ -7,10 +7,13 @@ import { useEffect, useRef } from 'react'
  * the page goes away (a closed tab never runs React cleanup, and a check
  * forwarded to another tab's voice session would otherwise stay on).
  *
- * onEnded runs when the session ends the check elsewhere, for example from
- * the deafen button or a desktop hotkey. Only a start the session reported
- * after this request counts, so the late "ended" of a previous check never
- * cancels a new one.
+ * The surface also follows a check another settings surface started and a
+ * check the session ends elsewhere, for example from the deafen button or a
+ * desktop hotkey.
+ *
+ * A surface that stopped its own check and started another one before the
+ * session reported the stop ignores that late report, so a quick restart is
+ * not cancelled.
  */
 export function useSelfMonitoringCheck(
   requested: boolean,
@@ -20,8 +23,12 @@ export function useSelfMonitoringCheck(
 ) {
   const setActiveRef = useRef(setSelfMonitoringActive)
   const onEndedRef = useRef(onEnded)
+  const previousRequestedRef = useRef(requested)
   const previousActiveRef = useRef(selfMonitoringActive)
-  const startedRef = useRef(false)
+  // A running check this surface shows: its own start or one it joined.
+  const runningRef = useRef(false)
+  // This surface asked for a stop the session has not reported yet.
+  const stopPendingRef = useRef(false)
 
   useEffect(() => {
     setActiveRef.current = setSelfMonitoringActive
@@ -40,15 +47,39 @@ export function useSelfMonitoringCheck(
   }, [requested])
 
   useEffect(() => {
-    const previous = previousActiveRef.current
+    const requestedBefore = previousRequestedRef.current
+    const activeBefore = previousActiveRef.current
+    previousRequestedRef.current = requested
     previousActiveRef.current = selfMonitoringActive
+
     if (!requested) {
-      startedRef.current = false
-    } else if (selfMonitoringActive && !previous) {
-      startedRef.current = true
-    } else if (!selfMonitoringActive && startedRef.current) {
-      startedRef.current = false
-      onEndedRef.current()
+      if (!selfMonitoringActive) stopPendingRef.current = false
+      else if (requestedBefore && runningRef.current) stopPendingRef.current = true
+      runningRef.current = false
+      return
     }
+
+    if (selfMonitoringActive && !activeBefore) {
+      runningRef.current = true
+      stopPendingRef.current = false
+      return
+    }
+
+    if (!selfMonitoringActive) {
+      if (stopPendingRef.current) {
+        // The report of the stop this surface asked for, not the end of the
+        // check it started after that stop.
+        stopPendingRef.current = false
+        return
+      }
+      if (!runningRef.current) return
+      runningRef.current = false
+      onEndedRef.current()
+      return
+    }
+
+    // A check another surface started was already running when this one asked
+    // for it, so its start is never reported here.
+    if (!stopPendingRef.current) runningRef.current = true
   }, [requested, selfMonitoringActive])
 }

@@ -47,6 +47,25 @@ describe('useSelfMonitoringCheck', () => {
     expect(onEnded).toHaveBeenCalledOnce()
   })
 
+  it('follows a check another settings surface started', () => {
+    const { onEnded, rerender } = setup({ requested: false, active: true })
+    rerender({ requested: true, active: true })
+    expect(onEnded).not.toHaveBeenCalled()
+    rerender({ requested: true, active: false })
+    expect(onEnded).toHaveBeenCalledOnce()
+  })
+
+  it('follows a check another surface started after owning one earlier', () => {
+    const { onEnded, rerender } = setup({ requested: true, active: false })
+    rerender({ requested: true, active: true })
+    rerender({ requested: false, active: true })
+    rerender({ requested: false, active: false })
+    rerender({ requested: false, active: true })
+    rerender({ requested: true, active: true })
+    rerender({ requested: true, active: false })
+    expect(onEnded).toHaveBeenCalledOnce()
+  })
+
   it('ignores the late end of a previous check after a quick restart', () => {
     const { onEnded, rerender } = setup({ requested: true, active: false })
     rerender({ requested: true, active: true })
