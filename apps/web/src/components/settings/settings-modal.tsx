@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
@@ -43,6 +43,7 @@ import {
   type SettingsSection,
   useSettingsModal,
 } from '#/features/settings/settings-modal-context'
+import { useThemeStudio } from '#/features/appearance/theme-studio-context'
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
@@ -95,12 +96,18 @@ function SettingsDesktopModal() {
   const auth = useAuth()
   const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
+  const { close: closeThemeStudio } = useThemeStudio()
   const user = auth.user
   const { isDesktop } = usePlatform()
   const navItems = isDesktop
     ? [...GENERAL_SETTINGS_NAV, ...DESKTOP_ONLY_NAV_ITEMS]
     : GENERAL_SETTINGS_NAV
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // Открытие настроек выходит из предпросмотра темы.
+  useEffect(() => {
+    if (open) closeThemeStudio()
+  }, [closeThemeStudio, open])
 
   function handleLogout() {
     if (loggingOut) return

@@ -179,26 +179,40 @@ export const DesktopUiSettingsSchema = Schema.Struct({
 
 export type {
   AppearanceColorMode,
+  AppearanceCustomTheme,
   AppearanceGradientSettings,
   AppearanceSettings,
   AppearanceSettingsPatch,
+  AppearanceThemeAnchors,
+  AppearanceThemeSelection,
+  AppearanceThemeVariant,
 } from './appearance'
 export {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
+  APPEARANCE_CUSTOM_THEME_NAME_MAX,
   APPEARANCE_GRADIENT_MAX_COLORS,
   APPEARANCE_GRADIENT_MIN_COLORS,
   APPEARANCE_SCALE_MAX,
   APPEARANCE_SCALE_MIN,
   APPEARANCE_SCALE_STEP,
+  APPEARANCE_THEME_CONTRAST_MAX,
   AppearanceColorModeSchema,
+  AppearanceCustomThemeSchema,
   AppearanceGradientSettingsSchema,
   AppearanceSettingsSchema,
+  AppearanceThemeAnchorsSchema,
+  AppearanceThemeSelectionSchema,
+  AppearanceThemeVariantSchema,
+  cloneAppearanceCustomThemes,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
+  normalizeAppearanceCustomThemes,
   normalizeAppearanceGradientSettings,
   normalizeAppearanceScale,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
+  normalizeAppearanceThemeIds,
 } from './appearance'
 
 export type DesktopLocalSettings = {

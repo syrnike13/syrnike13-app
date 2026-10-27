@@ -1,3 +1,4 @@
+import type { ThemeDefinition } from './catalog'
 import type { PrismTuningPatch } from './prism'
 import {
   allThemeCssVariables,
@@ -8,7 +9,7 @@ import {
   type ThemeAnchorOverrides,
 } from './registry'
 import { allThemeSurfaceCssVariables } from './surfaces'
-import type { ThemeSettings } from './types'
+import { DEFAULT_THEME_ID, type ThemeSettings, type ThemeVariant } from './types'
 
 export function readSystemPrefersDark(): boolean {
   if (typeof window === 'undefined') return true
@@ -16,17 +17,24 @@ export function readSystemPrefersDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
+/**
+ * Применяет тему к документу. `resolveTheme` позволяет выбрать определение
+ * темы под конкретный вариант — например, разные темы для light и dark.
+ */
 export function applyThemeToDocument(
   settings: ThemeSettings,
   prefersDark = readSystemPrefersDark(),
   tuning?: PrismTuningPatch,
   anchors?: ThemeAnchorOverrides,
+  resolveTheme?: (variant: ThemeVariant) => ThemeDefinition,
 ) {
   if (typeof document === 'undefined') return resolveThemeVariant(settings, prefersDark)
 
   const variant = resolveThemeVariant(settings, prefersDark)
-  const theme = getThemeById(settings.themeId)
-  const tokens = getThemeTokens(settings, prefersDark, tuning, anchors)
+  const theme =
+    resolveTheme?.(variant) ??
+    getThemeById(settings.themeId ?? DEFAULT_THEME_ID)
+  const tokens = getThemeTokens(settings, prefersDark, tuning, anchors, theme)
   const root = document.documentElement
 
   root.classList.toggle('dark', variant === 'dark')
@@ -40,7 +48,7 @@ export function applyThemeToDocument(
   const variables = {
     ...allThemeCssVariables(tokens),
     ...allThemeSurfaceCssVariables(
-      getThemeSurfaceVariables(settings, prefersDark, tuning, anchors),
+      getThemeSurfaceVariables(settings, prefersDark, tuning, anchors, theme),
     ),
   }
   for (const [name, value] of Object.entries(variables)) {

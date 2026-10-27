@@ -1362,3 +1362,8 @@ html {
 @utility w-screen-share-picker {
   width: min(96vw, 66.667vh);
 }
+
+/* Миниатюра схемы «системная»: светлая половина поверх тёмной, со срезом. */
+@utility theme-split-preview {
+  clip-path: polygon(0 0, 52% 0, 34% 100%, 0 100%);
+}

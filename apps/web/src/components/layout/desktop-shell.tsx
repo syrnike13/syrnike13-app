@@ -6,6 +6,13 @@ import { ConnectionStatusBanner } from '#/components/layout/connection-status-ba
 import { NativeMediaRuntimeBanner } from '#/features/desktop/native-media-runtime-banner'
 import { HomeSidebar } from '#/components/home/home-sidebar'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
+import { ThemeStudioPanel } from '#/components/appearance/theme-studio-panel'
+import {
+  useThemeStudio,
+  useThemeStudioTarget,
+} from '#/features/appearance/theme-studio-context'
+import { useSettingsModal } from '#/features/settings/settings-modal-context'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { ShellContentFrame } from '#/components/layout/shell-content-frame'
 import { ShellNavColumn } from '#/components/layout/shell-nav-column'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
@@ -37,6 +44,10 @@ const TELEGRAM_PROMO_DISMISS_DURATION_MS = 14 * 24 * 60 * 60 * 1000
  */
 export function DesktopShell() {
   const auth = useAuth()
+  const tAppearance = useTranslations('settings.appearance')
+  const studioTarget = useThemeStudioTarget()
+  const { close: closeStudio } = useThemeStudio()
+  const { openSettings } = useSettingsModal()
   const userId = auth.user?._id
   const [telegramPromoState, setTelegramPromoState] = useState<{
     userId?: string
@@ -155,6 +166,13 @@ export function DesktopShell() {
     telegramPromoState.userId === userId && telegramPromoState.visible
   const userPanelReservePx = floatingBarReservePx(userPanelHeightPx)
 
+  // Пока открыт предпросмотр темы, интерфейс под ним неактивен: клик в любом
+  // месте выходит из режима и возвращает в настройки.
+  const exitPreview = () => {
+    closeStudio()
+    openSettings('appearance')
+  }
+
   const dismissTelegramPromo = () => {
     if (!userId) return
     const dismissedUntil = Date.now() + TELEGRAM_PROMO_DISMISS_DURATION_MS
@@ -194,7 +212,7 @@ export function DesktopShell() {
       <div className="relative flex min-h-0 flex-1">
         <div
           className={cn(
-            'flex min-h-0 min-w-0 flex-1 items-stretch'
+            'relative flex min-h-0 min-w-0 flex-1 items-stretch',
           )}
         >
           <ShellNavColumn
@@ -211,7 +229,22 @@ export function DesktopShell() {
           <ShellContentFrame>
             <Outlet />
           </ShellContentFrame>
+          {studioTarget ? (
+            <>
+              {/* eslint-disable-next-line design/no-lookalike -- прозрачная ловушка клика по превью */}
+              <button
+                type="button"
+                aria-label={tAppearance('preview.exit')}
+                className="absolute inset-0 z-40 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                onClick={exitPreview}
+              />
+              <div className="pointer-events-none absolute top-3 left-1/2 z-50 -translate-x-1/2 rounded-full border border-primary/40 bg-popover/90 px-3 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
+                {tAppearance('preview.hint')}
+              </div>
+            </>
+          ) : null}
         </div>
+        <ThemeStudioPanel />
 
         <IncomingVoiceCallOverlay activeChannelId={activeChannelId} />
       </div>

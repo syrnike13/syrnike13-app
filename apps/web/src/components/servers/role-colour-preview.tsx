@@ -47,7 +47,7 @@ export function RoleColourPreview({
 
   const palettes = (['light', 'dark'] as const).map((variant) => {
     const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
-    return chatPaletteFromTheme(settings.themeId, variant, label)
+    return chatPaletteFromTheme(settings.themeIds[variant], variant, label)
   })
 
   return (

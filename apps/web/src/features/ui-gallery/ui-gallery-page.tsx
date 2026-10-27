@@ -505,7 +505,7 @@ function PalettePanel() {
       <CardHeader>
         <CardTitle className="text-sm">Palette</CardTitle>
         <CardDescription>
-          {settings.themeId} · {resolvedVariant}
+          {settings.themeIds[resolvedVariant]} · {resolvedVariant}
         </CardDescription>
         <CardAction>
           <div className="flex items-center gap-1">

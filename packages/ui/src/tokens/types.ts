@@ -3,7 +3,8 @@ export type AppearanceColorMode = 'light' | 'dark' | 'system'
 
 /** Minimal theme settings contract shared by web and admin. */
 export type ThemeSettings = {
-  themeId: string
+  /** Тема-фолбэк; web выбирает тему под вариант отдельно. */
+  themeId?: string
   colorMode: AppearanceColorMode
 }
 

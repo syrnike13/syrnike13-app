@@ -535,7 +535,7 @@ export function PrismWorkbenchPanel({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Preview reverts to the saved theme ({settings.themeId}) when you leave
+          Preview reverts to the saved theme ({settings.themeIds.light} / {settings.themeIds.dark}) when you leave
           this tab.
         </p>
 
