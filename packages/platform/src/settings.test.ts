@@ -78,7 +78,7 @@ describe('desktop local settings contract', () => {
         echoCancellation: false,
         automaticGainControl: true,
       },
-      appearance: { themeId: 'night' },
+      appearance: { themeIds: { light: 'night', dark: 'night' } },
     })
   })
 

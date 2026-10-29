@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
+import {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
+  DEFAULT_APPEARANCE_SETTINGS,
+} from '@syrnike13/platform'
 
 import {
   APPEARANCE_STORAGE_KEY,
@@ -30,7 +33,10 @@ describe('appearance settings store', () => {
   it('persists theme changes to localStorage on web', () => {
     appearanceSettingsStore.setThemeId('glina')
     expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toContain('glina')
-    expect(appearanceSettingsStore.getState().themeId).toBe('glina')
+    expect(appearanceSettingsStore.getState().themeIds).toEqual({
+      light: 'glina',
+      dark: 'glina',
+    })
   })
 
   it('falls back to monolit for a removed theme id', () => {
@@ -39,17 +45,21 @@ describe('appearance settings store', () => {
       JSON.stringify({ themeId: 'lug', colorMode: 'dark', gradient: null }),
     )
 
-    expect(readStoredAppearanceSettings().themeId).toBe('monolit')
+    expect(readStoredAppearanceSettings().themeIds).toEqual({
+      light: 'monolit',
+      dark: 'monolit',
+    })
   })
 
   it('migrates legacy next-themes storage key', () => {
     localStorage.clear()
     localStorage.setItem('theme', 'light')
     expect(readStoredAppearanceSettings()).toEqual({
-      themeId: 'monolit',
+      themeIds: { light: 'monolit', dark: 'monolit' },
       colorMode: 'light',
       scale: 100,
       gradient: null,
+      customThemes: [],
     })
     expect(localStorage.getItem('theme')).toBeNull()
     expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBeTruthy()
@@ -57,7 +67,7 @@ describe('appearance settings store', () => {
 
   it('returns a snapshot instead of the live store state', () => {
     const snapshot = appearanceSettingsStore.getState()
-    snapshot.themeId = 'mutated'
+    snapshot.themeIds.light = 'mutated'
 
     expect(appearanceSettingsStore.getState()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
@@ -119,5 +129,97 @@ describe('appearance settings store', () => {
     appearanceSettingsStore.setColorMode('light')
     expect(listener).toHaveBeenCalled()
     unsubscribe()
+  })
+
+  it('keeps light and dark themes independent', () => {
+    appearanceSettingsStore.setThemeId('glina', 'light')
+    expect(appearanceSettingsStore.getState().themeIds).toEqual({
+      light: 'glina',
+      dark: 'monolit',
+    })
+
+    appearanceSettingsStore.setThemeId('ocean', 'dark')
+    expect(appearanceSettingsStore.getState().themeIds).toEqual({
+      light: 'glina',
+      dark: 'ocean',
+    })
+  })
+
+  it('migrates a single legacy theme id into both slots', () => {
+    localStorage.setItem(
+      APPEARANCE_STORAGE_KEY,
+      JSON.stringify({ themeId: 'glina', colorMode: 'dark', gradient: null }),
+    )
+
+    expect(readStoredAppearanceSettings().themeIds).toEqual({
+      light: 'glina',
+      dark: 'glina',
+    })
+  })
+
+  it('adds, updates, duplicates and removes a custom theme', () => {
+    const theme = {
+      id: 'custom-one',
+      name: 'Моя тема',
+      anchors: {
+        light: {
+          accent: '#112233',
+          background: '#FFFFFF',
+          foreground: '#000000',
+          contrast: 45,
+        },
+        dark: {
+          accent: '#AABBCC',
+          background: '#000000',
+          foreground: '#FFFFFF',
+          contrast: 60,
+        },
+      },
+    }
+
+    appearanceSettingsStore.addCustomTheme(theme)
+    expect(appearanceSettingsStore.getState().customThemes).toHaveLength(1)
+
+    appearanceSettingsStore.updateCustomTheme('custom-one', (current) => ({
+      ...current,
+      name: 'Новая',
+    }))
+    expect(appearanceSettingsStore.getState().customThemes[0]?.name).toBe(
+      'Новая',
+    )
+
+    appearanceSettingsStore.setThemeId('custom-one', 'dark')
+    appearanceSettingsStore.removeCustomTheme('custom-one')
+    expect(appearanceSettingsStore.getState().customThemes).toHaveLength(0)
+    expect(appearanceSettingsStore.getState().themeIds.dark).toBe('monolit')
+  })
+
+  it('refuses a custom theme past the limit', () => {
+    const anchors = {
+      accent: '#112233',
+      background: '#FFFFFF',
+      foreground: '#000000',
+      contrast: 45,
+    }
+    for (let index = 0; index < APPEARANCE_CUSTOM_THEME_LIMIT; index += 1) {
+      expect(
+        appearanceSettingsStore.addCustomTheme({
+          id: `custom-${index}`,
+          name: `Тема ${index}`,
+          anchors: { light: anchors, dark: anchors },
+        }),
+      ).toBe(true)
+    }
+
+    expect(
+      appearanceSettingsStore.addCustomTheme({
+        id: 'custom-overflow',
+        name: 'Лишняя',
+        anchors: { light: anchors, dark: anchors },
+      }),
+    ).toBe(false)
+    expect(appearanceSettingsStore.getState().customThemes).toHaveLength(
+      APPEARANCE_CUSTOM_THEME_LIMIT,
+    )
   })
 })

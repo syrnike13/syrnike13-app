@@ -10,8 +10,11 @@ import {
   RiEyeLine,
   RiFolderAddLine,
   RiForbidLine,
+  RiMoonLine,
   RiNotificationOffLine,
   RiShieldCrossLine,
+  RiShuffleLine,
+  RiSunLine,
   RiUserAddLine,
   RiUserFollowLine,
   RiUserMinusLine,
@@ -22,6 +25,21 @@ import { defineIcon } from '#/components/icons/define-icon'
 export const Trash2Icon = defineIcon(RiDeleteBinLine, {
   pack: 'remixicon',
   name: 'RiDeleteBinLine',
+})
+
+export const ShuffleIcon = defineIcon(RiShuffleLine, {
+  pack: 'remixicon',
+  name: 'RiShuffleLine',
+})
+
+export const SunIcon = defineIcon(RiSunLine, {
+  pack: 'remixicon',
+  name: 'RiSunLine',
+})
+
+export const MoonIcon = defineIcon(RiMoonLine, {
+  pack: 'remixicon',
+  name: 'RiMoonLine',
 })
 
 export const EyeIcon = defineIcon(RiEyeLine, {

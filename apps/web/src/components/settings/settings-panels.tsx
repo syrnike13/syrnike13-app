@@ -1,17 +1,20 @@
 import type { ReactNode } from 'react'
 import {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
   APPEARANCE_SCALE_MAX,
   APPEARANCE_SCALE_MIN,
   APPEARANCE_SCALE_STEP,
   DEFAULT_APPEARANCE_SETTINGS,
+  type AppearanceCustomTheme,
 } from '@syrnike13/platform'
 import {
   useLocale,
   useTranslations,
   type Translator,
 } from '@syrnike13/ui/i18n'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Effect } from 'effect'
+import { useRouterState } from '@tanstack/react-router'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
 import { SettingsHotkeysPanel } from '#/components/settings/settings-hotkeys-panel'
@@ -22,10 +25,19 @@ import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsPrivacyPanel } from '#/components/settings/settings-privacy-panel'
 import { ChangeUsernameDialog } from '#/components/user/change-username-dialog'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
-import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
+import { ColorSchemeCards } from '#/components/appearance/color-scheme-cards'
+import { ThemeEditorDialog } from '#/components/appearance/theme-editor-dialog'
+import type { ThemeEditorSubmit } from '#/components/appearance/theme-editor-fields'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
+import { PlusIcon, ShuffleIcon } from '#/components/icons'
 import { PresetSlider } from '#/components/ui/preset-slider'
+import {
+  anchorsForNewTheme,
+  createCustomThemeId,
+  randomThemeAnchors,
+} from '#/features/appearance/appearance-themes'
 import { useAppearance } from '#/features/appearance/appearance-context'
+import { useThemeStudioOptional } from '#/features/appearance/theme-studio-context'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Input } from '@syrnike13/ui/primitives/input'
 import {
@@ -40,7 +52,10 @@ import {
 } from '@syrnike13/ui/primitives/field'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { Switch } from '@syrnike13/ui/primitives/switch'
-import type { SettingsSection } from '#/features/settings/settings-modal-context'
+import {
+  useSettingsModal,
+  type SettingsSection,
+} from '#/features/settings/settings-modal-context'
 import { changeAccountPasswordEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
@@ -71,16 +86,24 @@ const SECTION_TITLE_KEYS: Record<SettingsSection, string> = {
 export function SettingsBlock({
   title,
   description,
+  action,
   children,
 }: {
   /** Omit for a section of a single self-describing row. */
   title?: string
   description?: string
+  /** Действия секции справа от заголовка. */
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
     <FieldSet className="border-b border-border py-6 last:border-b-0">
-      {title ? <FieldLegend>{title}</FieldLegend> : null}
+      {title ? (
+        <div className="flex items-center justify-between gap-3">
+          <FieldLegend className="mb-0">{title}</FieldLegend>
+          {action}
+        </div>
+      ) : null}
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       <FieldGroup>{children}</FieldGroup>
     </FieldSet>
@@ -344,23 +367,106 @@ const SCALE_STOPS = Array.from(
 
 export function SettingsAppearancePanel() {
   const t = useTranslations('settings.appearance')
-  const { setColorMode, setScale, settings } = useAppearance()
+  const {
+    setScale,
+    settings,
+    createCustomTheme,
+    updateCustomTheme,
+  } = useAppearance()
+  const { setOpen } = useSettingsModal()
+  const studio = useThemeStudioOptional()
+  const isMobileSettings = useRouterState({
+    select: (state) => state.location.pathname.startsWith('/m'),
+  })
+  const editorNonce = useRef(0)
+  const [editor, setEditor] = useState<
+    | { mode: 'create'; anchors: AppearanceCustomTheme['anchors']; nonce: number }
+    | { mode: 'edit'; themeId: string; nonce: number }
+    | null
+  >(null)
+
+  const themeLimitReached =
+    settings.customThemes.length >= APPEARANCE_CUSTOM_THEME_LIMIT
+
+  const editingTheme =
+    editor?.mode === 'edit'
+      ? (settings.customThemes.find(
+          (theme) => theme.id === editor.themeId,
+        ) ?? null)
+      : null
+
+  // На десктопе редактор открывается панелью на основном экране приложения,
+  // поэтому окно настроек закрывается; на мобильном остаётся диалог.
+  const openCreateEditor = (anchors: AppearanceCustomTheme['anchors']) => {
+    if (!isMobileSettings && studio) {
+      studio.openCreate(anchors)
+      setOpen(false)
+      return
+    }
+    editorNonce.current += 1
+    setEditor({ mode: 'create', anchors, nonce: editorNonce.current })
+  }
+
+  const openEditEditor = (themeId: string) => {
+    if (!isMobileSettings && studio) {
+      studio.openEdit(themeId)
+      setOpen(false)
+      return
+    }
+    editorNonce.current += 1
+    setEditor({ mode: 'edit', themeId, nonce: editorNonce.current })
+  }
+
+  const submitEditor = ({ name, anchors }: ThemeEditorSubmit) => {
+    if (editor?.mode === 'edit') {
+      const themeId = editor.themeId
+      updateCustomTheme(themeId, (theme) => ({ ...theme, name, anchors }))
+    } else {
+      createCustomTheme({ id: createCustomThemeId(), name, anchors })
+    }
+    setEditor(null)
+  }
 
   return (
     <div className="space-y-6">
-      <SettingsBlock title={t('themes')}>
-        <ThemePickerGrid />
-      </SettingsBlock>
       <SettingsBlock title={t('displayMode')}>
-        <SettingsRow
-          label={t('lightDark')}
-          hint={t('colorModeHint')}
-        >
-          <ColorModeSegment
-            value={settings.colorMode}
-            onChange={setColorMode}
-          />
-        </SettingsRow>
+        <ColorSchemeCards />
+      </SettingsBlock>
+      <SettingsBlock
+        title={t('themes')}
+        description={
+          themeLimitReached
+            ? t('themesSection.limitReached', {
+                limit: APPEARANCE_CUSTOM_THEME_LIMIT,
+              })
+            : undefined
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={themeLimitReached}
+              onClick={() => openCreateEditor(randomThemeAnchors())}
+            >
+              <ShuffleIcon />
+              {t('themesSection.create')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={themeLimitReached}
+              onClick={() => openCreateEditor(anchorsForNewTheme())}
+            >
+              <PlusIcon />
+              {t('themesSection.add')}
+            </Button>
+          </div>
+        }
+      >
+        <ThemePickerGrid onEditRequest={openEditEditor} />
       </SettingsBlock>
       <SettingsBlock title={t('scale')}>
         <SettingsRow
@@ -378,6 +484,17 @@ export function SettingsAppearancePanel() {
           />
         </SettingsRow>
       </SettingsBlock>
+      {isMobileSettings ? (
+        <ThemeEditorDialog
+          open={editor !== null}
+          initial={editingTheme}
+          initialAnchors={editor?.mode === 'create' ? editor.anchors : null}
+          onOpenChange={(open) => {
+            if (!open) setEditor(null)
+          }}
+          onSubmit={submitEditor}
+        />
+      ) : null}
     </div>
   )
 }

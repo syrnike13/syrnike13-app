@@ -185,7 +185,7 @@ describe('desktop local settings', () => {
           echoCancellation: false,
           automaticGainControl: true,
         },
-        appearance: { themeId: 'night' },
+        appearance: { themeIds: { light: 'night', dark: 'night' } },
       })
       expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(migrated)
 
@@ -255,7 +255,7 @@ describe('desktop local settings', () => {
         await readFile(filePath, 'utf8'),
       ) as DesktopLocalSettings
       expect(saved.voice.noiseSuppression).toBe(false)
-      expect(saved.appearance.themeId).toBe('night')
+      expect(saved.appearance.themeIds).toEqual({ light: 'night', dark: 'night' })
       await expect(access(`${filePath}.tmp`)).rejects.toThrow()
     } finally {
       await rm(dir, { recursive: true, force: true })

@@ -11,6 +11,7 @@ import {
   type ThemeVariant,
 } from '@syrnike13/ui/tokens'
 
+import { applyAppearanceTheme } from '#/features/appearance/appearance-themes'
 import { useAppearance } from '#/features/appearance/appearance-context'
 
 const STORAGE_KEY = 'syrnike13-prism-workbench:v1'
@@ -290,7 +291,7 @@ function readStoredWorkbench(fallbackThemeId: string): InitialWorkbench {
  */
 export function usePrismWorkbench(active: boolean) {
   const { settings, resolvedVariant } = useAppearance()
-  const [initial] = useState(() => readStoredWorkbench(settings.themeId))
+  const [initial] = useState(() => readStoredWorkbench(settings.themeIds[resolvedVariant]))
   const [themes, setThemes] = useState<ThemeWorkbenchEntry[]>(initial.themes)
   const [tuning, setTuning] = useState<PrismTuning>(initial.tuning)
   const [selectedThemeId, setSelectedThemeId] = useState(
@@ -326,7 +327,7 @@ export function usePrismWorkbench(active: boolean) {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       if (!active) {
-        applyThemeToDocument(settings)
+        applyAppearanceTheme(settings)
         return
       }
       applyThemeToDocument(

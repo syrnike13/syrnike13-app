@@ -4,6 +4,7 @@ import { AchievementToastHost } from '#/components/achievements/achievement-toas
 import { CommandPalette } from '#/components/command-palette/command-palette'
 import { SettingsModal } from '#/components/settings/settings-modal'
 import { DesktopShell } from '#/components/layout/desktop-shell'
+import { ThemeStudioProvider } from '#/features/appearance/theme-studio-context'
 import { CommandPaletteProvider } from '#/features/command-palette/command-palette-context'
 import { DesktopHotkeyProvider } from '#/features/hotkeys/desktop-hotkey-provider'
 import { DesktopOverlayPublisher } from '#/features/overlay/desktop-overlay-publisher'
@@ -37,17 +38,19 @@ function DesktopLayout() {
   return (
     <AuthedGate>
       <CommandPaletteProvider>
-        <DesktopHotkeyProvider>
-          <DesktopOverlayPublisher />
-          <DesktopTrayVoicePublisher />
-          <DesktopShell />
-          <VoiceStreamMiniPlayer />
-          <VoiceStagePopoutHost />
-          <CommandPalette />
-          <SettingsModal />
-          <UsernameResetPrompt />
-          <AchievementToastHost />
-        </DesktopHotkeyProvider>
+        <ThemeStudioProvider>
+          <DesktopHotkeyProvider>
+            <DesktopOverlayPublisher />
+            <DesktopTrayVoicePublisher />
+            <DesktopShell />
+            <VoiceStreamMiniPlayer />
+            <VoiceStagePopoutHost />
+            <CommandPalette />
+            <SettingsModal />
+            <UsernameResetPrompt />
+            <AchievementToastHost />
+          </DesktopHotkeyProvider>
+        </ThemeStudioProvider>
       </CommandPaletteProvider>
     </AuthedGate>
   )

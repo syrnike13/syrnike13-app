@@ -14,6 +14,9 @@ import { DEFAULT_THEME_ID, type ThemeSettings, type ThemeVariant } from './types
 
 export type ThemePreviewColors = {
   background: string
+  foreground: string
+  card: string
+  muted: string
   primary: string
   sidebar: string
 }
@@ -49,8 +52,8 @@ export function getThemeTokens(
   prefersDark = false,
   tuning?: PrismTuningPatch,
   anchors?: ThemeAnchorOverrides,
+  theme: ThemeDefinition = getThemeById(settings.themeId ?? DEFAULT_THEME_ID),
 ): ThemeTokens {
-  const theme = getThemeById(settings.themeId)
   const variant = resolveThemeVariant(settings, prefersDark)
   const prismTokens = generatePrismTokens(
     { ...theme.anchors[variant], ...anchors?.[variant] },
@@ -65,9 +68,10 @@ export function getThemeSurfaceVariables(
   prefersDark = false,
   tuning?: PrismTuningPatch,
   anchors?: ThemeAnchorOverrides,
+  theme?: ThemeDefinition,
 ): ThemeSurfaceVariables {
   return buildSolidThemeSurfaceVariables(
-    getThemeTokens(settings, prefersDark, tuning, anchors),
+    getThemeTokens(settings, prefersDark, tuning, anchors, theme),
   )
 }
 
@@ -79,6 +83,9 @@ export function themePreviewColors(
   const tokens = generatePrismTokens(theme.anchors[variant], variant)
   return {
     background: tokens['--background'],
+    foreground: tokens['--foreground'],
+    card: tokens['--card'],
+    muted: tokens['--muted'],
     primary: tokens['--primary'],
     sidebar: tokens['--sidebar'],
   }
@@ -89,7 +96,7 @@ export function previewVariantForTheme(
   settings: ThemeSettings,
   prefersDark = false,
 ): ThemeVariant {
-  if (settings.themeId === theme.id) {
+  if ((settings.themeId ?? DEFAULT_THEME_ID) === theme.id) {
     return resolveThemeVariant(settings, prefersDark)
   }
   return prefersDark ? 'dark' : 'light'

@@ -1,34 +1,114 @@
+import { APPEARANCE_CUSTOM_THEME_LIMIT } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
-import { ThemePreviewSwatch } from '#/components/appearance/theme-preview-swatch'
-import { readSystemPrefersDark } from '@syrnike13/ui/tokens'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@syrnike13/ui/primitives/alert-dialog'
+import { useState } from 'react'
+
+import { ThemeCard } from '#/components/appearance/theme-card'
 import { useAppearance } from '#/features/appearance/appearance-context'
 
-export function ThemePickerGrid() {
+export function ThemePickerGrid({
+  onEditRequest,
+}: {
+  onEditRequest?: (themeId: string) => void
+}) {
   const t = useTranslations('settings.appearance')
-  const { settings, themes, setThemeId } = useAppearance()
-  const prefersDark = readSystemPrefersDark()
+  const tThemes = useTranslations('themes')
+  const {
+    settings,
+    resolvedVariant,
+    themes,
+    customThemes,
+    setThemeId,
+    setColorMode,
+    duplicateCustomTheme,
+    deleteCustomTheme,
+  } = useAppearance()
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  const canAddTheme = customThemes.length < APPEARANCE_CUSTOM_THEME_LIMIT
+  const customById = new Map(customThemes.map((theme) => [theme.id, theme]))
+  const pendingDelete = pendingDeleteId
+    ? customThemes.find((theme) => theme.id === pendingDeleteId)
+    : undefined
 
   return (
-    <div className="flex flex-col gap-2 pt-2">
-      <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {t('groups.solid')}
-      </p>
-      <div
-        role="group"
-        aria-label={t('groups.solid')}
-        className="flex flex-wrap gap-2.5"
-      >
-        {themes.map((theme) => (
-          <ThemePreviewSwatch
-            key={theme.id}
-            theme={theme}
-            active={settings.themeId === theme.id}
-            settings={settings}
-            prefersDark={prefersDark}
-            onSelect={() => setThemeId(theme.id)}
-          />
-        ))}
+    <>
+      <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-3">
+        {themes.map((theme) => {
+          const custom = customById.get(theme.id)
+          return (
+            <ThemeCard
+              key={theme.id}
+              theme={theme}
+              name={custom?.name ?? tThemes(`${theme.id}.name`)}
+              description={custom ? undefined : tThemes(`${theme.id}.description`)}
+              selected={{
+                light: settings.themeIds.light === theme.id,
+                dark: settings.themeIds.dark === theme.id,
+              }}
+              onSelectActive={() => setThemeId(theme.id, resolvedVariant)}
+              onSelectVariant={(variant) => {
+                setThemeId(theme.id, variant)
+                setColorMode(variant)
+              }}
+              onEdit={
+                custom && onEditRequest
+                  ? () => onEditRequest(theme.id)
+                  : undefined
+              }
+              onDuplicate={
+                custom && canAddTheme
+                  ? () =>
+                      duplicateCustomTheme(
+                        theme.id,
+                        t('themesSection.copySuffix'),
+                      )
+                  : undefined
+              }
+              onDelete={custom ? () => setPendingDeleteId(theme.id) : undefined}
+            />
+          )
+        })}
       </div>
-    </div>
+
+      <AlertDialog
+        open={pendingDelete !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('themesSection.deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('themesSection.deleteDescription', {
+                name: pendingDelete?.name ?? '',
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('themesSection.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (pendingDeleteId) deleteCustomTheme(pendingDeleteId)
+                setPendingDeleteId(null)
+              }}
+            >
+              {t('themesSection.deleteConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

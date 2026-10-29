@@ -30,6 +30,7 @@ import {
 import { Button } from '@syrnike13/ui/primitives/button'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
+import { useThemeStudioTarget } from '#/features/appearance/theme-studio-context'
 import { DirectMessageProfilePanel } from '#/components/chat/direct-message-profile-panel'
 import { GroupMemberSidebar } from '#/components/chat/group-member-sidebar'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
@@ -285,6 +286,8 @@ export function ChannelView({
     voiceCallIncoming
   const showMemberSidebar =
     isServerChannel && channel.channel_type === 'TextChannel'
+  // Пока открыта панель редактора тем, список участников уступает место чату.
+  const themeStudioOpen = useThemeStudioTarget() !== null
   const showMembersToggle = showMemberSidebar || channel.channel_type === 'Group'
   const searchScope: MessageSearchScope =
     channel.channel_type === 'TextChannel'
@@ -741,7 +744,7 @@ export function ChannelView({
           {channel.channel_type === 'Group' && membersVisible ? (
             <GroupMemberSidebar channel={channel} />
           ) : null}
-          {showMemberSidebar && membersVisible ? (
+          {showMemberSidebar && membersVisible && !themeStudioOpen ? (
             <ChannelMemberSidebar channel={channel} />
           ) : null}
         </div>
