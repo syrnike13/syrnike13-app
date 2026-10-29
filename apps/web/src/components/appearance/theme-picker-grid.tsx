@@ -1,3 +1,4 @@
+import { APPEARANCE_CUSTOM_THEME_LIMIT } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   AlertDialog,
@@ -33,6 +34,7 @@ export function ThemePickerGrid({
   } = useAppearance()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
+  const canAddTheme = customThemes.length < APPEARANCE_CUSTOM_THEME_LIMIT
   const customById = new Map(customThemes.map((theme) => [theme.id, theme]))
   const pendingDelete = pendingDeleteId
     ? customThemes.find((theme) => theme.id === pendingDeleteId)
@@ -64,7 +66,7 @@ export function ThemePickerGrid({
                   : undefined
               }
               onDuplicate={
-                custom
+                custom && canAddTheme
                   ? () =>
                       duplicateCustomTheme(
                         theme.id,

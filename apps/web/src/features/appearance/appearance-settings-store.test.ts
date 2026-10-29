@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
+import {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
+  DEFAULT_APPEARANCE_SETTINGS,
+} from '@syrnike13/platform'
 
 import {
   APPEARANCE_STORAGE_KEY,
@@ -189,5 +192,34 @@ describe('appearance settings store', () => {
     appearanceSettingsStore.removeCustomTheme('custom-one')
     expect(appearanceSettingsStore.getState().customThemes).toHaveLength(0)
     expect(appearanceSettingsStore.getState().themeIds.dark).toBe('monolit')
+  })
+
+  it('refuses a custom theme past the limit', () => {
+    const anchors = {
+      accent: '#112233',
+      background: '#FFFFFF',
+      foreground: '#000000',
+      contrast: 45,
+    }
+    for (let index = 0; index < APPEARANCE_CUSTOM_THEME_LIMIT; index += 1) {
+      expect(
+        appearanceSettingsStore.addCustomTheme({
+          id: `custom-${index}`,
+          name: `Тема ${index}`,
+          anchors: { light: anchors, dark: anchors },
+        }),
+      ).toBe(true)
+    }
+
+    expect(
+      appearanceSettingsStore.addCustomTheme({
+        id: 'custom-overflow',
+        name: 'Лишняя',
+        anchors: { light: anchors, dark: anchors },
+      }),
+    ).toBe(false)
+    expect(appearanceSettingsStore.getState().customThemes).toHaveLength(
+      APPEARANCE_CUSTOM_THEME_LIMIT,
+    )
   })
 })

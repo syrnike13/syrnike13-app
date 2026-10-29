@@ -142,6 +142,7 @@
         "delete": "Delete theme “{name}”",
         "deleteTitle": "Delete this theme?",
         "deleteDescription": "“{name}” will be removed. The app switches to the default theme if it was selected.",
+        "limitReached": "Limit of {limit} custom themes reached. Delete a theme to add a new one.",
         "deleteConfirm": "Delete",
         "cancel": "Cancel"
       },

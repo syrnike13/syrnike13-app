@@ -1,4 +1,5 @@
 import {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   AppearanceSettingsSchema,
@@ -219,8 +220,11 @@ export const appearanceSettingsStore = {
     patch(normalizeAppearanceSettings(settings))
   },
 
-  addCustomTheme(theme: AppearanceCustomTheme) {
+  /** `false`, если тема не сохранилась: достигнут лимит или она невалидна. */
+  addCustomTheme(theme: AppearanceCustomTheme): boolean {
+    if (state.customThemes.length >= APPEARANCE_CUSTOM_THEME_LIMIT) return false
     patch({ customThemes: [...state.customThemes, theme] })
+    return state.customThemes.some((custom) => custom.id === theme.id)
   },
 
   updateCustomTheme(

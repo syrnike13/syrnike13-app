@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import {
+  APPEARANCE_CUSTOM_THEME_LIMIT,
   APPEARANCE_SCALE_MAX,
   APPEARANCE_SCALE_MIN,
   APPEARANCE_SCALE_STEP,
@@ -384,6 +385,9 @@ export function SettingsAppearancePanel() {
     | null
   >(null)
 
+  const themeLimitReached =
+    settings.customThemes.length >= APPEARANCE_CUSTOM_THEME_LIMIT
+
   const editingTheme =
     editor?.mode === 'edit'
       ? (settings.customThemes.find(
@@ -430,12 +434,20 @@ export function SettingsAppearancePanel() {
       </SettingsBlock>
       <SettingsBlock
         title={t('themes')}
+        description={
+          themeLimitReached
+            ? t('themesSection.limitReached', {
+                limit: APPEARANCE_CUSTOM_THEME_LIMIT,
+              })
+            : undefined
+        }
         action={
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              disabled={themeLimitReached}
               onClick={() => openCreateEditor(randomThemeAnchors())}
             >
               <ShuffleIcon />
@@ -445,6 +457,7 @@ export function SettingsAppearancePanel() {
               type="button"
               variant="outline"
               size="sm"
+              disabled={themeLimitReached}
               onClick={() => openCreateEditor(anchorsForNewTheme())}
             >
               <PlusIcon />

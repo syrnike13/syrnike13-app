@@ -88,7 +88,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const createCustomTheme = useCallback((theme: AppearanceCustomTheme) => {
-    appearanceSettingsStore.addCustomTheme(theme)
+    if (!appearanceSettingsStore.addCustomTheme(theme)) return
     const variant = resolveThemeVariant(
       appearanceSettingsStore.getState(),
       readSystemPrefersDark(),
@@ -125,8 +125,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
           dark: { ...source.anchors.dark },
         },
       }
-      appearanceSettingsStore.addCustomTheme(copy)
-      return copy.id
+      return appearanceSettingsStore.addCustomTheme(copy) ? copy.id : null
     },
     [],
   )
