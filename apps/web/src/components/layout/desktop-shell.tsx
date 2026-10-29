@@ -215,20 +215,24 @@ export function DesktopShell() {
             'relative flex min-h-0 min-w-0 flex-1 items-stretch',
           )}
         >
-          <ShellNavColumn
-            sidebar={sidebar}
-            overlay={
-              <UserPanel
-                telegramPromoVisible={telegramPromoVisible}
-                onDismissTelegramPromo={dismissTelegramPromo}
-                onHeightChange={setUserPanelHeightPx}
-              />
-            }
-            userPanelReservePx={userPanelReservePx}
-          />
-          <ShellContentFrame>
-            <Outlet />
-          </ShellContentFrame>
+          {/* В предпросмотре темы интерфейс под ловушкой клика недоступен и с
+              клавиатуры; `contents` не меняет раскладку. */}
+          <div className="contents" inert={studioTarget !== null}>
+            <ShellNavColumn
+              sidebar={sidebar}
+              overlay={
+                <UserPanel
+                  telegramPromoVisible={telegramPromoVisible}
+                  onDismissTelegramPromo={dismissTelegramPromo}
+                  onHeightChange={setUserPanelHeightPx}
+                />
+              }
+              userPanelReservePx={userPanelReservePx}
+            />
+            <ShellContentFrame>
+              <Outlet />
+            </ShellContentFrame>
+          </div>
           {studioTarget ? (
             <>
               {/* eslint-disable-next-line design/no-lookalike -- прозрачная ловушка клика по превью */}

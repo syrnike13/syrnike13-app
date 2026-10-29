@@ -43,7 +43,7 @@ import {
   type SettingsSection,
   useSettingsModal,
 } from '#/features/settings/settings-modal-context'
-import { useThemeStudio } from '#/features/appearance/theme-studio-context'
+import { useThemeStudioOptional } from '#/features/appearance/theme-studio-context'
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
@@ -96,7 +96,7 @@ function SettingsDesktopModal() {
   const auth = useAuth()
   const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
-  const { close: closeThemeStudio } = useThemeStudio()
+  const closeThemeStudio = useThemeStudioOptional()?.close
   const user = auth.user
   const { isDesktop } = usePlatform()
   const navItems = isDesktop
@@ -106,7 +106,7 @@ function SettingsDesktopModal() {
 
   // Открытие настроек выходит из предпросмотра темы.
   useEffect(() => {
-    if (open) closeThemeStudio()
+    if (open) closeThemeStudio?.()
   }, [closeThemeStudio, open])
 
   function handleLogout() {

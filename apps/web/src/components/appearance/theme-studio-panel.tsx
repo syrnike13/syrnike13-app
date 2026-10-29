@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { applyThemeToDocument } from '@syrnike13/ui/tokens'
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import {
   ThemeEditorFields,
@@ -60,10 +60,19 @@ function ThemeStudioContent({
   }, [])
 
   // Любой выход из предпросмотра возвращает человека в настройки.
-  const exitToSettings = () => {
+  const exitToSettings = useCallback(() => {
     onClose()
     openSettings('appearance')
-  }
+  }, [onClose, openSettings])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      exitToSettings()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [exitToSettings])
 
   const submit = () => {
     const name = draft.name.trim()
