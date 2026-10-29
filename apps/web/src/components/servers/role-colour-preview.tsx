@@ -3,8 +3,10 @@ import { FxImage } from '#/components/ui/fx-image'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import {
   getThemeTokens,
+  type ThemeDefinition,
   type ThemeVariant,
 } from '@syrnike13/ui/tokens'
+import { resolveThemeForVariant } from '#/features/appearance/appearance-themes'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
@@ -17,13 +19,16 @@ type RoleColourPreviewProps = {
 }
 
 function chatPaletteFromTheme(
-  themeId: string,
+  theme: ThemeDefinition,
   variant: ThemeVariant,
   label: string,
 ) {
   const tokens = getThemeTokens(
-    { themeId, colorMode: variant },
+    { colorMode: variant },
     variant === 'dark',
+    undefined,
+    undefined,
+    theme,
   )
   return {
     id: variant,
@@ -47,7 +52,11 @@ export function RoleColourPreview({
 
   const palettes = (['light', 'dark'] as const).map((variant) => {
     const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
-    return chatPaletteFromTheme(settings.themeIds[variant], variant, label)
+    return chatPaletteFromTheme(
+      resolveThemeForVariant(settings, variant),
+      variant,
+      label,
+    )
   })
 
   return (
