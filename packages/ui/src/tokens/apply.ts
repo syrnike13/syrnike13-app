@@ -1,59 +1,53 @@
+import { applyPrismTheme } from './prism'
 import type { ThemeDefinition } from './catalog'
-import type { PrismTuningPatch } from './prism'
 import {
   allThemeCssVariables,
   getThemeById,
-  getThemeSurfaceVariables,
   getThemeTokens,
+  resolveThemeAnchors,
   resolveThemeVariant,
-  type ThemeAnchorOverrides,
 } from './registry'
-import { allThemeSurfaceCssVariables } from './surfaces'
-import { DEFAULT_THEME_ID, type ThemeSettings, type ThemeVariant } from './types'
+import {
+  allThemeSurfaceCssVariables,
+  buildThemeSurfaceVariables,
+} from './surfaces'
+import { DEFAULT_THEME_ID, type ThemeSettings } from './types'
 
 export function readSystemPrefersDark(): boolean {
-  if (typeof window === 'undefined') return true
-  if (typeof window.matchMedia !== 'function') return true
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
+    return true
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-/**
- * Применяет тему к документу. `resolveTheme` позволяет выбрать определение
- * темы под конкретный вариант — например, разные темы для light и dark.
- */
+/** Prism owns generation and document application; Syrnike supplies layout aliases. */
 export function applyThemeToDocument(
   settings: ThemeSettings,
   prefersDark = readSystemPrefersDark(),
-  tuning?: PrismTuningPatch,
-  anchors?: ThemeAnchorOverrides,
-  resolveTheme?: (variant: ThemeVariant) => ThemeDefinition,
+  theme: ThemeDefinition = getThemeById(settings.themeId ?? DEFAULT_THEME_ID),
 ) {
-  if (typeof document === 'undefined') return resolveThemeVariant(settings, prefersDark)
-
   const variant = resolveThemeVariant(settings, prefersDark)
-  const theme =
-    resolveTheme?.(variant) ??
-    getThemeById(settings.themeId ?? DEFAULT_THEME_ID)
-  const tokens = getThemeTokens(settings, prefersDark, tuning, anchors, theme)
+  if (typeof document === 'undefined') return variant
+
   const root = document.documentElement
-
-  root.classList.toggle('dark', variant === 'dark')
-  root.style.colorScheme = variant
-  root.dataset.stylePreset = 'prism'
-  root.dataset.themeMode = settings.colorMode
-  root.dataset.themeResolved = variant
+  applyPrismTheme(
+    root,
+    {
+      mode: settings.colorMode,
+      light: resolveThemeAnchors(theme, 'light', settings),
+      dark: resolveThemeAnchors(theme, 'dark', settings),
+    },
+    variant,
+  )
   root.dataset.theme = theme.id
-  root.dataset.themeGradient = 'none'
+  // Preserve the desktop/CSS contract; Prism also sets data-prism-gradient.
+  root.dataset.themeGradient = root.dataset.prismGradient ? 'prism' : 'none'
 
+  const tokens = getThemeTokens(settings, prefersDark, theme)
   const variables = {
     ...allThemeCssVariables(tokens),
-    ...allThemeSurfaceCssVariables(
-      getThemeSurfaceVariables(settings, prefersDark, tuning, anchors, theme),
-    ),
+    ...allThemeSurfaceCssVariables(buildThemeSurfaceVariables(tokens)),
   }
-  for (const [name, value] of Object.entries(variables)) {
+  for (const [name, value] of Object.entries(variables))
     root.style.setProperty(name, value)
-  }
-
   return variant
 }

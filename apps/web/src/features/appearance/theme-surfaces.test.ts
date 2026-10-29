@@ -5,7 +5,7 @@ import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 import {
   THEME_SURFACE_VARIABLE_KEYS,
   allThemeSurfaceCssVariables,
-  buildSolidThemeSurfaceVariables,
+  buildThemeSurfaceVariables,
   getThemeSurfaceVariables,
   getThemeTokens,
 } from '@syrnike13/ui/tokens'
@@ -40,7 +40,7 @@ describe('theme surfaces', () => {
       colorMode: 'light' as const,
     }
     const tokens = getThemeTokens(settings, false)
-    const surfaces = buildSolidThemeSurfaceVariables(tokens)
+    const surfaces = buildThemeSurfaceVariables(tokens)
 
     expect(tokens.border).toBe(tokens['input-border'])
     expect(tokens.border).toBe(tokens['sidebar-border'])
@@ -49,7 +49,7 @@ describe('theme surfaces', () => {
   })
 
   it('exposes every surface variable as a CSS custom property', () => {
-    const surfaces = buildSolidThemeSurfaceVariables(
+    const surfaces = buildThemeSurfaceVariables(
       getThemeTokens(
         { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'monolit', colorMode: 'light' },
         false,

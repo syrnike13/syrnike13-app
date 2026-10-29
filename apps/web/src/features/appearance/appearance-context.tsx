@@ -89,6 +89,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   const createCustomTheme = useCallback((theme: AppearanceCustomTheme) => {
     if (!appearanceSettingsStore.addCustomTheme(theme)) return
+    // Saving a per-variant theme supersedes the legacy app-wide override.
+    appearanceSettingsStore.setGradient(null)
     const variant = resolveThemeVariant(
       appearanceSettingsStore.getState(),
       readSystemPrefersDark(),
@@ -102,6 +104,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       update: (theme: AppearanceCustomTheme) => AppearanceCustomTheme,
     ) => {
       appearanceSettingsStore.updateCustomTheme(themeId, update)
+      appearanceSettingsStore.setGradient(null)
     },
     [],
   )

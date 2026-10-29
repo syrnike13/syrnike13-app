@@ -80,7 +80,7 @@ export function MobileUserPanel() {
                   gatewayConnected
                     ? 'text-muted-foreground'
                     : gatewayReconnecting
-                      ? 'text-chart-2'
+                      ? 'text-warning'
                       : 'text-destructive',
                 )}
               >

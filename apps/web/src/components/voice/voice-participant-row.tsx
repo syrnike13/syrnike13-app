@@ -106,7 +106,7 @@ export function VoiceParticipantRow({
     dimmed && 'opacity-50',
     voiceElsewhere && 'text-muted-foreground',
     isSpeaking &&
-      'bg-gradient-to-r from-chart-3/25 via-chart-3/10 to-transparent',
+      'bg-gradient-to-r from-success/25 via-success/10 to-transparent',
   )
 
   const content = (
@@ -115,7 +115,7 @@ export function VoiceParticipantRow({
         className={cn(
           'relative shrink-0 rounded-full',
           isSpeaking &&
-            'ring-2 ring-chart-3 ring-offset-1 ring-offset-background',
+            'ring-2 ring-success ring-offset-1 ring-offset-background',
         )}
       >
         <UserAvatar

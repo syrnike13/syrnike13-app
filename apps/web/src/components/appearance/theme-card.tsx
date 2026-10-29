@@ -41,7 +41,7 @@ export function ThemeCard({
         className="absolute inset-0 z-10 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
         onClick={onSelectActive}
       />
-      <div className="relative z-20 flex items-center justify-center gap-4">
+      <div className="pointer-events-none relative z-20 flex items-center justify-center gap-4">
         <ThemeOrbSlots
           theme={theme}
           name={name}

@@ -147,10 +147,7 @@ export {
   AudioPluginCatalogSchema,
   AudioPluginInfoSchema,
 } from './audio-effects'
-export {
-  DesktopSystemInfoSchema,
-  type DesktopSystemInfo,
-} from './system'
+export { DesktopSystemInfoSchema, type DesktopSystemInfo } from './system'
 export {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
@@ -187,6 +184,8 @@ export {
   AppearanceThemeSelectionSchema,
   AppearanceThemeVariantSchema,
   cloneAppearanceCustomThemes,
+  cloneAppearanceThemeAnchors,
+  normalizeAppearanceThemeAnchors,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
   DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
@@ -279,7 +278,10 @@ export type {
   VoiceDisconnectCause,
   VoiceEngineEvent,
 } from './voice/voice-engine'
-export { VoiceDirector, type VoiceDirectorOptions } from './voice/voice-director'
+export {
+  VoiceDirector,
+  type VoiceDirectorOptions,
+} from './voice/voice-director'
 export type {
   AuthoritativeVoiceSnapshot,
   VoiceCommand,

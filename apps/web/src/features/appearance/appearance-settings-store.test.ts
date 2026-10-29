@@ -69,19 +69,23 @@ describe('appearance settings store', () => {
     const snapshot = appearanceSettingsStore.getState()
     snapshot.themeIds.light = 'mutated'
 
-    expect(appearanceSettingsStore.getState()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
+    expect(appearanceSettingsStore.getState()).toEqual(
+      DEFAULT_APPEARANCE_SETTINGS,
+    )
   })
 
   it('does not expose the live gradient color array', () => {
     appearanceSettingsStore.setGradient({
       colors: ['#112233', '#AABBCC'],
       angle: 90,
-      saturation: 80,
+      mix: 80,
     })
     const snapshot = appearanceSettingsStore.getState()
     snapshot.gradient!.colors[0] = '#FFFFFF'
 
-    expect(appearanceSettingsStore.getState().gradient?.colors[0]).toBe('#112233')
+    expect(appearanceSettingsStore.getState().gradient?.colors[0]).toBe(
+      '#112233',
+    )
   })
 
   it('applies gradient changes from a complete settings update', () => {
@@ -90,14 +94,14 @@ describe('appearance settings store', () => {
       gradient: {
         colors: ['#112233', '#AABBCC'],
         angle: 45,
-        saturation: 80,
+        mix: 80,
       },
     })
 
     expect(appearanceSettingsStore.getState().gradient).toEqual({
       colors: ['#112233', '#AABBCC'],
       angle: 45,
-      saturation: 80,
+      mix: 80,
     })
   })
 

@@ -1,17 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type FormEvent,
-  type ReactNode,
-  type SetStateAction,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import {
   CheckIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   CopyIcon,
   DownloadIcon,
@@ -20,29 +10,22 @@ import {
   Trash2Icon,
 } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@syrnike13/ui/primitives/collapsible'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
-import { Separator } from '@syrnike13/ui/primitives/separator'
 import { Slider } from '@syrnike13/ui/primitives/slider'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
 import {
   getThemeTokens,
-  type PrismTuning,
+  type PrismGradient,
   type ThemeVariant,
 } from '@syrnike13/ui/tokens'
 
+import { ThemeGradientFields } from '#/components/appearance/theme-gradient-fields'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import {
   ANCHOR_KEYS,
-  SURFACE_KEYS,
-  SURFACE_LABELS,
   normalizeColorHex,
   suggestThemeId,
   themeIsModified,
@@ -72,7 +55,7 @@ const PREVIEW_OPTIONS: readonly {
   { value: 'dark', label: VARIANT_LABELS.dark },
 ]
 
-function TuningSlider({
+function AnchorSlider({
   label,
   value,
   min = 0,
@@ -177,18 +160,15 @@ function AnchorPreview({
   themeId,
   variant,
   anchors,
-  tuning,
 }: {
   themeId: string
   variant: ThemeVariant
   anchors: ThemeAnchors
-  tuning: PrismTuning
 }) {
   const tokens = getThemeTokens(
     { themeId, colorMode: variant },
     variant === 'dark',
-    tuning,
-    anchors,
+    { id: themeId, anchors },
   )
   const swatches = [
     ['background', tokens.background],
@@ -218,14 +198,12 @@ function AnchorEditor({
   themeId,
   variant,
   anchors,
-  tuning,
   onColorChange,
   onContrastChange,
 }: {
   themeId: string
   variant: ThemeVariant
   anchors: ThemeAnchors
-  tuning: PrismTuning
   onColorChange: (key: PrismAnchorColorKey, value: string) => void
   onContrastChange: (value: number) => void
 }) {
@@ -234,12 +212,7 @@ function AnchorEditor({
 
   return (
     <div className="space-y-2 rounded-lg border p-2.5">
-      <AnchorPreview
-        themeId={themeId}
-        variant={variant}
-        anchors={anchors}
-        tuning={tuning}
-      />
+      <AnchorPreview themeId={themeId} variant={variant} anchors={anchors} />
       {ANCHOR_KEYS.map((key) => (
         <ColorField
           key={key}
@@ -250,7 +223,7 @@ function AnchorEditor({
           onChange={(value) => onColorChange(key, value)}
         />
       ))}
-      <TuningSlider
+      <AnchorSlider
         label={`${variantLabel} contrast`}
         value={variantAnchors.contrast}
         min={0}
@@ -262,46 +235,16 @@ function AnchorEditor({
   )
 }
 
-function WorkbenchSection({
-  title,
-  children,
-}: {
-  title: string
-  children: ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <section className="rounded-lg border">
-      <Collapsible open={open} onOpenChange={(next) => setOpen(next)}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50">
-          <span>{title}</span>
-          <ChevronDownIcon
-            className={cn(
-              'size-3.5 text-muted-foreground transition-transform',
-              open && 'rotate-180',
-            )}
-          />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="space-y-3 border-t px-2.5 py-2.5">{children}</div>
-        </CollapsibleContent>
-      </Collapsible>
-    </section>
-  )
-}
-
 export function PrismWorkbenchPanel({
   themes,
   selectedTheme,
-  tuning,
   previewVariant,
   activeVariant,
   onSelectTheme,
   onAddTheme,
   onRemoveTheme,
   onRestoreTheme,
-  onTuningChange,
+  onGradientChange,
   onAnchorColorChange,
   onAnchorContrastChange,
   onPreviewVariantChange,
@@ -309,14 +252,16 @@ export function PrismWorkbenchPanel({
 }: {
   themes: readonly ThemeWorkbenchEntry[]
   selectedTheme: ThemeWorkbenchEntry
-  tuning: PrismTuning
   previewVariant: ThemeVariant | null
   activeVariant: ThemeVariant
   onSelectTheme: (themeId: string) => void
   onAddTheme: (themeId: string) => AddThemeResult
   onRemoveTheme: () => void
   onRestoreTheme: () => void
-  onTuningChange: Dispatch<SetStateAction<PrismTuning>>
+  onGradientChange: (
+    variant: ThemeVariant,
+    gradient: PrismGradient | undefined,
+  ) => void
   onAnchorColorChange: (
     variant: ThemeVariant,
     key: PrismAnchorColorKey,
@@ -339,18 +284,17 @@ export function PrismWorkbenchPanel({
     () =>
       JSON.stringify(
         {
-          version: 3,
+          version: 4,
           themes: themes.map(({ id, origin, anchors }) => ({
             id,
             origin,
             anchors,
           })),
-          tuning,
         },
         null,
         2,
       ),
-    [themes, tuning],
+    [themes],
   )
 
   function openNewTheme() {
@@ -379,7 +323,7 @@ export function PrismWorkbenchPanel({
   }
 
   function resetAll() {
-    if (!window.confirm('Reset all theme edits and Prism tuning?')) return
+    if (!window.confirm('Reset all theme edits?')) return
     onResetAll()
   }
 
@@ -432,12 +376,16 @@ export function PrismWorkbenchPanel({
             onFocus={(event) => event.currentTarget.select()}
           />
           <p className="text-xs text-muted-foreground">
-            Themes become THEME_CATALOG entries; tuning becomes
-            DEFAULT_PRISM_TUNING.
+            Themes become THEME_CATALOG entries with Prism 0.4.0 anchors.
           </p>
         </div>
         <div className="flex shrink-0 items-center justify-between gap-2 border-t px-4 py-2.5">
-          <Button type="button" size="sm" variant="outline" onClick={downloadJson}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={downloadJson}
+          >
             <DownloadIcon className="size-4" />
             Download
           </Button>
@@ -535,8 +483,8 @@ export function PrismWorkbenchPanel({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Preview reverts to the saved theme ({settings.themeIds.light} / {settings.themeIds.dark}) when you leave
-          this tab.
+          Preview reverts to the saved theme ({settings.themeIds.light} /{' '}
+          {settings.themeIds.dark}) when you leave this tab.
         </p>
 
         {creatingTheme ? (
@@ -608,7 +556,6 @@ export function PrismWorkbenchPanel({
           themeId={selectedTheme.id}
           variant={activeVariant}
           anchors={selectedTheme.anchors}
-          tuning={tuning}
           onColorChange={(key, value) =>
             onAnchorColorChange(activeVariant, key, value)
           }
@@ -617,83 +564,18 @@ export function PrismWorkbenchPanel({
           }
         />
 
-        <WorkbenchSection title="Surfaces">
-          {SURFACE_KEYS.map((key) => (
-            <TuningSlider
-              key={key}
-              label={SURFACE_LABELS[key]}
-              value={tuning.surfaceMix[key]}
-              onChange={(value) =>
-                onTuningChange((current) => ({
-                  ...current,
-                  surfaceMix: { ...current.surfaceMix, [key]: value },
-                }))
-              }
-            />
-          ))}
-        </WorkbenchSection>
-
-        <WorkbenchSection title="Raised & interaction">
-          <TuningSlider
-            label="Raised · light"
-            value={tuning.raisedMix.light}
-            onChange={(value) =>
-              onTuningChange((current) => ({
-                ...current,
-                raisedMix: { ...current.raisedMix, light: value },
-              }))
-            }
-          />
-          <TuningSlider
-            label="Raised · dark"
-            value={tuning.raisedMix.dark}
-            onChange={(value) =>
-              onTuningChange((current) => ({
-                ...current,
-                raisedMix: { ...current.raisedMix, dark: value },
-              }))
-            }
-          />
-          <Separator />
-          <TuningSlider
-            label="Min accent Δ"
-            value={tuning.minInteractionDelta.accent}
-            min={0}
-            max={0.2}
-            step={0.005}
-            suffix=""
-            onChange={(value) =>
-              onTuningChange((current) => ({
-                ...current,
-                minInteractionDelta: {
-                  ...current.minInteractionDelta,
-                  accent: value,
-                },
-              }))
-            }
-          />
-          <TuningSlider
-            label="Min hover Δ"
-            value={tuning.minInteractionDelta.hover}
-            min={0}
-            max={0.2}
-            step={0.005}
-            suffix=""
-            onChange={(value) =>
-              onTuningChange((current) => ({
-                ...current,
-                minInteractionDelta: {
-                  ...current.minInteractionDelta,
-                  hover: value,
-                },
-              }))
-            }
-          />
-        </WorkbenchSection>
+        <ThemeGradientFields
+          value={selectedTheme.anchors[activeVariant].gradient}
+          defaultColors={[
+            selectedTheme.anchors[activeVariant].background,
+            selectedTheme.anchors[activeVariant].accent,
+          ]}
+          onChange={(gradient) => onGradientChange(activeVariant, gradient)}
+        />
 
         <p className="text-xs text-muted-foreground">
           Colors generate every surface; edits persist locally. Export contains
-          every theme plus the global Prism tuning.
+          every theme with its per-variant Prism anchors and gradients.
         </p>
       </div>
 

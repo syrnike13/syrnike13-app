@@ -26,8 +26,6 @@ function chatPaletteFromTheme(
   const tokens = getThemeTokens(
     { colorMode: variant },
     variant === 'dark',
-    undefined,
-    undefined,
     theme,
   )
   return {
@@ -63,9 +61,7 @@ export function RoleColourPreview({
     <div className={cn('space-y-3', className)}>
       <div>
         <p className="text-sm font-medium">{t('previewTitle')}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t('previewHint')}
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('previewHint')}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {palettes.map((palette) => (
@@ -129,9 +125,7 @@ export function RoleColourPreview({
                 >
                   @{displayName}
                 </span>
-                <span className="text-(--palette-muted)">
-                  {t('welcome')}
-                </span>
+                <span className="text-(--palette-muted)">{t('welcome')}</span>
               </p>
             </div>
           </div>

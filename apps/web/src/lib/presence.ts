@@ -8,9 +8,9 @@ export type PresenceOption = {
 }
 
 export const PRESENCE_OPTIONS: PresenceOption[] = [
-  { value: 'Online', labelKey: 'online', dotClass: 'bg-chart-3' },
-  { value: 'Idle', labelKey: 'idle', dotClass: 'bg-chart-2' },
-  { value: 'Focus', labelKey: 'focus', dotClass: 'bg-chart-5' },
+  { value: 'Online', labelKey: 'online', dotClass: 'bg-success' },
+  { value: 'Idle', labelKey: 'idle', dotClass: 'bg-warning' },
+  { value: 'Focus', labelKey: 'focus', dotClass: 'bg-agent' },
   { value: 'Busy', labelKey: 'busy', dotClass: 'bg-destructive' },
   { value: 'Invisible', labelKey: 'invisible', dotClass: 'bg-muted-foreground' },
 ]

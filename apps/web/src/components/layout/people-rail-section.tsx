@@ -191,7 +191,7 @@ function PeopleRailButton({
       {callTitle ? (
         <span
           title={callTitle}
-          className="absolute -bottom-0.5 -left-0.5 flex size-4.5 items-center justify-center rounded-full bg-chart-3 text-primary-foreground"
+          className="absolute -bottom-0.5 -left-0.5 flex size-4.5 items-center justify-center rounded-full bg-success text-primary-foreground"
         >
           <HeadphonesIcon aria-hidden="true" className="size-2.5" />
         </span>

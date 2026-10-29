@@ -63,6 +63,8 @@ export default defineConfig([
       '**/test/**',
       // Literal shadcn base-nova sources: they define the look the rules protect.
       'packages/ui/src/primitives/**',
+      // Literal upstream Prism sources: keep the vendored library byte-for-byte.
+      'packages/ui/src/tokens/prism/**',
     ],
   },
   {

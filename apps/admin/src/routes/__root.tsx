@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 
 import { LocaleProvider } from '@syrnike13/ui/i18n'
+import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
 
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
@@ -71,8 +72,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" className="dark">
       <head>
-        <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content={contentSecurityPolicy}
+        />
         <HeadContent />
+        {/* eslint-disable-next-line shadcn/no-inline-styles -- pre-hydration CSS из общего Prism theme bootstrap, не локальные стили */}
+        <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
       </head>
       <body>
         {children}

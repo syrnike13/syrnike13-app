@@ -1,4 +1,4 @@
-import { generatePrismTokens } from './prism-generator.js'
+import { generatePrismTokens, PRISM_GRADIENT_TOKENS } from './prism-generator.js'
 import type { PrismTheme, PrismVariants, ThemeMode, ThemeVariant } from './types.js'
 
 export function resolvePrismMode(mode: ThemeMode): ThemeVariant {
@@ -23,9 +23,14 @@ export function applyPrismTheme(root: HTMLElement, theme: PrismTheme, mode: Them
   root.dataset.themeResolved = mode
   root.style.colorScheme = mode
   root.classList.toggle('dark', mode === 'dark')
-  for (const [name, value] of Object.entries(generatePrismTokens(theme[mode], mode))) {
+  const tokens = generatePrismTokens(theme[mode], mode)
+  // Inline gradient tokens left from a previous theme would override app CSS defaults.
+  for (const name of PRISM_GRADIENT_TOKENS) root.style.removeProperty(name)
+  for (const [name, value] of Object.entries(tokens)) {
     root.style.setProperty(name, value)
   }
+  if ('--app-gradient' in tokens) root.dataset.prismGradient = 'true'
+  else delete root.dataset.prismGradient
 }
 
 /** Fixed themes can render all colors in the initial HTML without a bootstrap script. */

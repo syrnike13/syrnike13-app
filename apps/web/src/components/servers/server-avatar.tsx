@@ -44,7 +44,7 @@ function ServerActivityBadge({
       title={label}
       className={cn(
         'absolute top-0.5 right-0.5 z-10 flex size-3.5 items-center justify-center rounded-full text-background ring-2 ring-background',
-        connected ? 'bg-chart-3' : 'bg-muted-foreground',
+        connected ? 'bg-success' : 'bg-muted-foreground',
       )}
     >
       <Icon aria-hidden="true" className="size-2" />

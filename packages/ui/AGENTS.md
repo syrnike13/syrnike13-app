@@ -18,7 +18,7 @@
 ## Структура пакета
 
 - `src/primitives/<name>/` — примитивы shadcn `base-nova` и колокейтед-тесты.
-- `src/tokens/` — Prism-движок (`src/tokens/prism/`, вендоренный из `@empatraai/prism`), якоря тем (`monolit`, `glina`), применение темы и pre-hydration CSS.
+- `src/tokens/` — буквальная локальная копия `@empatraai/prism@0.4.0` в `prism/` (без npm-зависимости), якоря тем (`monolit`, `glina`), применение темы и pre-hydration CSS. Runtime-исходники и CSS Prism не правятся локально; интеграция и настройки находятся снаружи вендоренной папки.
 - `src/i18n/` — `LocaleProvider`, `useTranslations`, встроенные подписи `ui`.
 - `src/icons/` — общий реестр иконок и адаптер `icon-placeholder` для shadcn-исходников.
 - `src/holidays/` — каталог окон праздников (`catalog.ts`), резолвер локальной даты (`resolve.ts`) и `HolidayProvider` для сезонных иконок.
@@ -130,4 +130,4 @@ pnpm ui:test && pnpm web:test && pnpm admin:test
 pnpm web:build && pnpm admin:build
 ```
 
-Вид проверяйте в `pnpm web:dev` (:3001), `pnpm landing:dev` (:3000) и `pnpm admin:dev` (:3002): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3001/dev/ui`. В dev-сборке web справа снизу есть **DEV**: вкладка Holidays для предпросмотра праздников и вкладка Themes — workbench всех тем Prism. В нём можно выбрать или добавить тему, отполировать якоря `accent`/`background`/`foreground`/`contrast` для light и dark, покрутить глобальные `surfaceMix`/`raisedMix`, а затем выгрузить единый JSON со всеми темами и `tuning` для переноса в `catalog.ts` и `DEFAULT_PRISM_TUNING`.
+Вид проверяйте в `pnpm web:dev` (:3001), `pnpm landing:dev` (:3000) и `pnpm admin:dev` (:3002): light/dark, 375px и desktop, обе Prism-темы, en/ru. Desktop — только `pnpm desktop:dev`. Каталог компонентов — `http://localhost:3001/dev/ui`. В dev-сборке web справа снизу есть **DEV**: вкладка Holidays для предпросмотра праздников и вкладка Themes — workbench всех тем Prism. В нём можно выбрать или добавить тему, отполировать якоря `accent`/`background`/`foreground`/`contrast` для light и dark, настроить `gradient: { colors, angle, mix }` отдельно для light/dark и выгрузить JSON для `catalog.ts`. Коэффициентами поверхностей и семантическими цветами владеет вендоренный Prism; самописного генератора и tuning нет.

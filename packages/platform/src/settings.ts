@@ -19,8 +19,7 @@ export type DesktopScreenShareQualityName =
   typeof DesktopScreenShareQualitySchema.Type
 
 export const DesktopScreenShareCodecSchema = Schema.Literals(['auto', 'av1'])
-export type DesktopScreenShareCodec =
-  typeof DesktopScreenShareCodecSchema.Type
+export type DesktopScreenShareCodec = typeof DesktopScreenShareCodecSchema.Type
 
 export const DesktopScreenShareCaptureModeSchema = Schema.Literals([
   'auto',
@@ -29,7 +28,10 @@ export const DesktopScreenShareCaptureModeSchema = Schema.Literals([
 export type DesktopScreenShareCaptureMode =
   typeof DesktopScreenShareCaptureModeSchema.Type
 
-export const DesktopCameraProfileSchema = Schema.Literals(['hd720p30', 'hd1080p30'])
+export const DesktopCameraProfileSchema = Schema.Literals([
+  'hd720p30',
+  'hd1080p30',
+])
 export type DesktopCameraProfile = typeof DesktopCameraProfileSchema.Type
 
 export const DesktopNativeScreenShareProfileSchema = Schema.Literals([
@@ -204,6 +206,8 @@ export {
   AppearanceThemeSelectionSchema,
   AppearanceThemeVariantSchema,
   cloneAppearanceCustomThemes,
+  cloneAppearanceThemeAnchors,
+  normalizeAppearanceThemeAnchors,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
@@ -259,10 +263,7 @@ export type DesktopLocalSettingsPatch = {
 const VOICE_VOLUME_MAX = 3
 const SOUND_VOLUME_MAX = 1
 const DEFAULT_VOICE_GATE_THRESHOLD_DB = -28
-const UnknownSettingsRecordSchema = Schema.Record(
-  Schema.String,
-  Schema.Unknown,
-)
+const UnknownSettingsRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
 
 export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   cameraProfile: 'hd720p30',
@@ -284,12 +285,13 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   screenShareCaptureMode: 'auto',
 }
 
-export const DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS: DesktopVoiceListenerSettings = {
-  userVolumes: {},
-  userMutes: {},
-  streamVolumes: {},
-  streamMutes: {},
-}
+export const DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS: DesktopVoiceListenerSettings =
+  {
+    userVolumes: {},
+    userMutes: {},
+    streamVolumes: {},
+    streamMutes: {},
+  }
 
 export const DEFAULT_DESKTOP_OVERLAY_SETTINGS: DesktopOverlaySettings = {
   enabled: true,
@@ -304,11 +306,12 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
   easterEnabled: true,
 }
 
-export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
-  anonymousNativeMetrics: true,
-  diagnosticReports: true,
-  nativeCrashReports: false,
-}
+export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings =
+  {
+    anonymousNativeMetrics: true,
+    diagnosticReports: true,
+    nativeCrashReports: false,
+  }
 
 export const DEFAULT_DESKTOP_UI_SETTINGS: DesktopUiSettings = {
   telegramPromoDismissedUntilByUser: {},
@@ -360,7 +363,12 @@ function finiteNumber(value: unknown, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   return Number(
     Math.min(max, Math.max(min, finiteNumber(value, fallback))).toFixed(2),
   )
@@ -455,7 +463,9 @@ export function normalizeDesktopVoiceSettings(
     ),
     preferredVideoDevice: stringOrUndefined(settings.preferredVideoDevice),
     cameraProfile: Option.getOrElse(
-      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(settings.cameraProfile),
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(
+        settings.cameraProfile,
+      ),
       () => defaults.cameraProfile,
     ),
     inputVolume: clampNumber(
@@ -640,7 +650,11 @@ export function normalizeDesktopLocalSettings(
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
   const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
-  if (settings.version !== 2 && settings.version !== 3 && settings.version !== 4) {
+  if (
+    settings.version !== 2 &&
+    settings.version !== 3 &&
+    settings.version !== 4
+  ) {
     voice.echoCancellation = false
     voice.automaticGainControl = true
   }
@@ -654,13 +668,22 @@ export function normalizeDesktopLocalSettings(
   // Version 3 intentionally enables redacted diagnostics once for every
   // existing installation. A later explicit opt-out is preserved because the
   // persisted document is already version 3.
-  if (settings.version !== 3 && settings.version !== 4) observability.diagnosticReports = true
+  if (settings.version !== 3 && settings.version !== 4)
+    observability.diagnosticReports = true
   return {
     version: 4,
     voice,
-    voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
-    overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
-    appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
+    voiceListener: normalizeDesktopVoiceListenerSettings(
+      settings.voiceListener,
+    ),
+    overlay: normalizeDesktopOverlaySettings(
+      settings.overlay,
+      defaults.overlay,
+    ),
+    appearance: normalizeAppearanceSettings(
+      settings.appearance,
+      defaults.appearance,
+    ),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
     observability,
     ui: normalizeDesktopUiSettings(settings.ui, defaults.ui),
@@ -694,7 +717,9 @@ export function normalizeDesktopVoiceSettingsPatch(
   }
   if ('cameraProfile' in patch) {
     next.cameraProfile = Option.getOrElse(
-      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(patch.cameraProfile),
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(
+        patch.cameraProfile,
+      ),
       () => DEFAULT_DESKTOP_VOICE_SETTINGS.cameraProfile,
     )
   }
@@ -708,7 +733,8 @@ export function normalizeDesktopVoiceSettingsPatch(
     'bypassSystemAudioInputProcessing' in patch &&
     typeof patch.bypassSystemAudioInputProcessing === 'boolean'
   ) {
-    next.bypassSystemAudioInputProcessing = patch.bypassSystemAudioInputProcessing
+    next.bypassSystemAudioInputProcessing =
+      patch.bypassSystemAudioInputProcessing
   }
   if (
     'automaticGainControl' in patch &&
@@ -768,7 +794,10 @@ export function normalizeDesktopVoiceSettingsPatch(
       DEFAULT_DESKTOP_VOICE_SETTINGS.screenShareCodec,
     )
   }
-  if ('screenShareAudio' in patch && typeof patch.screenShareAudio === 'boolean') {
+  if (
+    'screenShareAudio' in patch &&
+    typeof patch.screenShareAudio === 'boolean'
+  ) {
     next.screenShareAudio = patch.screenShareAudio
   }
   if ('screenShareCaptureMode' in patch) {
@@ -883,8 +912,8 @@ export function normalizeDesktopUiSettingsPatch(
       patch.telegramPromoDismissedUntilByUser,
     )
     if (
-      Object.keys(objectRecord(patch.telegramPromoDismissedUntilByUser)).length ===
-        0 ||
+      Object.keys(objectRecord(patch.telegramPromoDismissedUntilByUser))
+        .length === 0 ||
       Object.keys(dismissedUntilByUser).length > 0
     ) {
       next.telegramPromoDismissedUntilByUser = dismissedUntilByUser

@@ -37,6 +37,9 @@ export function syncPopoutDocumentAppearance(
   }
 
   targetHtml.style.cssText = sourceHtml.style.cssText
+  if (sourceHtml.dataset.prismGradient)
+    targetHtml.dataset.prismGradient = sourceHtml.dataset.prismGradient
+  else delete targetHtml.dataset.prismGradient
 
   let base = target.head.querySelector(
     `base[${POPOUT_STYLE_MARKER}]`,
@@ -49,10 +52,7 @@ export function syncPopoutDocumentAppearance(
   base.href = source.baseURI
 }
 
-export function syncPopoutDocumentStyles(
-  source: Document,
-  target: Document,
-) {
+export function syncPopoutDocumentStyles(source: Document, target: Document) {
   target.head
     .querySelectorAll(
       `link[${POPOUT_STYLE_MARKER}], style[${POPOUT_STYLE_MARKER}]`,
@@ -143,6 +143,7 @@ export function VoiceStagePopout({
         'lang',
         'data-theme',
         'data-theme-gradient',
+        'data-prism-gradient',
       ],
     })
 

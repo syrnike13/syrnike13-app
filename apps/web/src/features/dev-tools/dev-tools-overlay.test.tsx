@@ -21,10 +21,7 @@ const HALLOWEEN = () => new Date(2026, 9, 31, 12)
 function renderDevTools(overrideStorageKey?: string) {
   return render(
     <AppearanceProvider>
-      <HolidayProvider
-        now={HALLOWEEN}
-        overrideStorageKey={overrideStorageKey}
-      >
+      <HolidayProvider now={HALLOWEEN} overrideStorageKey={overrideStorageKey}>
         <DevToolsOverlay />
         <div data-testid="product-icons">
           <HomeIcon />
@@ -38,12 +35,6 @@ function renderDevTools(overrideStorageKey?: string) {
 }
 
 /** Base UI exposes the thumb by label and keeps the range input inside the root. */
-function sliderInput(name: string) {
-  const root = screen.getByLabelText(name).closest('[data-slot="slider"]')
-  const input = root?.querySelector<HTMLInputElement>('input[type="range"]')
-  if (!input) throw new Error(`Slider input not found: ${name}`)
-  return input
-}
 
 beforeEach(() => {
   localStorage.clear()
@@ -96,14 +87,10 @@ it('controls the visual voice stage ghosts', () => {
   expect(screen.getByText('Voice stage ghosts')).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('switch', { name: 'Hide Nova' }))
-  expect(
-    screen.getByRole('switch', { name: 'Show Nova' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'Show Nova' })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('switch', { name: 'Show Nova' }))
-  expect(
-    screen.getByRole('switch', { name: 'Hide Nova' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'Hide Nova' })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Mute Nova' }))
   expect(
@@ -116,7 +103,8 @@ it('controls the visual voice stage ghosts', () => {
   ).toBeInTheDocument()
 })
 
-it('opens the theme workbench and exports one JSON for every theme', () => {  renderDevTools()
+it('opens the theme workbench and exports one JSON for every theme', () => {
+  renderDevTools()
 
   fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
   fireEvent.click(screen.getByRole('tab', { name: 'Themes' }))
@@ -126,8 +114,9 @@ it('opens the theme workbench and exports one JSON for every theme', () => {  re
     'true',
   )
 
-  fireEvent.click(screen.getByRole('button', { name: 'Surfaces' }))
-  expect(screen.getByLabelText('Card')).toBeInTheDocument()
+  expect(
+    screen.getByRole('switch', { name: 'Градиент окна' }),
+  ).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }))
 
@@ -144,9 +133,13 @@ it('opens the theme workbench and exports one JSON for every theme', () => {  re
     'synthwave',
     'ocean',
     'sakura',
+    'gradient-aurora',
+    'gradient-sunset',
+    'gradient-lagoon',
+    'gradient-twilight',
   ])
-  expect(json.tuning.surfaceMix).toBeDefined()
-  expect(json.tuning.minInteractionDelta).toBeDefined()
+  expect(json.version).toBe(4)
+  expect(json).not.toHaveProperty('tuning')
 })
 
 it('edits anchor colors live and exports them in the JSON', async () => {
@@ -209,7 +202,7 @@ it('adds a theme and exports it next to the catalog themes', async () => {
     (theme: { id: string }) => theme.id === 'ocean-draft',
   )
   expect(ocean.origin).toBe('added')
-  expect(json.themes).toHaveLength(8)
+  expect(json.themes).toHaveLength(12)
 })
 
 it('previews every catalog theme and restores the saved theme on close', async () => {
@@ -244,9 +237,9 @@ it('restores saved workbench edits after a reload', async () => {
   })
 
   await waitFor(() => {
-    expect(
-      localStorage.getItem('syrnike13-prism-workbench:v1'),
-    ).toContain('#ff8800')
+    expect(localStorage.getItem('syrnike13-prism-workbench:v1')).toContain(
+      '#ff8800',
+    )
   })
 
   unmount()
@@ -255,46 +248,43 @@ it('restores saved workbench edits after a reload', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
   fireEvent.click(screen.getByRole('tab', { name: 'Themes' }))
 
-  expect(screen.getByLabelText('Dark accent')).toHaveValue('#ff8800')
+  expect(screen.getByLabelText('Dark accent')).toHaveValue('#FF8800')
 })
 
-it('applies Prism slider changes to the document tokens', async () => {
+it('previews a gradient, exports it and restores the saved theme on leaving the tab', async () => {
   renderDevTools()
-
   fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
   fireEvent.click(screen.getByRole('tab', { name: 'Themes' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Surfaces' }))
-
-  const before = document.documentElement.style.getPropertyValue('--muted')
-  fireEvent.change(sliderInput('Muted'), {
-    target: { value: '30' },
+  fireEvent.click(screen.getByRole('switch', { name: 'Градиент окна' }))
+  fireEvent.change(screen.getByLabelText('Цвет градиента 1'), {
+    target: { value: '#4c1d95' },
   })
-
+  fireEvent.change(screen.getByLabelText('Цвет градиента 2'), {
+    target: { value: '#be185d' },
+  })
   await waitFor(() => {
-    expect(screen.getByText('30%')).toBeInTheDocument()
-    const after = document.documentElement.style.getPropertyValue('--muted')
-    expect(after).not.toBe(before)
+    expect(document.documentElement.dataset.themeGradient).toBe('prism')
+    expect(
+      document.documentElement.style.getPropertyValue('--app-gradient'),
+    ).toContain('#4c1d95, #be185d')
   })
-})
-
-it('keeps workbench edits while another tab is open', async () => {
-  renderDevTools()
-
-  fireEvent.click(screen.getByRole('button', { name: 'DEV' }))
-  fireEvent.click(screen.getByRole('tab', { name: 'Themes' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Surfaces' }))
-
-  const input = sliderInput('Muted')
-  fireEvent.change(input, { target: { value: '30' } })
-
-  await waitFor(() => {
-    expect(screen.getByText('30%')).toBeInTheDocument()
-  })
-
+  fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }))
+  const json = JSON.parse(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Prism themes JSON',
+    }).value,
+  )
+  expect(json.themes[0].anchors.dark.gradient.colors).toEqual([
+    '#4C1D95',
+    '#BE185D',
+  ])
   fireEvent.click(screen.getByRole('tab', { name: 'Holidays' }))
-
-  expect(screen.getByText('10-31')).toBeInTheDocument()
-  expect(localStorage.getItem('syrnike13-prism-workbench:v1')).toContain('30')
+  await waitFor(() =>
+    expect(document.documentElement.dataset.themeGradient).toBe('none'),
+  )
+  expect(localStorage.getItem('syrnike13-prism-workbench:v1')).toContain(
+    '#4C1D95',
+  )
 })
 
 it('previews the other mode from the panel and restores the saved mode on close', async () => {

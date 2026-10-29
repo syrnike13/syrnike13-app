@@ -16,14 +16,18 @@ const EXIT_MS = 220
 
 type UnsavedChangesBarProps = {
   saveLabel?: string
+  saveDisabled?: boolean
   className?: string
   placement?: 'overlay' | 'flow'
+  layout?: 'default' | 'compact'
 }
 
 export function UnsavedChangesBar({
   saveLabel,
+  saveDisabled = false,
   className,
   placement = 'overlay',
+  layout = 'default',
 }: UnsavedChangesBarProps) {
   const t = useTranslations('settings.unsaved')
   const saveText = saveLabel ?? t('save')
@@ -130,13 +134,14 @@ export function UnsavedChangesBar({
       <div
         className={cn(
           'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border bg-popover px-4 py-3 text-popover-foreground shadow-lg',
+          layout === 'compact' && 'flex-col items-stretch px-3',
           (showSaveAck || showResetAck) && 'justify-center',
         )}
       >
         {showSaveAck ? (
           <div className="profile-unsaved-feedback flex items-center gap-2 text-sm font-medium">
-            <span className="flex size-6 items-center justify-center rounded-full bg-chart-3/15">
-              <CheckIcon className="size-4 text-chart-3" />
+            <span className="flex size-6 items-center justify-center rounded-full bg-success/15">
+              <CheckIcon className="size-4 text-success" />
             </span>
             {t('saved')}
           </div>
@@ -152,7 +157,12 @@ export function UnsavedChangesBar({
             <p className="min-w-0 flex-1 text-sm font-medium leading-snug">
               {t('dirty')}
             </p>
-            <div className="flex shrink-0 items-center gap-2">
+            <div
+              className={cn(
+                'flex shrink-0 items-center gap-2',
+                layout === 'compact' && 'grid grid-cols-2',
+              )}
+            >
               <Button
                 type="button"
                 variant="ghost"
@@ -166,8 +176,11 @@ export function UnsavedChangesBar({
               <Button
                 type="button"
                 size="sm"
-                disabled={saving}
-                className="min-w-30 transition-colors"
+                disabled={saving || saveDisabled}
+                className={cn(
+                  'min-w-30 transition-colors',
+                  layout === 'compact' && 'min-w-0',
+                )}
                 onClick={() => void handleSave()}
               >
                 {saving ? (

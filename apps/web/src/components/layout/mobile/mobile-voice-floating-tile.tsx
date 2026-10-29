@@ -135,7 +135,7 @@ export function MobileVoiceFloatingTile() {
         aria-label={t('dragHint', { title })}
         className={cn(
           'gradient-surface-floating pointer-events-auto relative flex size-14 touch-none items-center justify-center rounded-2xl bg-card shadow-lg ring-1 ring-shell-divider transition-shadow active:shadow-md',
-          isDragging && 'scale-105 shadow-xl ring-chart-3/40',
+          isDragging && 'scale-105 shadow-xl ring-success/40',
           !connected && 'animate-pulse',
         )}
         onPointerDown={onPointerDown}
@@ -153,14 +153,14 @@ export function MobileVoiceFloatingTile() {
             server={server}
             className={cn(
               'size-6',
-              connected ? 'text-chart-3' : 'text-chart-2',
+              connected ? 'text-success' : 'text-warning',
             )}
           />
         ) : (
           <HeadphonesIcon
             className={cn(
               'size-6',
-              connected ? 'text-chart-3' : 'text-chart-2',
+              connected ? 'text-success' : 'text-warning',
             )}
             aria-hidden
           />
@@ -169,7 +169,7 @@ export function MobileVoiceFloatingTile() {
         <span
           className={cn(
             'absolute top-1.5 right-1.5 size-2 rounded-full ring-2 ring-card',
-            connected ? 'bg-chart-3' : 'bg-chart-2',
+            connected ? 'bg-success' : 'bg-warning',
           )}
           aria-hidden
         />
@@ -190,12 +190,12 @@ export function MobileVoiceFloatingTile() {
               </span>
             ) : null}
             {cameraOn ? (
-              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-on-solid">
+              <span className="flex size-4 items-center justify-center rounded-full bg-success/90 text-on-solid">
                 <VideoIcon className="size-2.5" aria-hidden />
               </span>
             ) : null}
             {sharingScreen ? (
-              <span className="flex size-4 items-center justify-center rounded-full bg-chart-3/90 text-on-solid">
+              <span className="flex size-4 items-center justify-center rounded-full bg-success/90 text-on-solid">
                 <MonitorUpIcon className="size-2.5" aria-hidden />
               </span>
             ) : null}

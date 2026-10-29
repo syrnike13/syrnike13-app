@@ -1,11 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from '@syrnike13/ui/primitives/button'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-} from '@syrnike13/ui/primitives/card'
+import { Card, CardHeader, CardTitle } from '@syrnike13/ui/primitives/card'
 import {
   Tabs,
   TabsContent,
@@ -35,10 +31,7 @@ function isDevTab(value: unknown): value is DevTab {
 
 function ModifiedDot() {
   return (
-    <span
-      className="size-1.5 rounded-full bg-primary"
-      aria-hidden="true"
-    />
+    <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
   )
 }
 
@@ -137,14 +130,13 @@ export function DevToolsOverlay() {
             <PrismWorkbenchPanel
               themes={workbench.themes}
               selectedTheme={workbench.selectedTheme}
-              tuning={workbench.tuning}
               previewVariant={workbench.previewVariant}
               activeVariant={workbench.activeVariant}
               onSelectTheme={workbench.selectTheme}
               onAddTheme={workbench.addTheme}
               onRemoveTheme={workbench.removeSelectedTheme}
               onRestoreTheme={workbench.restoreSelectedTheme}
-              onTuningChange={workbench.setTuning}
+              onGradientChange={workbench.setGradient}
               onAnchorColorChange={workbench.setAnchorColor}
               onAnchorContrastChange={workbench.setAnchorContrast}
               onPreviewVariantChange={workbench.setPreviewVariant}

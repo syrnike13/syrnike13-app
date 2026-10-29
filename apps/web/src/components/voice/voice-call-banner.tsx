@@ -21,7 +21,7 @@ export function VoiceCallBanner({
   return (
     <div className="gradient-surface-raised shrink-0 border-b border-shell-divider bg-surface-raised px-3 py-2 text-surface-raised-foreground">
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
           <HeadphonesIcon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">

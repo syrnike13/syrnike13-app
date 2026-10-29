@@ -85,4 +85,39 @@ describe('ThemePickerGrid', () => {
     expect(document.documentElement.dataset.theme).toBe('ocean')
     expect(appearanceSettingsStore.getState().colorMode).toBe('dark')
   })
+
+  it('selects gradient presets per mode and clears the gradient when returning to a solid preset', () => {
+    renderGrid()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Тема «Северное сияние»' }),
+    )
+    expect(appearanceSettingsStore.getState().themeIds.dark).toBe(
+      'gradient-aurora',
+    )
+    expect(document.documentElement.dataset.prismGradient).toBe('true')
+    expect(
+      document.documentElement.style.getPropertyValue('--app-gradient'),
+    ).toContain('linear-gradient')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Включить «Закат» в светлой теме' }),
+    )
+    expect(appearanceSettingsStore.getState().themeIds).toEqual({
+      light: 'gradient-sunset',
+      dark: 'gradient-aurora',
+    })
+    expect(document.documentElement.dataset.themeResolved).toBe('light')
+    expect(document.documentElement.dataset.themeGradient).toBe('prism')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Тема «Глина»' }))
+    expect(document.documentElement.dataset.themeGradient).toBe('none')
+    expect(document.documentElement.dataset.prismGradient).toBeUndefined()
+    expect(
+      document.documentElement.style.getPropertyValue('--app-gradient'),
+    ).toBe('none')
+    expect(appearanceSettingsStore.getState().themeIds.dark).toBe(
+      'gradient-aurora',
+    )
+  })
 })

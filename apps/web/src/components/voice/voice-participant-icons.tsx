@@ -71,7 +71,7 @@ export function VoiceAvatarStatusBadge({
       className={cn(
         'absolute right-0 bottom-0 z-10 flex items-center justify-center rounded-full ring-2 ring-media-backdrop',
         compact ? 'size-5' : 'size-6 sm:size-7',
-        serverRestricted ? 'bg-chart-2' : 'bg-destructive',
+        serverRestricted ? 'bg-warning' : 'bg-destructive',
         className,
       )}
       aria-label={label}
@@ -120,13 +120,13 @@ export function VoiceParticipantIcons({
       ) : null}
       {muted && !listenerMuted ? (
         <MicOffIcon
-          className={cn('size-3.5', serverMuted && 'text-chart-2')}
+          className={cn('size-3.5', serverMuted && 'text-warning')}
           aria-hidden
         />
       ) : null}
       {deafened ? (
         <HeadphoneOffIcon
-          className={cn('size-3.5', serverDeafened && 'text-chart-2')}
+          className={cn('size-3.5', serverDeafened && 'text-warning')}
           aria-hidden
         />
       ) : null}

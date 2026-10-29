@@ -8,7 +8,9 @@ import { cn } from '#/lib/utils'
 
 function orbImage(theme: ThemeDefinition, variant: ThemeVariant): string {
   const colors = themePreviewColors(theme, variant)
-  return `radial-gradient(circle at 32% 26%, ${colors.primary} 0%, ${colors.background} 58%, ${colors.sidebar} 100%)`
+  return colors.gradient !== 'none'
+    ? colors.gradient
+    : `radial-gradient(circle at 32% 26%, ${colors.primary} 0%, ${colors.background} 58%, ${colors.sidebar} 100%)`
 }
 
 export function ThemeOrb({
@@ -42,8 +44,16 @@ export function ThemeOrbPair({
 }) {
   return (
     <div className={cn('flex items-center justify-center gap-3', className)}>
-      <ThemeOrb theme={theme} variant="light" className="ring-1 ring-border/60" />
-      <ThemeOrb theme={theme} variant="dark" className="ring-1 ring-border/60" />
+      <ThemeOrb
+        theme={theme}
+        variant="light"
+        className="ring-1 ring-border/60"
+      />
+      <ThemeOrb
+        theme={theme}
+        variant="dark"
+        className="ring-1 ring-border/60"
+      />
     </div>
   )
 }
@@ -83,7 +93,7 @@ export function ThemeOrbSlots({
                 : t('themesSection.setDark', { name })
             }
             className={cn(
-              'group/orb relative rounded-full p-1 transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
+              'group/orb pointer-events-auto relative rounded-full p-1 transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
               active ? 'ring-2 ring-primary' : 'ring-1 ring-border',
             )}
             onClick={() => onSelect(variant)}

@@ -296,7 +296,7 @@ export function StageMediaTile({
 
   const stripMediaClipClass = cn(
     'absolute inset-0 box-border overflow-hidden rounded-md bg-background',
-    speaking && 'border-2 border-chart-3',
+    speaking && 'border-2 border-success',
   )
 
   return (
@@ -317,11 +317,11 @@ export function StageMediaTile({
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
             // Grid: border внутри бокса — не срезается overflow контейнера сетки.
-            speaking && variant === 'grid' && 'border-2 border-chart-3',
+            speaking && variant === 'grid' && 'border-2 border-success',
             speaking &&
               variant !== 'strip' &&
               variant !== 'grid' &&
-              'ring-2 ring-chart-3',
+              'ring-2 ring-success',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
             !hasVideo && !isScreenPlaceholder && 'tile-palette',
             variant === 'focus' && 'aspect-(--tile-aspect)',

@@ -36,7 +36,7 @@ const panelMediaButtonIdleClass =
   'border-secondary-foreground/5 bg-secondary-foreground/8 hover:border-secondary-foreground/5 hover:bg-secondary-foreground/12'
 
 const panelMediaButtonActiveClass =
-  'border-chart-3/5 bg-chart-3/20 hover:border-chart-3/5 hover:bg-chart-3/30'
+  'border-success/5 bg-success/20 hover:border-success/5 hover:bg-success/30'
 
 const panelMediaButtonSoonClass =
   'cursor-not-allowed border-dashed border-secondary-foreground/5 bg-secondary-foreground/4 text-secondary-foreground/35'

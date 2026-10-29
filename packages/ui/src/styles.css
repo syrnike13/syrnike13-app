@@ -1,5 +1,12 @@
 /* Shared design-system styles. */
+@import './tokens/prism/tailwind.css';
 @import './shadcn.css';
+
+:root {
+  /* Syrnike-specific celebration and media roles, outside Prism's palette. */
+  --achievement: oklch(0.81 0.115 80);
+  --destructive-contrast: var(--destructive);
+}
 
 @utility cn-font-heading {
   font-family: var(--font-display);
@@ -10,7 +17,8 @@
 @utility slider-mark-position {
   left: calc(
     var(--slider-thumb-size, 1.25rem) / 2 +
-      (100% - var(--slider-thumb-size, 1.25rem)) * var(--slider-mark-progress, 0)
+      (100% - var(--slider-thumb-size, 1.25rem)) *
+      var(--slider-mark-progress, 0)
   );
 }
 
@@ -36,9 +44,12 @@
  * subtracted from the avatar. Masks only use alpha: `currentColor` = opaque.
  */
 @utility avatar-badge-cutout {
-  --avatar-badge-cut: calc(var(--avatar-badge-size) / 2 + var(--avatar-badge-gap));
+  --avatar-badge-cut: calc(
+    var(--avatar-badge-size) / 2 + var(--avatar-badge-gap)
+  );
   --avatar-badge-span: calc(
-    var(--avatar-badge-width, var(--avatar-badge-size)) - var(--avatar-badge-size)
+    var(--avatar-badge-width, var(--avatar-badge-size)) -
+      var(--avatar-badge-size)
   );
   mask-image:
     linear-gradient(currentColor 0 0),

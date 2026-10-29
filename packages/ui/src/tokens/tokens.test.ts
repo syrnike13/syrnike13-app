@@ -17,6 +17,10 @@ test('catalog contains the Prism anchor presets', () => {
     'synthwave',
     'ocean',
     'sakura',
+    'gradient-aurora',
+    'gradient-sunset',
+    'gradient-lagoon',
+    'gradient-twilight',
   ])
 
   for (const theme of THEME_CATALOG) {
@@ -65,7 +69,9 @@ test('structural borders share one Prism role', () => {
         { themeId: theme.id, colorMode: variant },
         variant === 'dark',
       )
-      expect(tokens.border, `${theme.id}/${variant}`).toBe(tokens['input-border'])
+      expect(tokens.border, `${theme.id}/${variant}`).toBe(
+        tokens['input-border'],
+      )
       expect(tokens['sidebar-border']).toBe(tokens.border)
       expect(tokens.divider).toBe(tokens.border)
       expect(tokens['shell-divider']).toBe(tokens.border)
@@ -73,42 +79,29 @@ test('structural borders share one Prism role', () => {
   }
 })
 
-test('tuning changes generated surfaces', () => {
-  const settings = { themeId: 'glina', colorMode: 'dark' as const }
-  const base = getThemeTokens(settings, true)
-  const tuned = getThemeTokens(settings, true, {
-    surfaceMix: { muted: 30, border: 30 },
-  })
-
-  expect(tuned.muted).not.toBe(base.muted)
-  expect(tuned.border).not.toBe(base.border)
-})
-
-test('anchor overrides replace catalog colors', () => {
-  const settings = { themeId: 'glina', colorMode: 'dark' as const }
-  const base = getThemeTokens(settings, true)
-  const overridden = getThemeTokens(settings, true, undefined, {
-    dark: { background: '#112233', accent: '#ff8800' },
-  })
-
-  expect(overridden.background).toBe('#112233')
-  expect(overridden.background).not.toBe(base.background)
-  expect(overridden.primary).toBe('#ff8800')
-  expect(overridden['sidebar-primary']).toBe('#ff8800')
-})
-
-test('the sidebar mix drives the shell navigation layer', () => {
-  const settings = { themeId: 'glina', colorMode: 'dark' as const }
-  const base = getThemeTokens(settings, true)
-  const tuned = getThemeTokens(settings, true, {
-    surfaceMix: { sidebar: 30 },
-  })
-  const surfaces = getThemeSurfaceVariables(settings, true, {
-    surfaceMix: { sidebar: 30 },
-  })
-
-  expect(tuned.sidebar).not.toBe(base.sidebar)
-  expect(surfaces['theme-surface-navigation']).toBe(tuned.sidebar)
-  expect(surfaces['theme-surface-lowest']).toBe(tuned.background)
-  expect(surfaces['theme-surface-app-frame']).toBe(tuned.background)
+test('keeps per-theme gradient tokens through the app adapter', () => {
+  const original = THEME_CATALOG[0]!
+  const theme = {
+    ...original,
+    anchors: {
+      light: original.anchors.light,
+      dark: {
+        ...original.anchors.dark,
+        gradient: { colors: ['#4c1d95', '#be185d'], angle: 45, mix: 60 },
+      },
+    },
+  }
+  const settings = { colorMode: 'dark' as const }
+  const tokens = getThemeTokens(settings, true, theme)
+  const surfaces = getThemeSurfaceVariables(settings, true, theme)
+  expect(tokens['app-gradient']).toBe(
+    'linear-gradient(45deg, #4c1d95, #be185d)',
+  )
+  expect(surfaces['theme-backdrop']).toBe(tokens['app-gradient'])
+  expect(surfaces['theme-surface-navigation']).toBe(tokens['layer-sidebar'])
+  expect(surfaces['theme-surface-content']).toBe(tokens['layer-panel'])
+  expect(surfaces['theme-surface-floating']).toMatch(/^#[0-9a-f]{6}$/)
+  expect(surfaces['theme-surface-solid']).toMatch(/^#[0-9a-f]{6}$/)
+  const light = getThemeTokens({ colorMode: 'light' }, false, theme)
+  expect(light['app-gradient']).toBe('none')
 })

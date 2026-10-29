@@ -424,7 +424,7 @@ export function ChannelSidebarItem({
       className={cn(
         'group/channel flex flex-col',
         dragging && 'opacity-60',
-        voiceDropActive && 'rounded-md bg-chart-3/15 ring-1 ring-chart-3/70',
+        voiceDropActive && 'rounded-md bg-success/15 ring-1 ring-success/70',
       )}
       data-channel-sidebar-item=""
       data-voice-drop-pending={movingVoiceMember ? 'true' : 'false'}
@@ -488,7 +488,7 @@ export function ChannelSidebarItem({
             <VoiceChannelIcon
               channel={channel}
               server={server}
-              className={cn('size-5', connectedVoiceReady && 'text-chart-3')}
+              className={cn('size-5', connectedVoiceReady && 'text-success')}
             />
           ) : restrictedTextChannel ? (
             <span
@@ -504,7 +504,7 @@ export function ChannelSidebarItem({
           {voiceCallMarkerTitle ? (
             <span
               title={voiceCallMarkerTitle}
-              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3"
+              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success"
             >
               <HeadphonesIcon aria-hidden="true" className="size-3.5" />
             </span>

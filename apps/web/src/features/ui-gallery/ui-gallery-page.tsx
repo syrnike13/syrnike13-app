@@ -501,7 +501,7 @@ function PalettePanel() {
   const modes = ['light', 'dark', 'system'] as const
 
   return (
-    <Card className="sticky top-0 z-20 mb-6">
+    <Card className="mb-6">
       <CardHeader>
         <CardTitle className="text-sm">Palette</CardTitle>
         <CardDescription>

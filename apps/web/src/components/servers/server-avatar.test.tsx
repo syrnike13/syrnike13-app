@@ -48,7 +48,7 @@ describe('ServerAvatar', () => {
     const badge = container.querySelector<HTMLElement>(
       '[data-slot="server-activity-badge"]',
     )
-    expect(badge?.className).toContain('bg-chart-3')
+    expect(badge?.className).toContain('bg-success')
     expect(badge?.hasAttribute('data-connected')).toBe(true)
   })
 })

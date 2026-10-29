@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 
 import { getDefaultThemeCss } from '@syrnike13/ui/tokens'
-import {
-  allThemeCssVariables,
-  getThemeTokens,
-} from '@syrnike13/ui/tokens'
+import { allThemeCssVariables, getThemeTokens } from '@syrnike13/ui/tokens'
 
 describe('getDefaultThemeCss', () => {
   it('emits default theme variables for :root and .dark', () => {
@@ -21,9 +18,7 @@ describe('getDefaultThemeCss', () => {
 
     expect(css).toContain(':root {')
     expect(css).toContain('.dark {')
-    expect(css).toContain(
-      `--destructive-contrast: ${darkTokens['destructive-contrast']};`,
-    )
+    expect(css).toContain(`--background: ${darkTokens.background};`)
     expect(css).toContain(
       `--background: ${
         allThemeCssVariables(
@@ -34,8 +29,6 @@ describe('getDefaultThemeCss', () => {
         )['--background']
       };`,
     )
-    expect(css).toContain(
-      `--theme-surface-content: ${lightTokens.card};`,
-    )
+    expect(css).toContain(`--theme-surface-content: ${lightTokens.card};`)
   })
 })

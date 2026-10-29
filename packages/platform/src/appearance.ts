@@ -8,7 +8,7 @@ export const AppearanceColorModeSchema = Schema.Literals([
 
 export type AppearanceColorMode = typeof AppearanceColorModeSchema.Type
 
-export const APPEARANCE_GRADIENT_MIN_COLORS = 1
+export const APPEARANCE_GRADIENT_MIN_COLORS = 2
 export const APPEARANCE_GRADIENT_MAX_COLORS = 5
 
 /** Масштаб интерфейса в процентах; меняет rem-размеры через font-size корня. */
@@ -19,13 +19,13 @@ export const APPEARANCE_SCALE_STEP = 5
 export type AppearanceGradientSettings = {
   colors: string[]
   angle: number
-  saturation: number
+  mix: number
 }
 
 export const AppearanceGradientSettingsSchema = Schema.Struct({
   colors: Schema.mutable(Schema.Array(Schema.String)),
   angle: Schema.Finite,
-  saturation: Schema.Finite,
+  mix: Schema.Finite,
 })
 
 export const AppearanceThemeVariantSchema = Schema.Literals(['light', 'dark'])
@@ -38,6 +38,7 @@ export type AppearanceThemeAnchors = {
   background: string
   foreground: string
   contrast: number
+  gradient?: AppearanceGradientSettings
 }
 
 export const AppearanceThemeAnchorsSchema = Schema.Struct({
@@ -45,6 +46,7 @@ export const AppearanceThemeAnchorsSchema = Schema.Struct({
   background: Schema.String,
   foreground: Schema.String,
   contrast: Schema.Finite,
+  gradient: Schema.optionalKey(AppearanceGradientSettingsSchema),
 })
 
 export type AppearanceCustomTheme = {
@@ -129,7 +131,9 @@ function cloneGradient(
 export function normalizeAppearanceGradientSettings(
   value: unknown,
 ): AppearanceGradientSettings | null {
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) return null
   const gradient = decoded.value
   if (!Array.isArray(gradient.colors)) return null
@@ -137,17 +141,19 @@ export function normalizeAppearanceGradientSettings(
     .map(normalizeGradientColor)
     .filter((color): color is string => color !== null)
     .slice(0, APPEARANCE_GRADIENT_MAX_COLORS)
+  // Legacy one-stop tints remain a flat gradient; saturation is not Prism's mix.
+  if (colors.length === 1 && 'saturation' in gradient) colors.push(colors[0]!)
   if (colors.length < APPEARANCE_GRADIENT_MIN_COLORS) return null
+  const angle =
+    typeof gradient.angle === 'number' && Number.isFinite(gradient.angle)
+      ? ((Math.round(gradient.angle) % 360) + 360) % 360
+      : 180
+  const mix =
+    typeof gradient.mix === 'number' && Number.isFinite(gradient.mix)
+      ? Math.round(clamp(gradient.mix, 0, 100))
+      : 60
 
-  const angle = typeof gradient.angle === 'number' && Number.isFinite(gradient.angle)
-    ? Math.round(clamp(gradient.angle, 0, 360))
-    : 0
-  const saturation =
-    typeof gradient.saturation === 'number' && Number.isFinite(gradient.saturation)
-      ? Math.round(clamp(gradient.saturation, 0, 100))
-      : 74
-
-  return { colors, angle, saturation }
+  return { colors, angle, mix }
 }
 
 export function normalizeAppearanceColorMode(
@@ -179,16 +185,29 @@ export function cloneAppearanceCustomThemes(
   return themes.map((theme) => ({
     ...theme,
     anchors: {
-      light: { ...theme.anchors.light },
-      dark: { ...theme.anchors.dark },
+      light: cloneAppearanceThemeAnchors(theme.anchors.light),
+      dark: cloneAppearanceThemeAnchors(theme.anchors.dark),
     },
   }))
 }
 
-function normalizeThemeAnchors(
+export function cloneAppearanceThemeAnchors(
+  anchors: AppearanceThemeAnchors,
+): AppearanceThemeAnchors {
+  return anchors.gradient
+    ? {
+        ...anchors,
+        gradient: { ...anchors.gradient, colors: [...anchors.gradient.colors] },
+      }
+    : { ...anchors }
+}
+
+export function normalizeAppearanceThemeAnchors(
   value: unknown,
 ): AppearanceThemeAnchors | null {
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) return null
   const anchors = decoded.value
   const accent = normalizeGradientColor(anchors.accent)
@@ -200,11 +219,16 @@ function normalizeThemeAnchors(
       ? Math.round(clamp(anchors.contrast, 0, APPEARANCE_THEME_CONTRAST_MAX))
       : null
   if (contrast === null) return null
-  return { accent, background, foreground, contrast }
+  const gradient = normalizeAppearanceGradientSettings(anchors.gradient)
+  return gradient
+    ? { accent, background, foreground, contrast, gradient }
+    : { accent, background, foreground, contrast }
 }
 
 function normalizeCustomTheme(value: unknown): AppearanceCustomTheme | null {
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) return null
   const theme = decoded.value
   const id = typeof theme.id === 'string' ? theme.id.trim() : ''
@@ -214,8 +238,8 @@ function normalizeCustomTheme(value: unknown): AppearanceCustomTheme | null {
     theme.anchors,
   )
   if (Option.isNone(anchors)) return null
-  const light = normalizeThemeAnchors(anchors.value.light)
-  const dark = normalizeThemeAnchors(anchors.value.dark)
+  const light = normalizeAppearanceThemeAnchors(anchors.value.light)
+  const dark = normalizeAppearanceThemeAnchors(anchors.value.dark)
   if (!light || !dark) return null
   return {
     id: id.slice(0, 64),
@@ -256,7 +280,9 @@ export function normalizeAppearanceThemeIds(
   defaults: AppearanceThemeSelection = DEFAULT_APPEARANCE_SETTINGS.themeIds,
 ): AppearanceThemeSelection {
   const legacy = normalizeThemeId(legacyThemeId)
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) {
     return legacy ? { light: legacy, dark: legacy } : { ...defaults }
   }
@@ -271,7 +297,9 @@ export function normalizeAppearanceSettings(
   value: unknown,
   defaults: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS,
 ): AppearanceSettings {
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) {
     return {
       ...defaults,
@@ -287,13 +315,16 @@ export function normalizeAppearanceSettings(
       settings.themeId,
       defaults.themeIds,
     ),
-    colorMode: normalizeAppearanceColorMode(settings.colorMode, defaults.colorMode),
+    colorMode: normalizeAppearanceColorMode(
+      settings.colorMode,
+      defaults.colorMode,
+    ),
     scale: normalizeAppearanceScale(settings.scale, defaults.scale),
     gradient:
       settings.gradient === null
         ? null
-        : normalizeAppearanceGradientSettings(settings.gradient) ??
-          cloneGradient(defaults.gradient),
+        : (normalizeAppearanceGradientSettings(settings.gradient) ??
+          cloneGradient(defaults.gradient)),
     customThemes:
       'customThemes' in settings
         ? normalizeAppearanceCustomThemes(settings.customThemes)
@@ -306,7 +337,9 @@ export type AppearanceSettingsPatch = Partial<AppearanceSettings>
 export function normalizeAppearanceSettingsPatch(
   value: unknown,
 ): AppearanceSettingsPatch | undefined {
-  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(
+    value,
+  )
   if (Option.isNone(decoded)) return undefined
   const patch = decoded.value
   const next: AppearanceSettingsPatch = {}

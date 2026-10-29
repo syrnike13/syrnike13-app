@@ -8,6 +8,7 @@ import {
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
   normalizeAppearanceThemeIds,
+  normalizeAppearanceGradientSettings,
 } from './appearance'
 
 function anchors(accent: string) {
@@ -58,12 +59,69 @@ describe('appearance theme selection', () => {
 })
 
 describe('custom themes', () => {
+  it('migrates legacy global tints without treating saturation as layer coverage', () => {
+    expect(
+      normalizeAppearanceGradientSettings({
+        colors: ['#112233'],
+        angle: 360,
+        saturation: 90,
+      }),
+    ).toEqual({ colors: ['#112233', '#112233'], angle: 0, mix: 60 })
+    expect(
+      normalizeAppearanceGradientSettings({ colors: ['#112233'], mix: 60 }),
+    ).toBeNull()
+  })
+
+  it('persists independent per-variant gradients without sharing their arrays', () => {
+    const source = {
+      id: 'custom-gradient',
+      name: 'Gradient',
+      anchors: {
+        light: anchors('#112233'),
+        dark: {
+          ...anchors('#445566'),
+          gradient: { colors: ['#4c1d95', '#be185d'], angle: -45, mix: 200 },
+        },
+      },
+    }
+    const settings = normalizeAppearanceSettings({ customThemes: [source] })
+    const persisted = normalizeAppearanceSettings(
+      JSON.parse(JSON.stringify(settings)),
+    )
+    const [theme] = persisted.customThemes
+    expect(theme?.anchors.light.gradient).toBeUndefined()
+    expect(theme?.anchors.dark.gradient).toEqual({
+      colors: ['#4C1D95', '#BE185D'],
+      angle: 315,
+      mix: 100,
+    })
+    const [copy] = cloneAppearanceCustomThemes(persisted.customThemes)
+    copy!.anchors.dark.gradient!.colors[0] = '#000000'
+    expect(theme!.anchors.dark.gradient!.colors[0]).toBe('#4C1D95')
+  })
+
   it('drops entries with a missing name or invalid anchors', () => {
     const themes = normalizeAppearanceCustomThemes([
-      { id: 'custom-a', name: '  ', anchors: { light: anchors('#112233'), dark: anchors('#112233') } },
-      { id: 'custom-b', name: 'Без якорей', anchors: { light: null, dark: null } },
-      { id: 'custom-c', name: 'Плохой цвет', anchors: { light: { ...anchors('#zzzzzz') }, dark: anchors('#112233') } },
-      { id: 'custom-d', name: '  Хорошая  ', anchors: { light: anchors('#112233'), dark: anchors('#445566') } },
+      {
+        id: 'custom-a',
+        name: '  ',
+        anchors: { light: anchors('#112233'), dark: anchors('#112233') },
+      },
+      {
+        id: 'custom-b',
+        name: 'Без якорей',
+        anchors: { light: null, dark: null },
+      },
+      {
+        id: 'custom-c',
+        name: 'Плохой цвет',
+        anchors: { light: { ...anchors('#zzzzzz') }, dark: anchors('#112233') },
+      },
+      {
+        id: 'custom-d',
+        name: '  Хорошая  ',
+        anchors: { light: anchors('#112233'), dark: anchors('#445566') },
+      },
     ])
 
     expect(themes).toHaveLength(1)

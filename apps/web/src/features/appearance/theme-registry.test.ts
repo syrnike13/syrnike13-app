@@ -28,10 +28,11 @@ describe('theme registry', () => {
       'synthwave',
       'ocean',
       'sakura',
+      'gradient-aurora',
+      'gradient-sunset',
+      'gradient-lagoon',
+      'gradient-twilight',
     ])
-    expect(THEME_CATALOG.some((theme) => theme.id.startsWith('gradient'))).toBe(
-      false,
-    )
 
     for (const theme of THEME_CATALOG) {
       for (const variant of ['light', 'dark'] as const) {

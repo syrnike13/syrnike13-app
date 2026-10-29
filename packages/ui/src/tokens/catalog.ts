@@ -130,4 +130,112 @@ export const THEME_CATALOG: ThemeDefinition[] = [
       },
     },
   },
+  {
+    id: 'gradient-aurora',
+    anchors: {
+      light: {
+        accent: '#126b61',
+        background: '#f4fcfa',
+        foreground: '#102b30',
+        contrast: 46,
+        gradient: {
+          colors: ['#b8f3df', '#badbff', '#daceff'],
+          angle: 135,
+          mix: 35,
+        },
+      },
+      dark: {
+        accent: '#67e8c3',
+        background: '#07181e',
+        foreground: '#e1fbf3',
+        contrast: 62,
+        gradient: {
+          colors: ['#0c4a6e', '#0f766e', '#5b21b6'],
+          angle: 135,
+          mix: 35,
+        },
+      },
+    },
+  },
+  {
+    id: 'gradient-sunset',
+    anchors: {
+      light: {
+        accent: '#a53f4b',
+        background: '#fff6f1',
+        foreground: '#351825',
+        contrast: 46,
+        gradient: {
+          colors: ['#ffd4a8', '#ffc2cd', '#ddc7f7'],
+          angle: 120,
+          mix: 35,
+        },
+      },
+      dark: {
+        accent: '#ffb38d',
+        background: '#211019',
+        foreground: '#fff0e6',
+        contrast: 62,
+        gradient: {
+          colors: ['#9a3412', '#9d174d', '#4c1d95'],
+          angle: 120,
+          mix: 40,
+        },
+      },
+    },
+  },
+  {
+    id: 'gradient-lagoon',
+    anchors: {
+      light: {
+        accent: '#086b82',
+        background: '#f1fcff',
+        foreground: '#082c38',
+        contrast: 46,
+        gradient: {
+          colors: ['#b7f3de', '#b9edfa', '#bcd5ff'],
+          angle: 150,
+          mix: 30,
+        },
+      },
+      dark: {
+        accent: '#67e8f9',
+        background: '#061b24',
+        foreground: '#dcfaff',
+        contrast: 60,
+        gradient: {
+          colors: ['#065f46', '#0e7490', '#1e3a8a'],
+          angle: 150,
+          mix: 35,
+        },
+      },
+    },
+  },
+  {
+    id: 'gradient-twilight',
+    anchors: {
+      light: {
+        accent: '#7543aa',
+        background: '#faf5ff',
+        foreground: '#281b3b',
+        contrast: 46,
+        gradient: {
+          colors: ['#c6d4ff', '#dfc8fa', '#f6cce4'],
+          angle: 135,
+          mix: 35,
+        },
+      },
+      dark: {
+        accent: '#d4b5ff',
+        background: '#171225',
+        foreground: '#f2ebff',
+        contrast: 62,
+        gradient: {
+          colors: ['#1e3a8a', '#581c87', '#831843'],
+          angle: 135,
+          mix: 35,
+        },
+      },
+    },
+  },
 ]

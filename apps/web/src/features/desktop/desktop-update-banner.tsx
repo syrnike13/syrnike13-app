@@ -76,7 +76,7 @@ export function DesktopUpdateTitleBarButton({
               aria-label={tooltip}
               disabled={!ready}
               className={cn(
-                'shell-title-bar-no-drag shrink-0 text-chart-3 hover:text-chart-3',
+                'shell-title-bar-no-drag shrink-0 text-success hover:text-success',
                 className,
               )}
               onClick={() => {

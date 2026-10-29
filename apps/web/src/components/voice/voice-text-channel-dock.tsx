@@ -55,7 +55,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   return (
     <div className="gradient-surface-raised shrink-0 border-b border-shell-divider bg-surface-raised text-surface-raised-foreground">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Volume2BoldIcon className="size-4 shrink-0 text-chart-3" />
+        <Volume2BoldIcon className="size-4 shrink-0 text-success" />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           {t('dock.title', { count: participants.length })}
         </p>

@@ -12,8 +12,6 @@ export function ThemeColorMeta() {
     const tokens = getThemeTokens(
       settings,
       resolvedVariant === 'dark',
-      undefined,
-      undefined,
       resolveThemeForVariant(settings, resolvedVariant),
     )
     const hex = cssColorToHex(tokens.primary) ?? '#4a3f8f'

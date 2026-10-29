@@ -55,6 +55,8 @@ export type PresetSliderProps = {
   showLabels?: boolean
   /** Render ticks on the scale; defaults to true. */
   showMarks?: boolean
+  /** Color-domain spectrum; visual treatment lives in the shared primitive. */
+  variant?: 'default' | 'hue'
   formatValue?: (value: number) => string
   disabled?: boolean
   className?: string
@@ -90,6 +92,7 @@ export function PresetSlider({
   step,
   showLabels = true,
   showMarks = true,
+  variant = 'default',
   formatValue,
   disabled,
   className,
@@ -109,10 +112,11 @@ export function PresetSlider({
   const normalizedValue =
     mode === 'continuous'
       ? clampValue(safeValue, firstValue, lastValue)
-      : (nearestEnabledStop(stops, valuePosition, layout) ??
+      : ((
+          nearestEnabledStop(stops, valuePosition, layout) ??
           nearestStopIncludingDisabled(stops, valuePosition, layout) ??
           stops[0]
-        )?.value ?? safeValue
+        )?.value ?? safeValue)
 
   const stopsKey = stops
     .map(
@@ -176,9 +180,7 @@ export function PresetSlider({
   const markProgress = useCallback(
     (markValue: number) => {
       const range = sliderMax - sliderMin
-      return range > 0
-        ? clampValue((markValue - sliderMin) / range, 0, 1)
-        : 0
+      return range > 0 ? clampValue((markValue - sliderMin) / range, 0, 1) : 0
     },
     [sliderMax, sliderMin],
   )
@@ -278,8 +280,7 @@ export function PresetSlider({
     } else if (key === 'End') {
       nextValue = lastValue
     } else {
-      nextValue =
-        normalizedValue + (forward ? 1 : -1) * valueStep * multiplier
+      nextValue = normalizedValue + (forward ? 1 : -1) * valueStep * multiplier
     }
     commitValue(clampValue(nextValue, firstValue, lastValue))
   }
@@ -321,13 +322,13 @@ export function PresetSlider({
           {stops.map((stop) => {
             const isFirst = stop.index === 0
             const isLast = stop.index === stops.length - 1
-            const selected = !stop.disabled && selectedStop?.value === stop.value
+            const selected =
+              !stop.disabled && selectedStop?.value === stop.value
             const label = sliderLabel(stop, formatValue)
             const labelText =
               label ?? (selected ? sliderValueText(stop, formatValue) : null)
             if (labelText == null) return null
-            const alwaysVisible =
-              selected || stop.major || isFirst || isLast
+            const alwaysVisible = selected || stop.major || isFirst || isLast
             const progress = markProgress(
               valueToSliderPosition(stop.value, stops, layout),
             )
@@ -368,6 +369,7 @@ export function PresetSlider({
         </div>
       ) : null}
       <Slider
+        variant={variant}
         value={[sliderPosition]}
         min={sliderMin}
         max={sliderMax}

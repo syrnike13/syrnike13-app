@@ -10,8 +10,10 @@ import {
   getThemeById,
   listThemes,
   resolveThemeVariant,
+  readSystemPrefersDark,
   type ThemeDefinition,
 } from '@syrnike13/ui/tokens'
+import { hexToPickerHsv } from '#/features/appearance/theme-color-picker-model'
 
 /** Пользовательская тема описывается теми же якорями Prism, что и каталожная. */
 export function customThemeToDefinition(
@@ -50,9 +52,12 @@ export function resolveThemeForVariant(
  */
 export function applyAppearanceTheme(
   settings: AppearanceSettings,
-  prefersDark?: boolean,
+  prefersDark = readSystemPrefersDark(),
 ): void {
-  applyThemeToDocument(settings, prefersDark, undefined, undefined, (variant) =>
+  const variant = resolveThemeVariant(settings, prefersDark)
+  applyThemeToDocument(
+    settings,
+    prefersDark,
     resolveThemeForVariant(settings, variant),
   )
 }
@@ -127,15 +132,28 @@ function randomVariantAnchors(
   variant: AppearanceThemeVariant,
   hue: number,
 ): AppearanceThemeAnchors {
-  const accentLightness = variant === 'light' ? 42 : 62
-  const backgroundLightness = variant === 'light' ? 97 : 8
-  const foregroundLightness = variant === 'light' ? 13 : 93
+  const accent = hslToHex(hue, 58, variant === 'light' ? 42 : 62)
   return {
-    accent: hslToHex(hue, 58, accentLightness),
-    background: hslToHex(hue, 26, backgroundLightness),
-    foreground: hslToHex(hue, 30, foregroundLightness),
+    accent,
+    ...deriveSurfaceAnchors(variant, accent),
     contrast:
       variant === 'light' ? DEFAULT_LIGHT_CONTRAST : DEFAULT_DARK_CONTRAST,
+  }
+}
+
+/**
+ * Фон и текст, подобранные под один акцентный цвет: тот же оттенок, фиксированная
+ * светлота для светлого/тёмного варианта. Серый акцент даёт нейтральные поверхности.
+ */
+export function deriveSurfaceAnchors(
+  variant: AppearanceThemeVariant,
+  accent: string,
+): Pick<AppearanceThemeAnchors, 'background' | 'foreground'> {
+  const { hue, saturation } = hexToPickerHsv(accent)
+  const tint = Math.min(1, saturation / 0.5)
+  return {
+    background: hslToHex(hue, 26 * tint, variant === 'light' ? 97 : 8),
+    foreground: hslToHex(hue, 30 * tint, variant === 'light' ? 13 : 93),
   }
 }
 

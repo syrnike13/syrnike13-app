@@ -26,15 +26,15 @@ const pingTooltipClass =
   'px-2 py-1 text-xs leading-none font-medium'
 
 const VOICE_STATUS_CONNECTED = {
-  accent: 'text-chart-3',
-  icon: 'text-chart-3',
-  iconBg: 'bg-chart-3/15',
+  accent: 'text-success',
+  icon: 'text-success',
+  iconBg: 'bg-success/15',
 } as const
 
 const VOICE_STATUS_CONNECTING = {
-  accent: 'text-chart-2',
-  icon: 'text-chart-2',
-  iconBg: 'bg-chart-2/15',
+  accent: 'text-warning',
+  icon: 'text-warning',
+  iconBg: 'bg-warning/15',
 } as const
 
 const VOICE_STATUS_FAILED = {
@@ -85,8 +85,8 @@ export function VoiceConnectionStrip() {
     voice.connectionPhase === 'failed'
       ? 'bg-destructive/15'
       : connected
-        ? 'bg-chart-3/15'
-        : 'bg-chart-2/15'
+        ? 'bg-success/15'
+        : 'bg-warning/15'
   const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase, ts)
   const pingLabel = formatVoicePingLabel(
     voiceTelemetry.voicePingMs,

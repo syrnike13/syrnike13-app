@@ -883,7 +883,7 @@ function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
         'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold',
         quality === 'good' && 'border-primary/30 bg-primary/10 text-primary',
         quality === 'fair' &&
-          'border-chart-4/30 bg-chart-4/10 text-chart-4',
+          'border-warning/30 bg-warning/10 text-warning',
         quality === 'poor' &&
           'border-destructive/30 bg-destructive/10 text-destructive',
         quality === 'unknown' &&
@@ -894,7 +894,7 @@ function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
         className={cn(
           'size-2 rounded-full',
           quality === 'good' && 'bg-primary',
-          quality === 'fair' && 'bg-chart-4',
+          quality === 'fair' && 'bg-warning',
           quality === 'poor' && 'bg-destructive',
           quality === 'unknown' && 'bg-muted-foreground',
         )}

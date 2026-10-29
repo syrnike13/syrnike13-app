@@ -1,14 +1,12 @@
-# Prism (vendored)
+# Prism 0.4.0 (vendored)
 
-Исходник `@empatraai/prism@0.2.0` из `empatraai/empatra-libraries`,
-`packages/prism`. Скопирован в репозиторий по решению о полном переходе
-на Prism (ADR-0016), без npm-пакета.
+Буквальная копия runtime-исходников и CSS `@empatraai/prism@0.4.0` из
+`empatraai/empatra-libraries`, commit `63f412ec2d3af20edffac34e390333641e9e7a2d`.
+Файлы из upstream `packages/prism/src/` лежат здесь без дополнительной папки `src`;
+`semantic.css`, `tailwind.css` и `LICENSE` скопированы без изменений.
 
-- `color-utils.ts` — OKLab/hex-утилиты.
-- `prism-generator.ts` — генерация семантических токенов из якорей.
-- `prism-defaults.ts`, `types.ts` — дефолтные якоря и контракт.
-- `theme.ts` — утилиты применения темы (используются как справка; приложение
-  применяет токены через `packages/ui/src/tokens/apply.ts`).
-
-При обновлении Prism обновите эти файлы из upstream и прогоните
-`pnpm ui:test`, `pnpm web:test`, `pnpm check:ui`.
+Это не npm-зависимость. Не правьте библиотеку локально: настройки, хранение,
+desktop-контракты и адаптация поверхностей принадлежат соседним модулям `tokens`.
+При обновлении копируйте исходники и CSS целиком из зафиксированной версии,
+сверяйте содержимое файлов и запускайте `pnpm lint:design`, проверки типов,
+тесты и сборки затронутых приложений.

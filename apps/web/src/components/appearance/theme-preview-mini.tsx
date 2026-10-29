@@ -10,6 +10,9 @@ type PreviewPalette = {
   card: string
   line: string
   accent: string
+  gradient: string
+  frame: string
+  panel: string
 }
 
 function paletteFor(
@@ -19,10 +22,13 @@ function paletteFor(
   const colors = themePreviewColors(theme, variant)
   return {
     background: colors.background,
-    sidebar: colors.sidebar,
+    sidebar: colors.navigation,
     card: colors.card,
     line: colors.muted,
     accent: colors.primary,
+    gradient: colors.gradient,
+    frame: colors.frame,
+    panel: colors.panel,
   }
 }
 
@@ -43,7 +49,7 @@ function PreviewFrame({ palette }: { palette: PreviewPalette }) {
   return (
     <div
       aria-hidden
-      className="flex h-full w-full overflow-hidden rounded-md bg-(--mini-bg)"
+      className="theme-mini-backdrop h-full w-full overflow-hidden rounded-md bg-(--mini-bg)"
       style={
         {
           '--mini-bg': palette.background,
@@ -51,35 +57,40 @@ function PreviewFrame({ palette }: { palette: PreviewPalette }) {
           '--mini-card': palette.card,
           '--mini-line': palette.line,
           '--mini-accent': palette.accent,
+          '--mini-gradient': palette.gradient,
+          '--mini-frame': palette.frame,
+          '--mini-panel': palette.panel,
         } as CSSVars
       }
     >
-      <div className="flex w-1/5 flex-col gap-1.5 bg-(--mini-sidebar) p-2">
-        <span className="block h-1.5 w-3/4 rounded-full bg-(--mini-accent)" />
-        <Line className="w-full" />
-        <Line className="w-5/6" />
-        <Line className="w-2/3" />
-      </div>
-      <div className="flex flex-1 flex-col justify-between gap-2 p-2">
-        <div className="flex flex-col gap-1.5">
-          <span className="block h-1.5 w-1/2 rounded-full bg-(--mini-accent)" />
-          <Line className="w-4/5" />
-          <Line className="w-3/5" />
-        </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-(--mini-card) px-2 py-1.5">
-          <Line className="w-2/3" />
-          <span className="ml-auto block size-1.5 shrink-0 rounded-full bg-(--mini-accent)" />
-        </div>
-      </div>
-      <div className="flex w-1/4 flex-col gap-1.5 bg-(--mini-sidebar) p-2">
-        <div className="flex items-center gap-1">
-          <span className="block size-1.5 rounded-full bg-(--mini-accent)" />
+      <div className="flex h-full w-full bg-(--mini-frame)">
+        <div className="flex w-1/5 flex-col gap-1.5 bg-(--mini-sidebar) p-2">
+          <span className="block h-1.5 w-3/4 rounded-full bg-(--mini-accent)" />
+          <Line className="w-full" />
+          <Line className="w-5/6" />
           <Line className="w-2/3" />
         </div>
-        <Line className="w-3/4" />
-        <div className="flex items-center gap-1">
-          <span className="block size-1.5 rounded-full bg-(--mini-line)" />
-          <Line className="w-1/2" />
+        <div className="flex flex-1 flex-col justify-between gap-2 bg-(--mini-panel) p-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="block h-1.5 w-1/2 rounded-full bg-(--mini-accent)" />
+            <Line className="w-4/5" />
+            <Line className="w-3/5" />
+          </div>
+          <div className="flex items-center gap-1.5 rounded-full bg-(--mini-card) px-2 py-1.5">
+            <Line className="w-2/3" />
+            <span className="ml-auto block size-1.5 shrink-0 rounded-full bg-(--mini-accent)" />
+          </div>
+        </div>
+        <div className="flex w-1/4 flex-col gap-1.5 bg-(--mini-sidebar) p-2">
+          <div className="flex items-center gap-1">
+            <span className="block size-1.5 rounded-full bg-(--mini-accent)" />
+            <Line className="w-2/3" />
+          </div>
+          <Line className="w-3/4" />
+          <div className="flex items-center gap-1">
+            <span className="block size-1.5 rounded-full bg-(--mini-line)" />
+            <Line className="w-1/2" />
+          </div>
         </div>
       </div>
     </div>

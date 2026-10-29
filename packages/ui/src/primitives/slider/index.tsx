@@ -13,6 +13,8 @@ export type SliderMark = {
 }
 
 type SliderProps = SliderPrimitive.Root.Props & {
+  /** Product extension: a color-domain hue spectrum, supplied by the picker. */
+  variant?: "default" | "hue"
   /** Ticks drawn under the track at the given slider values. */
   marks?: readonly SliderMark[]
   /** Accessible value text for the thumb, computed from the slider value. */
@@ -30,6 +32,7 @@ function Slider({
   min = 0,
   max = 100,
   orientation = "horizontal",
+  variant = "default",
   marks,
   getAriaValueText,
   ...props
@@ -49,6 +52,7 @@ function Slider({
     <SliderPrimitive.Root
       className={cn("group/slider data-horizontal:w-full", className)}
       data-slot="slider"
+      data-variant={variant}
       defaultValue={defaultValue}
       value={value}
       min={min}
@@ -60,7 +64,7 @@ function Slider({
       <SliderPrimitive.Control
         className={cn(
           "relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
-          hasMarks && "data-horizontal:h-11",
+          (hasMarks || variant === "hue") && "data-horizontal:h-11",
         )}
       >
         {hasMarks ? (
@@ -93,11 +97,17 @@ function Slider({
         ) : null}
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative grow overflow-hidden rounded-full bg-foreground/20 select-none data-horizontal:h-1.5 data-horizontal:w-full data-vertical:h-full data-vertical:w-1.5"
+          className={cn(
+            "relative grow overflow-hidden rounded-full bg-foreground/20 select-none data-horizontal:h-1.5 data-horizontal:w-full data-vertical:h-full data-vertical:w-1.5",
+            variant === "hue" && "bg-(image:--slider-spectrum) data-horizontal:h-3",
+          )}
         >
           <SliderPrimitive.Indicator
             data-slot="slider-range"
-            className="rounded-full bg-primary select-none data-horizontal:h-full data-vertical:w-full"
+            className={cn(
+              "rounded-full bg-primary select-none data-horizontal:h-full data-vertical:w-full",
+              variant === "hue" && "hidden",
+            )}
           />
         </SliderPrimitive.Track>
         {Array.from({ length: _values.length }, (_, index) => (
@@ -110,7 +120,9 @@ function Slider({
               // Preset sliders (marks) keep a visible thumb; `size-5` must
               // match --slider-thumb-size in slider-mark-position. Plain
               // sliders follow Discord: the thumb shows on hover or drag.
-              hasMarks
+              variant === "hue"
+                ? "size-4 border-2 border-on-media bg-(--slider-hue) ring-1 ring-media-backdrop/50"
+                : hasMarks
                 ? "size-5 border border-ring bg-primary-foreground transition-[color,box-shadow] hover:ring-3 active:ring-3"
                 : "size-3.5 bg-primary opacity-0 transition-opacity group-hover/slider:opacity-100 has-focus-visible:opacity-100 data-dragging:opacity-100",
             )}

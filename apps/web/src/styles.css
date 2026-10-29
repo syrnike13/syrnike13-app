@@ -13,9 +13,11 @@
   /* Profile cards override it so cut-outs match their surface. */
   --profile-surface: var(--popover);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
-  --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
+  --font-display:
+    'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
   --radius: 0.5rem;
   --shadow-x: 0;
@@ -26,11 +28,15 @@
   --shadow-color: oklch(0 0 0);
   --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
   --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
-  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
-  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-sm:
+    0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+  --shadow-md:
+    0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+  --shadow-lg:
+    0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+  --shadow-xl:
+    0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
   --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
@@ -229,30 +235,38 @@ html {
   }
 
   :is(
-    .scrollbar-minimal,
-    .scrollbar-overlay,
-    .overflow-y-auto,
-    .overflow-auto,
-    .overflow-x-auto,
-    .overflow-scroll
-  ):is(:hover, :focus-within, [data-scrolling='true'])::-webkit-scrollbar-thumb {
+      .scrollbar-minimal,
+      .scrollbar-overlay,
+      .overflow-y-auto,
+      .overflow-auto,
+      .overflow-x-auto,
+      .overflow-scroll
+    ):is(
+      :hover,
+      :focus-within,
+      [data-scrolling='true']
+    )::-webkit-scrollbar-thumb {
     background-color: var(--scrollbar-thumb);
   }
 
   :is(
-    .scrollbar-minimal,
-    .scrollbar-overlay,
-    .overflow-y-auto,
-    .overflow-auto,
-    .overflow-x-auto,
-    .overflow-scroll
-  ):is(:hover, :focus-within, [data-scrolling='true'])::-webkit-scrollbar-thumb:hover {
+      .scrollbar-minimal,
+      .scrollbar-overlay,
+      .overflow-y-auto,
+      .overflow-auto,
+      .overflow-x-auto,
+      .overflow-scroll
+    ):is(
+      :hover,
+      :focus-within,
+      [data-scrolling='true']
+    )::-webkit-scrollbar-thumb:hover {
     background-color: var(--scrollbar-thumb-hover);
   }
 
   @media (prefers-reduced-motion: reduce) {
     :is(
-        .scrollbar-minimal,
+      .scrollbar-minimal,
       .scrollbar-overlay,
       .overflow-y-auto,
       .overflow-auto,
@@ -278,6 +292,11 @@ html {
 
 .theme-surface-lowest {
   background: var(--theme-surface-lowest, var(--background));
+}
+
+.theme-mini-backdrop {
+  background-image: var(--mini-gradient);
+  background-size: cover;
 }
 
 .theme-surface-app-frame {
@@ -316,17 +335,6 @@ html {
   background: var(--theme-surface-solid, var(--popover));
 }
 
-/*
- * Floating surfaces (user panel, composer, DM profile, toolbars) sit lighter
- * than the columns, where the solid Prism hover fill nearly vanishes. Inside
- * them the hover fill is a translucent wash of the text colour, so it reads
- * on any surface in light and dark themes.
- */
-.gradient-surface-floating {
-  --hover: color-mix(in oklab, var(--foreground) 8%, transparent);
-  --sidebar-accent: var(--hover);
-}
-
 :root[data-theme-gradient]:not([data-theme-gradient='none']) body {
   background: transparent;
 }
@@ -335,48 +343,56 @@ html {
   --theme-toast-surface: var(--theme-surface-floating);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-navigation {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-navigation {
   background: var(--theme-surface-navigation);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-lowest {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-lowest {
   background: var(--theme-surface-lowest);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-content {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-content {
   background: var(--theme-surface-content);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-chrome {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-chrome {
   background: var(--theme-surface-chrome);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-raised {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-raised {
   background: var(--theme-surface-raised);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-card {
-  background: var(--theme-surface-raised);
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-card {
+  background: var(--card);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-input {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-input {
   background: var(--theme-surface-input);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-floating {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-floating {
   background: var(--theme-surface-floating);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-solid {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .gradient-surface-solid {
   background: var(--theme-surface-solid);
   backdrop-filter: none;
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) :is(
-    .gradient-surface-raised,
-    .gradient-surface-floating
-  ) {
-  backdrop-filter: blur(14px) saturate(115%);
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  :is(.gradient-surface-raised, .gradient-surface-floating) {
+  /* Independent surfaces stay opaque; Prism reserves alpha for window layers. */
+  backdrop-filter: none;
 }
 
 .auth-shell {
@@ -392,10 +408,8 @@ html {
   min-height: 0;
   flex: 1;
   grid-template-rows: auto 1fr auto;
-  padding:
-    max(1rem, env(safe-area-inset-top))
-    max(1rem, env(safe-area-inset-right))
-    max(1rem, env(safe-area-inset-bottom))
+  padding: max(1rem, env(safe-area-inset-top))
+    max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
     max(1rem, env(safe-area-inset-left));
 }
 
@@ -510,7 +524,8 @@ html {
   }
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .telegram-promo-surface {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .telegram-promo-surface {
   background:
     linear-gradient(
       to right,
@@ -521,7 +536,8 @@ html {
     var(--theme-surface-floating);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .telegram-promo-icon {
+:root[data-theme-gradient]:not([data-theme-gradient='none'])
+  .telegram-promo-icon {
   background: var(--theme-backdrop);
   box-shadow: inset 0 0 0 1px
     color-mix(in oklab, var(--foreground) 24%, transparent);
@@ -532,7 +548,9 @@ html {
     opacity: 0;
     transform: translateY(-34px);
   }
-  8% { opacity: 1; }
+  8% {
+    opacity: 1;
+  }
   100% {
     opacity: 1;
     transform: none;
@@ -557,12 +575,24 @@ html {
   stroke-width: 0.12;
 }
 
-.cake-logo-piece[data-shape='I'] .cake-tetromino-blocks { fill: var(--chart-1); }
-.cake-logo-piece[data-shape='O'] .cake-tetromino-blocks { fill: var(--chart-2); }
-.cake-logo-piece[data-shape='T'] .cake-tetromino-blocks { fill: var(--chart-3); }
-.cake-logo-piece[data-shape='S'] .cake-tetromino-blocks { fill: var(--chart-4); }
-.cake-logo-piece[data-shape='Z'] .cake-tetromino-blocks { fill: var(--chart-5); }
-.cake-logo-piece[data-shape='L'] .cake-tetromino-blocks { fill: var(--warning); }
+.cake-logo-piece[data-shape='I'] .cake-tetromino-blocks {
+  fill: var(--chart-1);
+}
+.cake-logo-piece[data-shape='O'] .cake-tetromino-blocks {
+  fill: var(--chart-2);
+}
+.cake-logo-piece[data-shape='T'] .cake-tetromino-blocks {
+  fill: var(--chart-3);
+}
+.cake-logo-piece[data-shape='S'] .cake-tetromino-blocks {
+  fill: var(--chart-4);
+}
+.cake-logo-piece[data-shape='Z'] .cake-tetromino-blocks {
+  fill: var(--chart-5);
+}
+.cake-logo-piece[data-shape='L'] .cake-tetromino-blocks {
+  fill: var(--warning);
+}
 
 .cake-logo-mask {
   mask-type: alpha;
@@ -637,8 +667,12 @@ html {
 }
 
 @keyframes cake-frame {
-  0% { opacity: 1; }
-  50% { opacity: 0; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Halloween: moon, candle-lit pumpkin and bats. */
@@ -651,13 +685,27 @@ html {
 }
 
 @keyframes cake-candle {
-  0% { opacity: 1; }
-  18% { opacity: 0.7; }
-  24% { opacity: 1; }
-  52% { opacity: 0.85; }
-  58% { opacity: 0.6; }
-  64% { opacity: 1; }
-  88% { opacity: 0.8; }
+  0% {
+    opacity: 1;
+  }
+  18% {
+    opacity: 0.7;
+  }
+  24% {
+    opacity: 1;
+  }
+  52% {
+    opacity: 0.85;
+  }
+  58% {
+    opacity: 0.6;
+  }
+  64% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 0.8;
+  }
 }
 
 .cake-bat {
@@ -672,12 +720,29 @@ html {
 }
 
 @keyframes cake-bat {
-  0% { opacity: 0; transform: translate(33px, 3px); }
-  6% { opacity: 1; transform: translate(28px, 0); }
-  20% { transform: translate(18px, -3px); }
-  34% { transform: translate(6px, -3px); }
-  48% { opacity: 1; transform: translate(-5px, 0); }
-  56%, 100% { opacity: 0; transform: translate(-13px, -1px); }
+  0% {
+    opacity: 0;
+    transform: translate(33px, 3px);
+  }
+  6% {
+    opacity: 1;
+    transform: translate(28px, 0);
+  }
+  20% {
+    transform: translate(18px, -3px);
+  }
+  34% {
+    transform: translate(6px, -3px);
+  }
+  48% {
+    opacity: 1;
+    transform: translate(-5px, 0);
+  }
+  56%,
+  100% {
+    opacity: 0;
+    transform: translate(-13px, -1px);
+  }
 }
 
 /* New Year: blinking tree, twinkling star and snowfall. */
@@ -686,22 +751,38 @@ html {
 }
 
 @keyframes cake-star {
-  0% { opacity: 1; }
-  40% { opacity: 0.6; }
-  55% { opacity: 1; }
-  70% { opacity: 0.8; }
+  0% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.6;
+  }
+  55% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.8;
+  }
 }
 
 .cake-light {
   animation: cake-light 1.8s steps(1, end) infinite;
 }
 
-.cake-light[data-group='1'] { animation-delay: -0.6s; }
-.cake-light[data-group='2'] { animation-delay: -1.2s; }
+.cake-light[data-group='1'] {
+  animation-delay: -0.6s;
+}
+.cake-light[data-group='2'] {
+  animation-delay: -1.2s;
+}
 
 @keyframes cake-light {
-  0% { opacity: 1; }
-  66% { opacity: 0.3; }
+  0% {
+    opacity: 1;
+  }
+  66% {
+    opacity: 0.3;
+  }
 }
 
 .cake-snowflake {
@@ -710,11 +791,15 @@ html {
 }
 
 @keyframes cake-snow-fall {
-  0% { transform: translate(0, var(--snow-from)); }
+  0% {
+    transform: translate(0, var(--snow-from));
+  }
   50% {
     transform: translate(1px, calc((var(--snow-from) + var(--snow-to)) / 2));
   }
-  100% { transform: translate(0, var(--snow-to)); }
+  100% {
+    transform: translate(0, var(--snow-to));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1070,7 +1155,11 @@ html {
  * so text keeps the surface's contrast.
  */
 @utility profile-theme {
-  --profile-surface: color-mix(in oklab, var(--profile-primary) 35%, var(--profile-base));
+  --profile-surface: color-mix(
+    in oklab,
+    var(--profile-primary) 35%,
+    var(--profile-base)
+  );
   background-image: linear-gradient(
     color-mix(in oklab, var(--profile-primary) 35%, var(--profile-base)),
     color-mix(in oklab, var(--profile-accent) 35%, var(--profile-base))

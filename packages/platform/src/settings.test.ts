@@ -433,12 +433,12 @@ describe('desktop local settings contract', () => {
       normalizeAppearanceGradientSettings({
         colors: ['#5865f2', ' #f4f4f5 ', 'invalid'],
         angle: 999,
-        saturation: -10,
+        mix: -10,
       }),
     ).toEqual({
       colors: ['#5865F2', '#F4F4F5'],
-      angle: 360,
-      saturation: 0,
+      angle: 279,
+      mix: 0,
     })
   })
 
@@ -449,7 +449,7 @@ describe('desktop local settings contract', () => {
           gradient: {
             colors: ['#112233', '#AABBCC'],
             angle: 45,
-            saturation: 80,
+            mix: 80,
           },
         },
       }),
@@ -458,7 +458,7 @@ describe('desktop local settings contract', () => {
         gradient: {
           colors: ['#112233', '#AABBCC'],
           angle: 45,
-          saturation: 80,
+          mix: 80,
         },
       },
     })

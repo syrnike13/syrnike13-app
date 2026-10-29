@@ -86,7 +86,7 @@ function AvatarBadge({
         anchored &&
           "data-presence:avatar-badge-anchor data-count:avatar-badge-anchor data-presence:ring-0 data-count:ring-0",
         presence &&
-          "data-presence:avatar-presence-dot data-[presence=dnd]:bg-destructive data-[presence=focus]:bg-chart-5 data-[presence=idle]:bg-chart-2 data-[presence=offline]:bg-muted-foreground data-[presence=online]:bg-chart-3",
+          "data-presence:avatar-presence-dot data-[presence=dnd]:bg-destructive data-[presence=focus]:bg-agent data-[presence=idle]:bg-warning data-[presence=offline]:bg-muted-foreground data-[presence=online]:bg-success",
         count != null &&
           "bg-destructive-contrast leading-none font-bold text-destructive-foreground tabular-nums",
         className

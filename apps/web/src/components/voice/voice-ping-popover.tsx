@@ -95,7 +95,7 @@ export function VoicePingPopoverContent({
             className={cn(
               'size-2.5 rounded-full',
               quality === 'good' && 'bg-primary',
-              quality === 'fair' && 'bg-chart-4',
+              quality === 'fair' && 'bg-warning',
               quality === 'poor' && 'bg-destructive',
               quality === 'unknown' && 'bg-muted-foreground',
             )}

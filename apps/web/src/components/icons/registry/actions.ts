@@ -1,5 +1,7 @@
 import {
   RiAddCircleLine,
+  RiDiceLine,
+  RiDropperLine,
   RiAddLine,
   RiCheckLine,
   RiCheckboxBlankCircleLine,
@@ -30,6 +32,16 @@ export const Trash2Icon = defineIcon(RiDeleteBinLine, {
 export const ShuffleIcon = defineIcon(RiShuffleLine, {
   pack: 'remixicon',
   name: 'RiShuffleLine',
+})
+
+export const DiceIcon = defineIcon(RiDiceLine, {
+  pack: 'remixicon',
+  name: 'RiDiceLine',
+})
+
+export const DropperIcon = defineIcon(RiDropperLine, {
+  pack: 'remixicon',
+  name: 'RiDropperLine',
 })
 
 export const SunIcon = defineIcon(RiSunLine, {

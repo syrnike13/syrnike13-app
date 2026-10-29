@@ -59,7 +59,9 @@ describe('applyThemeToDocument', () => {
     const primary = document.documentElement.style.getPropertyValue('--primary')
     expect(primary.trim()).toBe('#fafafa')
     expect(
-      document.documentElement.style.getPropertyValue('--theme-surface-content'),
+      document.documentElement.style.getPropertyValue(
+        '--theme-surface-content',
+      ),
     ).toBe(document.documentElement.style.getPropertyValue('--card'))
   })
 
@@ -72,15 +74,35 @@ describe('applyThemeToDocument', () => {
     const style = document.documentElement.style
     expect(style.getPropertyValue('--primary').trim()).toBe('#a85b3b')
     expect(style.getPropertyValue('--ring').trim()).toBe('#a85b3b')
-    expect(style.getPropertyValue('--destructive').trim()).toBe(
-      'oklch(0.7040 0.1910 22.2160)',
-    )
-    expect(style.getPropertyValue('--destructive-contrast').trim()).toBe(
-      'oklch(0.5156 0.1810 22.5393)',
-    )
+    // Status/chart roles are now supplied by Prism's semantic.css, not inline JS.
+    expect(style.getPropertyValue('--destructive')).toBe('')
   })
 
   it('reads system preference helper without throwing', () => {
     expect(typeof readSystemPrefersDark()).toBe('boolean')
+  })
+
+  it('clears window gradients and alpha layers when switching back to a solid theme', () => {
+    const settings = {
+      colorMode: 'dark' as const,
+      gradient: { colors: ['#4c1d95', '#be185d'], angle: 45, mix: 60 },
+    }
+    applyThemeToDocument(settings)
+    const root = document.documentElement
+    expect(root.dataset.prismGradient).toBe('true')
+    expect(root.dataset.themeGradient).toBe('prism')
+    expect(root.style.getPropertyValue('--theme-backdrop')).toContain(
+      'linear-gradient',
+    )
+    expect(root.style.getPropertyValue('--theme-surface-solid')).toMatch(
+      /^#[0-9a-f]{6}$/,
+    )
+    applyThemeToDocument({ colorMode: 'light' })
+    expect(root.dataset.prismGradient).toBeUndefined()
+    expect(root.dataset.themeGradient).toBe('none')
+    expect(root.style.getPropertyValue('--app-gradient')).toBe('none')
+    expect(root.style.getPropertyValue('--layer-frame')).toBe(
+      root.style.getPropertyValue('--background'),
+    )
   })
 })
