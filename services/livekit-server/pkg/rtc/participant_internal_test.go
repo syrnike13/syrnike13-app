@@ -229,7 +229,7 @@ func TestTrackPublishing(t *testing.T) {
 		require.Equal(t, 2, sink.WriteMessageCallCount())
 	})
 
-	t.Run("should reject screen share above preset bitrate", func(t *testing.T) {
+	t.Run("should reject screen share above max bitrate", func(t *testing.T) {
 		p := newParticipantForTest("test")
 		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
 
@@ -252,29 +252,38 @@ func TestTrackPublishing(t *testing.T) {
 		require.Nil(t, p.pendingTracks["cid"])
 	})
 
-	t.Run("should reject screen share outside preset ladder", func(t *testing.T) {
-		p := newParticipantForTest("test")
-		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+	t.Run("should reject screen share above max resolution in either orientation", func(t *testing.T) {
+		sizes := []struct {
+			name          string
+			width, height uint32
+		}{
+			{name: "landscape", width: 3840, height: 2160},
+			{name: "portrait", width: 1600, height: 3200},
+		}
 
-		p.AddTrack(&livekit.AddTrackRequest{
-			Cid:    "cid",
-			Name:   "screen",
-			Type:   livekit.TrackType_VIDEO,
-			Source: livekit.TrackSource_SCREEN_SHARE,
-			Width:  1920,
-			Height: 1080,
-			Layers: []*livekit.VideoLayer{
-				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 5_000_000},
-			},
-		})
+		for _, size := range sizes {
+			t.Run(size.name, func(t *testing.T) {
+				p := newParticipantForTest("test")
+				sink := p.params.Sink.(*routingfakes.FakeMessageSink)
 
-		require.Equal(t, 1, sink.WriteMessageCallCount())
-		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
-		require.Equal(t, livekit.RequestResponse_NOT_ALLOWED, res.GetRequestResponse().Reason)
-		require.Nil(t, p.pendingTracks["cid"])
+				p.AddTrack(&livekit.AddTrackRequest{
+					Cid:    "cid",
+					Name:   "screen",
+					Type:   livekit.TrackType_VIDEO,
+					Source: livekit.TrackSource_SCREEN_SHARE,
+					Width:  size.width,
+					Height: size.height,
+				})
+
+				require.Equal(t, 1, sink.WriteMessageCallCount())
+				res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+				require.Equal(t, livekit.RequestResponse_NOT_ALLOWED, res.GetRequestResponse().Reason)
+				require.Nil(t, p.pendingTracks["cid"])
+			})
+		}
 	})
 
-	t.Run("should allow desktop and browser screen share preset bitrates", func(t *testing.T) {
+	t.Run("should allow desktop, browser and phone screen shares", func(t *testing.T) {
 		presets := []struct {
 			name    string
 			width   uint32
@@ -284,8 +293,9 @@ func TestTrackPublishing(t *testing.T) {
 			{name: "desktop medium", width: 1920, height: 1080, bitrate: 4_000_000},
 			{name: "desktop high", width: 1920, height: 1080, bitrate: 8_000_000},
 			{name: "browser low", width: 1280, height: 720, bitrate: 3_000_000},
-			{name: "browser high", width: 1920, height: 1080, bitrate: 6_000_000},
 			{name: "browser high60", width: 1920, height: 1080, bitrate: 10_000_000},
+			{name: "phone portrait", width: 1080, height: 2424, bitrate: 2_500_000},
+			{name: "phone landscape", width: 3120, height: 1440, bitrate: 1_496_667},
 		}
 
 		for _, preset := range presets {

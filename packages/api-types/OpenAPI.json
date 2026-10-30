@@ -8395,7 +8395,7 @@
             "minItems": 2
           },
           "screen_share_resolution": {
-            "description": "max screen share resolution (width, height)",
+            "description": "max screen share resolution (long side, short side) in either orientation",
             "type": "array",
             "items": {
               "type": "integer",

@@ -130,7 +130,7 @@ pub struct UserLimits {
     pub video_resolution: [i64; 2],
     /// min/max aspect ratios
     pub video_aspect_ratio: [f64; 2],
-    /// max screen share resolution (width, height)
+    /// max screen share resolution (long side, short side) in either orientation
     pub screen_share_resolution: [i64; 2],
     /// max screen share video bitrate
     pub screen_share_bitrate: i64,

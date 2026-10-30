@@ -282,8 +282,9 @@ video_resolution = [1080, 720]
 # Minimum and maximum aspect ratio of video streams in voice calls
 video_aspect_ratio = [0.3, 2.5]
 
-# Maximum resolution (width, height) of screen share streams in voice calls
-screen_share_resolution = [1920, 1080]
+# Maximum resolution (long side, short side) of screen share streams in voice calls,
+# in either orientation so phones can share their portrait screen natively
+screen_share_resolution = [3200, 1440]
 
 # Maximum bitrate (bits per second) of screen share streams in voice calls
 screen_share_bitrate = 10_000_000
@@ -329,8 +330,9 @@ video_resolution = [1280, 720]
 # Minimum and maximum aspect ratio of video streams in voice calls
 video_aspect_ratio = [0.3, 2.5]
 
-# Maximum resolution (width, height) of screen share streams in voice calls
-screen_share_resolution = [1920, 1080]
+# Maximum resolution (long side, short side) of screen share streams in voice calls,
+# in either orientation so phones can share their portrait screen natively
+screen_share_resolution = [3200, 1440]
 
 # Maximum bitrate (bits per second) of screen share streams in voice calls
 screen_share_bitrate = 10_000_000

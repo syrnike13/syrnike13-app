@@ -777,7 +777,7 @@ export interface components {
       video_resolution: number[];
       /** @description min/max aspect ratios */
       video_aspect_ratio: number[];
-      /** @description max screen share resolution (width, height) */
+      /** @description max screen share resolution (long side, short side) in either orientation */
       screen_share_resolution: number[];
       /**
        * Format: int64

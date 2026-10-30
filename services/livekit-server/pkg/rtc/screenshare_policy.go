@@ -20,12 +20,18 @@ import (
 	"github.com/livekit/protocol/livekit"
 )
 
+// Screen share bounds apply in either orientation: phones share their portrait
+// screen at native resolution, desktops share landscape.
 const (
-	screenShareMaxWidth   = 1920
-	screenShareMaxHeight  = 1080
-	screenShareMaxBitrate = 10_000_000
-	screenShareMaxLayers  = 2
+	screenShareMaxLongSide  = 3200
+	screenShareMaxShortSide = 1440
+	screenShareMaxBitrate   = 10_000_000
+	screenShareMaxLayers    = 2
 )
+
+func fitsScreenShareBounds(width, height uint32) bool {
+	return max(width, height) <= screenShareMaxLongSide && min(width, height) <= screenShareMaxShortSide
+}
 
 // Screen sharing prioritizes fresh frames over extra receiver playout buffering.
 // An explicitly enabled room/subscriber policy still takes precedence.
@@ -43,8 +49,8 @@ func validateScreenSharePublish(req *livekit.AddTrackRequest) error {
 	if req.Type != livekit.TrackType_VIDEO {
 		return fmt.Errorf("screen share must be a video track")
 	}
-	if req.Width > screenShareMaxWidth || req.Height > screenShareMaxHeight {
-		return fmt.Errorf("screen share resolution %dx%d exceeds %dx%d", req.Width, req.Height, screenShareMaxWidth, screenShareMaxHeight)
+	if !fitsScreenShareBounds(req.Width, req.Height) {
+		return fmt.Errorf("screen share resolution %dx%d exceeds %dx%d", req.Width, req.Height, screenShareMaxLongSide, screenShareMaxShortSide)
 	}
 	if err := validateScreenShareLayers(req.Layers); err != nil {
 		return err
@@ -68,30 +74,12 @@ func validateScreenShareLayers(layers []*livekit.VideoLayer) error {
 		if layer == nil {
 			continue
 		}
-		if layer.Width > screenShareMaxWidth || layer.Height > screenShareMaxHeight {
-			return fmt.Errorf("screen share layer %dx%d exceeds %dx%d", layer.Width, layer.Height, screenShareMaxWidth, screenShareMaxHeight)
+		if !fitsScreenShareBounds(layer.Width, layer.Height) {
+			return fmt.Errorf("screen share layer %dx%d exceeds %dx%d", layer.Width, layer.Height, screenShareMaxLongSide, screenShareMaxShortSide)
 		}
 		if layer.Bitrate > screenShareMaxBitrate {
 			return fmt.Errorf("screen share layer bitrate %d exceeds %d", layer.Bitrate, screenShareMaxBitrate)
 		}
-		if !isAllowedScreenShareLayer(layer) {
-			return fmt.Errorf("screen share layer %dx%d bitrate %d is outside allowed presets", layer.Width, layer.Height, layer.Bitrate)
-		}
 	}
 	return nil
-}
-
-func isAllowedScreenShareLayer(layer *livekit.VideoLayer) bool {
-	switch layer.Bitrate {
-	case 625_000:
-		return layer.Width <= 960 && layer.Height <= 540
-	case 2_500_000:
-		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
-	case 3_000_000:
-		return layer.Width <= 1280 && layer.Height <= 720
-	case 2_000_000, 4_000_000, 6_000_000, 8_000_000, 10_000_000:
-		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
-	default:
-		return false
-	}
 }
