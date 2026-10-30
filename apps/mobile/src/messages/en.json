@@ -1,12 +1,33 @@
 {
   "mobile": {
-    "preview": {
-      "title": "Syrnike",
-      "theme": "Theme: {name}",
-      "nextTheme": "Next theme",
-      "secondary": "Secondary",
-      "outline": "Outline",
-      "destructive": "Delete"
+    "login": {
+      "title": "Sign in to Syrnike",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "failed": "Could not sign in. Check your email and password.",
+      "mfaUnsupported": "Two-factor sign-in is not supported in the mobile app yet.",
+      "disabled": "This account is disabled."
+    },
+    "voice": {
+      "title": "Voice channels",
+      "logout": "Sign out",
+      "loading": "Loading servers…",
+      "notificationTitle": "You are in a voice channel",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "deafen": "Deafen",
+      "undeafen": "Undeafen",
+      "shareScreen": "Share screen",
+      "stopScreen": "Stop sharing",
+      "leave": "Disconnect",
+      "connection": {
+        "disconnected": "Not connected",
+        "connecting": "Connecting…",
+        "connected": "Connected",
+        "recovering": "Reconnecting…",
+        "failed": "Connection failed"
+      }
     }
   }
 }

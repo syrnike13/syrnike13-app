@@ -1,4 +1,4 @@
 # Expo cache and Continuous Native Generation output (expo prebuild)
 .expo/
-android/
-ios/
+/android/
+/ios/

@@ -1,19 +1,18 @@
 import './global.css'
 
-import { LocaleProvider, useTranslations } from '@syrnike13/ui/i18n'
-import { listThemes } from '@syrnike13/ui/tokens'
-import { Button } from '@syrnike13/ui-native/primitives/button'
-import { Text } from '@syrnike13/ui-native/primitives/text'
+import { LocaleProvider } from '@syrnike13/ui/i18n'
 import { StatusBar } from 'expo-status-bar'
-import { useState } from 'react'
-import { View } from 'react-native'
+import { useEffect, useState } from 'react'
 import {
   SafeAreaProvider,
   SafeAreaView as NativeSafeAreaView,
 } from 'react-native-safe-area-context'
 import { withUniwind } from 'uniwind'
 
+import { clearSession, loadSession, type Session } from './auth/session'
 import { catalogs } from './messages'
+import { LoginScreen } from './screens/login-screen'
+import { VoiceScreen } from './screens/voice-screen'
 import { applyTheme } from './theme'
 
 // Uniwind styles core components only; third-party ones need `withUniwind`.
@@ -21,50 +20,27 @@ const SafeAreaView = withUniwind(NativeSafeAreaView)
 
 applyTheme({ colorMode: 'system' })
 
-/** Scaffold screen: checks shared i18n, Prism themes and native primitives. */
-function ThemePreview() {
-  const t = useTranslations('mobile.preview')
-  const themes = listThemes()
-  const [index, setIndex] = useState(0)
+export function App() {
+  // `undefined` while the stored session is being read.
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
 
-  function nextTheme() {
-    const next = (index + 1) % themes.length
-    setIndex(next)
-    applyTheme({ colorMode: 'system', themeId: themes[next]!.id })
+  useEffect(() => {
+    void loadSession().then(setSession)
+  }, [])
+
+  async function logout() {
+    await clearSession()
+    setSession(null)
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-1 justify-center gap-4 px-4">
-        <Text className="text-2xl font-semibold">{t('title')}</Text>
-        <Text className="text-muted-foreground">
-          {t('theme', { name: themes[index]!.id })}
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          <Button onPress={nextTheme}>
-            <Text>{t('nextTheme')}</Text>
-          </Button>
-          <Button variant="secondary">
-            <Text>{t('secondary')}</Text>
-          </Button>
-          <Button variant="outline">
-            <Text>{t('outline')}</Text>
-          </Button>
-          <Button variant="destructive">
-            <Text>{t('destructive')}</Text>
-          </Button>
-        </View>
-      </View>
-      <StatusBar style="auto" />
-    </SafeAreaView>
-  )
-}
-
-export function App() {
-  return (
     <SafeAreaProvider>
       <LocaleProvider catalogs={catalogs}>
-        <ThemePreview />
+        <SafeAreaView className="flex-1 bg-background">
+          {session === null ? <LoginScreen onLogin={setSession} /> : null}
+          {session ? <VoiceScreen token={session.token} onLogout={logout} /> : null}
+        </SafeAreaView>
+        <StatusBar style="auto" />
       </LocaleProvider>
     </SafeAreaProvider>
   )

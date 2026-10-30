@@ -12,7 +12,14 @@ config.watchFolders = [
   path.join(workspaceRoot, 'node_modules'),
   path.join(workspaceRoot, 'packages/ui'),
   path.join(workspaceRoot, 'packages/ui-native'),
+  path.join(workspaceRoot, 'packages/platform'),
+  path.join(workspaceRoot, 'packages/api-types'),
 ]
+
+// Shared workspace packages are bundled from source, not from their dist builds.
+const SOURCE_ENTRIES = {
+  '@syrnike13/platform': path.join(workspaceRoot, 'packages/platform/src/index.ts'),
+}
 config.resolver.blockList = [/[\\/]android[\\/](app[\\/])?(build|\.cxx|\.gradle)[\\/].*/]
 
 // Shared web packages keep their own React in node_modules; a second copy
@@ -23,6 +30,9 @@ const SINGLETONS = /^(react|react-native)(\/|$)/
 const resolveRequest = config.resolver.resolveRequest
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const resolve = resolveRequest ?? context.resolveRequest
+  if (SOURCE_ENTRIES[moduleName]) {
+    return { type: 'sourceFile', filePath: SOURCE_ENTRIES[moduleName] }
+  }
   if (SINGLETONS.test(moduleName)) {
     return resolve({ ...context, originModulePath: appOrigin }, moduleName, platform)
   }

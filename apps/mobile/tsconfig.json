@@ -2,7 +2,8 @@
   "include": [
     "index.ts",
     "src/**/*.ts",
-    "src/**/*.tsx"
+    "src/**/*.tsx",
+    "modules/**/*.ts"
   ],
   "compilerOptions": {
     "target": "ES2022",
@@ -27,6 +28,12 @@
       ],
       "@syrnike13/ui-native/*": [
         "../../packages/ui-native/src/*"
+      ],
+      "@syrnike13/platform": [
+        "../../packages/platform/src/index.ts"
+      ],
+      "@syrnike13/api-types": [
+        "../../packages/api-types/src/index.ts"
       ]
     }
   },
