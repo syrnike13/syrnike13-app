@@ -131,6 +131,38 @@ void independentRevisionAndExplicitRetry() {
   until([&] { return owner.stats().state == ScreenAudioState::stopped; });
   require(owner.stop(std::chrono::steady_clock::now() + 2s), "Final stop failed");
 }
+void lostDeviceRestartsSameIntent() {
+  auto gate = std::make_shared<Gate>();
+  gate->release = true;
+  ScreenAudioOwner owner([gate] { return std::make_unique<Session>(gate); });
+  require(owner.applyDesired(1, ScreenAudioIntent{ScreenAudioMode::system_exclude_client,
+      AudioProcessIdentity::current()}), "Recovery intent rejected");
+  until([&] { return owner.stats().state == ScreenAudioState::running; });
+  {
+    std::scoped_lock lock(gate->mutex);
+    gate->failure = ScreenAudioFailure{ScreenAudioFailureCode::device_lost, E_FAIL};
+  }
+  until([&] { return owner.stats().recoveries == 1; });
+  const auto recovering = owner.stats();
+  require(recovering.state == ScreenAudioState::starting && !recovering.failure,
+          "Device loss surfaced as a failed path during recovery");
+  {
+    std::scoped_lock lock(gate->mutex);
+    gate->failure.reset();
+  }
+  until([&] { return owner.stats().state == ScreenAudioState::running; });
+  const auto recovered = owner.stats();
+  require(recovered.active_revision == 1 && recovered.last_failure &&
+              recovered.last_failure->code == ScreenAudioFailureCode::device_lost,
+          "Recovery lost its intent or reason");
+  {
+    std::scoped_lock lock(gate->mutex);
+    require(gate->starts == 2 && gate->stops == 1 &&
+                gate->modes.back() == ScreenAudioMode::system_exclude_client,
+            "Lost device was not restarted exactly once");
+  }
+  require(owner.stop(std::chrono::steady_clock::now() + 2s), "Recovered owner stop failed");
+}
 void concurrentStopJoinsOnce() {
   auto gate = std::make_shared<Gate>();
   gate->release = true;
@@ -175,6 +207,7 @@ int main() {
   try {
     syrnike::windows_media::tests::runFault("screen-audio-superseded-start", supersededStartNeverCommits);
     syrnike::windows_media::tests::runFault("screen-audio-target-exit", independentRevisionAndExplicitRetry);
+    syrnike::windows_media::tests::runFault("screen-audio-device-recovery", lostDeviceRestartsSameIntent);
     syrnike::windows_media::tests::runFault("screen-audio-retirement-during-new-intent", retirementCannotBeSupersededByNewIntent);
     syrnike::windows_media::tests::runFault("screen-audio-concurrent-stop", concurrentStopJoinsOnce);
     std::cout << "Screen audio desired-state and failure isolation passed\n";

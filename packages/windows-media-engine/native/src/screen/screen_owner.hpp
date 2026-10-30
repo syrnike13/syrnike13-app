@@ -4,6 +4,8 @@
 #include "livekit/livekit_screen_publication_adapter.hpp"
 #include "screen/production_screen_pipeline.hpp"
 #include "sources/source_registry.hpp"
+#include "capture/backend_selection_policy.hpp"
+#include "capture/monitor_capture.hpp"
 #include "capture/thumbnail_admission.hpp"
 
 namespace syrnike::windows_media::screen {
@@ -14,9 +16,17 @@ struct SelectedScreenSource {
   // Native-only retained identity for the independent process-audio owner.
   std::shared_ptr<audio::AudioProcessIdentity> audio_target;
 };
+// The backend feeding the share and why it last changed: a monitor share moves
+// from DXGI to WGC only after a failure, and WGC may draw a capture border.
+struct ScreenCaptureBackendStats {
+  std::optional<capture::CaptureBackendKind> backend;
+  std::uint64_t switches = 0, attempts = 0;
+  std::optional<capture::CaptureFailureKind> last_failure;
+};
 struct ScreenOwnerSnapshot {
   MediaPathSnapshot path, preview_path;
   ProductionScreenPipelineStats pipeline;
+  ScreenCaptureBackendStats capture;
   std::optional<SelectedScreenSource> selected_source;
   // Resolve the requested source independently of video capture/publication.
   // Process audio can therefore run even when the video preset or encoder fails.

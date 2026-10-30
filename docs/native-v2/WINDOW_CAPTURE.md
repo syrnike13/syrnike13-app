@@ -42,9 +42,13 @@ sequenceDiagram
 Windows draws a yellow border around a WGC capture unless the session sets
 `IsBorderRequired(false)`, and it honours that only after the process called
 `GraphicsCaptureAccess::RequestAccessAsync(Borderless)`. Unpackaged desktop apps
-are granted this without a prompt (`Allowed`). The request runs once per
-process before the first session; window shares, window thumbnails and the WGC
-monitor fallback are all borderless. Older Windows keeps the border.
+are granted this without a prompt (`Allowed`). Every WGC session asks until
+Windows grants it, with a 2 second bound on the broker; only a grant is kept, so
+a refusal during a display or desktop transition never leaves later captures
+with the border. A monitor share asks when it starts, before a game launch can
+make DXGI fall back to WGC. Window shares, window thumbnails and the WGC monitor
+fallback are all borderless. Windows 10 has no `IsBorderRequired` and keeps the
+border.
 
 WGC delivers frames at the display refresh rate. The product share sets
 `MinUpdateInterval` to half the stream's frame interval (Windows 11 22H2+), so a

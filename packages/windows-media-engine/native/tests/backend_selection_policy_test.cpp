@@ -86,6 +86,47 @@ void prepareFallbackAndBoundedRetries() {
   require(driver.state.attempt_count == 3 && !driver.state.candidate,
           "terminal state retried without new input");
 }
+void lostActiveIsRecreatedBeforeFallback() {
+  Driver driver;
+  driver.state.preferred = CaptureBackendKind::dxgi;
+  driver.send(BackendObservation::start, 0);
+  require(driver.send(BackendObservation::healthy_frame, 1, *driver.state.candidate) ==
+              BackendSelectionAction::commit_candidate,
+          "healthy DXGI did not commit");
+  require(driver.send(BackendObservation::access_lost, 2000, *driver.state.active) ==
+              BackendSelectionAction::start_candidate,
+          "lost DXGI was not recreated");
+  require(driver.state.candidate->kind == CaptureBackendKind::dxgi,
+          "access loss left DXGI before recreating it");
+  require(driver.send(BackendObservation::healthy_frame, 2001, *driver.state.candidate) ==
+              BackendSelectionAction::commit_candidate,
+          "recreated DXGI did not commit");
+  driver.send(BackendObservation::retirement_drained, 2002);
+  require(driver.send(BackendObservation::access_lost, 4000, *driver.state.active) ==
+              BackendSelectionAction::start_candidate,
+          "second access loss was not recreated");
+  driver.send(BackendObservation::prepare_failed, 4001, *driver.state.candidate);
+  driver.send(BackendObservation::tick, 5001);
+  require(driver.state.candidate && driver.state.candidate->kind == CaptureBackendKind::wgc,
+          "failed DXGI recreate did not fall back to WGC");
+}
+void settlingModeSwitchRetriesSameBackend() {
+  Driver driver;
+  driver.state.preferred = CaptureBackendKind::dxgi;
+  driver.send(BackendObservation::start, 0);
+  driver.send(BackendObservation::healthy_frame, 1, *driver.state.candidate);
+  driver.send(BackendObservation::access_lost, 2000, *driver.state.active);
+  require(driver.send(BackendObservation::access_lost, 2001, *driver.state.candidate) ==
+              BackendSelectionAction::discard_candidate,
+          "lost recreate was not discarded");
+  driver.send(BackendObservation::tick, 3001);
+  require(driver.state.candidate && driver.state.candidate->kind == CaptureBackendKind::dxgi,
+          "recreate during a settling mode switch left DXGI");
+  driver.send(BackendObservation::access_lost, 3002, *driver.state.candidate);
+  driver.send(BackendObservation::tick, 4002);
+  require(driver.state.candidate && driver.state.candidate->kind == CaptureBackendKind::wgc,
+          "repeated DXGI access loss never fell back to WGC");
+}
 void secureDesktopPausesAndResumeIsBounded() {
   Driver driver;
   driver.startWgc();
@@ -212,6 +253,8 @@ int main(int argc, char** argv) {
     staticAndWindowRules();
     failedCandidatePreservesActiveAndFencesLateFrame();
     prepareFallbackAndBoundedRetries();
+    lostActiveIsRecreatedBeforeFallback();
+    settlingModeSwitchRetriesSameBackend();
     secureDesktopPausesAndResumeIsBounded();
     rollingBudgetAndDeadline();
     concurrentFailureAndPermissionFences();

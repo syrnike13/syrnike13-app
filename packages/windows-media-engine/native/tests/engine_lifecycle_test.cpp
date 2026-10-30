@@ -602,7 +602,7 @@ void mediaDiagnosticsAreBoundedAndOptional() {
   requireOk(engine.registerDiagnosticEventCallback([&](const DiagnosticEvent& event) {
     if (event.code != "screen_audio_metrics") return;
     std::lock_guard lock(mutex);
-    valid = valid && event.metrics.size() == 13 && event.metrics[0].value == 42;
+    valid = valid && event.metrics.size() == 15 && event.metrics[0].value == 42;
     ++samples;
     changed.notify_one();
   }), "register media diagnostics");
