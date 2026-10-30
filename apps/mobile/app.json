@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Syrnike",
+    "slug": "syrnike13",
+    "scheme": "syrnike13",
+    "version": "0.7.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["android"],
+    "android": {
+      "package": "ru.syrnike13.app",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": ["expo-dev-client"]
+  }
+}

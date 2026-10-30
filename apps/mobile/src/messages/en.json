@@ -1,0 +1,12 @@
+{
+  "mobile": {
+    "preview": {
+      "title": "Syrnike",
+      "theme": "Theme: {name}",
+      "nextTheme": "Next theme",
+      "secondary": "Secondary",
+      "outline": "Outline",
+      "destructive": "Delete"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mobile": {
+    "preview": {
+      "title": "Сырники",
+      "theme": "Тема: {name}",
+      "nextTheme": "Следующая тема",
+      "secondary": "Вторичная",
+      "outline": "Контурная",
+      "destructive": "Удалить"
+    }
+  }
+}

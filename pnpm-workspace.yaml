@@ -4,12 +4,14 @@ packages:
   - apps/admin
   - apps/desktop
   - apps/activity-lab
+  - apps/mobile
   - packages/activity-sdk
   - packages/api-types
   - packages/desktop-native
   - packages/windows-media-engine
   - packages/platform
   - packages/ui
+  - packages/ui-native
 
 allowBuilds:
   "@sentry/cli": true

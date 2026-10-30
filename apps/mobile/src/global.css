@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "uniwind";
+
+@source "../../../packages/ui-native/src";
+
+/*
+ * Color names mirror packages/ui/src/tokens/prism/tailwind.css. These defaults
+ * are the Monolit theme; src/theme.ts replaces them with the user's Prism theme.
+ */
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #ffffff;
+      --color-foreground: #09090b;
+      --color-card: #f9f9f9;
+      --color-card-foreground: #09090b;
+      --color-popover: #fcfcfc;
+      --color-popover-foreground: #09090b;
+      --color-primary: #18181b;
+      --color-primary-foreground: #ffffff;
+      --color-secondary: #ebebeb;
+      --color-secondary-foreground: #09090b;
+      --color-muted: #e5e5e6;
+      --color-muted-foreground: #5d5d5e;
+      --color-accent: #e2e2e3;
+      --color-accent-foreground: #09090b;
+      --color-hover: #d2d2d2;
+      --color-hover-foreground: #09090b;
+      --color-selection: #d0d0d1;
+      --color-selection-foreground: #09090b;
+      --color-border: #e0e0e0;
+      --color-input: #e8e8e8;
+      --color-input-border: #e0e0e0;
+      --color-ring: #18181b;
+      --color-sidebar: #f3f3f4;
+      --color-sidebar-foreground: #09090b;
+      --color-sidebar-primary: #18181b;
+      --color-sidebar-primary-foreground: #ffffff;
+      --color-sidebar-accent: #d2d2d2;
+      --color-sidebar-accent-foreground: #09090b;
+      --color-sidebar-border: #e0e0e0;
+      --color-divider: #e0e0e0;
+      --color-surface-raised: #ffffff;
+      --color-surface-raised-foreground: #09090b;
+      --color-disabled-foreground: #818181;
+      --color-sidebar-ring: #18181b;
+      --color-layer-frame: #ffffff;
+      --color-layer-sidebar: #f3f3f4;
+      --color-layer-panel: #f9f9f9;
+      --color-layer-raised: #ffffff;
+      /* Fixed meaning colors, packages/ui/src/tokens/prism/semantic.css */
+      --color-destructive: oklch(0.637 0.208 25.326);
+      --color-destructive-foreground: oklch(0.985 0 180);
+      --color-success: oklch(0.627 0.143 162);
+      --color-warning: oklch(0.6 0.13 55);
+      --color-info: oklch(0.546 0.215 263);
+    }
+    @variant dark {
+      --color-background: #09090b;
+      --color-foreground: #fafafa;
+      --color-card: #0d0d0f;
+      --color-card-foreground: #fafafa;
+      --color-popover: #0b0b0d;
+      --color-popover-foreground: #fafafa;
+      --color-primary: #fafafa;
+      --color-primary-foreground: #000000;
+      --color-secondary: #212123;
+      --color-secondary-foreground: #fafafa;
+      --color-muted: #252527;
+      --color-muted-foreground: #a8a8a9;
+      --color-accent: #272729;
+      --color-accent-foreground: #fafafa;
+      --color-hover: #353536;
+      --color-hover-foreground: #fafafa;
+      --color-selection: #2f3031;
+      --color-selection-foreground: #fafafa;
+      --color-border: #202022;
+      --color-input: #232325;
+      --color-input-border: #202022;
+      --color-ring: #fafafa;
+      --color-sidebar: #111113;
+      --color-sidebar-foreground: #fafafa;
+      --color-sidebar-primary: #fafafa;
+      --color-sidebar-primary-foreground: #000000;
+      --color-sidebar-accent: #353536;
+      --color-sidebar-accent-foreground: #fafafa;
+      --color-sidebar-border: #202022;
+      --color-divider: #202022;
+      --color-surface-raised: #131315;
+      --color-surface-raised-foreground: #fafafa;
+      --color-disabled-foreground: #858586;
+      --color-sidebar-ring: #fafafa;
+      --color-layer-frame: #09090b;
+      --color-layer-sidebar: #111113;
+      --color-layer-panel: #0d0d0f;
+      --color-layer-raised: #131315;
+      /* Fixed meaning colors, packages/ui/src/tokens/prism/semantic.css */
+      --color-destructive: oklch(0.68 0.19 25.3);
+      --color-destructive-foreground: oklch(0.985 0 180);
+      --color-success: oklch(0.75 0.14 162);
+      --color-warning: oklch(0.8 0.14 75);
+      --color-info: oklch(0.71 0.14 255);
+    }
+  }
+}
