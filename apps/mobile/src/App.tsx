@@ -7,10 +7,17 @@ import { Text } from '@syrnike13/ui-native/primitives/text'
 import { StatusBar } from 'expo-status-bar'
 import { useState } from 'react'
 import { View } from 'react-native'
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
+import {
+  SafeAreaProvider,
+  SafeAreaView as NativeSafeAreaView,
+} from 'react-native-safe-area-context'
+import { withUniwind } from 'uniwind'
 
 import { catalogs } from './messages'
 import { applyTheme } from './theme'
+
+// Uniwind styles core components only; third-party ones need `withUniwind`.
+const SafeAreaView = withUniwind(NativeSafeAreaView)
 
 applyTheme({ colorMode: 'system' })
 

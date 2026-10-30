@@ -8,8 +8,7 @@
     "userInterfaceStyle": "automatic",
     "platforms": ["android"],
     "android": {
-      "package": "ru.syrnike13.app",
-      "edgeToEdgeEnabled": true
+      "package": "ru.syrnike13.app"
     },
     "plugins": ["expo-dev-client"]
   }

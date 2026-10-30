@@ -5,6 +5,16 @@ const path = require('node:path')
 
 const config = getDefaultConfig(__dirname)
 
+// Expo watches the whole monorepo; crawling services/ and build output makes
+// Metro hang on startup. Watch only what the app imports.
+const workspaceRoot = path.resolve(__dirname, '../..')
+config.watchFolders = [
+  path.join(workspaceRoot, 'node_modules'),
+  path.join(workspaceRoot, 'packages/ui'),
+  path.join(workspaceRoot, 'packages/ui-native'),
+]
+config.resolver.blockList = [/[\\/]android[\\/](app[\\/])?(build|\.cxx|\.gradle)[\\/].*/]
+
 // Shared web packages keep their own React in node_modules; a second copy
 // breaks hooks, so React and React Native always come from this app.
 const appOrigin = path.join(__dirname, 'package.json')
