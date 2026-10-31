@@ -17,10 +17,37 @@
       "mfaUnsupported": "Two-factor sign-in is not supported in the mobile app yet.",
       "disabled": "This account is disabled."
     },
-    "voice": {
-      "title": "Voice channels",
+    "tabs": {
+      "servers": "Servers",
+      "messages": "Messages",
+      "you": "You"
+    },
+    "channels": {
+      "savedMessages": "Saved messages",
+      "directMessages": "Direct messages",
+      "channelFallback": "Channel"
+    },
+    "chat": {
+      "back": "Back",
+      "placeholder": "Message {channel}",
+      "send": "Send",
+      "loadFailed": "Could not load messages."
+    },
+    "messages": {
+      "title": "Messages",
+      "empty": "No direct messages yet."
+    },
+    "you": {
+      "language": "Language",
+      "locales": {
+        "en": "English",
+        "ru": "Русский"
+      },
       "logout": "Sign out",
-      "loading": "Loading servers…",
+      "version": "Version {version}"
+    },
+    "voice": {
+      "join": "Join {channel}",
       "notificationTitle": "You are in a voice channel",
       "mute": "Mute",
       "unmute": "Unmute",

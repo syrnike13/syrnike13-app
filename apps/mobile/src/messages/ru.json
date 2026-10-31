@@ -17,10 +17,37 @@
       "mfaUnsupported": "Двухфакторный вход в мобильном приложении пока не поддерживается.",
       "disabled": "Аккаунт отключён."
     },
-    "voice": {
-      "title": "Голосовые каналы",
+    "tabs": {
+      "servers": "Серверы",
+      "messages": "Сообщения",
+      "you": "Вы"
+    },
+    "channels": {
+      "savedMessages": "Сохранённые",
+      "directMessages": "Личные сообщения",
+      "channelFallback": "Канал"
+    },
+    "chat": {
+      "back": "Назад",
+      "placeholder": "Написать в {channel}",
+      "send": "Отправить",
+      "loadFailed": "Не удалось загрузить сообщения."
+    },
+    "messages": {
+      "title": "Сообщения",
+      "empty": "Личных сообщений пока нет."
+    },
+    "you": {
+      "language": "Язык",
+      "locales": {
+        "en": "English",
+        "ru": "Русский"
+      },
       "logout": "Выйти",
-      "loading": "Загружаем серверы…",
+      "version": "Версия {version}"
+    },
+    "voice": {
+      "join": "Войти в {channel}",
       "notificationTitle": "Вы в голосовом канале",
       "mute": "Выкл. микрофон",
       "unmute": "Вкл. микрофон",

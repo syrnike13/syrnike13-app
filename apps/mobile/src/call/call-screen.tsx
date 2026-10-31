@@ -8,6 +8,7 @@ import type { Participant } from 'livekit-client'
 import { useEffect } from 'react'
 import { BackHandler, ScrollView, useWindowDimensions, View } from 'react-native'
 
+import { ChevronDownIcon } from '../components/icons/registry'
 import { CallControls } from './call-controls'
 import { fitTile, useCallTracks, VideoTile } from './video-tile'
 
@@ -54,8 +55,8 @@ export function CallScreen({
   return (
     <View className="flex-1">
       <View className="flex-row items-center gap-3 p-4">
-        <Button variant="ghost" size="sm" onPress={onMinimize}>
-          <Text>{t('minimize')}</Text>
+        <Button variant="ghost" size="icon" accessibilityLabel={t('minimize')} onPress={onMinimize}>
+          <ChevronDownIcon size={24} />
         </Button>
         <View className="flex-1">
           <Text className="font-semibold">{channelName}</Text>

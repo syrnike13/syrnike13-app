@@ -1,16 +1,28 @@
 import type { VoiceDirector, VoiceSnapshot } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Button } from '@syrnike13/ui-native/primitives/button'
-import { Text } from '@syrnike13/ui-native/primitives/text'
 import { useState } from 'react'
 import { PermissionsAndroid, View } from 'react-native'
 
+import {
+  HeadphoneOffIcon,
+  HeadphonesIcon,
+  MicIcon,
+  MicOffIcon,
+  MonitorUpIcon,
+  MonitorXIcon,
+  PhoneOffIcon,
+  SwitchCameraIcon,
+  VideoIcon,
+  VideoOffIcon,
+} from '../components/icons/registry'
 import type { CameraFacing } from '../voice/livekit-engine'
 
 function isOn(media: VoiceSnapshot['camera']) {
   return media.state === 'running' || media.state === 'starting'
 }
 
+/** Discord-style round call buttons: toggles turn red while something is off. */
 export function CallControls({
   director,
   snapshot,
@@ -35,40 +47,62 @@ export function CallControls({
   }
 
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="flex-row flex-wrap items-center justify-center gap-3">
       <Button
+        size="icon-lg"
+        shape="circle"
         variant={snapshot.userMuted ? 'destructive' : 'secondary'}
+        accessibilityLabel={t(snapshot.userMuted ? 'unmute' : 'mute')}
         onPress={() => director.dispatch({ type: 'setUserMuted', muted: !snapshot.userMuted })}
       >
-        <Text>{t(snapshot.userMuted ? 'unmute' : 'mute')}</Text>
+        {snapshot.userMuted ? <MicOffIcon className="text-destructive" /> : <MicIcon />}
       </Button>
       <Button
+        size="icon-lg"
+        shape="circle"
         variant={snapshot.userDeafened ? 'destructive' : 'secondary'}
-        onPress={() =>
-          director.dispatch({ type: 'setUserDeafened', deafened: !snapshot.userDeafened })
-        }
+        accessibilityLabel={t(snapshot.userDeafened ? 'undeafen' : 'deafen')}
+        onPress={() => director.dispatch({ type: 'setUserDeafened', deafened: !snapshot.userDeafened })}
       >
-        <Text>{t(snapshot.userDeafened ? 'undeafen' : 'deafen')}</Text>
+        {snapshot.userDeafened ? <HeadphoneOffIcon className="text-destructive" /> : <HeadphonesIcon />}
       </Button>
-      <Button variant="secondary" onPress={toggleCamera}>
-        <Text>{t(cameraOn ? 'stopCamera' : 'camera')}</Text>
+      <Button
+        size="icon-lg"
+        shape="circle"
+        variant="secondary"
+        accessibilityLabel={t(cameraOn ? 'stopCamera' : 'camera')}
+        onPress={toggleCamera}
+      >
+        {cameraOn ? <VideoIcon /> : <VideoOffIcon />}
       </Button>
       {cameraOn ? (
         <Button
+          size="icon-lg"
+          shape="circle"
           variant="secondary"
+          accessibilityLabel={t('flipCamera')}
           onPress={() => setCamera(true, facing === 'user' ? 'environment' : 'user')}
         >
-          <Text>{t('flipCamera')}</Text>
+          <SwitchCameraIcon />
         </Button>
       ) : null}
       <Button
+        size="icon-lg"
+        shape="circle"
         variant="secondary"
+        accessibilityLabel={t(screenOn ? 'stopScreen' : 'shareScreen')}
         onPress={() => director.dispatch({ type: 'setScreen', enabled: !screenOn })}
       >
-        <Text>{t(screenOn ? 'stopScreen' : 'shareScreen')}</Text>
+        {screenOn ? <MonitorXIcon /> : <MonitorUpIcon />}
       </Button>
-      <Button variant="destructive" onPress={() => director.dispatch({ type: 'leave' })}>
-        <Text>{t('leave')}</Text>
+      <Button
+        size="icon-lg"
+        shape="circle"
+        variant="destructive"
+        accessibilityLabel={t('leave')}
+        onPress={() => director.dispatch({ type: 'leave' })}
+      >
+        <PhoneOffIcon className="text-destructive" />
       </Button>
     </View>
   )

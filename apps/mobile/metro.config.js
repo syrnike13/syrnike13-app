@@ -14,11 +14,15 @@ config.watchFolders = [
   path.join(workspaceRoot, 'packages/ui-native'),
   path.join(workspaceRoot, 'packages/platform'),
   path.join(workspaceRoot, 'packages/api-types'),
+  path.join(workspaceRoot, 'packages/client'),
 ]
 
 // Shared workspace packages are bundled from source, not from their dist builds.
 const SOURCE_ENTRIES = {
   '@syrnike13/platform': path.join(workspaceRoot, 'packages/platform/src/index.ts'),
+  '@syrnike13/api-types': path.join(workspaceRoot, 'packages/api-types/src/index.ts'),
+  '@syrnike13/api-types/effect-schema': path.join(workspaceRoot, 'packages/api-types/src/effect-schema.ts'),
+  '@syrnike13/api-types/gateway-schema': path.join(workspaceRoot, 'packages/api-types/src/gateway-schema.ts'),
 }
 config.resolver.blockList = [/[\\/]android[\\/](app[\\/])?(build|\.cxx|\.gradle)[\\/].*/]
 

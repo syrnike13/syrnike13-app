@@ -34,6 +34,12 @@
       ],
       "@syrnike13/api-types": [
         "../../packages/api-types/src/index.ts"
+      ],
+      "@syrnike13/api-types/*": [
+        "../../packages/api-types/src/*"
+      ],
+      "@syrnike13/client/*": [
+        "../../packages/client/src/*"
       ]
     }
   },
