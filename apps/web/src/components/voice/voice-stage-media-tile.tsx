@@ -270,12 +270,9 @@ export function StageMediaTile({
     item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen &&
       !isMutedCamera,
   )
-  const fit =
-    variant === 'focus'
-      ? 'cover'
-      : isScreen
-        ? 'contain'
-        : 'cover'
+  // Cameras fit whole inside the 16:9 tile: a phone's portrait camera gets
+  // side bars instead of losing its top and bottom.
+  const fit = isScreen && variant === 'focus' ? 'cover' : 'contain'
   const mediaLabel = isScreen
     ? t('stage.screenOf', { name: displayName })
     : displayName
