@@ -1,8 +1,8 @@
 import type { Channel } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 
-import { openDirectMessageEffect } from '#/features/api/users-api'
-import { syncStore } from '#/features/sync/sync-store'
+import { openDirectMessageEffect } from '@syrnike13/client/api/users-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 type NavigateToDmChannel = (channelId: string) => Promise<void> | void
 

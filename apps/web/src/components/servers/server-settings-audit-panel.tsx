@@ -54,8 +54,8 @@ import {
 } from '@syrnike13/ui/primitives/item'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchServerAuditLog } from '#/features/api/servers-api'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { fetchServerAuditLog } from '@syrnike13/client/api/servers-api'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { cn } from '#/lib/utils'
 
 type ServerSettingsAuditPanelProps = {

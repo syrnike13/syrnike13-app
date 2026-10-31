@@ -356,6 +356,37 @@ curl -fsSI "https://syrnike13.ru/" | head -5
 curl -fsSI "https://app.syrnike13.ru/" | head -5
 ```
 
+## Android App
+
+The Android app installs from the site, not from a store, and has no nightly
+variant. Its files live in `<DEPLOY_PATH>/data/mobile/` (server-local, like
+`data/desktop`), served read-only by Caddy:
+
+- `https://<domain>/downloads/syrnike13.apk`: copy of the newest APK for the landing page.
+- `https://<domain>/downloads/mobile/latest.json`: release feed; installed apps offer to update when its `versionCode` is newer.
+- `https://<domain>/downloads/mobile/syrnike13-<VERSION>.apk`: versioned APKs (the newest `MOBILE_APK_KEEP_VERSIONS`, default 3).
+- `https://<domain>/downloads/mobile/manifest`: Expo Updates (protocol v1) endpoint. Caddy serves `updates/<runtime>/manifest.json` for the app's `Expo-Runtime-Version` header, or `204` when that runtime has no update. Update files sit under `assets/` by content hash and never change.
+
+Run `.github/workflows/mobile-release.yml` on `main`:
+
+- `apk` with a version builds a signed APK (native changes, new permissions) and publishes it with the feed.
+- `ota` publishes the current JS for installed APKs whose native fingerprint matches; no version is needed.
+
+The APK is signed with the upload keystore from the `production` environment
+secrets `ANDROID_UPLOAD_KEYSTORE_BASE64`, `ANDROID_UPLOAD_KEYSTORE_PASSWORD`,
+`ANDROID_UPLOAD_KEY_ALIAS` and `ANDROID_UPLOAD_KEY_PASSWORD`. Every APK must use
+the same key: Android refuses to update an app signed with another one, so a
+lost keystore means every user reinstalls. Keep an offline backup.
+
+Before the first mobile release, deploy production once so Caddy picks up the
+`/downloads/mobile/*` routes and the `data/mobile` volume mount.
+
+Health check:
+
+```bash
+curl -fsS "https://syrnike13.ru/downloads/mobile/latest.json"
+```
+
 ## Nightly Channel
 
 The `develop` branch publishes and deploys the independent nightly environment

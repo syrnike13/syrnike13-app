@@ -1,5 +1,5 @@
 import type { SoundEventId } from '#/features/sounds/sound-events'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 /** Above this many viewers, join/leave sounds would only be noise. */
 export const STREAM_VIEWER_SOUND_LIMIT = 25

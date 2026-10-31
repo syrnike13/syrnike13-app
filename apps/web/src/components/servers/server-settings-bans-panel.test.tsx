@@ -28,7 +28,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   fetchServerBansEffect: (...args: Parameters<typeof mocks.fetchServerBans>) =>
     mocks.fetchServerBans(...args),
   unbanServerMemberEffect: (

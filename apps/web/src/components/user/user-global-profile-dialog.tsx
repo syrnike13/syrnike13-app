@@ -19,15 +19,14 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   blockUserRelationship,
   unblockBlockedUser,
 } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { listServerChannels } from '#/features/sync/selectors'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { canMessageUser } from '#/features/authorization/authorization'
 
@@ -48,7 +47,6 @@ export function UserGlobalProfileDialog({
   const t = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
@@ -84,7 +82,7 @@ export function UserGlobalProfileDialog({
           (channelId) => {
             close()
             return navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId },
               search: { m: undefined },
             })
@@ -142,7 +140,7 @@ export function UserGlobalProfileDialog({
     if (!channelId) return
     close()
     void navigate({
-      to: `${prefix}/c/$channelId`,
+      to: '/c/$channelId',
       params: { channelId },
       search: { m: undefined },
     })

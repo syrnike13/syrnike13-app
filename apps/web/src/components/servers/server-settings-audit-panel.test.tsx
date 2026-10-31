@@ -12,7 +12,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsAuditPanel } from '#/components/servers/server-settings-audit-panel'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   fetchServerAuditLog: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   fetchServerAuditLog: (...args: Parameters<typeof mocks.fetchServerAuditLog>) =>
     mocks.fetchServerAuditLog(...args),
 }))

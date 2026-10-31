@@ -1,7 +1,7 @@
 import type { WebPushSubscription } from '@syrnike13/api-types'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from '@syrnike13/client/api/client'
 
 export const subscribePushEffect = Effect.fn('web.push.subscribe')(
   function*(token: string, subscription: WebPushSubscription) {

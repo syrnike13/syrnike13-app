@@ -9,12 +9,12 @@ import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { ProfileSection } from '#/components/user/profile/profile-parts'
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMemberEffect } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
 import {
   memberRoleEntries,
   type MemberRoleEntry,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   canEditAnyMemberRole,
   canToggleMemberRole,

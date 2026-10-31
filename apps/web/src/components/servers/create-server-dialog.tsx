@@ -26,10 +26,9 @@ import {
   isGroupInviteJoin,
   isServerInviteJoin,
   joinInviteEffect,
-} from '#/features/api/invites-api'
-import { createServerEffect } from '#/features/api/servers-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/invites-api'
+import { createServerEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {
@@ -40,7 +39,6 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
   const t = useTranslations('servers.create')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'create' | 'join'>('create')
   const [name, setName] = useState('')
@@ -79,11 +77,11 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           try: () =>
             firstChannel
               ? navigate({
-                  to: `${prefix}/c/$channelId`,
+                  to: '/c/$channelId',
                   params: { channelId: firstChannel._id },
                   search: { m: undefined },
                 })
-              : navigate({ to: prefix || '/', search: { tab: 'online' } }),
+              : navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
@@ -122,11 +120,11 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
             try: () =>
               channel
                 ? navigate({
-                    to: `${prefix}/c/$channelId`,
+                    to: '/c/$channelId',
                     params: { channelId: channel._id },
                     search: { m: undefined },
                   })
-                : navigate({ to: prefix || '/', search: { tab: 'online' } }),
+                : navigate({ to: '/', search: { tab: 'online' } }),
             catch: (cause) => cause,
           })
           return
@@ -139,7 +137,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           yield* Effect.tryPromise({
             try: () =>
               navigate({
-                to: `${prefix}/c/$channelId`,
+                to: '/c/$channelId',
                 params: { channelId: response.channel._id },
                 search: { m: undefined },
               }),

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { installAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
@@ -26,11 +26,6 @@ vi.mock('#/features/auth/auth-context', () => ({
     session: { token: 'session-token' },
     user: { _id: 'user-1', username: 'alice' },
   }),
-}))
-
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-  useAppRouteIdPrefix: () => '/_app',
 }))
 
 const textChannel = {

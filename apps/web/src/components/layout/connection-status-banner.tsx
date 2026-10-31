@@ -4,7 +4,7 @@ import { WifiOffIcon } from '#/components/icons'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { useSyncReady } from '#/features/sync/sync-store'
+import { useSyncReady } from '@syrnike13/client/sync/sync-store'
 import { cn } from '#/lib/utils'
 
 export function ConnectionStatusBanner() {

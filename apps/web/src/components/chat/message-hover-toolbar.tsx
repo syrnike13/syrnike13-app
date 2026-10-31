@@ -13,7 +13,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
-import { HOVER_BAR_REACTIONS } from '#/lib/reactions'
+import { HOVER_BAR_REACTIONS } from '@syrnike13/client/lib/reactions'
 
 type MessageHoverToolbarProps = {
   message: Message

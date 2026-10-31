@@ -1,0 +1,247 @@
+{
+  "mobile": {
+    "updates": {
+      "apkAvailable": "Доступна версия {version}",
+      "apkFailed": "Не удалось скачать версию {version}",
+      "install": "Обновить",
+      "downloading": "Загрузка…",
+      "otaReady": "Обновление готово",
+      "restart": "Перезапустить"
+    },
+    "login": {
+      "title": "Вход в Сырники",
+      "email": "Почта",
+      "password": "Пароль",
+      "submit": "Войти",
+      "failed": "Не удалось войти. Проверьте почту и пароль.",
+      "mfaUnsupported": "Двухфакторный вход в мобильном приложении пока не поддерживается.",
+      "disabled": "Аккаунт отключён."
+    },
+    "rail": {
+      "directMessages": "Личные сообщения"
+    },
+    "userBar": {
+      "openProfile": "Открыть профиль",
+      "inVoice": "В голосовом чате",
+      "status": {
+        "online": "В сети",
+        "idle": "Неактивен",
+        "dnd": "Не беспокоить",
+        "offline": "Не в сети"
+      },
+      "notifications": "Уведомления"
+    },
+    "home": {
+      "directMessages": "Личные сообщения",
+      "empty": "Личных сообщений пока нет.",
+      "andMore": "{names} и ещё {count}",
+      "addFriends": "Добавить друзей",
+      "newMessage": "Новое сообщение"
+    },
+    "time": {
+      "now": "сейчас",
+      "minutes": "{count} мин.",
+      "hours": "{count} ч.",
+      "days": "{count} д.",
+      "months": "{count} мес.",
+      "years": "{count} г."
+    },
+    "channels": {
+      "savedMessages": "Сохранённые",
+      "directMessages": "Личные сообщения",
+      "channelFallback": "Канал"
+    },
+    "chat": {
+      "back": "Назад",
+      "placeholder": "Написать в {channel}",
+      "send": "Отправить",
+      "loadFailed": "Не удалось загрузить сообщения.",
+      "edited": "(изменено)",
+      "replyUnavailable": "Исходное сообщение не загружено",
+      "replyAttachment": "Вложение",
+      "openAttachment": "Открыть {name}",
+      "reaction": "{emoji}: {count}",
+      "typing": {
+        "someone": "Кто-то",
+        "one": "{name} печатает…",
+        "two": "{first} и {second} печатают…",
+        "many": "Несколько человек печатают…"
+      },
+      "system": {
+        "user": "Пользователь",
+        "durationSeconds": "{count} сек",
+        "durationMinutes": "{count} мин",
+        "durationHours": "{count} ч",
+        "callCancelled": "Отменён",
+        "callMissed": "Пропущен",
+        "callEnded": "Завершён",
+        "callStarted": "начал звонок",
+        "callOngoing": "Идёт сейчас",
+        "userAdded": "{actor} добавляет {target}",
+        "userRemoved": "{actor} удаляет {target}",
+        "userJoined": "{user} присоединяется к серверу",
+        "userLeft": "{user} покидает сервер",
+        "userKicked": "{user} исключён из сервера",
+        "userBanned": "{user} заблокирован на сервере",
+        "channelRenamed": "{actor} переименовывает канал в «{name}»",
+        "channelDescriptionChanged": "{actor} изменяет описание канала",
+        "channelIconChanged": "{actor} изменяет значок канала",
+        "ownershipTransferred": "{from} передаёт владение {to}",
+        "messagePinned": "{actor} закрепляет сообщение",
+        "messageUnpinned": "{actor} открепляет сообщение"
+      },
+      "editing": "Редактирование сообщения",
+      "replyingTo": "Ответ для {name}",
+      "cancelMode": "Отменить",
+      "save": "Сохранить",
+      "actions": {
+        "close": "Закрыть",
+        "react": "Реакция {emoji}",
+        "reply": "Ответить",
+        "copyText": "Копировать текст",
+        "edit": "Изменить",
+        "delete": "Удалить сообщение",
+        "deleteTitle": "Удалить сообщение?",
+        "deleteDescription": "Сообщение исчезнет у всех. Это нельзя отменить.",
+        "cancel": "Отмена"
+      },
+      "attach": "Прикрепить файлы",
+      "start": {
+        "welcome": "Добро пожаловать в #{channel}!",
+        "channelDescription": "Это начало канала #{channel}.",
+        "dmDescription": "Это начало вашей истории личных сообщений с {name}."
+      }
+    },
+    "you": {
+      "close": "Закрыть",
+      "inVoice": "В голосовом чате",
+      "openVoice": "Открыть голосовой чат",
+      "language": "Язык",
+      "locales": {
+        "en": "English",
+        "ru": "Русский"
+      },
+      "logout": "Выйти",
+      "version": "Версия {version}",
+      "editProfile": "Редактировать профиль"
+    },
+    "voice": {
+      "collapse": "Свернуть",
+      "empty": "Здесь пока никого нет. Заходите, когда будете готовы поговорить.",
+      "joinVoice": "Присоединиться к голосовому каналу",
+      "notificationTitle": "Вы в голосовом канале",
+      "mute": "Выкл. микрофон",
+      "unmute": "Вкл. микрофон",
+      "deafen": "Выкл. звук",
+      "undeafen": "Вкл. звук",
+      "camera": "Камера",
+      "stopCamera": "Выкл. камеру",
+      "flipCamera": "Сменить камеру",
+      "minimize": "Свернуть",
+      "shareScreen": "Показать экран",
+      "stopScreen": "Остановить показ",
+      "leave": "Отключиться",
+      "connection": {
+        "disconnected": "Не подключено",
+        "connecting": "Подключение…",
+        "connected": "Подключено",
+        "recovering": "Восстанавливаем связь…",
+        "failed": "Ошибка подключения"
+      }
+    },
+    "media": {
+      "remove": "Убрать {name}",
+      "uploadFailed": "Не удалось загрузить файл",
+      "uploadTooLarge": "Файл больше {size} МБ",
+      "uploadTypeNotAllowed": "Такой тип файла загружать нельзя",
+      "uploadCancelled": "Загрузка отменена",
+      "networkError": "Ошибка сети при загрузке"
+    },
+    "notifications": {
+      "back": "Назад",
+      "title": "Уведомления",
+      "unreadMentions": "Непрочитанные упоминания",
+      "empty": "Новых упоминаний нет.",
+      "mentionedYou": "упоминает вас",
+      "mentionedYouIn": "упоминает вас в {place}:"
+    },
+    "friends": {
+      "back": "Назад",
+      "title": "Друзья",
+      "addTitle": "Добавить в друзья",
+      "addDescription": "Добавляйте друзей по имени пользователя.",
+      "usernamePlaceholder": "Имя пользователя",
+      "send": "Отправить запрос",
+      "requestSent": "Заявка отправлена",
+      "requestFailed": "Не удалось отправить заявку",
+      "requests": "Заявки — {count}",
+      "incoming": "Входящая заявка",
+      "outgoing": "Исходящая заявка",
+      "accept": "Принять заявку {name}",
+      "decline": "Отклонить заявку {name}",
+      "cancelRequest": "Отменить заявку {name}",
+      "all": "Все друзья — {count}",
+      "empty": "Пока нет друзей."
+    },
+    "newMessage": {
+      "close": "Закрыть",
+      "title": "Новое сообщение",
+      "search": "Поиск по друзьям",
+      "noMatches": "Никого не нашлось.",
+      "noFriends": "Пока нет друзей."
+    },
+    "server": {
+      "info": "О сервере",
+      "close": "Закрыть",
+      "invite": "Пригласить",
+      "leave": "Покинуть сервер",
+      "leaveTitle": "Покинуть «{name}»?",
+      "leaveDescription": "Вернуться получится только по новому приглашению.",
+      "cancel": "Отмена",
+      "inviteTitle": "Пригласить друзей в {name}",
+      "inviteCreating": "Создаём приглашение…",
+      "inviteFailed": "Не удалось создать приглашение. Возможно, у вас нет на это прав.",
+      "copy": "Копировать",
+      "copied": "Скопировано",
+      "share": "Поделиться"
+    },
+    "invite": {
+      "close": "Закрыть",
+      "loading": "Загружаем приглашение…",
+      "invalidTitle": "Приглашение недействительно",
+      "invalidDescription": "Срок действия ссылки истёк или её отозвали.",
+      "invitedBy": "{name} приглашает вас в",
+      "members": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
+      "join": "Присоединиться",
+      "open": "Открыть сервер",
+      "joinFailed": "Не удалось присоединиться."
+    },
+    "status": {
+      "change": "Изменить статус",
+      "close": "Закрыть",
+      "custom": "Свой статус",
+      "customPlaceholder": "Чем вы заняты?",
+      "save": "Сохранить статус",
+      "clear": "Убрать статус",
+      "failed": "Не удалось изменить статус.",
+      "presence": {
+        "Online": "В сети",
+        "Idle": "Неактивен",
+        "Busy": "Не беспокоить",
+        "Invisible": "Невидимка"
+      }
+    },
+    "editProfile": {
+      "back": "Назад",
+      "title": "Профиль",
+      "changeAvatar": "Сменить аватар",
+      "uploading": "Загружаем…",
+      "removeAvatar": "Убрать аватар",
+      "displayName": "Отображаемое имя",
+      "displayNameHint": "Пустое имя — показывается имя пользователя.",
+      "save": "Сохранить",
+      "saved": "Сохранено",
+      "failed": "Не удалось сохранить профиль."
+    }
+  }
+}

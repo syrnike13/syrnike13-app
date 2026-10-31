@@ -31,11 +31,7 @@ import {
   isDesktopAllowedPath,
   isDesktopOverlayPath,
 } from '#/lib/desktop-routes'
-import {
-  isMobileAllowedPath,
-  mapAppPathToMobile,
-  shouldUseMobileLayout,
-} from '#/lib/device-routing'
+import { isMobileUserAgent, mobileAppUrl } from '#/lib/device-routing'
 import { isDesktopRuntime } from '#/platform/runtime'
 
 import type { QueryClient } from '@tanstack/react-query'
@@ -64,22 +60,10 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
   beforeLoad: ({ location }) => {
     if (typeof window === 'undefined') return
     if (!isDesktopRuntime()) {
-      if (
-        shouldUseMobileLayout() &&
-        !isMobileAllowedPath(location.pathname) &&
-        !isDesktopOverlayPath(location.pathname)
-      ) {
-        const mobilePath = mapAppPathToMobile(location.pathname)
-        if (mobilePath) {
-          throw redirect({
-            to: mobilePath,
-            search: location.search,
-            replace: true,
-          })
-        }
-      }
+      const mobileUrl = isMobileUserAgent() ? mobileAppUrl(location.pathname) : null
+      if (mobileUrl) window.location.replace(mobileUrl)
+      return
     }
-    if (!isDesktopRuntime()) return
     if (isDesktopAllowedPath(location.pathname)) return
     throw redirect({
       to: DESKTOP_ENTRY_PATH,

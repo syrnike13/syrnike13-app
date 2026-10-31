@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SettingsPrivacyPanel } from '#/components/settings/settings-privacy-panel'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({ updatePrivacy: vi.fn() }))
 

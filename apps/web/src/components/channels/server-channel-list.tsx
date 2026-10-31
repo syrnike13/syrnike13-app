@@ -29,10 +29,10 @@ import {
   ContextMenuTrigger,
 } from '@syrnike13/ui/primitives/context-menu'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerEffect } from '#/features/api/servers-api'
-import { listServerChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import type { ChannelUnreadState } from '#/features/sync/types'
+import { editServerEffect } from '@syrnike13/client/api/servers-api'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
+import type { ChannelUnreadState } from '@syrnike13/client/sync/types'
 import { GUILD_BANNER_CONTENT_OFFSET_CLASS } from '#/components/layout/shell-chrome'
 import {
   applyChannelDragResult,
@@ -46,7 +46,7 @@ import {
   UNCATEGORIZED_SECTION_ID,
   type ChannelSidebarSection,
   type ServerChannel,
-} from '#/lib/channel-sidebar-layout'
+} from '@syrnike13/client/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 

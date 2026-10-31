@@ -36,7 +36,7 @@ import {
   deleteWebhookEffect,
   editWebhookEffect,
   fetchChannelWebhooksEffect,
-} from '#/features/api/channels-api'
+} from '@syrnike13/client/api/channels-api'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { config } from '#/lib/config'
 

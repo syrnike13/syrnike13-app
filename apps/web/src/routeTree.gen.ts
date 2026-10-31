@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
-import { Route as MRouteRouteImport } from './routes/m/route'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAchievementsDebugRouteImport } from './routes/_app/achievements-debug'
 import { Route as AppFriendsRouteImport } from './routes/_app/friends'
@@ -26,22 +25,13 @@ import { Route as LoginOnboardRouteImport } from './routes/login/onboard'
 import { Route as LoginRegisterRouteImport } from './routes/login/register'
 import { Route as LoginResendRouteImport } from './routes/login/resend'
 import { Route as LoginResetRouteImport } from './routes/login/reset'
-import { Route as MIndexRouteImport } from './routes/m/index'
-import { Route as MFriendsRouteImport } from './routes/m/friends'
-import { Route as MProfileRouteImport } from './routes/m/profile'
-import { Route as MSettingsRouteImport } from './routes/m/settings'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/_app/c/$channelId'
 import { Route as AppFeedbackIndexRouteImport } from './routes/_app/feedback/index'
 import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/_app/feedback/$feedbackId'
 import { Route as AppFeedbackNewRouteImport } from './routes/_app/feedback/new'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
-import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
-import { Route as MFeedbackIndexRouteImport } from './routes/m/feedback/index'
-import { Route as MFeedbackFeedbackIdRouteImport } from './routes/m/feedback/$feedbackId'
-import { Route as MFeedbackNewRouteImport } from './routes/m/feedback/new'
 import { Route as AppServersServerIdSettingsRouteImport } from './routes/_app/servers/$serverId/settings'
-import { Route as MServersServerIdSettingsRouteImport } from './routes/m/servers/$serverId/settings'
 
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
@@ -50,11 +40,6 @@ const AppRouteRoute = AppRouteRouteImport.update({
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MRouteRoute = MRouteRouteImport.update({
-  id: '/m',
-  path: '/m',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -127,26 +112,6 @@ const LoginResetRoute = LoginResetRouteImport.update({
   path: '/login/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MIndexRoute = MIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFriendsRoute = MFriendsRouteImport.update({
-  id: '/friends',
-  path: '/friends',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MProfileRoute = MProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MSettingsRoute = MSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => MRouteRoute,
-} as any)
 const VerifyTokenRoute = VerifyTokenRouteImport.update({
   id: '/verify/$token',
   path: '/verify/$token',
@@ -177,43 +142,16 @@ const LoginResetTokenRoute = LoginResetTokenRouteImport.update({
   path: '/$token',
   getParentRoute: () => LoginResetRoute,
 } as any)
-const MCChannelIdRoute = MCChannelIdRouteImport.update({
-  id: '/c/$channelId',
-  path: '/c/$channelId',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFeedbackIndexRoute = MFeedbackIndexRouteImport.update({
-  id: '/feedback/',
-  path: '/feedback/',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFeedbackFeedbackIdRoute = MFeedbackFeedbackIdRouteImport.update({
-  id: '/feedback/$feedbackId',
-  path: '/feedback/$feedbackId',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFeedbackNewRoute = MFeedbackNewRouteImport.update({
-  id: '/feedback/new',
-  path: '/feedback/new',
-  getParentRoute: () => MRouteRoute,
-} as any)
 const AppServersServerIdSettingsRoute =
   AppServersServerIdSettingsRouteImport.update({
     id: '/servers/$serverId/settings',
     path: '/servers/$serverId/settings',
     getParentRoute: () => AppRouteRoute,
   } as any)
-const MServersServerIdSettingsRoute =
-  MServersServerIdSettingsRouteImport.update({
-    id: '/servers/$serverId/settings',
-    path: '/servers/$serverId/settings',
-    getParentRoute: () => MRouteRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/admin': typeof AdminRouteRoute
-  '/m': typeof MRouteRouteWithChildren
   '/achievements-debug': typeof AppAchievementsDebugRoute
   '/friends': typeof AppFriendsRoute
   '/settings': typeof AppSettingsRoute
@@ -226,23 +164,14 @@ export interface FileRoutesByFullPath {
   '/login/register': typeof LoginRegisterRoute
   '/login/resend': typeof LoginResendRoute
   '/login/reset': typeof LoginResetRouteWithChildren
-  '/m/friends': typeof MFriendsRoute
-  '/m/profile': typeof MProfileRoute
-  '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/login/': typeof LoginIndexRoute
-  '/m/': typeof MIndexRoute
   '/c/$channelId': typeof AppCChannelIdRoute
   '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
   '/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
-  '/m/c/$channelId': typeof MCChannelIdRoute
-  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
-  '/m/feedback/new': typeof MFeedbackNewRoute
   '/feedback/': typeof AppFeedbackIndexRoute
-  '/m/feedback/': typeof MFeedbackIndexRoute
   '/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
-  '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRoutesByTo {
   '/admin': typeof AdminRouteRoute
@@ -258,30 +187,20 @@ export interface FileRoutesByTo {
   '/login/register': typeof LoginRegisterRoute
   '/login/resend': typeof LoginResendRoute
   '/login/reset': typeof LoginResetRouteWithChildren
-  '/m/friends': typeof MFriendsRoute
-  '/m/profile': typeof MProfileRoute
-  '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/': typeof AppIndexRoute
   '/login': typeof LoginIndexRoute
-  '/m': typeof MIndexRoute
   '/c/$channelId': typeof AppCChannelIdRoute
   '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
   '/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
-  '/m/c/$channelId': typeof MCChannelIdRoute
-  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
-  '/m/feedback/new': typeof MFeedbackNewRoute
   '/feedback': typeof AppFeedbackIndexRoute
-  '/m/feedback': typeof MFeedbackIndexRoute
   '/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
-  '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteRouteWithChildren
   '/admin': typeof AdminRouteRoute
-  '/m': typeof MRouteRouteWithChildren
   '/_app/achievements-debug': typeof AppAchievementsDebugRoute
   '/_app/friends': typeof AppFriendsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -294,31 +213,21 @@ export interface FileRoutesById {
   '/login/register': typeof LoginRegisterRoute
   '/login/resend': typeof LoginResendRoute
   '/login/reset': typeof LoginResetRouteWithChildren
-  '/m/friends': typeof MFriendsRoute
-  '/m/profile': typeof MProfileRoute
-  '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/_app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
-  '/m/': typeof MIndexRoute
   '/_app/c/$channelId': typeof AppCChannelIdRoute
   '/_app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
   '/_app/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
-  '/m/c/$channelId': typeof MCChannelIdRoute
-  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
-  '/m/feedback/new': typeof MFeedbackNewRoute
   '/_app/feedback/': typeof AppFeedbackIndexRoute
-  '/m/feedback/': typeof MFeedbackIndexRoute
   '/_app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
-  '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/admin'
-    | '/m'
     | '/achievements-debug'
     | '/friends'
     | '/settings'
@@ -331,23 +240,14 @@ export interface FileRouteTypes {
     | '/login/register'
     | '/login/resend'
     | '/login/reset'
-    | '/m/friends'
-    | '/m/profile'
-    | '/m/settings'
     | '/verify/$token'
     | '/login/'
-    | '/m/'
     | '/c/$channelId'
     | '/feedback/$feedbackId'
     | '/feedback/new'
     | '/login/reset/$token'
-    | '/m/c/$channelId'
-    | '/m/feedback/$feedbackId'
-    | '/m/feedback/new'
     | '/feedback/'
-    | '/m/feedback/'
     | '/servers/$serverId/settings'
-    | '/m/servers/$serverId/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/admin'
@@ -363,29 +263,19 @@ export interface FileRouteTypes {
     | '/login/register'
     | '/login/resend'
     | '/login/reset'
-    | '/m/friends'
-    | '/m/profile'
-    | '/m/settings'
     | '/verify/$token'
     | '/'
     | '/login'
-    | '/m'
     | '/c/$channelId'
     | '/feedback/$feedbackId'
     | '/feedback/new'
     | '/login/reset/$token'
-    | '/m/c/$channelId'
-    | '/m/feedback/$feedbackId'
-    | '/m/feedback/new'
     | '/feedback'
-    | '/m/feedback'
     | '/servers/$serverId/settings'
-    | '/m/servers/$serverId/settings'
   id:
     | '__root__'
     | '/_app'
     | '/admin'
-    | '/m'
     | '/_app/achievements-debug'
     | '/_app/friends'
     | '/_app/settings'
@@ -398,30 +288,20 @@ export interface FileRouteTypes {
     | '/login/register'
     | '/login/resend'
     | '/login/reset'
-    | '/m/friends'
-    | '/m/profile'
-    | '/m/settings'
     | '/verify/$token'
     | '/_app/'
     | '/login/'
-    | '/m/'
     | '/_app/c/$channelId'
     | '/_app/feedback/$feedbackId'
     | '/_app/feedback/new'
     | '/login/reset/$token'
-    | '/m/c/$channelId'
-    | '/m/feedback/$feedbackId'
-    | '/m/feedback/new'
     | '/_app/feedback/'
-    | '/m/feedback/'
     | '/_app/servers/$serverId/settings'
-    | '/m/servers/$serverId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRouteRoute: typeof AppRouteRouteWithChildren
   AdminRouteRoute: typeof AdminRouteRoute
-  MRouteRoute: typeof MRouteRouteWithChildren
   DesktopOverlayRoute: typeof DesktopOverlayRoute
   DevUiRoute: typeof DevUiRoute
   InviteCodeRoute: typeof InviteCodeRoute
@@ -448,13 +328,6 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/m': {
-      id: '/m'
-      path: '/m'
-      fullPath: '/m'
-      preLoaderRoute: typeof MRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/': {
@@ -555,34 +428,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginResetRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/m/': {
-      id: '/m/'
-      path: '/'
-      fullPath: '/m/'
-      preLoaderRoute: typeof MIndexRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/friends': {
-      id: '/m/friends'
-      path: '/friends'
-      fullPath: '/m/friends'
-      preLoaderRoute: typeof MFriendsRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/profile': {
-      id: '/m/profile'
-      path: '/profile'
-      fullPath: '/m/profile'
-      preLoaderRoute: typeof MProfileRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/settings': {
-      id: '/m/settings'
-      path: '/settings'
-      fullPath: '/m/settings'
-      preLoaderRoute: typeof MSettingsRouteImport
-      parentRoute: typeof MRouteRoute
-    }
     '/verify/$token': {
       id: '/verify/$token'
       path: '/verify/$token'
@@ -625,47 +470,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginResetTokenRouteImport
       parentRoute: typeof LoginResetRoute
     }
-    '/m/c/$channelId': {
-      id: '/m/c/$channelId'
-      path: '/c/$channelId'
-      fullPath: '/m/c/$channelId'
-      preLoaderRoute: typeof MCChannelIdRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/feedback/': {
-      id: '/m/feedback/'
-      path: '/feedback'
-      fullPath: '/m/feedback/'
-      preLoaderRoute: typeof MFeedbackIndexRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/feedback/$feedbackId': {
-      id: '/m/feedback/$feedbackId'
-      path: '/feedback/$feedbackId'
-      fullPath: '/m/feedback/$feedbackId'
-      preLoaderRoute: typeof MFeedbackFeedbackIdRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/feedback/new': {
-      id: '/m/feedback/new'
-      path: '/feedback/new'
-      fullPath: '/m/feedback/new'
-      preLoaderRoute: typeof MFeedbackNewRouteImport
-      parentRoute: typeof MRouteRoute
-    }
     '/_app/servers/$serverId/settings': {
       id: '/_app/servers/$serverId/settings'
       path: '/servers/$serverId/settings'
       fullPath: '/servers/$serverId/settings'
       preLoaderRoute: typeof AppServersServerIdSettingsRouteImport
       parentRoute: typeof AppRouteRoute
-    }
-    '/m/servers/$serverId/settings': {
-      id: '/m/servers/$serverId/settings'
-      path: '/servers/$serverId/settings'
-      fullPath: '/m/servers/$serverId/settings'
-      preLoaderRoute: typeof MServersServerIdSettingsRouteImport
-      parentRoute: typeof MRouteRoute
     }
   }
 }
@@ -700,33 +510,6 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
-interface MRouteRouteChildren {
-  MFriendsRoute: typeof MFriendsRoute
-  MProfileRoute: typeof MProfileRoute
-  MSettingsRoute: typeof MSettingsRoute
-  MIndexRoute: typeof MIndexRoute
-  MCChannelIdRoute: typeof MCChannelIdRoute
-  MFeedbackFeedbackIdRoute: typeof MFeedbackFeedbackIdRoute
-  MFeedbackNewRoute: typeof MFeedbackNewRoute
-  MFeedbackIndexRoute: typeof MFeedbackIndexRoute
-  MServersServerIdSettingsRoute: typeof MServersServerIdSettingsRoute
-}
-
-const MRouteRouteChildren: MRouteRouteChildren = {
-  MFriendsRoute: MFriendsRoute,
-  MProfileRoute: MProfileRoute,
-  MSettingsRoute: MSettingsRoute,
-  MIndexRoute: MIndexRoute,
-  MCChannelIdRoute: MCChannelIdRoute,
-  MFeedbackFeedbackIdRoute: MFeedbackFeedbackIdRoute,
-  MFeedbackNewRoute: MFeedbackNewRoute,
-  MFeedbackIndexRoute: MFeedbackIndexRoute,
-  MServersServerIdSettingsRoute: MServersServerIdSettingsRoute,
-}
-
-const MRouteRouteWithChildren =
-  MRouteRoute._addFileChildren(MRouteRouteChildren)
-
 interface LoginResetRouteChildren {
   LoginResetTokenRoute: typeof LoginResetTokenRoute
 }
@@ -742,7 +525,6 @@ const LoginResetRouteWithChildren = LoginResetRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AppRouteRoute: AppRouteRouteWithChildren,
   AdminRouteRoute: AdminRouteRoute,
-  MRouteRoute: MRouteRouteWithChildren,
   DesktopOverlayRoute: DesktopOverlayRoute,
   DevUiRoute: DevUiRoute,
   InviteCodeRoute: InviteCodeRoute,

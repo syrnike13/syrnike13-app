@@ -15,11 +15,7 @@ vi.mock('#/components/feedback/feedback-vote-button', () => ({
   FeedbackVoteButton: () => <button type="button">Проголосовать</button>,
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
-vi.mock('#/features/sync/sync-store', () => ({
+vi.mock('@syrnike13/client/sync/sync-store', () => ({
   useSyncStore: (selector: (state: { users: Record<string, never> }) => unknown) =>
     selector({ users: {} }),
 }))

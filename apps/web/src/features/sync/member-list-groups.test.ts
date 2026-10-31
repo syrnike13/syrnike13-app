@@ -9,7 +9,7 @@ import {
   memberDisplayColour,
   memberHoistRole,
 } from '#/features/sync/member-list-groups'
-import type { ServerMemberEntry } from '#/features/sync/selectors'
+import type { ServerMemberEntry } from '@syrnike13/client/sync/selectors'
 
 const t = createTranslator(ru, 'ru', 'chat')
 

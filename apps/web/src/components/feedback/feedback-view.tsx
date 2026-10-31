@@ -22,7 +22,6 @@ import {
 import { FeedbackCreateDialog } from '#/components/feedback/feedback-create-dialog'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
-  ChevronLeftIcon,
   FilterIcon,
   LightbulbIcon,
   PlusIcon,
@@ -75,7 +74,6 @@ import {
   fetchFeedbackSuggestions,
   fetchMyFeedbackSuggestions,
 } from '#/features/api/feedback-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { queryKeys } from '#/lib/api/query-keys'
 import { shellColumnHeaderClass } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -110,7 +108,6 @@ export function FeedbackView({
   const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
-  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const viewerId = auth.user?._id
   const mode = initialMode
@@ -142,7 +139,7 @@ export function FeedbackView({
       onCreated?.()
       return
     }
-    void navigate({ to: `${prefix}/feedback`, search: { view: 'mine' } })
+    void navigate({ to: '/feedback', search: { view: 'mine' } })
   }
 
   const activeFilterCount = [category, area, platform, status].filter(
@@ -265,16 +262,6 @@ export function FeedbackView({
   return (
     <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
       <header className={cn(shellColumnHeaderClass, 'px-4')}>
-        {prefix === '/m' ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('backHomeAria')}
-            render={<Link to="/m" search={{ tab: 'online' }} />}
-          >
-            <ChevronLeftIcon className="size-5" />
-          </Button>
-        ) : null}
         <LightbulbIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
         <h1 className="text-base font-semibold">{t('title')}</h1>
         <div className="mx-2 flex h-6">
@@ -284,7 +271,7 @@ export function FeedbackView({
           {MODE_TABS.map((item) => (
             <Link
               key={item.id}
-              to={`${prefix}/feedback`}
+              to={'/feedback'}
               search={{ view: item.id }}
               aria-current={mode === item.id ? 'page' : undefined}
               className={buttonVariants({

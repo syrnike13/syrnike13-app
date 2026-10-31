@@ -12,10 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
-import { permissionOr } from '#/lib/permission-bits'
+import { permissionOr } from '@syrnike13/client/lib/permission-bits'
 
 const mocks = vi.hoisted(() => ({
   createChannelInvite: vi.fn(),
@@ -47,15 +47,15 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   fetchServerInvitesEffect: (
     ...args: Parameters<typeof mocks.fetchServerInvites>
   ) => mocks.fetchServerInvites(...args),
 }))
 
-vi.mock('#/features/api/invites-api', async (importOriginal) => {
+vi.mock('@syrnike13/client/api/invites-api', async (importOriginal) => {
   const actual = await importOriginal<
-    typeof import('#/features/api/invites-api')
+    typeof import('@syrnike13/client/api/invites-api')
   >()
   return {
     ...actual,
@@ -65,13 +65,13 @@ vi.mock('#/features/api/invites-api', async (importOriginal) => {
   }
 })
 
-vi.mock('#/features/api/messages-api', () => ({
+vi.mock('@syrnike13/client/api/messages-api', () => ({
   sendChannelMessageEffect: (
     ...args: Parameters<typeof mocks.sendChannelMessage>
   ) => mocks.sendChannelMessage(...args),
 }))
 
-vi.mock('#/features/api/users-api', () => ({
+vi.mock('@syrnike13/client/api/users-api', () => ({
   openDirectMessageEffect: (
     ...args: Parameters<typeof mocks.openDirectMessage>
   ) => mocks.openDirectMessage(...args),

@@ -12,7 +12,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 
 const fetchUser = vi.fn()
 
-vi.mock('#/features/api/users-api', () => ({
+vi.mock('@syrnike13/client/api/users-api', () => ({
   fetchUser: (...args: unknown[]) => fetchUser(...args),
 }))
 

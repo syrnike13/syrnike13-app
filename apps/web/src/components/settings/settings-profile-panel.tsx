@@ -31,11 +31,11 @@ import {
 } from '@syrnike13/ui/primitives/field'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import {
   fetchUserProfile,
   updateCurrentUserEffect,
-} from '#/features/api/users-api'
+} from '@syrnike13/client/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema, validateForm } from '#/features/auth/schemas'
 import { queryKeys } from '#/lib/api/query-keys'

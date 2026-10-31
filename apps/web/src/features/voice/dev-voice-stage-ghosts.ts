@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { User } from '@syrnike13/api-types'
 
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import type {
   VoiceStageMediaItem,
   VoiceStageMediaTrack,

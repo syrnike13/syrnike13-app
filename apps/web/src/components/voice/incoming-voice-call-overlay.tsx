@@ -6,15 +6,14 @@ import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
-import { declineDirectMessageCallEffect } from '#/features/api/channels-api'
+} from '@syrnike13/client/sync/voice-call-utils'
+import { declineDirectMessageCallEffect } from '@syrnike13/client/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 
 type IncomingVoiceCallOverlayProps = {
@@ -29,7 +28,6 @@ export function IncomingVoiceCallOverlay({
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const currentUserId = auth.user?._id
   const currentVoiceSessionChannelId =
     voice.status === 'connected' || voice.status === 'connecting'
@@ -144,17 +142,6 @@ export function IncomingVoiceCallOverlay({
               }).pipe(
                 Effect.flatMap((joined) => {
                   if (!joined) return Effect.void
-                  if (prefix === '/m') {
-                    return Effect.tryPromise({
-                      try: () =>
-                        navigate({
-                          to: '/m/c/$channelId',
-                          params: { channelId: call.channelId },
-                          search: { m: undefined },
-                        }),
-                      catch: (cause) => cause,
-                    })
-                  }
                   return Effect.tryPromise({
                     try: () =>
                       navigate({

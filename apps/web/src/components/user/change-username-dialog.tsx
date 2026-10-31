@@ -2,7 +2,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { useState } from 'react'
 
-import { changeUsernameEffect } from '#/features/api/users-api'
+import { changeUsernameEffect } from '@syrnike13/client/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {

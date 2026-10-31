@@ -7,7 +7,7 @@ import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   listVisibleDmRailChannels,
-} from '#/features/sync/selectors'
+} from '@syrnike13/client/sync/selectors'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   GUILD_BANNER_FADE_DISTANCE_PX,
@@ -22,7 +22,7 @@ import { serverBannerUrl } from '#/lib/media'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { useServerMembersSync } from '#/features/sync/server-members-sync'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 
 type ChannelSidebarProps = {

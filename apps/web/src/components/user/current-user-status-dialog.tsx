@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { SettingsProfileStatusDialog } from '#/components/settings/settings-profile-status-dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchUserProfile } from '#/features/api/users-api'
+import { fetchUserProfile } from '@syrnike13/client/api/users-api'
 import { useSetCustomStatus } from '#/features/users/use-set-custom-status'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'

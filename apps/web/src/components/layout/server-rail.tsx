@@ -20,8 +20,8 @@ import {
   selectHomeNotificationBadge,
   selectServerNotificationBadge,
 } from '#/features/notifications/notification-selectors'
-import { listServerChannels, listServers } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listServerChannels, listServers } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
@@ -43,10 +43,9 @@ import {
   type ServerActivityKind,
 } from '#/components/servers/server-avatar'
 import { getChannelVoiceParticipants } from '#/features/sync/voice-selectors'
-import type { UserVoiceState } from '#/features/sync/voice-types'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 
-type ServerRailVariant = 'desktop' | 'mobile'
 const MAX_TOOLTIP_AVATARS = 6
 
 function ServerRailTooltipAvatarRow({
@@ -159,20 +158,13 @@ function ServerRailTooltip({
 /**
  * Рельс серверов.
  *
- * `variant`:
- *  - `desktop` — клик по серверу ведёт в первый канал (`/c/$id`);
- *    активность определяется контекстным сервером активного канала.
- *  - `mobile` — клик по серверу ведёт на `/m` + устанавливает `selectedServerId`;
- *    активность определяется `selectedServerId` из syncStore.
- *
- * Различие только в навигации и формуле «активности», вёрстка общая.
+ * Клик по серверу ведёт в его первый канал; активность определяется
+ * контекстным сервером активного канала.
  */
 export function ServerRail({
-  variant,
   reserveUserPanelSpace = true,
   userPanelReservePx = USER_PANEL_RESERVE_PX,
 }: {
-  variant: ServerRailVariant
   reserveUserPanelSpace?: boolean
   userPanelReservePx?: number
 }) {
@@ -184,30 +176,25 @@ export function ServerRail({
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
-  const homeRouteId = variant === 'mobile' ? '/m/' : '/_app/'
-  const channelRouteId =
-    variant === 'mobile' ? '/m/c/$channelId' : '/_app/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/'
+  const homeTo = '/'
 
-  const homeMatch = useMatch({ from: homeRouteId, shouldThrow: false })
-  const channelMatch = useMatch({ from: channelRouteId, shouldThrow: false })
+  const homeMatch = useMatch({ from: '/_app/', shouldThrow: false })
+  const channelMatch = useMatch({ from: '/_app/c/$channelId', shouldThrow: false })
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const feedbackPath = variant === 'mobile' ? '/m/feedback' : '/feedback'
+  const feedbackPath = '/feedback'
   const isFeedbackPath =
     pathname === feedbackPath || pathname.startsWith(`${feedbackPath}/`)
   const activeChannelId =
     channelMatch && 'params' in channelMatch
       ? channelMatch.params.channelId
       : undefined
-  const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const prefersReducedMotion = useMediaQuery(
     '(prefers-reduced-motion: reduce)',
   )
 
   const homeActive =
     Boolean(homeMatch || isFeedbackPath) &&
-    !channelMatch &&
-    (variant === 'desktop' || !selectedServerId)
+    !channelMatch
 
   const railBottomReserveStyle = reserveUserPanelSpace
     ? ({
@@ -268,10 +255,7 @@ export function ServerRail({
             </span>
           </RailIconButton>
 
-          <PeopleRailSection
-            variant={variant}
-            activeChannelId={activeChannelId}
-          />
+          <PeopleRailSection activeChannelId={activeChannelId} />
         </ul>
 
         <div aria-hidden="true" className={railSeparatorClass} />
@@ -291,7 +275,6 @@ export function ServerRail({
                 server={server}
                 currentUserId={auth.user?._id}
                 activeChannelId={activeChannelId}
-                variant={variant}
                 channelMatch={Boolean(channelMatch)}
                 prefersReducedMotion={prefersReducedMotion}
               />
@@ -323,14 +306,12 @@ function ServerRailButton({
   server,
   currentUserId,
   activeChannelId,
-  variant,
   channelMatch,
   prefersReducedMotion,
 }: {
   server: Server
   currentUserId?: string
   activeChannelId?: string
-  variant: ServerRailVariant
   channelMatch: boolean
   prefersReducedMotion: boolean
 }) {
@@ -365,10 +346,7 @@ function ServerRailButton({
       })
   })
 
-  const active =
-    variant === 'mobile'
-      ? !channelMatch && selectedServerId === server._id
-      : Boolean(channelMatch) && contextualServerId === server._id
+  const active = channelMatch && contextualServerId === server._id
 
   const activityKind: ServerActivityKind = voiceParticipants.some(
     (participant) => participant.screensharing,
@@ -391,8 +369,8 @@ function ServerRailButton({
     />
   )
 
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
-  const homeTo = variant === 'mobile' ? '/m' : '/'
+  const channelTo = '/c/$channelId'
+  const homeTo = '/'
   const tooltipContent = (
     <ServerRailTooltip
       serverName={server.name}
@@ -402,9 +380,8 @@ function ServerRailButton({
     />
   )
 
-  // Desktop: ведём сразу в первый канал сервера.
-  // Mobile: ведём на home с установкой selectedServerId (sidebar каналов покажется рядом).
-  if (firstChannelId && variant === 'desktop') {
+  // Ведём сразу в первый канал сервера.
+  if (firstChannelId) {
     return (
       <RailIconButton
         active={active}

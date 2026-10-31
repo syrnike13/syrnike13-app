@@ -1,7 +1,7 @@
 import type { Channel, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
+import type { ChannelUnreadState, SyncState } from '@syrnike13/client/sync/types'
 import { ChannelPermission } from '#/features/authorization/authorization'
 
 import {

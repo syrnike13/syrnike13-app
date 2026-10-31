@@ -28,9 +28,9 @@ import {
 } from '@syrnike13/ui/primitives/message-scroller'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { TooltipProvider } from '@syrnike13/ui/primitives/tooltip'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import type { CSSVars } from '#/lib/css-vars'
-import { buildMessageFeedItems } from '#/lib/message-feed'
+import { buildMessageFeedItems } from '@syrnike13/client/lib/message-feed'
 import { useDateDividerLabel } from '#/lib/use-message-time'
 import { cn } from '#/lib/utils'
 

@@ -2,7 +2,7 @@ import type { DataLogin, ResponseLogin } from '@syrnike13/api-types'
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from '@syrnike13/client/api/client'
 
 const FRIENDLY_NAME = 'syrnike13 Web (React)'
 

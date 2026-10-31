@@ -21,7 +21,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBansEffect,
   unbanServerMemberEffect,
-} from '#/features/api/servers-api'
+} from '@syrnike13/client/api/servers-api'
 
 type ServerSettingsBansPanelProps = {
   serverId: string

@@ -1,4 +1,4 @@
-import { Link, useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, useMatch, useNavigate } from '@tanstack/react-router'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   CheckCheckIcon,
@@ -37,34 +37,33 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { ackChannelEffect } from '#/features/api/sync-api'
-import { editServerMemberEffect } from '#/features/api/servers-api'
-import { deleteChannelEffect } from '#/features/api/channels-api'
-import { createChannelInviteEffect } from '#/features/api/invites-api'
+import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
+import { deleteChannelEffect } from '@syrnike13/client/api/channels-api'
+import { createChannelInviteEffect } from '@syrnike13/client/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
-import type { ChannelUnreadState } from '#/features/sync/types'
+import type { ChannelUnreadState } from '@syrnike13/client/sync/types'
 import {
   getChannelLabel,
   getDmRecipientId,
-} from '#/features/sync/channel-label'
+} from '@syrnike13/client/sync/channel-label'
 import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
-import { getChannelLastMessageId, pickDefaultChannelId } from '#/features/sync/selectors'
+} from '@syrnike13/client/sync/voice-call-utils'
+import { getChannelLastMessageId, pickDefaultChannelId } from '@syrnike13/client/sync/selectors'
 import {
   syncStore,
   useSyncStore,
-} from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
-import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canManageChannel,
   canMoveServerMember,
@@ -113,14 +112,10 @@ export function ChannelSidebarItem({
   const [deletingChannel, setDeletingChannel] = useState(false)
   const [voiceDropActive, setVoiceDropActive] = useState(false)
   const [movingVoiceMember, setMovingVoiceMember] = useState(false)
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const isMobile = pathname.startsWith('/m')
-  const channelPath = isMobile ? '/m/c/$channelId' : '/c/$channelId'
-  const channelRouteId = isMobile ? '/m/c/$channelId' : '/_app/c/$channelId'
-  const mobileVoiceChannelDrawer = useOptionalMobileVoiceChannelDrawer()
+  const channelPath = '/c/$channelId'
   const token = auth.session?.token
   const channelRouteMatch = useMatch({
-    from: channelRouteId,
+    from: '/_app/c/$channelId',
     shouldThrow: false,
   })
   const server = useSyncStore((s) =>
@@ -185,7 +180,7 @@ export function ChannelSidebarItem({
                   search: { m: undefined },
                 })
               : navigate({
-                  to: isMobile ? '/m' : '/',
+                  to: '/',
                   search: { tab: 'online' },
                 }),
           catch: (cause) => cause,
@@ -306,11 +301,6 @@ export function ChannelSidebarItem({
 
     event.preventDefault()
 
-    if (isMobile) {
-      mobileVoiceChannelDrawer?.openVoiceChannelDrawer(channel._id)
-      return
-    }
-
     // The displayed membership may lag a pending move. Reassert the clicked
     // intent even when opening its stage; Voice Director deduplicates stable joins.
     void voice.join(channel._id)
@@ -327,11 +317,6 @@ export function ChannelSidebarItem({
     event.preventDefault()
     event.stopPropagation()
     requestVoiceChannelChatOpen(channel._id)
-
-    if (isMobile) {
-      mobileVoiceChannelDrawer?.openVoiceChannelDrawer(channel._id)
-      return
-    }
 
     if (active) return
 

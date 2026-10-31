@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import {
   grantAllAuthorizationForTest,
@@ -33,10 +33,6 @@ vi.mock('#/features/auth/auth-context', () => ({
     session: { token: 'session-token' },
     user: { _id: 'user-1', username: 'alice' },
   }),
-}))
-
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
 }))
 
 vi.mock('#/components/channels/channel-settings-permissions-panel', () => ({

@@ -1,6 +1,6 @@
 import type { ProfileColours } from '@syrnike13/api-types'
 
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
 
 export type ServerProfile = {

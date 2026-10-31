@@ -12,7 +12,7 @@ import {
 
 const mocks = vi.hoisted(() => ({ apiRequestEffect: vi.fn() }))
 
-vi.mock('#/lib/api/client', () => ({
+vi.mock('@syrnike13/client/api/client', () => ({
   apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
     mocks.apiRequestEffect(...args),
 }))

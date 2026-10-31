@@ -3,11 +3,11 @@ import { ChannelSettingsPermissionsPanel } from '#/components/channels/channel-s
 import type { ChannelSettingsTab } from '#/components/channels/channel-settings-types'
 import { ChannelSettingsWebhooksPanel } from '#/components/channels/channel-settings-webhooks-panel'
 import { useAuth } from '#/features/auth/auth-context'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   serverChannelServerId,
   type ServerChannel,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canManageChannel,
   canManageChannelPermissions,

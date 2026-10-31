@@ -9,13 +9,12 @@ import {
 } from '@syrnike13/ui/primitives/button'
 import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   getChannelVoiceParticipants,
   sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
@@ -30,7 +29,6 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const t = useTranslations('voice')
   const auth = useAuth()
   const voice = useVoiceSession()
-  const prefix = useAppRoutePrefix()
   const [expanded, setExpanded] = useState(false)
   const users = useSyncStore((s) => s.users)
   const storeParticipants = useSyncStore(
@@ -60,7 +58,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           {t('dock.title', { count: participants.length })}
         </p>
         <Link
-          to={`${prefix}/c/$channelId`}
+          to={'/c/$channelId'}
           params={{ channelId }}
           search={{ m: undefined }}
           className={cn(

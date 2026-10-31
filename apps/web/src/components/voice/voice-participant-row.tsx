@@ -9,12 +9,12 @@ import {
   VoiceOnAirBadge,
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
-import type { MemberRoleEntry } from '#/features/sync/selectors'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { MemberRoleEntry } from '@syrnike13/client/sync/selectors'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import { useAuth } from '#/features/auth/auth-context'
 import { useWatchParticipantScreenShare } from '#/features/voice/use-watch-participant-screen-share'
 import { useVoiceListenerStore } from '#/features/voice/voice-listener-store'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { canMoveServerMember } from '#/features/authorization/authorization'
 import { writeVoiceMemberDragPayload } from '#/features/voice/voice-member-drag'
 import { cn } from '#/lib/utils'

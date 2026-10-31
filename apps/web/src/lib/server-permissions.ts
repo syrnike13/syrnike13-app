@@ -3,8 +3,8 @@ import {
   maskPermissionBits,
   permissionAndNot,
   permissionOr,
-} from '#/lib/permission-bits'
-import { ServerPermission } from '#/features/authorization/permission-bits.generated'
+} from '@syrnike13/client/lib/permission-bits'
+import { ServerPermission } from '@syrnike13/client/authorization/permission-bits.generated'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 
 export { ServerPermission }

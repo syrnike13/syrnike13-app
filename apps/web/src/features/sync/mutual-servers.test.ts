@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { listMutualServers } from '#/features/sync/selectors'
-import type { SyncState } from '#/features/sync/types'
+import { listMutualServers } from '@syrnike13/client/sync/selectors'
+import type { SyncState } from '@syrnike13/client/sync/types'
 
 function makeState(
   overrides: Partial<SyncState> = {},

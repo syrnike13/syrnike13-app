@@ -7,7 +7,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuContent } from './user-context-menu-content'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
@@ -50,7 +50,7 @@ vi.mock('#/features/dm/dm-actions', () => ({
   openDirectMessageChannel: openDirectMessageChannelMock,
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   banServerMemberEffect: (
     ...args: Parameters<typeof serverApiMocks.banServerMember>
   ) => serverApiMocks.banServerMember(...args),

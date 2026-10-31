@@ -49,10 +49,10 @@ const componentMocks = vi.hoisted(() => {
 vi.mock('#/features/auth/auth-context', () => ({
   useAuth: () => ({ user: { _id: 'user-1' } }),
 }))
-vi.mock('#/features/sync/channel-label', () => ({
+vi.mock('@syrnike13/client/sync/channel-label', () => ({
   getChannelLabel: () => 'General voice',
 }))
-vi.mock('#/features/sync/sync-store', () => ({
+vi.mock('@syrnike13/client/sync/sync-store', () => ({
   useSyncStore: (selector: (state: unknown) => unknown) =>
     selector(componentMocks.sync),
 }))

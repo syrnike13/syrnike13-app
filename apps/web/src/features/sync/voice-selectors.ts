@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 
-import type { SyncState } from './types'
-import type { UserVoiceState } from './voice-types'
+import type { SyncState } from '@syrnike13/client/sync/types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import {
   isResolvableVoiceParticipant,
-} from './voice-participant-resolve'
+} from '@syrnike13/client/sync/voice-participant-resolve'
 
 export function getChannelVoiceParticipants(
   state: SyncState,

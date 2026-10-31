@@ -3,9 +3,9 @@ import type { User } from '@syrnike13/api-types'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { canViewUserProfile } from '#/features/authorization/authorization'
-import { fetchUserMutual } from '#/features/api/users-api'
-import { listMutualServers } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { fetchUserMutual } from '@syrnike13/client/api/users-api'
+import { listMutualServers } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
 
 /**

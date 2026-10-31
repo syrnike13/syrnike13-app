@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -21,7 +21,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   editServerMemberEffect: vi.fn(() => Effect.void),
 }))
 

@@ -25,7 +25,7 @@ import {
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import {
   formatUserVolumeLabel,
   streamVolumeFromPercent,

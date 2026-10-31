@@ -2,13 +2,12 @@ import { createTranslator } from '@syrnike13/ui/i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ru from '#/messages/ru.json'
-import { uploadAttachment } from '#/features/api/media-api'
+import { configureApiClient } from '@syrnike13/client/api/client'
+import { uploadAttachment } from '@syrnike13/client/api/media-api'
 
 const t = createTranslator(ru, 'ru', 'media')
 
-vi.mock('#/lib/config', () => ({
-  config: { mediaUrl: 'https://media.example.test' },
-}))
+configureApiClient({ apiUrl: 'https://api.example.test', mediaUrl: 'https://media.example.test' })
 
 class MockXMLHttpRequest extends EventTarget {
   static latest: MockXMLHttpRequest

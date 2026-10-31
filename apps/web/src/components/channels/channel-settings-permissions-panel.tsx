@@ -15,13 +15,13 @@ import {
   setChannelRolePermissionsEffect,
   setChannelUserPermissionsEffect,
   setDefaultChannelPermissionsEffect,
-} from '#/features/api/channels-api'
+} from '@syrnike13/client/api/channels-api'
 import {
   listServerMembers,
   type ServerMemberEntry,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import type { ServerChannel } from '#/lib/channel-voice'
+} from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
+import type { ServerChannel } from '@syrnike13/client/lib/channel-voice'
 import {
   canGrantChannelPermission,
   canManageChannelPermissionSubject,

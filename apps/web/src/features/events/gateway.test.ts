@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EventsGateway, gatewayReconnectDelayMs } from './gateway'
+import {
+  EventsGateway,
+  gatewayReconnectDelayMs,
+} from '@syrnike13/client/gateway/events-gateway'
+
+import { webGatewayEnvironment } from './gateway'
 
 type MockSocket = {
   url: string
@@ -58,7 +63,7 @@ describe('EventsGateway', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mock = createMockWebSocket()
-    gateway = new EventsGateway()
+    gateway = new EventsGateway(webGatewayEnvironment)
   })
 
   afterEach(() => {
@@ -378,7 +383,7 @@ describe('EventsGateway migration', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mock = createMockWebSocket()
-    gateway = new EventsGateway()
+    gateway = new EventsGateway(webGatewayEnvironment)
     events = []
     states = []
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')

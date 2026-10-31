@@ -43,9 +43,8 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   deleteChannelEffect,
   editChannelEffect,
-} from '#/features/api/channels-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { pickDefaultChannelId } from '#/features/sync/selectors'
+} from '@syrnike13/client/api/channels-api'
+import { pickDefaultChannelId } from '@syrnike13/client/sync/selectors'
 import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
@@ -56,8 +55,8 @@ import {
 import {
   isServerVoiceChannel,
   type ServerChannel,
-} from '#/lib/channel-voice'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/lib/channel-voice'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const SLOWMODE_OPTIONS = [
   { value: 0, key: 'off' },
@@ -99,7 +98,6 @@ export function ChannelSettingsOverviewPanel({
   const t = useTranslations('channels.overview')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const voiceChannel = isServerVoiceChannel(channel)
   const textChannel = channel.channel_type === 'TextChannel'
   const [name, setName] = useState(channel.name)
@@ -287,11 +285,11 @@ export function ChannelSettingsOverviewPanel({
           try: () =>
             fallback
               ? navigate({
-                  to: `${prefix}/c/$channelId`,
+                  to: '/c/$channelId',
                   params: { channelId: fallback },
                   search: { m: undefined },
                 })
-              : navigate({ to: prefix || '/', search: { tab: 'online' } }),
+              : navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

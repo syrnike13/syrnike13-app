@@ -2,10 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 
-import { updateCurrentUserEffect } from '#/features/api/users-api'
+import { updateCurrentUserEffect } from '@syrnike13/client/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 export function useSetCustomStatus() {
   const t = useTranslations('users')

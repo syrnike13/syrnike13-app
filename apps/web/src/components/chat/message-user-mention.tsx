@@ -6,7 +6,7 @@ import {
 } from '#/components/chat/mention-pill'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import { memberDisplayColour } from '#/features/sync/member-list-groups'
-import { memberRoleEntries } from '#/features/sync/selectors'
+import { memberRoleEntries } from '@syrnike13/client/sync/selectors'
 
 type MessageUserMentionProps = {
   userId: string

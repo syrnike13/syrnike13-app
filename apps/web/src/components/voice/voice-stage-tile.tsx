@@ -5,14 +5,14 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { createChannelInviteEffect } from '#/features/api/invites-api'
+import { createChannelInviteEffect } from '@syrnike13/client/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   VoiceOnAirBadge,
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { writeClipboardTextEffect } from '#/lib/clipboard'

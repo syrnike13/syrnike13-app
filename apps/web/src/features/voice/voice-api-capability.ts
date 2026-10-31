@@ -3,7 +3,7 @@ import type { Channel } from '@syrnike13/api-types'
 import {
   channelHasVoice,
   isServerVoiceChannel,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 
 export function canJoinVoiceChannel(channel: Channel | undefined) {
   if (!channel) return false

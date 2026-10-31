@@ -4,12 +4,15 @@ packages:
   - apps/admin
   - apps/desktop
   - apps/activity-lab
+  - apps/mobile
   - packages/activity-sdk
   - packages/api-types
+  - packages/client
   - packages/desktop-native
   - packages/windows-media-engine
   - packages/platform
   - packages/ui
+  - packages/ui-native
 
 allowBuilds:
   "@sentry/cli": true
@@ -28,3 +31,8 @@ packageExtensions:
 
 overrides:
   prettier: ^3.8.1
+
+minimumReleaseAgeExclude:
+  - '@expo/metro-runtime@58.0.16'
+  - '@expo/schema-utils@58.0.3'
+  - expo-router@58.0.29

@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-intent'
@@ -22,7 +22,6 @@ import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-int
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
-  openVoiceChannelDrawer: vi.fn(),
   deleteChannel: vi.fn((_token: string, _channelId: string) => Effect.void),
   pathname: '/',
   voice: {
@@ -69,16 +68,16 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   deleteChannelEffect: (...args: [string, string]) =>
     mocks.deleteChannel(...args),
 }))
 
-vi.mock('#/features/api/sync-api', () => ({
+vi.mock('@syrnike13/client/api/sync-api', () => ({
   ackChannelEffect: vi.fn(() => Effect.void),
 }))
 
-vi.mock('#/features/api/invites-api', () => ({
+vi.mock('@syrnike13/client/api/invites-api', () => ({
   createChannelInviteEffect: vi.fn(() => Effect.succeed({ _id: 'invite-1' })),
 }))
 
@@ -88,14 +87,6 @@ vi.mock('#/lib/clipboard', () => ({
 
 vi.mock('#/features/voice/voice-session-context', () => ({
   useVoiceSession: () => mocks.voice,
-}))
-
-vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useOptionalMobileVoiceChannelDrawer: () => ({
-    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
-    closeVoiceChannelDrawer: vi.fn(),
-    channelId: null,
-  }),
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({
@@ -228,7 +219,6 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
     mocks.navigate.mockClear()
     mocks.join.mockClear()
-    mocks.openVoiceChannelDrawer.mockClear()
     mocks.deleteChannel.mockReturnValue(Effect.void)
     mocks.deleteChannel.mockClear()
     mocks.pathname = '/'
@@ -316,19 +306,6 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).not.toHaveBeenCalled()
-  })
-
-  it('opens mobile voice drawer instead of navigating on mobile route', () => {
-    mocks.pathname = '/m/'
-    mocks.voice.channelId = null
-    mocks.voice.status = 'idle'
-    renderVoiceItem('text-general')
-
-    fireEvent.click(screen.getByRole('link', { name: 'main' }))
-
-    expect(mocks.openVoiceChannelDrawer).toHaveBeenCalledWith('voice-main')
-    expect(mocks.navigate).not.toHaveBeenCalled()
-    expect(mocks.join).not.toHaveBeenCalled()
   })
 
   it('opens voice channel chat from the sidebar action button', () => {

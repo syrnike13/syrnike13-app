@@ -7,7 +7,7 @@ import {
   cakeLogoVariantForHoliday,
   type CakeLogoVariant,
 } from '#/components/layout/cake-logo'
-import type { GatewayState } from '#/features/events/gateway'
+import type { GatewayState } from '@syrnike13/client/gateway/events-gateway'
 import {
   GATEWAY_LOADING_FACT_KEYS,
   pickGatewayLoadingFactKey,

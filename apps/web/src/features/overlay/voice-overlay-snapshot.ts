@@ -1,7 +1,7 @@
 import type { User } from '@syrnike13/api-types'
 import type { DesktopOverlaySnapshot } from '@syrnike13/platform'
 
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import { userAvatarUrl } from '#/lib/media'
 
 type OverlayUser = Pick<User, '_id' | 'username' | 'display_name' | 'avatar'>

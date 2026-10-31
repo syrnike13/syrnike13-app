@@ -7,8 +7,8 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
-import { syncStore } from '#/features/sync/sync-store'
-import { permissionOr } from '#/lib/permission-bits'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
+import { permissionOr } from '@syrnike13/client/lib/permission-bits'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
@@ -34,7 +34,7 @@ vi.mock('#/components/icons', () => ({
   PhoneOffIcon: () => <span />,
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   editServerMemberEffect: (
     ...args: Parameters<typeof mocks.editServerMember>
   ) =>

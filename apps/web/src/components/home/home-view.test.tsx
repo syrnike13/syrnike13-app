@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HomeView } from '#/components/home/home-view'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),

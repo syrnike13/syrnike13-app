@@ -1,7 +1,6 @@
 import { isAppPath } from './device-routing'
 
 const DESKTOP_PUBLIC_PREFIXES = [
-  '/m',
   '/desktop',
   '/invite',
   '/login',

@@ -1,8 +1,8 @@
-import type { GatewayServerEvent } from '#/features/sync/types'
+import type { GatewayServerEvent } from '@syrnike13/client/sync/types'
 import type { UserVoiceState as GatewayUserVoiceState } from '@syrnike13/api-types/gateway-schema'
 import type {
   VoiceParticipantsByChannel,
-} from '#/features/sync/voice-types'
+} from '@syrnike13/client/sync/voice-types'
 
 import {
   soundEventFromGatewayEvent,

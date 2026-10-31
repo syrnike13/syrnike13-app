@@ -1,0 +1,247 @@
+{
+  "mobile": {
+    "updates": {
+      "apkAvailable": "Version {version} is available",
+      "apkFailed": "Could not download version {version}",
+      "install": "Update",
+      "downloading": "Downloading…",
+      "otaReady": "An update is ready",
+      "restart": "Restart"
+    },
+    "login": {
+      "title": "Sign in to Syrnike",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "failed": "Could not sign in. Check your email and password.",
+      "mfaUnsupported": "Two-factor sign-in is not supported in the mobile app yet.",
+      "disabled": "This account is disabled."
+    },
+    "rail": {
+      "directMessages": "Direct messages"
+    },
+    "userBar": {
+      "openProfile": "Open profile",
+      "inVoice": "In voice chat",
+      "status": {
+        "online": "Online",
+        "idle": "Idle",
+        "dnd": "Do not disturb",
+        "offline": "Offline"
+      },
+      "notifications": "Notifications"
+    },
+    "home": {
+      "directMessages": "Direct messages",
+      "empty": "No direct messages yet.",
+      "andMore": "{names} and {count} more",
+      "addFriends": "Add Friends",
+      "newMessage": "New message"
+    },
+    "time": {
+      "now": "now",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d",
+      "months": "{count} mo",
+      "years": "{count} y"
+    },
+    "channels": {
+      "savedMessages": "Saved messages",
+      "directMessages": "Direct messages",
+      "channelFallback": "Channel"
+    },
+    "chat": {
+      "back": "Back",
+      "placeholder": "Message {channel}",
+      "send": "Send",
+      "loadFailed": "Could not load messages.",
+      "edited": "(edited)",
+      "replyUnavailable": "Original message is not loaded",
+      "replyAttachment": "Attachment",
+      "openAttachment": "Open {name}",
+      "reaction": "{emoji}: {count}",
+      "typing": {
+        "someone": "Someone",
+        "one": "{name} is typing…",
+        "two": "{first} and {second} are typing…",
+        "many": "Several people are typing…"
+      },
+      "system": {
+        "user": "User",
+        "durationSeconds": "{count}s",
+        "durationMinutes": "{count}m",
+        "durationHours": "{count}h",
+        "callCancelled": "Cancelled",
+        "callMissed": "Missed",
+        "callEnded": "Ended",
+        "callStarted": "started a call",
+        "callOngoing": "In progress",
+        "userAdded": "{actor} added {target}",
+        "userRemoved": "{actor} removed {target}",
+        "userJoined": "{user} joined the server",
+        "userLeft": "{user} left the server",
+        "userKicked": "{user} was kicked from the server",
+        "userBanned": "{user} was banned from the server",
+        "channelRenamed": "{actor} renamed the channel to “{name}”",
+        "channelDescriptionChanged": "{actor} changed the channel description",
+        "channelIconChanged": "{actor} changed the channel icon",
+        "ownershipTransferred": "{from} transferred ownership to {to}",
+        "messagePinned": "{actor} pinned a message",
+        "messageUnpinned": "{actor} unpinned a message"
+      },
+      "editing": "Editing message",
+      "replyingTo": "Replying to {name}",
+      "cancelMode": "Cancel",
+      "save": "Save",
+      "actions": {
+        "close": "Close",
+        "react": "React with {emoji}",
+        "reply": "Reply",
+        "copyText": "Copy text",
+        "edit": "Edit",
+        "delete": "Delete message",
+        "deleteTitle": "Delete message?",
+        "deleteDescription": "It will disappear for everyone. This cannot be undone.",
+        "cancel": "Cancel"
+      },
+      "attach": "Attach files",
+      "start": {
+        "welcome": "Welcome to #{channel}!",
+        "channelDescription": "This is the start of the #{channel} channel.",
+        "dmDescription": "This is the beginning of your direct message history with {name}."
+      }
+    },
+    "you": {
+      "close": "Close",
+      "inVoice": "In voice chat",
+      "openVoice": "Open voice chat",
+      "language": "Language",
+      "locales": {
+        "en": "English",
+        "ru": "Русский"
+      },
+      "logout": "Sign out",
+      "version": "Version {version}",
+      "editProfile": "Edit profile"
+    },
+    "voice": {
+      "collapse": "Collapse",
+      "empty": "Nobody here yet. Join when you are ready to talk.",
+      "joinVoice": "Join voice channel",
+      "notificationTitle": "You are in a voice channel",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "deafen": "Deafen",
+      "undeafen": "Undeafen",
+      "camera": "Camera",
+      "stopCamera": "Stop camera",
+      "flipCamera": "Flip camera",
+      "minimize": "Minimize",
+      "shareScreen": "Share screen",
+      "stopScreen": "Stop sharing",
+      "leave": "Disconnect",
+      "connection": {
+        "disconnected": "Not connected",
+        "connecting": "Connecting…",
+        "connected": "Connected",
+        "recovering": "Reconnecting…",
+        "failed": "Connection failed"
+      }
+    },
+    "media": {
+      "remove": "Remove {name}",
+      "uploadFailed": "Could not upload the file",
+      "uploadTooLarge": "File is larger than {size} MB",
+      "uploadTypeNotAllowed": "This file type cannot be uploaded",
+      "uploadCancelled": "Upload cancelled",
+      "networkError": "Network error while uploading"
+    },
+    "notifications": {
+      "back": "Back",
+      "title": "Notifications",
+      "unreadMentions": "Unread mentions",
+      "empty": "No new mentions.",
+      "mentionedYou": "mentioned you",
+      "mentionedYouIn": "mentioned you in {place}:"
+    },
+    "friends": {
+      "back": "Back",
+      "title": "Friends",
+      "addTitle": "Add a friend",
+      "addDescription": "Add friends by their username.",
+      "usernamePlaceholder": "Username",
+      "send": "Send request",
+      "requestSent": "Request sent",
+      "requestFailed": "Could not send the request",
+      "requests": "Requests — {count}",
+      "incoming": "Incoming request",
+      "outgoing": "Outgoing request",
+      "accept": "Accept {name}'s request",
+      "decline": "Decline {name}'s request",
+      "cancelRequest": "Cancel request to {name}",
+      "all": "All friends — {count}",
+      "empty": "No friends yet."
+    },
+    "newMessage": {
+      "close": "Close",
+      "title": "New message",
+      "search": "Search friends",
+      "noMatches": "Nobody found.",
+      "noFriends": "No friends yet."
+    },
+    "server": {
+      "info": "Server info",
+      "close": "Close",
+      "invite": "Invite",
+      "leave": "Leave server",
+      "leaveTitle": "Leave {name}?",
+      "leaveDescription": "You can only come back with a new invite.",
+      "cancel": "Cancel",
+      "inviteTitle": "Invite friends to {name}",
+      "inviteCreating": "Creating an invite…",
+      "inviteFailed": "Could not create an invite. You may not have permission.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "share": "Share"
+    },
+    "invite": {
+      "close": "Close",
+      "loading": "Loading the invite…",
+      "invalidTitle": "Invalid invite",
+      "invalidDescription": "The link has expired or was revoked.",
+      "invitedBy": "{name} invited you to join",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "join": "Join",
+      "open": "Open server",
+      "joinFailed": "Could not join."
+    },
+    "status": {
+      "change": "Change status",
+      "close": "Close",
+      "custom": "Custom status",
+      "customPlaceholder": "What are you up to?",
+      "save": "Save status",
+      "clear": "Clear status",
+      "failed": "Could not change the status.",
+      "presence": {
+        "Online": "Online",
+        "Idle": "Idle",
+        "Busy": "Do Not Disturb",
+        "Invisible": "Invisible"
+      }
+    },
+    "editProfile": {
+      "back": "Back",
+      "title": "Profile",
+      "changeAvatar": "Change avatar",
+      "uploading": "Uploading…",
+      "removeAvatar": "Remove avatar",
+      "displayName": "Display name",
+      "displayNameHint": "Leave empty to show your username.",
+      "save": "Save",
+      "saved": "Saved",
+      "failed": "Could not save the profile."
+    }
+  }
+}

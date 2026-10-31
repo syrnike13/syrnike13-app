@@ -5,7 +5,7 @@ import {
 import { Effect } from 'effect'
 
 import { eventsGateway } from '#/features/events/gateway'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 
 const webVoiceGatewayTransport: VoiceGatewayTransport = {

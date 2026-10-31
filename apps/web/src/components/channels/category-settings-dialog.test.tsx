@@ -14,7 +14,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CategorySettingsDialog } from '#/components/channels/category-settings-dialog'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   editServer: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   editServerEffect: (...args: [string, string, unknown]) =>
     mocks.editServer(...args),
 }))

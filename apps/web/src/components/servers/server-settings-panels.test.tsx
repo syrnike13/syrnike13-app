@@ -16,7 +16,7 @@ import { ServerSettingsPanelContent } from '#/components/servers/server-settings
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
   value: () => false,
@@ -62,14 +62,14 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/media-api', () => ({
+vi.mock('@syrnike13/client/api/media-api', () => ({
   uploadEmojiEffect: (...args: Parameters<typeof mocks.uploadEmoji>) =>
     mocks.uploadEmoji(...args),
   uploadMediaFileEffect: (...args: Parameters<typeof mocks.uploadMediaFile>) =>
     mocks.uploadMediaFile(...args),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   createServerEmojiEffect: (
     ...args: Parameters<typeof mocks.createServerEmoji>
   ) =>

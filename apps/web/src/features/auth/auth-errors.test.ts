@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ApiError, ApiNetworkError } from '#/lib/api/client'
+import { ApiError, ApiNetworkError } from '@syrnike13/client/api/client'
 
 import {
   isSessionInvalidatingError,

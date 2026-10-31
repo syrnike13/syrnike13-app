@@ -6,7 +6,7 @@ import {
   canManageServerChannels,
   ChannelPermission,
 } from './authorization'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const server = { _id: 'server', owner: 'owner' } as never
 const channel = {

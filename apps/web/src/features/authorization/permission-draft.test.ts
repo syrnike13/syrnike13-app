@@ -2,7 +2,7 @@ import type { Member, Server } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
 import { serverPermissionDraft } from '#/features/authorization/permission-draft'
-import { permissionOr } from '#/lib/permission-bits'
+import { permissionOr } from '@syrnike13/client/lib/permission-bits'
 import { ServerPermission } from '#/lib/server-permissions'
 
 function server(roles: Server['roles']): Server {

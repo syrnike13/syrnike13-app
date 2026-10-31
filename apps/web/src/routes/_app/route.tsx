@@ -19,7 +19,7 @@ import { UsernameResetPrompt } from '#/components/user/change-username-dialog'
 /**
  * Layout route для `/` — десктопная раскладка.
  *
- * Общий auth-gate и VoiceProvider — в `AuthedGate` (shared с `/m`).
+ * Общий auth-gate и VoiceProvider — в `AuthedGate`.
  * Здесь — только desktop-специфичная обвязка: shell, горячие клавиши,
  * command palette, overlay publisher.
  */

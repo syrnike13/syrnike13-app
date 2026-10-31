@@ -84,7 +84,6 @@ import {
   fetchFeedbackSuggestions,
 } from '#/features/api/feedback-api'
 import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   collectFeedbackSystem,
   hasSystemDetails,
@@ -174,7 +173,6 @@ export function FeedbackCreateDialog({
   const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
-  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const viewerId = auth.user?._id
   const [step, setStep] = useState(0)
@@ -637,7 +635,7 @@ export function FeedbackCreateDialog({
                         similar.map((suggestion) => (
                           <Link
                             key={suggestion._id}
-                            to={`${prefix}/feedback/$feedbackId`}
+                            to={'/feedback/$feedbackId'}
                             params={{ feedbackId: suggestion._id }}
                             className="flex items-center gap-3 border-b border-shell-divider p-3 outline-none transition-colors last:border-b-0 hover:bg-hover focus-visible:bg-hover"
                             onClick={() => onOpenChange(false)}

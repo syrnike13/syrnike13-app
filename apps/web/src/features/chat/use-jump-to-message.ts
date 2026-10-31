@@ -6,8 +6,8 @@ import {
   fetchChannelMessageEffect,
   fetchChannelMessagesEffect,
   MESSAGE_PAGE_SIZE,
-} from '#/features/api/messages-api'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/messages-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 export function useJumpToMessage(
   channelId: string,

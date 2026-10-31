@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 import { deriveDesktopTrayVoiceState } from './voice-tray-state'
 

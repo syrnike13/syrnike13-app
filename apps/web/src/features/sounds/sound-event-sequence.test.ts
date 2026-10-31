@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 import {
   createSoundEventResolver,

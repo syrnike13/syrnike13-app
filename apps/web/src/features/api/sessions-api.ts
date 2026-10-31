@@ -1,7 +1,7 @@
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from '@syrnike13/client/api/client'
 
 export const fetchSessionsEffect = Effect.fn('web.sessions.fetchAll')(
   function*(token: string) {

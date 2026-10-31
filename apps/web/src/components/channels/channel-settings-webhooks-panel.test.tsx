@@ -53,7 +53,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   createChannelWebhookEffect: (
     ...args: Parameters<typeof mocks.createChannelWebhook>
   ) =>

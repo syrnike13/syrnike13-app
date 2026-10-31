@@ -1,0 +1,31 @@
+{
+  "name": "@syrnike13/ui-native",
+  "version": "0.7.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./lib/cn": "./src/lib/cn.ts",
+    "./primitives/*": "./src/primitives/*/index.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.0.2"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-safe-area-context": "*"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.10.1",
+    "typescript": "^6.0.2",
+    "uniwind": "^1.13.1"
+  }
+}

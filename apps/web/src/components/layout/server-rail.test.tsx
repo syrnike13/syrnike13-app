@@ -15,12 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ServerRail } from '#/components/layout/server-rail'
 import en from '#/messages/en.json'
 import ru from '#/messages/ru.json'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
 
 function renderRail() {
-  return renderWithI18n(<ServerRail variant="desktop" />, {
+  return renderWithI18n(<ServerRail />, {
     messages: { en, ru },
   })
 }
@@ -53,7 +53,7 @@ vi.mock('@tanstack/react-router', () => ({
       : to,
   }),
   useMatch: ({ from }: { from: string }) =>
-    from === '/_app/' || from === '/m/'
+    from === '/_app/'
       ? { routeId: from, params: {}, search: {} }
       : false,
   useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>

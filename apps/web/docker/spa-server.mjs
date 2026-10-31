@@ -12,6 +12,13 @@ export const SPA_SHELL_PATH = '/_shell.html'
  */
 export const ACTIVITIES_PATH = '/_activities/'
 
+/**
+ * The phone app: the React Native client's browser build, a separate SPA
+ * with its own shell. Phones are sent here by the root route.
+ */
+export const MOBILE_APP_PATH = '/m/'
+const MOBILE_APP_SHELL = `${MOBILE_APP_PATH}index.html`
+
 const contentTypes = {
   '.avif': 'image/avif',
   '.css': 'text/css; charset=utf-8',
@@ -52,7 +59,10 @@ function assetPath(clientDir, pathname) {
 }
 
 function cacheControlFor(pathname) {
-  if (pathname.startsWith('/assets/')) {
+  if (
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith(`${MOBILE_APP_PATH}_expo/static/`)
+  ) {
     return 'public, max-age=31536000, immutable'
   }
 
@@ -65,7 +75,7 @@ function cacheControlFor(pathname) {
     return 'no-store, no-cache, must-revalidate'
   }
 
-  if (pathname === SPA_SHELL_PATH) {
+  if (pathname === SPA_SHELL_PATH || pathname === MOBILE_APP_SHELL) {
     return 'no-store, no-cache, must-revalidate'
   }
 
@@ -180,6 +190,28 @@ export function createSpaStaticServer({
       )
 
       if (await serveAsset(req, res, resolvedClientDir, url.pathname)) return
+
+      if (url.pathname === MOBILE_APP_PATH.slice(0, -1)) {
+        res.statusCode = 308
+        res.setHeader('Location', `${MOBILE_APP_PATH}${url.search}`)
+        res.end()
+        return
+      }
+
+      if (url.pathname.startsWith(MOBILE_APP_PATH)) {
+        // App routes get the mobile shell; a missing file stays a 404.
+        const isRoute = extname(url.pathname) === ''
+        if (
+          isRoute &&
+          (req.method === 'GET' || req.method === 'HEAD') &&
+          (await serveAsset(req, res, resolvedClientDir, MOBILE_APP_SHELL))
+        ) {
+          return
+        }
+        res.statusCode = 404
+        res.end('Not Found')
+        return
+      }
 
       if (url.pathname.startsWith(ACTIVITIES_PATH)) {
         // Directory index for bundled activities; a missing file is a 404,

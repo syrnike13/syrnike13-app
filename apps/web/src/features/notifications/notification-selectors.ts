@@ -5,8 +5,8 @@ import {
   isChannelUnread,
   listServerChannels,
   listUsersByRelationship,
-} from '#/features/sync/selectors'
-import type { SyncState } from '#/features/sync/types'
+} from '@syrnike13/client/sync/selectors'
+import type { SyncState } from '@syrnike13/client/sync/types'
 
 export type NotificationBadgeState = {
   count: number

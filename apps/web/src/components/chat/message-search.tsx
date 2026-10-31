@@ -26,12 +26,11 @@ import {
 } from '@syrnike13/ui/primitives/popover'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
-import { searchChannelMessagesEffect } from '#/features/api/messages-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { searchChannelMessagesEffect } from '@syrnike13/client/api/messages-api'
 import { searchServerMessages } from '#/features/search/server-message-search'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import { serverChannelServerId } from '@syrnike13/client/lib/channel-voice'
 
 /** Where the search looks: one channel (DM, group) or every text channel of a server. */
 export type MessageSearchScope =
@@ -181,7 +180,6 @@ export function MessageSearch({
 }) {
   const t = useTranslations('chat')
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const fieldRef = useRef<HTMLDivElement>(null)
@@ -199,7 +197,7 @@ export function MessageSearch({
     close()
     if (scope.kind === 'server') syncStore.setSelectedServerId(scope.serverId)
     void navigate({
-      to: `${prefix}/c/$channelId`,
+      to: '/c/$channelId',
       params: { channelId: hit.channelId },
       search: { m: hit.message._id },
     })

@@ -54,8 +54,8 @@ import {
   deleteServerRoleEffect,
   editServerRoleRanksEffect,
   setDefaultServerPermissionsEffect,
-} from '#/features/api/servers-api'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/servers-api'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   canGrantServerPermission,
   canManageRole,

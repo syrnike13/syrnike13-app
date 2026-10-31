@@ -19,7 +19,7 @@ import {
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 
 import { canUseActivities } from '#/features/authorization/authorization'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { ActivityApplicationIcon } from './activity-application-icon'
 import { activityErrorMessage } from './activity-errors'
 import { activityStore } from './activity-store'

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { useCallback } from 'react'
 
-import { fetchPrivacyEffect, updatePrivacyEffect } from '#/features/api/users-api'
+import { fetchPrivacyEffect, updatePrivacyEffect } from '@syrnike13/client/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 
 export const PRIVACY_QUERY_KEY = ['users', 'privacy'] as const

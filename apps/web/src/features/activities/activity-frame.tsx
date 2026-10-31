@@ -24,7 +24,7 @@ import {
 } from '@syrnike13/activity-sdk/protocol'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import {
   activityApiErrorCode,
   authorizeActivityEffect,

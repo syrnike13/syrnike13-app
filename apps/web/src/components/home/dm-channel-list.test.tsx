@@ -6,14 +6,14 @@ import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DmChannelList } from '#/components/home/dm-channel-list'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   deleteChannel: vi.fn(),
   navigate: vi.fn(),
 }))
 
-vi.mock('#/features/api/channels-api', async () => {
+vi.mock('@syrnike13/client/api/channels-api', async () => {
   const { Effect } = await import('effect')
   return {
     deleteChannelEffect: (...args: unknown[]) =>

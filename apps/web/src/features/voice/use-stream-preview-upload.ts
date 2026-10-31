@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequest } from '@syrnike13/client/api/client'
 import type { VoiceStageMediaTrack } from './voice-context'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
 import { captureStreamPreview, scheduleStreamPreview } from './stream-preview'

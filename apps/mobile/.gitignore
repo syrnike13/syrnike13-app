@@ -1,0 +1,7 @@
+# Expo cache and Continuous Native Generation output (expo prebuild)
+.expo/
+/android/
+/ios/
+
+# Browser build served by the web image at /m
+/dist-web/

@@ -18,15 +18,15 @@ import { selectChannelNotificationBadge } from '#/features/notifications/notific
 import {
   getChannelLabel,
   getDmRecipientId,
-} from '#/features/sync/channel-label'
-import { listVisibleDmRailChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import type { VoiceCallState } from '#/features/sync/voice-types'
+} from '@syrnike13/client/sync/channel-label'
+import { listVisibleDmRailChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
+import type { VoiceCallState } from '@syrnike13/client/sync/voice-types'
 import {
   isIncomingVoiceCall,
   isOutgoingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
+} from '@syrnike13/client/sync/voice-call-utils'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
@@ -35,8 +35,6 @@ import {
   railIconItemRowClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
-
-type PeopleRailVariant = 'desktop' | 'mobile'
 
 function voiceCallMarkerTitleForCall(
   voiceCall: VoiceCallState | undefined,
@@ -63,10 +61,8 @@ function voiceCallMarkerTitleForCall(
 }
 
 export function PeopleRailSection({
-  variant,
   activeChannelId,
 }: {
-  variant: PeopleRailVariant
   activeChannelId?: string
 }) {
   const auth = useAuth()
@@ -82,7 +78,6 @@ export function PeopleRailSection({
         <li key={channel._id} className={railIconItemRowClass}>
           <PeopleRailButton
             channel={channel}
-            variant={variant}
             activeChannelId={activeChannelId}
             currentUserId={auth.user?._id}
           />
@@ -94,12 +89,10 @@ export function PeopleRailSection({
 
 function PeopleRailButton({
   channel,
-  variant,
   activeChannelId,
   currentUserId,
 }: {
   channel: Channel
-  variant: PeopleRailVariant
   activeChannelId?: string
   currentUserId?: string
 }) {
@@ -122,7 +115,7 @@ function PeopleRailButton({
   const label = getChannelLabel(channel, users, currentUserId, tChat)
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
+  const channelTo = '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
   const railBadge = resolveAvatarBadgeLayout(40, {

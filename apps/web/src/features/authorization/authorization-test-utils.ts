@@ -1,4 +1,4 @@
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const ALL_PERMISSIONS = 0x000f_ffff_ffff_ffff
 

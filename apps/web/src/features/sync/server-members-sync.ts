@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { Effect, Fiber } from 'effect'
 
-import { fetchServerMembersEffect } from '#/features/api/servers-api'
-import { syncStore } from '#/features/sync/sync-store'
+import { fetchServerMembersEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const loadedKeys = new Map<string, Set<string>>()
 const inFlight = new Map<

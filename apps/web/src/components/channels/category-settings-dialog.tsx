@@ -20,8 +20,8 @@ import {
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerEffect } from '#/features/api/servers-api'
-import { syncStore } from '#/features/sync/sync-store'
+import { editServerEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 type CategorySettingsDialogProps = {
   serverId: string

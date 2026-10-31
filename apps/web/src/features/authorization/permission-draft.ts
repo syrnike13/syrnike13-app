@@ -7,9 +7,9 @@ import {
   permissionAndNot,
   permissionNot,
   permissionOr,
-} from '#/lib/permission-bits'
+} from '@syrnike13/client/lib/permission-bits'
 import { ServerPermission } from '#/lib/server-permissions'
-import type { ServerChannel } from '#/lib/channel-voice'
+import type { ServerChannel } from '@syrnike13/client/lib/channel-voice'
 
 type OverrideField = { a: number; d: number }
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>

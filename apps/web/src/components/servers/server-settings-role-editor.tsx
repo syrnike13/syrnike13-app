@@ -25,13 +25,13 @@ import {
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
-import { useSyncStore } from '#/features/sync/sync-store'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import {
   editServerRoleEffect,
   setServerRolePermissionsEffect,
-} from '#/features/api/servers-api'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/servers-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { roleIconUrl } from '#/lib/media'
 import {
   canGrantServerPermission,

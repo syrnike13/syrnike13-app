@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
@@ -51,9 +51,9 @@ vi.mock('@syrnike13/ui/primitives/dialog', () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
-vi.mock('#/features/api/users-api', async (importOriginal) => {
+vi.mock('@syrnike13/client/api/users-api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('#/features/api/users-api')>()
+    await importOriginal<typeof import('@syrnike13/client/api/users-api')>()
   return {
     ...actual,
     fetchUserMutual: vi.fn(async () => ({

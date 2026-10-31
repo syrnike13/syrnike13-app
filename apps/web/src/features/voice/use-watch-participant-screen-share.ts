@@ -1,25 +1,14 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback } from 'react'
 
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 
 export function useWatchParticipantScreenShare() {
   const voice = useVoiceStage()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
 
   return useCallback(
     async (channelId: string, userId: string) => {
-      if (prefix === '/m') {
-        void navigate({
-          to: '/m/c/$channelId',
-          params: { channelId },
-          search: { m: undefined },
-        })
-        await voice.watchParticipantScreenShare(channelId, userId)
-        return
-      }
       void navigate({
         to: '/c/$channelId',
         params: { channelId },
@@ -27,6 +16,6 @@ export function useWatchParticipantScreenShare() {
       })
       await voice.watchParticipantScreenShare(channelId, userId)
     },
-    [navigate, prefix, voice],
+    [navigate, voice],
   )
 }

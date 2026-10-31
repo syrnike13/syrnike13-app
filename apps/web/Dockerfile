@@ -7,19 +7,25 @@ WORKDIR /build
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
 COPY apps/web/package.json apps/web/
 COPY apps/activity-lab/package.json apps/activity-lab/
+COPY apps/mobile/package.json apps/mobile/
 COPY packages/activity-sdk/package.json packages/activity-sdk/
 COPY packages/api-types/package.json packages/api-types/
+COPY packages/client/package.json packages/client/
 COPY packages/platform/package.json packages/platform/
 COPY packages/ui/package.json packages/ui/
+COPY packages/ui-native/package.json packages/ui-native/
 
 RUN pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
 COPY apps/activity-lab apps/activity-lab
+COPY apps/mobile apps/mobile
 COPY packages/activity-sdk packages/activity-sdk
 COPY packages/api-types packages/api-types
+COPY packages/client packages/client
 COPY packages/platform packages/platform
 COPY packages/ui packages/ui
+COPY packages/ui-native packages/ui-native
 COPY tooling tooling
 # The emoji picker offers only emoji the backend accepts (src/lib/emoji-catalog.ts).
 COPY services/backend/crates/core/database/src/models/emojis/unicode_emoji.txt services/backend/crates/core/database/src/models/emojis/
@@ -35,6 +41,8 @@ ARG VITE_MEDIA_URL=https://syrnike13.ru/autumn
 ARG VITE_PROXY_URL=https://syrnike13.ru/january
 ARG VITE_GIFBOX_URL=https://api.gifbox.me
 ARG VITE_VOICE_NODE=worldwide
+# Phones get the React Native app's browser build at `/m` (spa-server.mjs).
+ARG MOBILE_BACKEND_HOST=syrnike13.ru
 ENV VITE_APP_TITLE=$VITE_APP_TITLE
 ENV VITE_RELEASE_CHANNEL=$VITE_RELEASE_CHANNEL
 ENV VITE_API_URL=$VITE_API_URL
@@ -49,7 +57,9 @@ ENV VITE_VOICE_NODE=$VITE_VOICE_NODE
 RUN pnpm version:sync && \
     export VITE_APP_VERSION="$(cat VERSION)" && \
     pnpm --filter @syrnike13/web build && \
-    pnpm --filter @syrnike13/activity-lab build
+    pnpm --filter @syrnike13/activity-lab build && \
+    cd apps/mobile && \
+    EXPO_PUBLIC_BACKEND_HOST="$MOBILE_BACKEND_HOST" pnpm exec expo export --platform web --output-dir dist-web
 
 FROM node:24-alpine
 
@@ -64,6 +74,7 @@ COPY --from=builder /build/apps/web/dist ./dist
 # First-party Activity Lab, proxied by activity-proxy from
 # http://web:5000/_activities/lab (ADR-0011).
 COPY --from=builder /build/apps/activity-lab/dist ./dist/client/_activities/lab
+COPY --from=builder /build/apps/mobile/dist-web ./dist/client/m
 
 EXPOSE 5000
 

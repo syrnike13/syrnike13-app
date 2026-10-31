@@ -232,3 +232,35 @@ mongod exits with code 62 on our data (featureCompatibilityVersion 8.2), so a
 pull-and-recreate took the nightly database down. Both compose files pin
 `mongo:8.2.12` by digest (`e0ce8c35…`, the image production runs). A MongoDB
 upgrade must go through `setFeatureCompatibilityVersion` deliberately.
+
+## Android NDK builds fail on long pnpm paths with CMake 3.22.1
+
+On 2026-10-30, `expo run:android` (Expo SDK 58, React Native 0.88) failed in
+`buildCMakeDebug` with `ninja: error: Stat(...): Filename longer than 260
+characters` and `manifest 'build.ninja' still dirty after 100 tries`. Object
+paths under `apps/mobile/android/app/.cxx` embed the full pnpm store path and
+exceed 400 characters. `LongPathsEnabled` was already `1`; the ninja 1.10.2
+bundled with the SDK's default CMake 3.22.1 does not use long paths.
+
+Install `cmake/3.31.6` (ninja 1.12.1) and point Gradle at it in the
+machine-local `apps/mobile/android/local.properties`:
+
+```properties
+cmake.dir=H\:/AndroidSDK/cmake/3.31.6
+```
+
+Remove stale `.cxx` directories (the app's and `expo-modules-core`'s in the
+pnpm store) after a failed build.
+
+ninja 1.12.1 still needs `LongPathsEnabled`. On 2026-10-31 the value was gone
+from `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem` and the same error
+returned with CMake 3.31.6. Check it with `reg query` before anything else;
+setting it back to `1` needs an administrator, then stop the Gradle daemons. `expo prebuild --clean` regenerates
+`android/`, so re-add `cmake.dir` afterwards.
+
+## `expo start` stalls behind a local TUN proxy
+
+On 2026-10-30, with an `xray-tun` adapter active, `expo start` stayed at
+"Starting Metro Bundler" for minutes at near-zero CPU while it waited on Expo's
+online checks. `expo start --offline` started Metro in about 36 seconds. With
+`CI=1` it also starts quickly, but CI mode disables Fast Refresh.

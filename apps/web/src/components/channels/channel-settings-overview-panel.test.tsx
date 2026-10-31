@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-settings-overview-panel'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
@@ -59,15 +59,11 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   deleteChannelEffect: (...args: Parameters<typeof mocks.deleteChannel>) =>
     mocks.deleteChannel(...args),
   editChannelEffect: (...args: Parameters<typeof mocks.editChannel>) =>
     mocks.editChannel(...args),
-}))
-
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
 }))
 
 function textChannel(

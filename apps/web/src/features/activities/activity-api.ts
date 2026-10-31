@@ -6,7 +6,7 @@ import type {
 } from '@syrnike13/activity-sdk/protocol'
 import { Effect, Schema } from 'effect'
 
-import { ApiError, ApiNetworkError, apiRequestEffect } from '#/lib/api/client'
+import { ApiError, ApiNetworkError, apiRequestEffect } from '@syrnike13/client/api/client'
 
 // Local contracts until `packages/api-types/OpenAPI.json` is regenerated with
 // the Activities routes (models: `crates/core/models/src/v0/activities.rs`).

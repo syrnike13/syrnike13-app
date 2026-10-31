@@ -23,15 +23,15 @@ import {
   ContextMenuSubTrigger,
 } from '@syrnike13/ui/primitives/context-menu'
 import { ContextMenuVolume } from '#/components/voice/context-menu-volume'
-import { editServerMemberEffect } from '#/features/api/servers-api'
-import { syncStore } from '#/features/sync/sync-store'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import {
   formatUserVolumeLabel,
   VOICE_USER_VOLUME_MAX,
   voiceListenerStore,
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
-import { runtimeChannelName } from '#/lib/channel-voice'
+import { runtimeChannelName } from '@syrnike13/client/lib/channel-voice'
 import {
   canDeafenServerMember,
   canMoveServerMember,

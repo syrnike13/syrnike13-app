@@ -1,0 +1,151 @@
+name: Mobile Release
+
+# The Android app is production-only and installs from the site, not a store:
+# `apk` ships a signed APK that installed apps offer to update to, `ota`
+# publishes a JS update that apps with the same native fingerprint download.
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "apk: new signed APK (native changes). ota: JS-only update for installed APKs."
+        required: true
+        type: choice
+        options:
+          - ota
+          - apk
+      version:
+        description: APK version (MAJOR.MINOR.PATCH, for example 0.8.0). Required for apk.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-syrnike13-mobile
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ${{ inputs.kind }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: production
+    env:
+      KIND: ${{ inputs.kind }}
+      REQUESTED_VERSION: ${{ inputs.version }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
+      SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      MOBILE_APK_KEEP_VERSIONS: ${{ vars.MOBILE_APK_KEEP_VERSIONS || '3' }}
+    steps:
+      - name: Validate dispatch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Release mobile from main, not ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+          if [ "$KIND" = "apk" ] && ! printf '%s' "$REQUESTED_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::An apk release needs a MAJOR.MINOR.PATCH version, got '${REQUESTED_VERSION}'."
+            exit 1
+          fi
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: pnpm install --frozen-lockfile
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/data/mobile'"
+
+      - name: Build signed APK
+        if: ${{ inputs.kind == 'apk' }}
+        working-directory: apps/mobile
+        env:
+          MOBILE_VERSION: ${{ inputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          SYRNIKE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          SYRNIKE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          SYRNIKE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          export SYRNIKE_ANDROID_KEYSTORE="$RUNNER_TEMP/upload.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$SYRNIKE_ANDROID_KEYSTORE"
+          pnpm exec expo prebuild --platform android --no-install
+          (cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a)
+          rm -f "$SYRNIKE_ANDROID_KEYSTORE"
+
+      - name: Publish APK
+        if: ${{ inputs.kind == 'apk' }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          APK="apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+          FILE="syrnike13-${VERSION}.apk"
+          VERSION_CODE="$(node -e "process.env.MOBILE_VERSION='${VERSION}';console.log(require('./apps/mobile/app.config.js').android.versionCode)")"
+          SHA256="$(sha256sum "$APK" | cut -d' ' -f1)"
+          node -e "console.log(JSON.stringify({version:process.argv[1],versionCode:Number(process.argv[2]),url:process.argv[3],sha256:process.argv[4]}))" \
+            "$VERSION" "$VERSION_CODE" "https://${SYRNIKE_DOMAIN}/downloads/mobile/${FILE}" "$SHA256" > latest.json
+          DIR="$DEPLOY_PATH/data/mobile"
+          SSH=(ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST")
+          scp -i ~/.ssh/deploy_key "$APK" "$DEPLOY_USER@$DEPLOY_HOST:$DIR/$FILE.part"
+          scp -i ~/.ssh/deploy_key latest.json "$DEPLOY_USER@$DEPLOY_HOST:$DIR/latest.json.part"
+          # The APK lands before the feed points at it; the stable alias is a copy
+          # so the landing button keeps working while old versions are pruned.
+          "${SSH[@]}" "set -e; cd '$DIR'
+            mv '$FILE.part' '$FILE'
+            cp '$FILE' syrnike13.apk.part && mv syrnike13.apk.part syrnike13.apk
+            mv latest.json.part latest.json
+            ls -1t syrnike13-*.apk | tail -n +$((MOBILE_APK_KEEP_VERSIONS + 1)) | xargs -r rm -f --"
+          curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/mobile/latest.json"
+
+      - name: Build OTA update
+        if: ${{ inputs.kind == 'ota' }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          pnpm exec expo export --platform android --output-dir "$RUNNER_TEMP/export"
+          pnpm exec expo config --json --type public > "$RUNNER_TEMP/expo-config.json"
+          RUNTIME="$(node node_modules/expo-updates/bin/cli.js runtimeversion:resolve --platform android | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).runtimeVersion))")"
+          echo "RUNTIME=$RUNTIME" >> "$GITHUB_ENV"
+          node ../../tooling/scripts/build-mobile-update.mjs "$RUNNER_TEMP/export" "$RUNNER_TEMP/expo-config.json" \
+            "$RUNTIME" "https://${SYRNIKE_DOMAIN}/downloads/mobile" "$RUNNER_TEMP/update"
+
+      - name: Publish OTA update
+        if: ${{ inputs.kind == 'ota' }}
+        run: |
+          set -euo pipefail
+          DIR="$DEPLOY_PATH/data/mobile"
+          SSH=(ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST")
+          # Assets are content-addressed and land first; the manifest that
+          # references them is swapped in atomically last.
+          "${SSH[@]}" "mkdir -p '$DIR/assets' '$DIR/updates/$RUNTIME'"
+          scp -i ~/.ssh/deploy_key "$RUNNER_TEMP"/update/assets/* "$DEPLOY_USER@$DEPLOY_HOST:$DIR/assets/"
+          scp -i ~/.ssh/deploy_key "$RUNNER_TEMP/update/updates/$RUNTIME/manifest.json" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DIR/updates/$RUNTIME/manifest.json.part"
+          "${SSH[@]}" "mv '$DIR/updates/$RUNTIME/manifest.json.part' '$DIR/updates/$RUNTIME/manifest.json'"
+          curl --fail --silent --show-error --output /dev/null \
+            -H "Expo-Runtime-Version: $RUNTIME" -H "Expo-Platform: android" \
+            "https://${SYRNIKE_DOMAIN}/downloads/mobile/manifest"
+          echo "Published OTA update for runtime $RUNTIME"

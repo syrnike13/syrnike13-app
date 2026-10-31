@@ -7,7 +7,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 vi.mock('sonner', () => ({
@@ -35,7 +35,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   editServerMemberEffect: vi.fn(() => Effect.void),
   fetchServerMembersEffect: vi.fn(() =>
     Effect.succeed({ members: [], users: [] }),

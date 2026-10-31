@@ -7,13 +7,13 @@ import {
   getInviteInactiveReason,
   isGroupInviteJoin,
   isServerInviteJoin,
-} from '#/features/api/invites-api'
+} from '@syrnike13/client/api/invites-api'
 
 const mocks = vi.hoisted(() => ({
   apiRequestEffect: vi.fn(),
 }))
 
-vi.mock('#/lib/api/client', () => ({
+vi.mock('@syrnike13/client/api/client', () => ({
   apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
     mocks.apiRequestEffect(...args),
 }))

@@ -45,10 +45,6 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => testState.navigate,
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 vi.mock('#/features/voice/voice-session-context', () => ({
   useVoiceSession: () => testState.session,
 }))
@@ -69,7 +65,7 @@ vi.mock('#/features/authorization/authorization', () => ({
   canUseActivities: () => testState.activitiesAllowed,
 }))
 
-vi.mock('#/features/sync/sync-store', () => ({
+vi.mock('@syrnike13/client/sync/sync-store', () => ({
   useSyncStore: (selector: (state: unknown) => unknown) => selector({}),
 }))
 

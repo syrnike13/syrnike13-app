@@ -15,7 +15,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelView } from '#/components/chat/channel-view'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const CURRENT_USER_ID = 'current-user'
 const TARGET_USER_ID = 'target-user'
@@ -74,9 +74,9 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/users-api', async (importOriginal) => {
+vi.mock('@syrnike13/client/api/users-api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('#/features/api/users-api')>()
+    await importOriginal<typeof import('@syrnike13/client/api/users-api')>()
   return {
     ...actual,
     fetchUserProfile: vi.fn(async () => ({ content: null, background: null })),
@@ -168,7 +168,7 @@ vi.mock('#/features/voice/voice-session-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   cancelDirectMessageCallEffect: cancelDirectMessageCallMock,
   declineDirectMessageCallEffect: declineDirectMessageCallMock,
 }))
@@ -263,9 +263,9 @@ vi.mock('#/components/user/user-global-profile-dialog', () => ({
     ) : null,
 }))
 
-vi.mock('#/features/api/users-api', async () => {
-  const actual = await vi.importActual<typeof import('#/features/api/users-api')>(
-    '#/features/api/users-api',
+vi.mock('@syrnike13/client/api/users-api', async () => {
+  const actual = await vi.importActual<typeof import('@syrnike13/client/api/users-api')>(
+    '@syrnike13/client/api/users-api',
   )
 
   return {
@@ -670,25 +670,6 @@ describe('ChannelView direct message header', () => {
       )
     })
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
-  })
-
-  it('shows a back button on mobile routes that returns to the home list', () => {
-    routerMocks.pathname = '/m/c/dm-1'
-
-    const { container } = renderChannelView(
-      <ChannelView channelId={CHANNEL_ID} />,
-    )
-    const header = container.querySelector('header')
-
-    expect(header).toBeTruthy()
-    const backButton = within(header!).getByRole('button', { name: 'Назад' })
-    fireEvent.click(backButton)
-
-    expect(syncStore.getState().selectedServerId).toBeNull()
-    expect(routerMocks.navigate).toHaveBeenCalledWith({
-      to: '/m',
-      search: { tab: 'online' },
-    })
   })
 
 })

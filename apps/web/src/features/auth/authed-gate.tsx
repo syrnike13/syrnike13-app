@@ -10,20 +10,16 @@ import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'
 import { VoiceProvider } from '#/features/voice/voice-provider'
-import { useSyncReady } from '#/features/sync/sync-store'
+import { useSyncReady } from '@syrnike13/client/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { apiErrorMessage } from '#/lib/api/error-message'
 
 /**
- * Общий gate для авторизованных зон (`/`, `/m`).
+ * Gate авторизованного приложения.
  *
  * Поднимает VoiceProvider (одна голосовая сессия), проверяет auth/onboarding/sync,
  * показывает GatewayLoadingScreen / ProfileLoadErrorScreen на время загрузки,
  * навешивает ActivityPresenceManager и SettingsModalProvider.
- *
- * Используется layout-роутами `/` и `/m`, поэтому VoiceProvider один
- * в любой момент времени — пользователь не может быть одновременно
- * в десктопной и мобильной зоне.
  */
 export function AuthedGate({ children }: { children: ReactNode }) {
   return (

@@ -34,7 +34,7 @@ import { ScreenShareQualitySections } from '#/components/voice/voice-screen-shar
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useAuth } from '#/features/auth/auth-context'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import {
   formatUserVolumeLabel,

@@ -17,7 +17,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@syrnike13/ui/primitives/sidebar'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 type HomeSidebarProps = {
@@ -35,7 +34,6 @@ export function HomeSidebar({
   const tFeedback = useTranslations('feedback.view')
   const tSidebar = useTranslations('home.sidebar')
   const dmHeadingId = useId()
-  const prefix = useAppRoutePrefix()
   return (
     <aside
       className={cn(
@@ -63,7 +61,7 @@ export function HomeSidebar({
                 size="lg"
                 render={
                   <Link
-                    to={prefix || '/'}
+                    to={'/'}
                     search={{ tab: 'online' }}
                     activeOptions={{ exact: true, includeSearch: false }}
                     activeProps={{ 'data-active': '' }}
@@ -79,7 +77,7 @@ export function HomeSidebar({
                 size="lg"
                 render={
                   <Link
-                    to={`${prefix}/feedback`}
+                    to={'/feedback'}
                     search={{ view: 'all' }}
                     activeOptions={{ includeSearch: false }}
                     activeProps={{ 'data-active': '' }}
