@@ -1,9 +1,18 @@
-import type { Server } from '@syrnike13/api-types'
-import { listServerChannels, listServers, channelUnreadMentionCount, isChannelUnread } from '@syrnike13/client/sync/selectors'
+import type { Channel, Server } from '@syrnike13/api-types'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
+import {
+  channelUnreadMentionCount,
+  isChannelUnread,
+  listServerChannels,
+  listServers,
+  listVisibleDmRailChannels,
+} from '@syrnike13/client/sync/selectors'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { cn } from '@syrnike13/ui-native/lib/cn'
+import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
 import { Text } from '@syrnike13/ui-native/primitives/text'
+import { router } from 'expo-router'
 import type { ReactNode } from 'react'
 import { Image, Pressable, ScrollView, View } from 'react-native'
 
@@ -11,6 +20,7 @@ import { useSession } from '../auth/session-context'
 import { mediaUrl } from '../lib/media'
 import { useVoice } from '../voice/voice-provider'
 import { MessageCircleIcon, Volume2BoldIcon } from './icons/registry'
+import { MentionBadge } from './mention-badge'
 
 /**
  * Discord mobile server rail: 72dp wide, 60dp slots with 48dp icons. The
@@ -21,6 +31,12 @@ export function ServerRail() {
   const t = useTranslations('mobile.rail')
   const servers = useSyncStore(listServers)
   const selectedId = useSyncStore((state) => state.selectedServerId)
+  const { session } = useSession()
+  // Unread DMs and live calls sit under the DM button, like Discord.
+  const dmChannels = useSyncStore(
+    (state) => listVisibleDmRailChannels(state, session.userId),
+    (a, b) => a.length === b.length && a.every((channel, index) => channel === b[index]),
+  )
 
   return (
     // The fixed-width View holds the rail: react-native-web gives ScrollView a
@@ -37,6 +53,9 @@ export function ServerRail() {
             <MessageCircleIcon size={24} className={selectedId === null ? 'text-primary-foreground' : 'text-foreground'} />
           </View>
         </RailSlot>
+        {dmChannels.map((channel) => (
+          <DmSlot key={channel._id} channel={channel} />
+        ))}
         <View className="mx-auto my-1 h-0.5 w-8 rounded-full bg-border" />
         {servers.map((server) => (
           <ServerSlot key={server._id} server={server} selected={server._id === selectedId} />
@@ -83,16 +102,29 @@ function ServerSlot({ server, selected }: { server: Server; selected: boolean })
           <Text className="font-medium">{server.name.slice(0, 2)}</Text>
         )}
       </View>
-      {mentions > 0 ? (
-        <View className="absolute right-2 bottom-1 min-w-5 items-center rounded-full border-2 border-background bg-destructive px-1">
-          <Text className="text-xs font-bold text-destructive-foreground">{mentions}</Text>
-        </View>
-      ) : null}
+      <MentionBadge count={mentions} className="right-2 bottom-1" />
       {inVoice ? (
         <View className="absolute top-1 right-2 size-5 items-center justify-center rounded-full border-2 border-background bg-success">
           <Volume2BoldIcon size={10} className="text-background" />
         </View>
       ) : null}
+    </RailSlot>
+  )
+}
+
+function DmSlot({ channel }: { channel: Channel }) {
+  const tChannels = useTranslations('mobile.channels')
+  const { session } = useSession()
+  const users = useSyncStore((state) => state.users)
+  const mentions = useSyncStore((state) => channelUnreadMentionCount(state.unreads[channel._id]))
+  const recipient = users[getDmRecipientId(channel, session.userId) ?? '']
+  const label = getChannelLabel(channel, users, session.userId, tChannels)
+  const icon = channel.channel_type === 'Group' ? mediaUrl(channel.icon) : mediaUrl(recipient?.avatar)
+
+  return (
+    <RailSlot selected={false} unread label={label} onPress={() => router.push(`/channel/${channel._id}`)}>
+      <Avatar size="xl" src={icon} name={label} />
+      <MentionBadge count={mentions} className="right-2 bottom-1" />
     </RailSlot>
   )
 }

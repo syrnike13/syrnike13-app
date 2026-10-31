@@ -28,7 +28,8 @@
         "idle": "Idle",
         "dnd": "Do not disturb",
         "offline": "Offline"
-      }
+      },
+      "notifications": "Notifications"
     },
     "home": {
       "directMessages": "Direct messages",
@@ -102,7 +103,12 @@
         "deleteDescription": "It will disappear for everyone. This cannot be undone.",
         "cancel": "Cancel"
       },
-      "attach": "Attach files"
+      "attach": "Attach files",
+      "start": {
+        "welcome": "Welcome to #{channel}!",
+        "channelDescription": "This is the start of the #{channel} channel.",
+        "dmDescription": "This is the beginning of your direct message history with {name}."
+      }
     },
     "you": {
       "close": "Close",
@@ -147,6 +153,14 @@
       "uploadTypeNotAllowed": "This file type cannot be uploaded",
       "uploadCancelled": "Upload cancelled",
       "networkError": "Network error while uploading"
+    },
+    "notifications": {
+      "back": "Back",
+      "title": "Notifications",
+      "unreadMentions": "Unread mentions",
+      "empty": "No new mentions.",
+      "mentionedYou": "mentioned you",
+      "mentionedYouIn": "mentioned you in {place}:"
     }
   }
 }

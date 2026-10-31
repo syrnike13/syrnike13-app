@@ -28,7 +28,8 @@
         "idle": "Неактивен",
         "dnd": "Не беспокоить",
         "offline": "Не в сети"
-      }
+      },
+      "notifications": "Уведомления"
     },
     "home": {
       "directMessages": "Личные сообщения",
@@ -102,7 +103,12 @@
         "deleteDescription": "Сообщение исчезнет у всех. Это нельзя отменить.",
         "cancel": "Отмена"
       },
-      "attach": "Прикрепить файлы"
+      "attach": "Прикрепить файлы",
+      "start": {
+        "welcome": "Добро пожаловать в #{channel}!",
+        "channelDescription": "Это начало канала #{channel}.",
+        "dmDescription": "Это начало вашей истории личных сообщений с {name}."
+      }
     },
     "you": {
       "close": "Закрыть",
@@ -147,6 +153,14 @@
       "uploadTypeNotAllowed": "Такой тип файла загружать нельзя",
       "uploadCancelled": "Загрузка отменена",
       "networkError": "Ошибка сети при загрузке"
+    },
+    "notifications": {
+      "back": "Назад",
+      "title": "Уведомления",
+      "unreadMentions": "Непрочитанные упоминания",
+      "empty": "Новых упоминаний нет.",
+      "mentionedYou": "упоминает вас",
+      "mentionedYouIn": "упоминает вас в {place}:"
     }
   }
 }

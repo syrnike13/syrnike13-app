@@ -81,6 +81,7 @@ function AppStack() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="channel/[channelId]" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="notifications" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="call" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="profile" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
     </Stack>

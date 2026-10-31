@@ -40,7 +40,9 @@ import {
   PlusIcon,
   XIcon,
 } from '../components/icons/registry'
+import { MentionBadge } from '../components/mention-badge'
 import { mediaUrl } from '../lib/media'
+import { useTotalMentions } from '../lib/mentions'
 import { userStatus } from '../lib/presence'
 
 /** A text channel or DM: header, newest-at-bottom feed and composer. */
@@ -103,6 +105,7 @@ export function ChatScreen({ channelId }: { channelId: string }) {
     [locale, messages],
   )
 
+  const otherMentions = useTotalMentions(channelId)
   const isDm = channel?.channel_type === 'DirectMessage' || channel?.channel_type === 'Group'
   const title = channel ? getChannelLabel(channel, users, session.userId, tChannels) : ''
   const recipient = channel ? users[getDmRecipientId(channel, session.userId) ?? ''] : undefined
@@ -111,9 +114,13 @@ export function ChatScreen({ channelId }: { channelId: string }) {
     <KeyboardAvoidingView behavior="padding" className="flex-1 bg-background">
       {/* 56dp header: back 40, then `# channel ›` or the DM partner. */}
       <View className="h-14 flex-row items-center gap-2 border-b border-border pr-4 pl-2">
-        <Button variant="ghost" size="icon-lg" accessibilityLabel={t('back')} onPress={() => router.back()}>
-          <ArrowLeftIcon size={24} />
-        </Button>
+        {/* The back button carries the unread mentions waiting elsewhere. */}
+        <View>
+          <Button variant="ghost" size="icon-lg" accessibilityLabel={t('back')} onPress={() => router.back()}>
+            <ArrowLeftIcon size={24} />
+          </Button>
+          <MentionBadge count={otherMentions} className="-right-1 -bottom-1" />
+        </View>
         {isDm ? (
           <Avatar size="default" src={mediaUrl(recipient?.avatar)} name={title} status={userStatus(recipient)} />
         ) : (
@@ -134,8 +141,13 @@ export function ChatScreen({ channelId }: { channelId: string }) {
         // The list is inverted, so its end is the top: the oldest messages.
         onEndReached={loadOlder}
         onEndReachedThreshold={0.5}
+        // Inverted: the footer is the top of the feed.
         ListFooterComponent={
-          loadFailed ? <Text className="p-4 text-center text-destructive">{t('loadFailed')}</Text> : undefined
+          loadFailed ? (
+            <Text className="p-4 text-center text-destructive">{t('loadFailed')}</Text>
+          ) : !hasOlder ? (
+            <ChannelStart title={title} isDm={isDm} avatar={isDm ? mediaUrl(recipient?.avatar) : null} />
+          ) : undefined
         }
       />
       <TypingLine channelId={channelId} />
@@ -154,6 +166,26 @@ export function ChatScreen({ channelId }: { channelId: string }) {
         />
       ) : null}
     </KeyboardAvoidingView>
+  )
+}
+
+/** The top of a channel's history: a 64dp icon, "Welcome to …" and a line. */
+function ChannelStart({ title, isDm, avatar }: { title: string; isDm: boolean; avatar: string | null }) {
+  const t = useTranslations('mobile.chat.start')
+  return (
+    <View className="gap-2 px-4 pt-6 pb-4">
+      {isDm ? (
+        <Avatar size="2xl" src={avatar} name={title} />
+      ) : (
+        <View className="size-16 items-center justify-center rounded-full bg-secondary">
+          <HashIcon size={36} />
+        </View>
+      )}
+      <Text className="text-3xl font-bold">{isDm ? title : t('welcome', { channel: title })}</Text>
+      <Text className="text-muted-foreground">
+        {isDm ? t('dmDescription', { name: title }) : t('channelDescription', { channel: title })}
+      </Text>
+    </View>
   )
 }
 

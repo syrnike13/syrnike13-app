@@ -1,15 +1,18 @@
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
+import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { router } from 'expo-router'
 import { Pressable, View } from 'react-native'
 
 import { useSession } from '../auth/session-context'
+import { useTotalMentions } from '../lib/mentions'
 import { displayName, userStatus } from '../lib/presence'
 import { mediaUrl } from '../lib/media'
 import { useVoice } from '../voice/voice-provider'
-import { ChevronDownIcon, Volume2BoldIcon } from './icons/registry'
+import { BellIcon, ChevronDownIcon, Volume2BoldIcon } from './icons/registry'
+import { MentionBadge } from './mention-badge'
 
 /**
  * Floating user card at the bottom of the main panel (Discord mobile): avatar,
@@ -22,6 +25,7 @@ export function UserBar() {
   const inVoice = Boolean(useVoice().snapshot.intentChannelId)
   const status = userStatus(user)
   const name = displayName(user)
+  const mentions = useTotalMentions()
 
   return (
     <Pressable
@@ -46,6 +50,18 @@ export function UserBar() {
         ) : status ? (
           <Text className="text-xs text-muted-foreground">{t(`status.${status}`)}</Text>
         ) : null}
+      </View>
+      <View>
+        <Button
+          variant="ghost"
+          size="icon-lg"
+          shape="circle"
+          accessibilityLabel={t('notifications')}
+          onPress={() => router.push('/notifications')}
+        >
+          <BellIcon size={24} className="text-muted-foreground" />
+        </Button>
+        <MentionBadge count={mentions} className="-right-1 -bottom-1" />
       </View>
     </Pressable>
   )
