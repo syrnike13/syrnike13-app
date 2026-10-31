@@ -250,7 +250,12 @@ cmake.dir=H\:/AndroidSDK/cmake/3.31.6
 ```
 
 Remove stale `.cxx` directories (the app's and `expo-modules-core`'s in the
-pnpm store) after a failed build. `expo prebuild --clean` regenerates
+pnpm store) after a failed build.
+
+ninja 1.12.1 still needs `LongPathsEnabled`. On 2026-10-31 the value was gone
+from `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem` and the same error
+returned with CMake 3.31.6. Check it with `reg query` before anything else;
+setting it back to `1` needs an administrator, then stop the Gradle daemons. `expo prebuild --clean` regenerates
 `android/`, so re-add `cmake.dir` afterwards.
 
 ## `expo start` stalls behind a local TUN proxy

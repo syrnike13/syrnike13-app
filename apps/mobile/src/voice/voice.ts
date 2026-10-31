@@ -30,11 +30,13 @@ export function createVoiceDirector(gateway: Gateway) {
       return { node: await resolveVoiceNode() }
     },
   })
+  const engine = new LiveKitEngineAdapter()
   // LiveKit RN runs the same WebRTC stack as browsers, so the backend treats it as `web`.
-  return new VoiceDirector({
+  const director = new VoiceDirector({
     authority,
-    engine: new LiveKitEngineAdapter(),
+    engine,
     rtcEngine: 'web',
     clientInstanceId: `android-${randomId()}`,
   })
+  return { director, engine }
 }

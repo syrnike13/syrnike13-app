@@ -8,7 +8,22 @@ import type {
   VoiceMediaKind,
   VoiceMediaSnapshot,
 } from '@syrnike13/platform'
-import { Room, RoomEvent, Track, type RemoteTrackPublication } from 'livekit-client'
+import {
+  LocalVideoTrack,
+  Room,
+  RoomEvent,
+  Track,
+  VideoPresets,
+  type RemoteTrackPublication,
+} from 'livekit-client'
+
+/** `setCamera.deviceId` picks the phone camera: `environment` is the back one. */
+export type CameraFacing = 'user' | 'environment'
+
+const CAMERA_RESOLUTIONS = {
+  hd720p30: VideoPresets.h720.resolution,
+  hd1080p30: VideoPresets.h1080.resolution,
+} as const
 
 type EngineEvent = VoiceEngineEvent extends infer Event
   ? Event extends { operationId: string }
@@ -32,6 +47,21 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
   private lease: VoiceLease | null = null
   private desired: VoiceMediaDesiredState | null = null
   private readonly listeners = new Set<(event: VoiceEngineEvent) => void>()
+  private readonly roomListeners = new Set<(room: Room | null) => void>()
+
+  /** The connected room, for rendering participants' video. */
+  subscribeRoom(listener: (room: Room | null) => void) {
+    this.roomListeners.add(listener)
+    listener(this.room)
+    return () => {
+      this.roomListeners.delete(listener)
+    }
+  }
+
+  private setRoom(room: Room | null) {
+    this.room = room
+    for (const listener of this.roomListeners) listener(room)
+  }
 
   async connect(lease: VoiceLease, desired: VoiceMediaDesiredState, signal: AbortSignal) {
     await this.closeRoom()
@@ -40,7 +70,7 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
     await AudioSession.startAudioSession()
 
     const room = new Room({ adaptiveStream: true, dynacast: true })
-    this.room = room
+    this.setRoom(room)
     room
       .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         this.emit(room, {
@@ -122,9 +152,26 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
     await this.applyTrack(room, 'microphone', !desired.effectiveMuted, () =>
       room.localParticipant.setMicrophoneEnabled(!desired.effectiveMuted),
     )
+    await this.applyTrack(room, 'camera', desired.cameraEnabled, () => this.applyCamera(room, desired))
     await this.applyTrack(room, 'screen', desired.screenEnabled, () =>
       room.localParticipant.setScreenShareEnabled(desired.screenEnabled),
     )
+  }
+
+  private async applyCamera(room: Room, desired: VoiceMediaDesiredState) {
+    const facingMode: CameraFacing =
+      desired.cameraDeviceId === 'environment' ? 'environment' : 'user'
+    const track = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track
+    // `setCameraEnabled` ignores capture options for a running camera, so a
+    // switch between front and back cameras restarts the track instead.
+    if (desired.cameraEnabled && track instanceof LocalVideoTrack) {
+      if (track.constraints.facingMode !== facingMode) await track.restartTrack({ facingMode })
+      return
+    }
+    await room.localParticipant.setCameraEnabled(desired.cameraEnabled, {
+      facingMode,
+      resolution: CAMERA_RESOLUTIONS[desired.cameraProfile],
+    })
   }
 
   private async applyTrack(
@@ -154,7 +201,7 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
 
   private async closeRoom() {
     const room = this.room
-    this.room = null
+    this.setRoom(null)
     if (room) await room.disconnect()
     await AudioSession.stopAudioSession()
   }
