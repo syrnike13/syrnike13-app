@@ -32,7 +32,7 @@ type EngineEvent = VoiceEngineEvent extends infer Event
   : never
 
 /** `voice:v1|engine|client|epoch|operation|userId` -> `userId`, as on web. */
-function userIdFromIdentity(identity: string) {
+export function userIdFromIdentity(identity: string) {
   const parts = identity.split('|')
   return parts.length === 6 && parts[0] === 'voice:v1' ? parts[5]! : identity
 }

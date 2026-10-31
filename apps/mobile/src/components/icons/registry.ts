@@ -13,6 +13,7 @@ export const MessageCircleIcon = iconifyIcon('majesticons:chat')
 
 // Chrome
 export const ChevronLeftIcon = iconifyIcon('ri:arrow-left-s-line')
+export const ArrowLeftIcon = iconifyIcon('ri:arrow-left-line')
 export const ChevronRightIcon = iconifyIcon('ri:arrow-right-s-line')
 export const ChevronDownIcon = iconifyIcon('ri:arrow-down-s-line')
 export const XIcon = iconifyIcon('ri:close-line')

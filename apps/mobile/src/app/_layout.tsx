@@ -10,6 +10,7 @@ import { useResolveClassNames, withUniwind } from 'uniwind'
 import { clearSession, loadSession, type Session } from '../auth/session'
 import { SessionContext } from '../auth/session-context'
 import { CallLayer } from '../call/call-layer'
+import { VoicePreviewProvider } from '../call/voice-preview'
 import { SyncProvider } from '../data/sync-provider'
 import { catalogs } from '../messages'
 import { LoginScreen } from '../screens/login-screen'
@@ -54,7 +55,9 @@ export default function RootLayout() {
               <SyncProvider token={sessionValue.session.token} userId={sessionValue.session.userId}>
                 <VoiceProvider userId={sessionValue.session.userId}>
                   <CallLayer>
-                    <AppStack />
+                    <VoicePreviewProvider>
+                      <AppStack />
+                    </VoicePreviewProvider>
                   </CallLayer>
                 </VoiceProvider>
               </SyncProvider>
@@ -76,9 +79,10 @@ function AppStack() {
         contentStyle: { backgroundColor: background.backgroundColor as string | undefined },
       }}
     >
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="channel/[channelId]" />
-      <Stack.Screen name="call" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="index" />
+      <Stack.Screen name="channel/[channelId]" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="call" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="profile" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
     </Stack>
   )
 }

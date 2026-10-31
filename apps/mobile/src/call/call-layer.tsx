@@ -21,34 +21,33 @@ export function useActiveChannelName() {
 /**
  * Where the active call lives outside its own screen: a floating window over
  * the app, or the whole UI while Android shows the app in picture-in-picture.
+ * The tree around `children` never changes shape, so the navigator inside is
+ * not remounted when a call starts or ends.
  */
 export function CallLayer({ children }: { children: ReactNode }) {
   const { snapshot, room } = useVoice()
-  if (!room || !snapshot.intentChannelId) return children
   return (
-    <RoomContext.Provider value={room}>
-      <ActiveCallLayer>{children}</ActiveCallLayer>
+    <RoomContext.Provider value={room ?? undefined}>
+      <View className="flex-1">
+        {children}
+        {room && snapshot.intentChannelId ? <CallOverlays /> : null}
+      </View>
     </RoomContext.Provider>
   )
 }
 
-function ActiveCallLayer({ children }: { children: ReactNode }) {
+function CallOverlays() {
   const pathname = usePathname()
   const channelName = useActiveChannelName()
   const focus = pickFocusTrack(useCallTracks())
   const inPictureInPicture = usePictureInPicture(true, trackAspect(focus))
 
-  return (
-    <View className="flex-1">
-      {children}
-      {pathname !== '/call' && !inPictureInPicture ? (
-        <CallMiniWindow channelName={channelName} onOpen={() => router.push('/call')} />
-      ) : null}
-      {inPictureInPicture ? (
-        <View className="absolute inset-0 bg-background">
-          <PictureInPictureView channelName={channelName} />
-        </View>
-      ) : null}
-    </View>
-  )
+  if (inPictureInPicture) {
+    return (
+      <View className="absolute inset-0 bg-background">
+        <PictureInPictureView channelName={channelName} />
+      </View>
+    )
+  }
+  return pathname === '/call' ? null : <CallMiniWindow onOpen={() => router.push('/call')} />
 }

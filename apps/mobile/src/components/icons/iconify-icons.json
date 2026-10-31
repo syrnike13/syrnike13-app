@@ -64,6 +64,11 @@
     "width": 24,
     "height": 24
   },
+  "ri:arrow-left-line": {
+    "body": "<path fill=\"currentColor\" d=\"M7.828 11H20v2H7.828l5.364 5.364l-1.414 1.414L4 12l7.778-7.778l1.414 1.414z\"/>",
+    "width": 24,
+    "height": 24
+  },
   "ri:arrow-left-s-line": {
     "body": "<path fill=\"currentColor\" d=\"m10.828 12l4.95 4.95l-1.414 1.415L8 12l6.364-6.364l1.414 1.414z\"/>",
     "width": 24,

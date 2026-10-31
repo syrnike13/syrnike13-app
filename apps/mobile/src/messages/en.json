@@ -17,10 +17,31 @@
       "mfaUnsupported": "Two-factor sign-in is not supported in the mobile app yet.",
       "disabled": "This account is disabled."
     },
-    "tabs": {
-      "servers": "Servers",
-      "messages": "Messages",
-      "you": "You"
+    "rail": {
+      "directMessages": "Direct messages"
+    },
+    "userBar": {
+      "openProfile": "Open profile",
+      "inVoice": "In voice chat",
+      "status": {
+        "online": "Online",
+        "idle": "Idle",
+        "dnd": "Do not disturb",
+        "offline": "Offline"
+      }
+    },
+    "home": {
+      "directMessages": "Direct messages",
+      "empty": "No direct messages yet.",
+      "andMore": "{names} and {count} more"
+    },
+    "time": {
+      "now": "now",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d",
+      "months": "{count} mo",
+      "years": "{count} y"
     },
     "channels": {
       "savedMessages": "Saved messages",
@@ -33,11 +54,10 @@
       "send": "Send",
       "loadFailed": "Could not load messages."
     },
-    "messages": {
-      "title": "Messages",
-      "empty": "No direct messages yet."
-    },
     "you": {
+      "close": "Close",
+      "inVoice": "In voice chat",
+      "openVoice": "Open voice chat",
       "language": "Language",
       "locales": {
         "en": "English",
@@ -47,7 +67,9 @@
       "version": "Version {version}"
     },
     "voice": {
-      "join": "Join {channel}",
+      "collapse": "Collapse",
+      "empty": "Nobody here yet. Join when you are ready to talk.",
+      "joinVoice": "Join voice channel",
       "notificationTitle": "You are in a voice channel",
       "mute": "Mute",
       "unmute": "Unmute",

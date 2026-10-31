@@ -17,10 +17,31 @@
       "mfaUnsupported": "Двухфакторный вход в мобильном приложении пока не поддерживается.",
       "disabled": "Аккаунт отключён."
     },
-    "tabs": {
-      "servers": "Серверы",
-      "messages": "Сообщения",
-      "you": "Вы"
+    "rail": {
+      "directMessages": "Личные сообщения"
+    },
+    "userBar": {
+      "openProfile": "Открыть профиль",
+      "inVoice": "В голосовом чате",
+      "status": {
+        "online": "В сети",
+        "idle": "Неактивен",
+        "dnd": "Не беспокоить",
+        "offline": "Не в сети"
+      }
+    },
+    "home": {
+      "directMessages": "Личные сообщения",
+      "empty": "Личных сообщений пока нет.",
+      "andMore": "{names} и ещё {count}"
+    },
+    "time": {
+      "now": "сейчас",
+      "minutes": "{count} мин.",
+      "hours": "{count} ч.",
+      "days": "{count} д.",
+      "months": "{count} мес.",
+      "years": "{count} г."
     },
     "channels": {
       "savedMessages": "Сохранённые",
@@ -33,11 +54,10 @@
       "send": "Отправить",
       "loadFailed": "Не удалось загрузить сообщения."
     },
-    "messages": {
-      "title": "Сообщения",
-      "empty": "Личных сообщений пока нет."
-    },
     "you": {
+      "close": "Закрыть",
+      "inVoice": "В голосовом чате",
+      "openVoice": "Открыть голосовой чат",
       "language": "Язык",
       "locales": {
         "en": "English",
@@ -47,7 +67,9 @@
       "version": "Версия {version}"
     },
     "voice": {
-      "join": "Войти в {channel}",
+      "collapse": "Свернуть",
+      "empty": "Здесь пока никого нет. Заходите, когда будете готовы поговорить.",
+      "joinVoice": "Присоединиться к голосовому каналу",
       "notificationTitle": "Вы в голосовом канале",
       "mute": "Выкл. микрофон",
       "unmute": "Вкл. микрофон",

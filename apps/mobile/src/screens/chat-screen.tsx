@@ -8,7 +8,7 @@ import {
   messageCreatedAt,
 } from '@syrnike13/client/lib/message-time'
 import { randomUuid } from '@syrnike13/client/lib/random-uuid'
-import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { getChannelMessages } from '@syrnike13/client/sync/selectors'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
@@ -20,6 +20,7 @@ import {
   MessageAuthor,
   MessageAvatar,
   MessageContent,
+  MessageDivider,
   MessageHeader,
   MessageText,
   MessageTimestamp,
@@ -32,8 +33,9 @@ import { FlatList, KeyboardAvoidingView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSession } from '../auth/session-context'
-import { ArrowUpIcon, ChevronLeftIcon, HashIcon } from '../components/icons/registry'
+import { ArrowLeftIcon, ArrowUpIcon, ChevronRightIcon, HashIcon } from '../components/icons/registry'
 import { mediaUrl } from '../lib/media'
+import { userStatus } from '../lib/presence'
 
 /** A text channel or DM: header, newest-at-bottom feed and composer. */
 export function ChatScreen({ channelId }: { channelId: string }) {
@@ -74,17 +76,24 @@ export function ChatScreen({ channelId }: { channelId: string }) {
 
   const isDm = channel?.channel_type === 'DirectMessage' || channel?.channel_type === 'Group'
   const title = channel ? getChannelLabel(channel, users, session.userId, tChannels) : ''
+  const recipient = channel ? users[getDmRecipientId(channel, session.userId) ?? ''] : undefined
 
   return (
     <KeyboardAvoidingView behavior="padding" className="flex-1 bg-background">
-      <View className="h-12 flex-row items-center gap-1 border-b border-border px-2">
-        <Button variant="ghost" size="icon" accessibilityLabel={t('back')} onPress={() => router.back()}>
-          <ChevronLeftIcon size={24} />
+      {/* 56dp header: back 40, then `# channel ›` or the DM partner. */}
+      <View className="h-14 flex-row items-center gap-2 border-b border-border pr-4 pl-2">
+        <Button variant="ghost" size="icon-lg" accessibilityLabel={t('back')} onPress={() => router.back()}>
+          <ArrowLeftIcon size={24} />
         </Button>
-        {isDm ? null : <HashIcon className="text-muted-foreground" />}
-        <Text className="flex-1 text-base font-semibold" numberOfLines={1}>
+        {isDm ? (
+          <Avatar size="default" src={mediaUrl(recipient?.avatar)} name={title} status={userStatus(recipient)} />
+        ) : (
+          <HashIcon size={18} className="text-muted-foreground" />
+        )}
+        <Text className="shrink text-lg font-semibold" numberOfLines={1}>
           {title}
         </Text>
+        <ChevronRightIcon size={16} className="text-muted-foreground" />
       </View>
       <FlatList
         inverted
@@ -103,26 +112,36 @@ export function ChatScreen({ channelId }: { channelId: string }) {
 }
 
 function FeedRow({ item, users, locale }: { item: MessageFeedItem; users: Record<string, User>; locale: string }) {
-  if (item.type === 'date') {
-    return (
-      <View className="mt-4 flex-row items-center gap-2 px-4">
-        <View className="h-px flex-1 bg-border" />
-        <Text className="text-xs font-medium text-muted-foreground">{item.dateLabel}</Text>
-        <View className="h-px flex-1 bg-border" />
-      </View>
-    )
-  }
+  if (item.type === 'date') return <MessageDivider label={item.dateLabel} />
   if (item.type !== 'message') return null
-  return <FeedMessage message={item.message} compact={item.compact} author={users[item.message.author]} locale={locale} />
+  return (
+    <FeedMessage
+      message={item.message}
+      text={withMentionNames(item.message.content, users)}
+      compact={item.compact}
+      author={users[item.message.author]}
+      locale={locale}
+    />
+  )
+}
+
+/** Plain-text mentions until the feed renders markdown: <@id> becomes @name. */
+function withMentionNames(content: string | null | undefined, users: Record<string, User>) {
+  return (content ?? '').replace(/<@([0-9A-Z]{26})>/g, (raw, id: string) => {
+    const user = users[id]
+    return user ? `@${user.display_name ?? user.username}` : raw
+  })
 }
 
 function FeedMessage({
   message,
+  text,
   compact,
   author,
   locale,
 }: {
   message: ApiMessage
+  text: string
   compact: boolean
   author: User | undefined
   locale: string
@@ -132,7 +151,7 @@ function FeedMessage({
     return (
       <Message>
         <MessageContent>
-          <MessageText>{message.content}</MessageText>
+          <MessageText>{text}</MessageText>
         </MessageContent>
       </Message>
     )
@@ -147,7 +166,7 @@ function FeedMessage({
           <MessageAuthor>{name}</MessageAuthor>
           <MessageTimestamp>{formatMessageTimeShort(messageCreatedAt(message), locale)}</MessageTimestamp>
         </MessageHeader>
-        {message.content ? <MessageText>{message.content}</MessageText> : null}
+        {text ? <MessageText>{text}</MessageText> : null}
       </MessageContent>
     </Message>
   )
@@ -178,24 +197,23 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
   }
 
   return (
-    // Outside the tab bar, the composer sits on the system gesture area.
-    <View className="flex-row items-end gap-2 border-t border-border px-3 pt-2" style={{ paddingBottom: insets.bottom + 8 }}>
-      <Input
-        className="max-h-32 flex-1"
-        multiline
-        value={text}
-        onChangeText={setText}
-        placeholder={placeholder}
-      />
-      <Button
-        size="icon-lg"
-        shape="circle"
-        accessibilityLabel={t('send')}
-        disabled={sending || !text.trim()}
-        onPress={send}
-      >
-        <ArrowUpIcon className="text-primary-foreground" />
-      </Button>
+    // Discord's floating pill, 16 from the edges, above the system gesture area.
+    <View className="px-4 pt-2" style={{ paddingBottom: insets.bottom + 8 }}>
+      <View className="min-h-14.5 flex-row items-end gap-1 rounded-3xl bg-card px-3 py-2">
+        <Input
+          variant="bare"
+          className="max-h-32 flex-1"
+          multiline
+          value={text}
+          onChangeText={setText}
+          placeholder={placeholder}
+        />
+        {text.trim() ? (
+          <Button size="icon-lg" shape="circle" accessibilityLabel={t('send')} disabled={sending} onPress={send}>
+            <ArrowUpIcon className="text-primary-foreground" />
+          </Button>
+        ) : null}
+      </View>
     </View>
   )
 }

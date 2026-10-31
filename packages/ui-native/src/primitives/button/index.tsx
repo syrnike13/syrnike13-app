@@ -19,6 +19,8 @@ const buttonVariants = cva(
         secondary: 'bg-secondary active:bg-hover',
         ghost: 'active:bg-hover',
         destructive: 'bg-destructive/20 active:bg-destructive/30',
+        // Mobile voice: Discord's green join button.
+        success: 'bg-success active:bg-success/80',
         link: '',
       },
       size: {
@@ -28,6 +30,8 @@ const buttonVariants = cva(
         icon: 'size-8',
         'icon-sm': 'size-7 rounded-md',
         'icon-lg': 'size-9',
+        // Mobile call controls: Discord's 48dp leave and pre-join mic buttons.
+        'icon-xl': 'size-12 rounded-xl',
       },
       shape: {
         default: '',
@@ -50,6 +54,7 @@ const buttonTextVariants = cva('text-sm font-medium', {
       secondary: 'text-secondary-foreground',
       ghost: 'text-foreground',
       destructive: 'text-destructive',
+      success: 'text-background',
       link: 'text-primary underline',
     },
   },

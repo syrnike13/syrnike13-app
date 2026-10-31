@@ -5,8 +5,6 @@ import { useState } from 'react'
 import { PermissionsAndroid, View } from 'react-native'
 
 import {
-  HeadphoneOffIcon,
-  HeadphonesIcon,
   MicIcon,
   MicOffIcon,
   MonitorUpIcon,
@@ -22,13 +20,19 @@ function isOn(media: VoiceSnapshot['camera']) {
   return media.state === 'running' || media.state === 'starting'
 }
 
-/** Discord-style round call buttons: toggles turn red while something is off. */
-export function CallControls({
+/**
+ * Discord's call dock: a rounded card with a grab handle and evenly spaced
+ * 24dp icons; only "leave" has a surface, a red 48dp rounded square.
+ */
+export function CallDock({
   director,
   snapshot,
+  onUse,
 }: {
   director: VoiceDirector
   snapshot: VoiceSnapshot
+  /** Called on every press so the stage keeps the controls visible. */
+  onUse: () => void
 }) {
   const t = useTranslations('mobile.voice')
   const [facing, setFacing] = useState<CameraFacing>('user')
@@ -46,64 +50,60 @@ export function CallControls({
     if (permission === 'granted') setCamera(true)
   }
 
+  function use(action: () => void) {
+    return () => {
+      onUse()
+      action()
+    }
+  }
+
   return (
-    <View className="flex-row flex-wrap items-center justify-center gap-3">
-      <Button
-        size="icon-lg"
-        shape="circle"
-        variant={snapshot.userMuted ? 'destructive' : 'secondary'}
-        accessibilityLabel={t(snapshot.userMuted ? 'unmute' : 'mute')}
-        onPress={() => director.dispatch({ type: 'setUserMuted', muted: !snapshot.userMuted })}
-      >
-        {snapshot.userMuted ? <MicOffIcon className="text-destructive" /> : <MicIcon />}
-      </Button>
-      <Button
-        size="icon-lg"
-        shape="circle"
-        variant={snapshot.userDeafened ? 'destructive' : 'secondary'}
-        accessibilityLabel={t(snapshot.userDeafened ? 'undeafen' : 'deafen')}
-        onPress={() => director.dispatch({ type: 'setUserDeafened', deafened: !snapshot.userDeafened })}
-      >
-        {snapshot.userDeafened ? <HeadphoneOffIcon className="text-destructive" /> : <HeadphonesIcon />}
-      </Button>
-      <Button
-        size="icon-lg"
-        shape="circle"
-        variant="secondary"
-        accessibilityLabel={t(cameraOn ? 'stopCamera' : 'camera')}
-        onPress={toggleCamera}
-      >
-        {cameraOn ? <VideoIcon /> : <VideoOffIcon />}
-      </Button>
-      {cameraOn ? (
+    <View className="rounded-3xl border border-border bg-card px-4 pt-2 pb-3">
+      <View className="mb-2 h-1 w-10 self-center rounded-full bg-muted-foreground/40" />
+      <View className="flex-row items-center justify-between">
         <Button
-          size="icon-lg"
-          shape="circle"
-          variant="secondary"
-          accessibilityLabel={t('flipCamera')}
-          onPress={() => setCamera(true, facing === 'user' ? 'environment' : 'user')}
+          variant="ghost"
+          size="icon-xl"
+          accessibilityLabel={t(cameraOn ? 'stopCamera' : 'camera')}
+          onPress={use(() => void toggleCamera())}
         >
-          <SwitchCameraIcon />
+          {cameraOn ? <VideoIcon size={24} /> : <VideoOffIcon size={24} />}
         </Button>
-      ) : null}
-      <Button
-        size="icon-lg"
-        shape="circle"
-        variant="secondary"
-        accessibilityLabel={t(screenOn ? 'stopScreen' : 'shareScreen')}
-        onPress={() => director.dispatch({ type: 'setScreen', enabled: !screenOn })}
-      >
-        {screenOn ? <MonitorXIcon /> : <MonitorUpIcon />}
-      </Button>
-      <Button
-        size="icon-lg"
-        shape="circle"
-        variant="destructive"
-        accessibilityLabel={t('leave')}
-        onPress={() => director.dispatch({ type: 'leave' })}
-      >
-        <PhoneOffIcon className="text-destructive" />
-      </Button>
+        <Button
+          variant="ghost"
+          size="icon-xl"
+          accessibilityLabel={t(snapshot.userMuted ? 'unmute' : 'mute')}
+          onPress={use(() => director.dispatch({ type: 'setUserMuted', muted: !snapshot.userMuted }))}
+        >
+          {snapshot.userMuted ? <MicOffIcon size={24} className="text-destructive" /> : <MicIcon size={24} />}
+        </Button>
+        {cameraOn ? (
+          <Button
+            variant="ghost"
+            size="icon-xl"
+            accessibilityLabel={t('flipCamera')}
+            onPress={use(() => setCamera(true, facing === 'user' ? 'environment' : 'user'))}
+          >
+            <SwitchCameraIcon size={24} />
+          </Button>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon-xl"
+          accessibilityLabel={t(screenOn ? 'stopScreen' : 'shareScreen')}
+          onPress={use(() => director.dispatch({ type: 'setScreen', enabled: !screenOn }))}
+        >
+          {screenOn ? <MonitorXIcon size={24} /> : <MonitorUpIcon size={24} />}
+        </Button>
+        <Button
+          variant="destructive"
+          size="icon-xl"
+          accessibilityLabel={t('leave')}
+          onPress={() => director.dispatch({ type: 'leave' })}
+        >
+          <PhoneOffIcon size={24} className="text-destructive" />
+        </Button>
+      </View>
     </View>
   )
 }
