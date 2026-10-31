@@ -627,6 +627,12 @@ impl VoiceSession {
         VoiceSessionTransition::Applied
     }
 
+    /// Clients order a user's voice states by version, so a session that
+    /// replaces another must outrank every state the old one published.
+    pub fn continue_version_after(&mut self, previous: &VoiceSession) {
+        self.version = self.version.max(previous.version + 1);
+    }
+
     pub fn set_track_state(&mut self, added: bool, track_source: i32) -> VoiceSessionTransition {
         if self.state != VoiceSessionState::Active {
             return VoiceSessionTransition::Rejected;
@@ -1312,6 +1318,9 @@ pub async fn commit_voice_session_join(
                     }),
                 None => None,
             };
+        if let Some(previous) = previous_session.as_ref() {
+            session.continue_version_after(previous);
+        }
         let retired_session = previous_session.as_ref().map(|previous| {
             let mut retired = previous.clone();
             retired.state = VoiceSessionState::Ended;
@@ -1502,6 +1511,23 @@ mod tests {
         assert!(reservation.awaiting_session().server_deafened);
         assert_eq!(reservation.version, 7);
         assert_eq!(reservation.awaiting_session().version, 7);
+    }
+
+    #[test]
+    fn replacing_session_outranks_previous_session_version() {
+        let mut previous = awaiting_session();
+        previous.screensharing = true;
+        previous.version = 7;
+        let mut next = awaiting_session();
+
+        next.continue_version_after(&previous);
+
+        assert_eq!(next.version, 8);
+        assert!(!next.screensharing);
+
+        next.version = 12;
+        next.continue_version_after(&previous);
+        assert_eq!(next.version, 12);
     }
 
     #[test]
