@@ -14,6 +14,7 @@ import { catalogs } from './messages'
 import { LoginScreen } from './screens/login-screen'
 import { VoiceScreen } from './screens/voice-screen'
 import { applyTheme } from './theme'
+import { UpdateBanner } from './updates/update-banner'
 
 // Uniwind styles core components only; third-party ones need `withUniwind`.
 const SafeAreaView = withUniwind(NativeSafeAreaView)
@@ -37,6 +38,7 @@ export function App() {
     <SafeAreaProvider>
       <LocaleProvider catalogs={catalogs}>
         <SafeAreaView className="flex-1 bg-background">
+          <UpdateBanner />
           {session === null ? <LoginScreen onLogin={setSession} /> : null}
           {session ? <VoiceScreen token={session.token} onLogout={logout} /> : null}
         </SafeAreaView>

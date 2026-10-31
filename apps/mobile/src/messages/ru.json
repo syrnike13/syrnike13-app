@@ -1,5 +1,13 @@
 {
   "mobile": {
+    "updates": {
+      "apkAvailable": "Доступна версия {version}",
+      "apkFailed": "Не удалось скачать версию {version}",
+      "install": "Обновить",
+      "downloading": "Загрузка…",
+      "otaReady": "Обновление готово",
+      "restart": "Перезапустить"
+    },
     "login": {
       "title": "Вход в Сырники",
       "email": "Почта",

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["ru.syrnike13.appupdate.AppUpdateModule"]
+  }
+}

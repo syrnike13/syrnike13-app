@@ -1,5 +1,13 @@
 {
   "mobile": {
+    "updates": {
+      "apkAvailable": "Version {version} is available",
+      "apkFailed": "Could not download version {version}",
+      "install": "Update",
+      "downloading": "Downloading…",
+      "otaReady": "An update is ready",
+      "restart": "Restart"
+    },
     "login": {
       "title": "Sign in to Syrnike",
       "email": "Email",

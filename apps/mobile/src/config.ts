@@ -5,3 +5,5 @@ export const API_URL = `https://${HOST}/api`
 export const WS_URL = `wss://${HOST}/ws`
 /** Sessions are per backend, so switching builds never reuses a foreign token. */
 export const SESSION_KEY = `session.${HOST}`
+/** The newest release APK, published next to the desktop downloads. */
+export const APK_FEED_URL = 'https://syrnike13.ru/downloads/mobile/latest.json'
