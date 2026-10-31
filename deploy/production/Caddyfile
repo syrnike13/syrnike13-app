@@ -105,6 +105,48 @@ import /etc/caddy/sites/*.caddyfile
 		file_server
 	}
 
+	@stable_apk path /downloads/syrnike13.apk
+	handle @stable_apk {
+		root * /srv/mobile
+		uri strip_prefix /downloads
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Android app: release feed, APKs and over-the-air JS updates. The app asks
+	# for /manifest with its runtime version (Expo Updates protocol v1); the
+	# matching static manifest is served, or 204 when that runtime has none.
+	handle_path /downloads/mobile/* {
+		root * /srv/mobile
+
+		@manifest {
+			path /manifest
+			header_regexp runtime Expo-Runtime-Version ^[A-Za-z0-9._-]+$
+		}
+		handle @manifest {
+			header expo-protocol-version 1
+			header expo-sfv-version 0
+			header Cache-Control "private, max-age=0"
+
+			@update file /updates/{re.runtime.0}/manifest.json
+			handle @update {
+				rewrite * /updates/{re.runtime.0}/manifest.json
+				file_server
+			}
+			handle {
+				respond 204
+			}
+		}
+
+		@feed path /latest.json
+		header @feed Cache-Control "no-cache"
+
+		@artifacts path_regexp artifact \.apk$|^/assets/
+		header @artifacts Cache-Control "public, max-age=31536000, immutable"
+
+		file_server
+	}
+
 	# Обновление service worker не допускает редиректов: kill-switch должен
 	# оставаться доступен на исходном origin, включая старый /app scope.
 	@legacy_worker path /serviceWorker.js /app/serviceWorker.js

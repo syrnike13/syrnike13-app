@@ -67,6 +67,7 @@ services:
       - ./data/caddy-data:/data
       - ./data/caddy-config:/config
       - ./data/desktop:/srv/desktop:ro
+      - ./data/mobile:/srv/mobile:ro
     networks:
       default:
         aliases:
