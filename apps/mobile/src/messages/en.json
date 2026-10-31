@@ -86,6 +86,21 @@
         "ownershipTransferred": "{from} transferred ownership to {to}",
         "messagePinned": "{actor} pinned a message",
         "messageUnpinned": "{actor} unpinned a message"
+      },
+      "editing": "Editing message",
+      "replyingTo": "Replying to {name}",
+      "cancelMode": "Cancel",
+      "save": "Save",
+      "actions": {
+        "close": "Close",
+        "react": "React with {emoji}",
+        "reply": "Reply",
+        "copyText": "Copy text",
+        "edit": "Edit",
+        "delete": "Delete message",
+        "deleteTitle": "Delete message?",
+        "deleteDescription": "It will disappear for everyone. This cannot be undone.",
+        "cancel": "Cancel"
       }
     },
     "you": {

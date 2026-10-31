@@ -46,12 +46,19 @@ function authorName(message: ApiMessage, author: User | undefined) {
 }
 
 /** One feed message: replies, author line (unless grouped), text, files, reactions. */
-export function MessageRow({ message, compact }: { message: ApiMessage; compact: boolean }) {
-  if (message.system) return <SystemRow message={message} system={message.system} />
-  return <UserMessageRow message={message} compact={compact} />
+type RowProps = {
+  message: ApiMessage
+  compact: boolean
+  /** Long press opens the message's actions. */
+  onLongPress: (message: ApiMessage) => void
 }
 
-function UserMessageRow({ message, compact }: { message: ApiMessage; compact: boolean }) {
+export function MessageRow({ message, compact, onLongPress }: RowProps) {
+  if (message.system) return <SystemRow message={message} system={message.system} />
+  return <UserMessageRow message={message} compact={compact} onLongPress={onLongPress} />
+}
+
+function UserMessageRow({ message, compact, onLongPress }: RowProps) {
   const t = useTranslations('mobile.chat')
   const { locale } = useLocale()
   const users = useSyncStore((state) => state.users)
@@ -62,38 +69,40 @@ function UserMessageRow({ message, compact }: { message: ApiMessage; compact: bo
   const showHeader = !compact || hasReplies
 
   return (
-    <Message groupStart={showHeader}>
-      {showHeader ? (
-        <MessageAvatar>
-          <Avatar size="lg" src={mediaUrl(author?.avatar)} name={name} />
-        </MessageAvatar>
-      ) : null}
-      <MessageContent>
-        {message.replies?.map((id) => (
-          <ReplyQuote key={id} channelId={message.channel} messageId={id} />
-        ))}
+    <Pressable className="active:bg-hover" delayLongPress={350} onLongPress={() => onLongPress(message)}>
+      <Message groupStart={showHeader}>
         {showHeader ? (
-          <MessageHeader>
-            <MessageAuthor>{name}</MessageAuthor>
-            <MessageTimestamp>{formatMessageTimeShort(messageCreatedAt(message), locale)}</MessageTimestamp>
-          </MessageHeader>
+          <MessageAvatar>
+            <Avatar size="lg" src={mediaUrl(author?.avatar)} name={name} />
+          </MessageAvatar>
         ) : null}
-        {text ? (
-          <MessageText>
-            {text}
-            {message.edited ? <MessageNote> {t('edited')}</MessageNote> : null}
-          </MessageText>
-        ) : null}
-        {message.attachments?.length ? (
-          <MessageAttachments>
-            {message.attachments.map((file) => (
-              <Attachment key={file._id} file={file} />
-            ))}
-          </MessageAttachments>
-        ) : null}
-        <Reactions message={message} />
-      </MessageContent>
-    </Message>
+        <MessageContent>
+          {message.replies?.map((id) => (
+            <ReplyQuote key={id} channelId={message.channel} messageId={id} />
+          ))}
+          {showHeader ? (
+            <MessageHeader>
+              <MessageAuthor>{name}</MessageAuthor>
+              <MessageTimestamp>{formatMessageTimeShort(messageCreatedAt(message), locale)}</MessageTimestamp>
+            </MessageHeader>
+          ) : null}
+          {text ? (
+            <MessageText>
+              {text}
+              {message.edited ? <MessageNote> {t('edited')}</MessageNote> : null}
+            </MessageText>
+          ) : null}
+          {message.attachments?.length ? (
+            <MessageAttachments>
+              {message.attachments.map((file) => (
+                <Attachment key={file._id} file={file} />
+              ))}
+            </MessageAttachments>
+          ) : null}
+          <Reactions message={message} />
+        </MessageContent>
+      </Message>
+    </Pressable>
   )
 }
 

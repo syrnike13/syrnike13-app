@@ -86,6 +86,21 @@
         "ownershipTransferred": "{from} передаёт владение {to}",
         "messagePinned": "{actor} закрепляет сообщение",
         "messageUnpinned": "{actor} открепляет сообщение"
+      },
+      "editing": "Редактирование сообщения",
+      "replyingTo": "Ответ для {name}",
+      "cancelMode": "Отменить",
+      "save": "Сохранить",
+      "actions": {
+        "close": "Закрыть",
+        "react": "Реакция {emoji}",
+        "reply": "Ответить",
+        "copyText": "Копировать текст",
+        "edit": "Изменить",
+        "delete": "Удалить сообщение",
+        "deleteTitle": "Удалить сообщение?",
+        "deleteDescription": "Сообщение исчезнет у всех. Это нельзя отменить.",
+        "cancel": "Отмена"
       }
     },
     "you": {

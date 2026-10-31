@@ -1,4 +1,6 @@
+import type { Message as ApiMessage } from '@syrnike13/api-types'
 import {
+  editChannelMessageEffect,
   fetchChannelMessagesEffect,
   MESSAGE_PAGE_SIZE,
   sendChannelMessageEffect,
@@ -24,9 +26,17 @@ import { FlatList, KeyboardAvoidingView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSession } from '../auth/session-context'
+import { MessageActionsSheet } from '../chat/message-actions'
 import { MessageRow } from '../chat/message-row'
 import { eventsGateway } from '../data/gateway'
-import { ArrowLeftIcon, ArrowUpIcon, ChevronRightIcon, HashIcon } from '../components/icons/registry'
+import {
+  ArrowLeftIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  HashIcon,
+  XIcon,
+} from '../components/icons/registry'
 import { mediaUrl } from '../lib/media'
 import { userStatus } from '../lib/presence'
 
@@ -43,6 +53,8 @@ export function ChatScreen({ channelId }: { channelId: string }) {
   // Whether the server may have messages older than the oldest one loaded.
   const [hasOlder, setHasOlder] = useState(true)
   const loadingOlder = useRef(false)
+  const [actionsFor, setActionsFor] = useState<ApiMessage | null>(null)
+  const [mode, setMode] = useState<ComposerMode>(null)
 
   useEffect(() => {
     setHasOlder(true)
@@ -115,7 +127,7 @@ export function ChatScreen({ channelId }: { channelId: string }) {
         contentContainerClassName="pb-4"
         data={items}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => <FeedRow item={item} />}
+        renderItem={({ item }) => <FeedRow item={item} onLongPress={setActionsFor} />}
         // The list is inverted, so its end is the top: the oldest messages.
         onEndReached={loadOlder}
         onEndReachedThreshold={0.5}
@@ -124,15 +136,28 @@ export function ChatScreen({ channelId }: { channelId: string }) {
         }
       />
       <TypingLine channelId={channelId} />
-      <Composer channelId={channelId} placeholder={t('placeholder', { channel: title })} />
+      <Composer
+        channelId={channelId}
+        placeholder={t('placeholder', { channel: title })}
+        mode={mode}
+        onModeEnd={() => setMode(null)}
+      />
+      {actionsFor ? (
+        <MessageActionsSheet
+          message={actionsFor}
+          onClose={() => setActionsFor(null)}
+          onReply={(message) => setMode({ kind: 'reply', message })}
+          onEdit={(message) => setMode({ kind: 'edit', message })}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   )
 }
 
-function FeedRow({ item }: { item: MessageFeedItem }) {
+function FeedRow({ item, onLongPress }: { item: MessageFeedItem; onLongPress: (message: ApiMessage) => void }) {
   if (item.type === 'date') return <MessageDivider label={item.dateLabel} />
   if (item.type !== 'message') return null
-  return <MessageRow message={item.message} compact={item.compact} />
+  return <MessageRow message={item.message} compact={item.compact} onLongPress={onLongPress} />
 }
 
 /** "Name is typing…" above the composer; your own typing is not shown. */
@@ -160,13 +185,33 @@ function TypingLine({ channelId }: { channelId: string }) {
   )
 }
 
-function Composer({ channelId, placeholder }: { channelId: string; placeholder: string }) {
+/** What the composer is doing besides sending a new message. */
+type ComposerMode = { kind: 'reply'; message: ApiMessage } | { kind: 'edit'; message: ApiMessage } | null
+
+function Composer({
+  channelId,
+  placeholder,
+  mode,
+  onModeEnd,
+}: {
+  channelId: string
+  placeholder: string
+  mode: ComposerMode
+  onModeEnd: () => void
+}) {
   const t = useTranslations('mobile.chat')
   const { session } = useSession()
+  const users = useSyncStore((state) => state.users)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const insets = useSafeAreaInsets()
   const { notifyTyping, stopTyping } = useTypingIndicator(eventsGateway, channelId)
+
+  // Editing starts from the message's text; leaving edit mode clears it.
+  const editing = mode?.kind === 'edit' ? mode.message : null
+  useEffect(() => {
+    setText(editing?.content ?? '')
+  }, [editing])
 
   async function send() {
     const content = text.trim()
@@ -174,11 +219,18 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
     setSending(true)
     stopTyping()
     try {
-      const message = await Effect.runPromise(
-        sendChannelMessageEffect(session.token, channelId, { content, nonce: randomUuid() }),
-      )
+      const message = editing
+        ? await Effect.runPromise(editChannelMessageEffect(session.token, channelId, editing._id, content))
+        : await Effect.runPromise(
+            sendChannelMessageEffect(session.token, channelId, {
+              content,
+              nonce: randomUuid(),
+              replies: mode?.kind === 'reply' ? [{ id: mode.message._id, mention: false }] : undefined,
+            }),
+          )
       syncStore.upsertMessage(message)
       setText('')
+      onModeEnd()
     } catch {
       // The draft stays in the field so the user can retry.
     } finally {
@@ -186,9 +238,29 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
     }
   }
 
+  const replyAuthor = mode?.kind === 'reply' ? users[mode.message.author] : undefined
+  const modeLabel =
+    mode?.kind === 'edit'
+      ? t('editing')
+      : mode?.kind === 'reply'
+        ? t('replyingTo', {
+            name: mode.message.masquerade?.name ?? replyAuthor?.display_name ?? replyAuthor?.username ?? '…',
+          })
+        : null
+
   return (
     // Discord's floating pill, 16 from the edges, above the system gesture area.
     <View className="px-4 pt-2" style={{ paddingBottom: insets.bottom + 8 }}>
+      {modeLabel ? (
+        <View className="mb-1 flex-row items-center gap-2 pl-3">
+          <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
+            {modeLabel}
+          </Text>
+          <Button variant="ghost" size="icon-sm" accessibilityLabel={t('cancelMode')} onPress={onModeEnd}>
+            <XIcon size={16} className="text-muted-foreground" />
+          </Button>
+        </View>
+      ) : null}
       <View className="min-h-14.5 flex-row items-end gap-1 rounded-3xl bg-card px-3 py-2">
         <Input
           variant="bare"
@@ -197,13 +269,23 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
           value={text}
           onChangeText={(value) => {
             setText(value)
-            if (value) notifyTyping()
+            if (value && !editing) notifyTyping()
           }}
           placeholder={placeholder}
         />
         {text.trim() ? (
-          <Button size="icon-lg" shape="circle" accessibilityLabel={t('send')} disabled={sending} onPress={send}>
-            <ArrowUpIcon className="text-primary-foreground" />
+          <Button
+            size="icon-lg"
+            shape="circle"
+            accessibilityLabel={t(editing ? 'save' : 'send')}
+            disabled={sending}
+            onPress={send}
+          >
+            {editing ? (
+              <CheckIcon className="text-primary-foreground" />
+            ) : (
+              <ArrowUpIcon className="text-primary-foreground" />
+            )}
           </Button>
         ) : null}
       </View>

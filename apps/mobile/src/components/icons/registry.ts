@@ -23,6 +23,7 @@ export const Minimize2Icon = iconifyIcon('ri:collapse-diagonal-line')
 // Actions
 export const PlusIcon = iconifyIcon('ri:add-line')
 export const ArrowUpIcon = iconifyIcon('lucide:arrow-up')
+export const CheckIcon = iconifyIcon('ri:check-line')
 
 // Chat
 export const FileIcon = iconifyIcon('ri:file-line')
@@ -32,6 +33,9 @@ export const CrownIcon = iconifyIcon('lucide:crown')
 export const PinIcon = iconifyIcon('ri:pushpin-line')
 export const PhoneFilledIcon = iconifyIcon('material-symbols:call')
 export const InfoIcon = iconifyIcon('ri:information-line')
+export const ReplyIcon = iconifyIcon('ri:reply-line')
+export const CopyIcon = iconifyIcon('ri:file-copy-line')
+export const Trash2Icon = iconifyIcon('ri:delete-bin-line')
 export const SettingsIcon = iconifyIcon('material-symbols:settings-rounded')
 
 // Voice
