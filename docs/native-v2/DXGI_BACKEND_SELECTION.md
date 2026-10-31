@@ -48,7 +48,16 @@ stateDiagram-v2
 ```
 
 No-content observations do not cause recovery. Display changes alone do not
-replace a healthy backend; a typed API failure initiates recovery. Output loss
+replace a healthy backend; a typed API failure initiates recovery. Access loss
+of the active generation first recreates the same backend: DXGI reports a
+fullscreen game, a mode switch or a desktop switch as `DXGI_ERROR_ACCESS_LOST`,
+and Desktop Duplication is meant to be recreated after it. A recreate that
+itself loses access first, while the mode switch settles, is tried once more.
+Only a failed recreate moves a monitor share to WGC, which may draw a capture
+border when
+Windows has not granted borderless access. `screen_capture_metrics` reports
+the active backend, committed switches, attempts, the last failure kind and
+the borderless status. Output loss
 and device removal remain degraded until a real display change or explicit
 selection permits another attempt. A display watcher runs separately from frame
 delivery and observes input desktop identity, mode/topology and advanced-color

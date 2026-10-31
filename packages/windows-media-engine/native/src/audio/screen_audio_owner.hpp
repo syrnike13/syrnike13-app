@@ -24,6 +24,9 @@ struct ScreenAudioOwnerStats {
   ScreenAudioState state = ScreenAudioState::idle;
   std::uint64_t desired_revision = 0, active_revision = 0;
   std::optional<ScreenAudioFailure> failure;
+  // Unlike failure, kept while a lost capture is restarted automatically.
+  std::optional<ScreenAudioFailure> last_failure;
+  std::uint64_t recoveries = 0;
   ScreenAudioSessionStats session;
 };
 // The session port has no video or Room teardown operation. A failed session
@@ -44,8 +47,9 @@ class ScreenAudioOwner final {
   using Factory = std::function<std::unique_ptr<ScreenAudioSession>()>;
   explicit ScreenAudioOwner(Factory);
   ~ScreenAudioOwner();
-  // Null intent is audio=off. Retrying a failure requires a newer explicit
-  // revision; there is no autonomous audio recovery loop.
+  // Null intent is audio=off. A lost or stalled capture device is restarted
+  // for the same intent a bounded number of times; any other failure, or an
+  // exhausted budget, needs a newer explicit revision.
   bool applyDesired(std::uint64_t revision, std::optional<ScreenAudioIntent>);
   void beginStop();
   ScreenAudioOwnerStats stats() const noexcept;

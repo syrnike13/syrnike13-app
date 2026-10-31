@@ -1,4 +1,5 @@
 #include "capture/wgc_capture_support.hpp"
+#include "capture/wgc_monitor_capture.hpp"
 
 #include <d3d11_4.h>
 #include <d3d11sdklayers.h>
@@ -388,28 +389,6 @@ std::shared_ptr<FrameResource> makeWgcFrameResource(
                                               std::move(texture), width, height);
 }
 
-bool borderlessCaptureAllowed() noexcept {
-  // Windows only honours IsBorderRequired(false) after the process asked for
-  // borderless access; unpackaged desktop apps are granted it without a prompt.
-  static const bool allowed = [] {
-    try {
-      using winrt::Windows::Foundation::Metadata::ApiInformation;
-      using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
-      using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
-      using winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus;
-      if (!ApiInformation::IsTypePresent(L"Windows.Graphics.Capture.GraphicsCaptureAccess") ||
-          !ApiInformation::IsPropertyPresent(L"Windows.Graphics.Capture.GraphicsCaptureSession",
-                                             L"IsBorderRequired"))
-        return false;
-      return GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless).get() ==
-             AppCapabilityAccessStatus::Allowed;
-    } catch (...) {
-      return false;
-    }
-  }();
-  return allowed;
-}
-
 void limitCaptureRate(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session,
                       std::chrono::microseconds min_interval) noexcept {
   if (min_interval.count() <= 0) return;
@@ -424,10 +403,58 @@ void limitCaptureRate(const winrt::Windows::Graphics::Capture::GraphicsCaptureSe
 
 void disableCaptureBorder(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) noexcept {
   try {
-    if (borderlessCaptureAllowed()) session.IsBorderRequired(false);
+    if (requestBorderlessCapture() == BorderlessCaptureStatus::granted)
+      session.IsBorderRequired(false);
   } catch (...) {
     // Older Windows: the system border stays.
   }
 }
 
 }  // namespace syrnike::windows_media::capture::detail
+
+namespace syrnike::windows_media::capture {
+namespace {
+std::atomic<BorderlessCaptureStatus> borderless_status{BorderlessCaptureStatus::unknown};
+}  // namespace
+
+BorderlessCaptureStatus requestBorderlessCapture() noexcept {
+  // Windows only honours IsBorderRequired(false) after the process asked for
+  // borderless access; unpackaged desktop apps are granted it without a prompt.
+  // Only a grant, or Windows without the API, is final: a refusal or a broker
+  // that stalls during a display or desktop transition is asked again by the
+  // next session instead of leaving every later capture with the border.
+  auto status = borderless_status.load();
+  if (status == BorderlessCaptureStatus::granted || status == BorderlessCaptureStatus::unsupported)
+    return status;
+  try {
+    using winrt::Windows::Foundation::AsyncStatus;
+    using winrt::Windows::Foundation::Metadata::ApiInformation;
+    using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
+    using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
+    using winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus;
+    detail::ensureRoInitialized();
+    if (!ApiInformation::IsTypePresent(L"Windows.Graphics.Capture.GraphicsCaptureAccess") ||
+        !ApiInformation::IsPropertyPresent(L"Windows.Graphics.Capture.GraphicsCaptureSession",
+                                           L"IsBorderRequired")) {
+      status = BorderlessCaptureStatus::unsupported;
+    } else {
+      auto request = GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless);
+      if (request.wait_for(std::chrono::seconds{2}) == AsyncStatus::Completed) {
+        status = request.GetResults() == AppCapabilityAccessStatus::Allowed
+                     ? BorderlessCaptureStatus::granted
+                     : BorderlessCaptureStatus::refused;
+      } else {
+        request.Cancel();
+        status = BorderlessCaptureStatus::refused;
+      }
+    }
+  } catch (...) {
+    status = BorderlessCaptureStatus::refused;
+  }
+  borderless_status.store(status);
+  return status;
+}
+
+BorderlessCaptureStatus borderlessCaptureStatus() noexcept { return borderless_status.load(); }
+
+}  // namespace syrnike::windows_media::capture
