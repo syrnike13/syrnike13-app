@@ -23,22 +23,26 @@ export function ServerRail() {
   const selectedId = useSyncStore((state) => state.selectedServerId)
 
   return (
-    <ScrollView className="w-18 grow-0" contentContainerClassName="pt-1 pb-24">
-      <RailSlot selected={selectedId === null} label={t('directMessages')} onPress={() => syncStore.setSelectedServerId(null)}>
-        <View
-          className={cn(
-            'size-12 items-center justify-center rounded-2xl',
-            selectedId === null ? 'bg-primary' : 'bg-card',
-          )}
-        >
-          <MessageCircleIcon size={24} className={selectedId === null ? 'text-primary-foreground' : 'text-foreground'} />
-        </View>
-      </RailSlot>
-      <View className="mx-auto my-1 h-0.5 w-8 rounded-full bg-border" />
-      {servers.map((server) => (
-        <ServerSlot key={server._id} server={server} selected={server._id === selectedId} />
-      ))}
-    </ScrollView>
+    // The fixed-width View holds the rail: react-native-web gives ScrollView a
+    // flex-grow its className cannot override.
+    <View className="w-18">
+      <ScrollView contentContainerClassName="pt-1 pb-24">
+        <RailSlot selected={selectedId === null} label={t('directMessages')} onPress={() => syncStore.setSelectedServerId(null)}>
+          <View
+            className={cn(
+              'size-12 items-center justify-center rounded-2xl',
+              selectedId === null ? 'bg-primary' : 'bg-card',
+            )}
+          >
+            <MessageCircleIcon size={24} className={selectedId === null ? 'text-primary-foreground' : 'text-foreground'} />
+          </View>
+        </RailSlot>
+        <View className="mx-auto my-1 h-0.5 w-8 rounded-full bg-border" />
+        {servers.map((server) => (
+          <ServerSlot key={server._id} server={server} selected={server._id === selectedId} />
+        ))}
+      </ScrollView>
+    </View>
   )
 }
 

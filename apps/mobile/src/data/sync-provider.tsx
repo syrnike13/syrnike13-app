@@ -48,6 +48,7 @@ export function SyncProvider({
       if (event.type === 'VoiceChannelLeave') syncStore.pruneUnknownVoiceParticipants(userId)
     })
     eventsGateway.enableAutoReconnect(WS_URL, token)
+    eventsGateway.connect(WS_URL, token)
     return () => {
       unsubscribe()
       eventsGateway.disableAutoReconnect()

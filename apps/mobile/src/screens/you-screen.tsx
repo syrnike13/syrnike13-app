@@ -4,6 +4,7 @@ import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
 import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import * as Application from 'expo-application'
+import Constants from 'expo-constants'
 import { router } from 'expo-router'
 import { ScrollView, View } from 'react-native'
 
@@ -57,7 +58,7 @@ export function YouScreen() {
       </Button>
 
       <Text className="text-center text-xs text-muted-foreground">
-        {t('version', { version: Application.nativeApplicationVersion ?? '' })}
+        {t('version', { version: Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '' })}
       </Text>
     </ScrollView>
   )
