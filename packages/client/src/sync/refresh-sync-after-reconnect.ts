@@ -1,9 +1,9 @@
 import { Effect } from 'effect'
 
-import { fetchUnreadsEffect } from '@syrnike13/client/api/sync-api'
+import { fetchUnreadsEffect } from '../api/sync-api'
 
 import { ensureVoiceUsersLoaded } from './ensure-voice-users'
-import { syncStore } from '@syrnike13/client/sync/sync-store'
+import { syncStore } from './sync-store'
 
 export const refreshSyncAfterReconnect = Effect.fn(
   'sync.refreshAfterReconnect',

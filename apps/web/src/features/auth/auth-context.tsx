@@ -20,7 +20,9 @@ import {
   saveSessionEffect,
   type StoredSession,
 } from '#/lib/session'
-import { eventsGateway, type GatewayState } from '#/features/events/gateway'
+import type { GatewayState } from '@syrnike13/client/gateway/events-gateway'
+
+import { eventsGateway } from '#/features/events/gateway'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { configureRendererDiagnosticAccount } from '#/features/diagnostics/diagnostic-reporter'
 import {

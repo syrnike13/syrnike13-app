@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
 
-import { fetchUserEffect } from '@syrnike13/client/api/users-api'
-import { syncStore } from '@syrnike13/client/sync/sync-store'
-import { isValidVoiceUserId } from '@syrnike13/client/sync/voice-participant-resolve'
+import { fetchUserEffect } from '../api/users-api'
+import { syncStore } from './sync-store'
+import { isValidVoiceUserId } from './voice-participant-resolve'
 
 const loading = new Set<string>()
 

@@ -14,8 +14,8 @@ import { useMessageNotifications } from '#/features/notifications/use-message-no
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import { useEventSounds } from '#/features/sounds/use-event-sounds'
 
-import { ensureVoiceUsersLoaded } from './ensure-voice-users'
-import { refreshSyncAfterReconnect } from './refresh-sync-after-reconnect'
+import { ensureVoiceUsersLoaded } from '@syrnike13/client/sync/ensure-voice-users'
+import { refreshSyncAfterReconnect } from '@syrnike13/client/sync/refresh-sync-after-reconnect'
 import { syncStore, useSyncReady } from '@syrnike13/client/sync/sync-store'
 import { normalizeUserVoiceState } from '@syrnike13/client/sync/voice-event-utils'
 
