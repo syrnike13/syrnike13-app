@@ -15,7 +15,8 @@ import {
 } from '@syrnike13/client/api/messages-api'
 import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
-import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
+import { eventsGateway } from '#/features/events/gateway'
+import { useTypingIndicator } from '@syrnike13/client/gateway/use-typing-indicator'
 import { getChannelMessages } from '@syrnike13/client/sync/selectors'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -40,7 +41,7 @@ export function useChannelChat({
   const t = useTranslations('chat')
   const auth = useAuth()
   const navigate = useNavigate()
-  const { notifyTyping, stopTyping } = useTypingIndicator(channelId)
+  const { notifyTyping, stopTyping } = useTypingIndicator(eventsGateway, channelId)
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
   const messages = useSyncStore((s) => getChannelMessages(s, channelId))

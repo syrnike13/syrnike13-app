@@ -1,13 +1,13 @@
-import type { Message as ApiMessage, User } from '@syrnike13/api-types'
-import { fetchChannelMessagesEffect, sendChannelMessageEffect } from '@syrnike13/client/api/messages-api'
+import {
+  fetchChannelMessagesEffect,
+  MESSAGE_PAGE_SIZE,
+  sendChannelMessageEffect,
+} from '@syrnike13/client/api/messages-api'
 import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
 import { buildMessageFeedItems, type MessageFeedItem } from '@syrnike13/client/lib/message-feed'
-import {
-  formatDateDividerDate,
-  formatMessageTimeShort,
-  messageCreatedAt,
-} from '@syrnike13/client/lib/message-time'
+import { formatDateDividerDate } from '@syrnike13/client/lib/message-time'
 import { randomUuid } from '@syrnike13/client/lib/random-uuid'
+import { useTypingIndicator } from '@syrnike13/client/gateway/use-typing-indicator'
 import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { getChannelMessages } from '@syrnike13/client/sync/selectors'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
@@ -15,24 +15,17 @@ import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
 import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Input } from '@syrnike13/ui-native/primitives/input'
-import {
-  Message,
-  MessageAuthor,
-  MessageAvatar,
-  MessageContent,
-  MessageDivider,
-  MessageHeader,
-  MessageText,
-  MessageTimestamp,
-} from '@syrnike13/ui-native/primitives/message'
+import { MessageDivider } from '@syrnike13/ui-native/primitives/message'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { Effect } from 'effect'
 import { router } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, KeyboardAvoidingView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSession } from '../auth/session-context'
+import { MessageRow } from '../chat/message-row'
+import { eventsGateway } from '../data/gateway'
 import { ArrowLeftIcon, ArrowUpIcon, ChevronRightIcon, HashIcon } from '../components/icons/registry'
 import { mediaUrl } from '../lib/media'
 import { userStatus } from '../lib/presence'
@@ -47,16 +40,37 @@ export function ChatScreen({ channelId }: { channelId: string }) {
   const users = useSyncStore((state) => state.users)
   const messages = useSyncStore((state) => getChannelMessages(state, channelId))
   const [loadFailed, setLoadFailed] = useState(false)
+  // Whether the server may have messages older than the oldest one loaded.
+  const [hasOlder, setHasOlder] = useState(true)
+  const loadingOlder = useRef(false)
 
   useEffect(() => {
+    setHasOlder(true)
     Effect.runPromise(fetchChannelMessagesEffect(session.token, channelId)).then(
       ({ messages: page, users: authors }) => {
         syncStore.upsertUsers(authors)
         syncStore.setChannelMessages(channelId, page)
+        setHasOlder(page.length >= MESSAGE_PAGE_SIZE)
       },
       () => setLoadFailed(true),
     )
   }, [channelId, session.token])
+
+  const oldestId = messages[0]?._id
+  function loadOlder() {
+    if (!hasOlder || !oldestId || loadingOlder.current) return
+    loadingOlder.current = true
+    Effect.runPromise(fetchChannelMessagesEffect(session.token, channelId, { before: oldestId }))
+      .then(({ messages: page, users: authors }) => {
+        syncStore.upsertUsers(authors)
+        syncStore.prependChannelMessages(channelId, page)
+        setHasOlder(page.length >= MESSAGE_PAGE_SIZE)
+      })
+      .catch(() => {})
+      .finally(() => {
+        loadingOlder.current = false
+      })
+  }
 
   // Reading the channel on this screen marks it read up to the newest message.
   const lastId = messages.at(-1)?._id
@@ -101,74 +115,48 @@ export function ChatScreen({ channelId }: { channelId: string }) {
         contentContainerClassName="pb-4"
         data={items}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => <FeedRow item={item} users={users} locale={locale} />}
+        renderItem={({ item }) => <FeedRow item={item} />}
+        // The list is inverted, so its end is the top: the oldest messages.
+        onEndReached={loadOlder}
+        onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadFailed ? <Text className="p-4 text-center text-destructive">{t('loadFailed')}</Text> : undefined
         }
       />
+      <TypingLine channelId={channelId} />
       <Composer channelId={channelId} placeholder={t('placeholder', { channel: title })} />
     </KeyboardAvoidingView>
   )
 }
 
-function FeedRow({ item, users, locale }: { item: MessageFeedItem; users: Record<string, User>; locale: string }) {
+function FeedRow({ item }: { item: MessageFeedItem }) {
   if (item.type === 'date') return <MessageDivider label={item.dateLabel} />
   if (item.type !== 'message') return null
-  return (
-    <FeedMessage
-      message={item.message}
-      text={withMentionNames(item.message.content, users)}
-      compact={item.compact}
-      author={users[item.message.author]}
-      locale={locale}
-    />
-  )
+  return <MessageRow message={item.message} compact={item.compact} />
 }
 
-/** Plain-text mentions until the feed renders markdown: <@id> becomes @name. */
-function withMentionNames(content: string | null | undefined, users: Record<string, User>) {
-  return (content ?? '').replace(/<@([0-9A-Z]{26})>/g, (raw, id: string) => {
-    const user = users[id]
-    return user ? `@${user.display_name ?? user.username}` : raw
-  })
-}
-
-function FeedMessage({
-  message,
-  text,
-  compact,
-  author,
-  locale,
-}: {
-  message: ApiMessage
-  text: string
-  compact: boolean
-  author: User | undefined
-  locale: string
-}) {
-  const name = message.masquerade?.name ?? author?.display_name ?? author?.username ?? '…'
-  if (compact) {
-    return (
-      <Message>
-        <MessageContent>
-          <MessageText>{text}</MessageText>
-        </MessageContent>
-      </Message>
-    )
-  }
+/** "Name is typing…" above the composer; your own typing is not shown. */
+function TypingLine({ channelId }: { channelId: string }) {
+  const t = useTranslations('mobile.chat.typing')
+  const { session } = useSession()
+  const typing = useSyncStore((state) => state.typingUsers[channelId])
+  const users = useSyncStore((state) => state.users)
+  const names = (typing ?? [])
+    .filter((id) => id !== session.userId)
+    .map((id) => users[id]?.display_name ?? users[id]?.username ?? t('someone'))
+  const label =
+    names.length === 0
+      ? ''
+      : names.length === 1
+        ? t('one', { name: names[0] })
+        : names.length === 2
+          ? t('two', { first: names[0], second: names[1] })
+          : t('many')
+  // Always reserve the line so the feed does not jump when someone types.
   return (
-    <Message groupStart>
-      <MessageAvatar>
-        <Avatar size="lg" src={mediaUrl(author?.avatar)} name={name} />
-      </MessageAvatar>
-      <MessageContent>
-        <MessageHeader>
-          <MessageAuthor>{name}</MessageAuthor>
-          <MessageTimestamp>{formatMessageTimeShort(messageCreatedAt(message), locale)}</MessageTimestamp>
-        </MessageHeader>
-        {text ? <MessageText>{text}</MessageText> : null}
-      </MessageContent>
-    </Message>
+    <Text className="h-5 px-4 text-xs leading-5 font-medium text-muted-foreground" numberOfLines={1}>
+      {label}
+    </Text>
   )
 }
 
@@ -178,11 +166,13 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const insets = useSafeAreaInsets()
+  const { notifyTyping, stopTyping } = useTypingIndicator(eventsGateway, channelId)
 
   async function send() {
     const content = text.trim()
     if (!content) return
     setSending(true)
+    stopTyping()
     try {
       const message = await Effect.runPromise(
         sendChannelMessageEffect(session.token, channelId, { content, nonce: randomUuid() }),
@@ -205,7 +195,10 @@ function Composer({ channelId, placeholder }: { channelId: string; placeholder: 
           className="max-h-32 flex-1"
           multiline
           value={text}
-          onChangeText={setText}
+          onChangeText={(value) => {
+            setText(value)
+            if (value) notifyTyping()
+          }}
           placeholder={placeholder}
         />
         {text.trim() ? (

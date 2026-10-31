@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'react'
 
-import { eventsGateway } from '#/features/events/gateway'
+import type { EventsGateway } from './events-gateway'
 
-export function useTypingIndicator(channelId: string | undefined) {
+/** Sends typing start/stop for the composer; typing lapses 4 s after the last keystroke. */
+export function useTypingIndicator(
+  eventsGateway: Pick<EventsGateway, 'beginTyping' | 'endTyping'>,
+  channelId: string | undefined,
+) {
   const typingRef = useRef(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -15,7 +19,7 @@ export function useTypingIndicator(channelId: string | undefined) {
       }
       clearTimeout(timeoutRef.current)
     }
-  }, [channelId])
+  }, [channelId, eventsGateway])
 
   function notifyTyping() {
     if (!channelId) return

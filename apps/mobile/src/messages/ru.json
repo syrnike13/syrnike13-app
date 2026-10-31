@@ -52,7 +52,41 @@
       "back": "Назад",
       "placeholder": "Написать в {channel}",
       "send": "Отправить",
-      "loadFailed": "Не удалось загрузить сообщения."
+      "loadFailed": "Не удалось загрузить сообщения.",
+      "edited": "(изменено)",
+      "replyUnavailable": "Исходное сообщение не загружено",
+      "replyAttachment": "Вложение",
+      "openAttachment": "Открыть {name}",
+      "reaction": "{emoji}: {count}",
+      "typing": {
+        "someone": "Кто-то",
+        "one": "{name} печатает…",
+        "two": "{first} и {second} печатают…",
+        "many": "Несколько человек печатают…"
+      },
+      "system": {
+        "user": "Пользователь",
+        "durationSeconds": "{count} сек",
+        "durationMinutes": "{count} мин",
+        "durationHours": "{count} ч",
+        "callCancelled": "Отменён",
+        "callMissed": "Пропущен",
+        "callEnded": "Завершён",
+        "callStarted": "начал звонок",
+        "callOngoing": "Идёт сейчас",
+        "userAdded": "{actor} добавляет {target}",
+        "userRemoved": "{actor} удаляет {target}",
+        "userJoined": "{user} присоединяется к серверу",
+        "userLeft": "{user} покидает сервер",
+        "userKicked": "{user} исключён из сервера",
+        "userBanned": "{user} заблокирован на сервере",
+        "channelRenamed": "{actor} переименовывает канал в «{name}»",
+        "channelDescriptionChanged": "{actor} изменяет описание канала",
+        "channelIconChanged": "{actor} изменяет значок канала",
+        "ownershipTransferred": "{from} передаёт владение {to}",
+        "messagePinned": "{actor} закрепляет сообщение",
+        "messageUnpinned": "{actor} открепляет сообщение"
+      }
     },
     "you": {
       "close": "Закрыть",

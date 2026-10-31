@@ -52,7 +52,41 @@
       "back": "Back",
       "placeholder": "Message {channel}",
       "send": "Send",
-      "loadFailed": "Could not load messages."
+      "loadFailed": "Could not load messages.",
+      "edited": "(edited)",
+      "replyUnavailable": "Original message is not loaded",
+      "replyAttachment": "Attachment",
+      "openAttachment": "Open {name}",
+      "reaction": "{emoji}: {count}",
+      "typing": {
+        "someone": "Someone",
+        "one": "{name} is typing…",
+        "two": "{first} and {second} are typing…",
+        "many": "Several people are typing…"
+      },
+      "system": {
+        "user": "User",
+        "durationSeconds": "{count}s",
+        "durationMinutes": "{count}m",
+        "durationHours": "{count}h",
+        "callCancelled": "Cancelled",
+        "callMissed": "Missed",
+        "callEnded": "Ended",
+        "callStarted": "started a call",
+        "callOngoing": "In progress",
+        "userAdded": "{actor} added {target}",
+        "userRemoved": "{actor} removed {target}",
+        "userJoined": "{user} joined the server",
+        "userLeft": "{user} left the server",
+        "userKicked": "{user} was kicked from the server",
+        "userBanned": "{user} was banned from the server",
+        "channelRenamed": "{actor} renamed the channel to “{name}”",
+        "channelDescriptionChanged": "{actor} changed the channel description",
+        "channelIconChanged": "{actor} changed the channel icon",
+        "ownershipTransferred": "{from} transferred ownership to {to}",
+        "messagePinned": "{actor} pinned a message",
+        "messageUnpinned": "{actor} unpinned a message"
+      }
     },
     "you": {
       "close": "Close",
