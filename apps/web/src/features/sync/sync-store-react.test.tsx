@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 const SERVER_ID = '01KT7DEM3B0T4B0BXGBXWDJ700'
 const FIRST_CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'

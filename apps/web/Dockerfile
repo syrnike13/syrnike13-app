@@ -9,6 +9,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/activity-lab/package.json apps/activity-lab/
 COPY packages/activity-sdk/package.json packages/activity-sdk/
 COPY packages/api-types/package.json packages/api-types/
+COPY packages/client/package.json packages/client/
 COPY packages/platform/package.json packages/platform/
 COPY packages/ui/package.json packages/ui/
 
@@ -18,6 +19,7 @@ COPY apps/web apps/web
 COPY apps/activity-lab apps/activity-lab
 COPY packages/activity-sdk packages/activity-sdk
 COPY packages/api-types packages/api-types
+COPY packages/client packages/client
 COPY packages/platform packages/platform
 COPY packages/ui packages/ui
 COPY tooling tooling

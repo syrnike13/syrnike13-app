@@ -19,7 +19,7 @@ import type { Channel, User } from '@syrnike13/api-types'
 import type {
   UserVoiceState,
   VoiceCallState,
-} from '#/features/sync/voice-types'
+} from '@syrnike13/client/sync/voice-types'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -55,7 +55,7 @@ import {
   sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   nextStageLayoutModeForMediaClick,
   resolveStageLayoutMode,

@@ -16,8 +16,8 @@ import { useEventSounds } from '#/features/sounds/use-event-sounds'
 
 import { ensureVoiceUsersLoaded } from './ensure-voice-users'
 import { refreshSyncAfterReconnect } from './refresh-sync-after-reconnect'
-import { syncStore, useSyncReady } from './sync-store'
-import { normalizeUserVoiceState } from './voice-event-utils'
+import { syncStore, useSyncReady } from '@syrnike13/client/sync/sync-store'
+import { normalizeUserVoiceState } from '@syrnike13/client/sync/voice-event-utils'
 
 function patchAuthSessionOnline(
   queryClient: QueryClient,

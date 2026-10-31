@@ -17,9 +17,9 @@ import {
 import {
   isServerVoiceChannel,
   type ServerTextChannel,
-} from '#/lib/channel-voice'
-import { hasPermissionBit } from '#/lib/permission-bits'
-import { ServerPermission } from '#/lib/server-permissions'
+} from '../lib/channel-voice'
+import { hasPermissionBit } from '../lib/permission-bits'
+import { ServerPermission } from '../authorization/permission-bits.generated'
 import type { ChannelUnreadState, SyncState } from './types'
 export const EMPTY_MESSAGES: Message[] = []
 export const EMPTY_TYPING_USERS: string[] = []

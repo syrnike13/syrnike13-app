@@ -56,7 +56,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@syrnike13/ui/primitives/tooltip'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   emojiSearchRank,
   loadEmojiCatalog,
@@ -67,7 +67,7 @@ import {
 } from '#/lib/emoji-catalog'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { serverIconUrl } from '#/lib/media'
-import { QUICK_REACTIONS } from '#/lib/reactions'
+import { QUICK_REACTIONS } from '@syrnike13/client/lib/reactions'
 
 type EmojiPickerProps = {
   trigger: ReactElement

@@ -2,8 +2,8 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { SettingsBlock, SettingsToggleRow } from '#/components/settings/settings-panels'
 import { usePrivacy } from '#/features/privacy/use-privacy'
-import { listServers } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { listServers } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 export function SettingsPrivacyPanel() {
   const t = useTranslations('settings.privacy')

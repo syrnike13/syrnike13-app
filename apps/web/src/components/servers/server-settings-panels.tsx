@@ -68,10 +68,10 @@ import {
   deleteServerEmojiEffect,
   editServerEffect,
   fetchServerEmojisEffect,
-} from '#/features/api/servers-api'
-import { listServerChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+} from '@syrnike13/client/api/servers-api'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { serverBannerUrl, serverIconUrl } from '#/lib/media'
 
 type ServerSettingsPanelsProps = {

@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 
 import { env } from '#/env'
-import { fetchApiRoot, fetchApiRootEffect } from '#/lib/api/client'
+import { fetchApiRoot, fetchApiRootEffect } from '@syrnike13/client/api/client'
 
 const FALLBACK_VOICE_NODE = 'worldwide'
 

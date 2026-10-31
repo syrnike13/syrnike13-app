@@ -9,10 +9,10 @@ import {
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { useSyncStore } from '#/features/sync/sync-store'
-import type { SyncState } from '#/features/sync/types'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
+import type { SyncState } from '@syrnike13/client/sync/types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { usePlatform } from '#/platform/use-platform'
 

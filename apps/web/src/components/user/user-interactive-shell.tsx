@@ -8,7 +8,7 @@ import {
 import { UserContextMenuContent } from '#/components/user/user-context-menu-content'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
-import type { MemberRoleEntry } from '#/features/sync/selectors'
+import type { MemberRoleEntry } from '@syrnike13/client/sync/selectors'
 import { useAuth } from '#/features/auth/auth-context'
 
 type UserInteractiveShellProps = {

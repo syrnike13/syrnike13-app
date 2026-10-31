@@ -10,7 +10,7 @@ import {
   MessageReactions as MessageReactionsRow,
 } from '@syrnike13/ui/primitives/message'
 import { isCustomEmojiId } from '#/lib/emoji'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 type MessageReactionsProps = {
   message: Message

@@ -19,8 +19,8 @@ import {
   MessageIcon,
   MessageTimestamp,
 } from '@syrnike13/ui/primitives/message'
-import { memberRoleEntries } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { memberRoleEntries } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { messageCreatedAt } from '#/lib/message-time'
 import { useMessageTimestamp } from '#/lib/use-message-time'
 import { Button } from '@syrnike13/ui/primitives/button'

@@ -6,15 +6,15 @@ import { Drawer, DrawerContent } from '@syrnike13/ui/primitives/drawer'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useAuth } from '#/features/auth/auth-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   consumeVoiceChannelChatOpenRequest,
   subscribeVoiceChannelChatOpen,
 } from '#/features/voice/voice-channel-chat-intent'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 /**

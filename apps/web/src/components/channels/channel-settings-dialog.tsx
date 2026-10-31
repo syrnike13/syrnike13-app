@@ -8,12 +8,12 @@ import {
   useAppRouteIdPrefix,
   useAppRoutePrefix,
 } from '#/features/navigation/route-prefix'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import {
   serverChannelServerId,
   type ServerChannel,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canManageChannel,
   canManageChannelPermissions,

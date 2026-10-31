@@ -6,7 +6,7 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from './client'
 
 export const updateCurrentUserEffect = Effect.fn('web.users.updateCurrent')(
   function*(token: string, data: DataEditUser) {

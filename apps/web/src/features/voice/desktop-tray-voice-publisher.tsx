@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Effect, Semaphore } from 'effect'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { usePlatform } from '#/platform/use-platform'
 
 import { useVoiceSession } from './voice-session-context'

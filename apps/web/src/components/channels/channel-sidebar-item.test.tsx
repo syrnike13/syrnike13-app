@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-intent'
@@ -69,12 +69,12 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   deleteChannelEffect: (...args: [string, string]) =>
     mocks.deleteChannel(...args),
 }))
 
-vi.mock('#/features/api/sync-api', () => ({
+vi.mock('@syrnike13/client/api/sync-api', () => ({
   ackChannelEffect: vi.fn(() => Effect.void),
 }))
 

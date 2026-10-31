@@ -18,15 +18,15 @@ import { selectChannelNotificationBadge } from '#/features/notifications/notific
 import {
   getChannelLabel,
   getDmRecipientId,
-} from '#/features/sync/channel-label'
-import { listVisibleDmRailChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import type { VoiceCallState } from '#/features/sync/voice-types'
+} from '@syrnike13/client/sync/channel-label'
+import { listVisibleDmRailChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
+import type { VoiceCallState } from '@syrnike13/client/sync/voice-types'
 import {
   isIncomingVoiceCall,
   isOutgoingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
+} from '@syrnike13/client/sync/voice-call-utils'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'

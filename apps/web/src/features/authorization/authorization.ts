@@ -1,14 +1,14 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
-import type { ServerChannel } from '#/lib/channel-voice'
-import { hasPermissionBit } from '#/lib/permission-bits'
+import type { ServerChannel } from '@syrnike13/client/lib/channel-voice'
+import { hasPermissionBit } from '@syrnike13/client/lib/permission-bits'
 import { ServerPermission } from '#/lib/server-permissions'
 import {
   GlobalPermission,
   UserPermission,
-} from './permission-bits.generated'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/authorization/permission-bits.generated'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 export const ChannelPermission = ServerPermission
 

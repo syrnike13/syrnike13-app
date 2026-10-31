@@ -2,7 +2,7 @@ import type { User } from '@syrnike13/api-types'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { VoiceAvatarStatusBadge } from '#/components/voice/voice-participant-icons'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 import { cn } from '#/lib/utils'
 
 type VoiceStageAvatarRosterProps = {

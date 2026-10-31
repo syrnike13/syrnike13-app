@@ -1,4 +1,4 @@
-import { ApiError, ApiNetworkError } from '#/lib/api/client'
+import { ApiError, ApiNetworkError } from '@syrnike13/client/api/client'
 
 const TRANSIENT_AUTH_LOAD_STATUSES = new Set([408, 429, 502, 503, 504])
 

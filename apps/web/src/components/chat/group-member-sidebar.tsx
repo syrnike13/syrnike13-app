@@ -11,7 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@syrnike13/ui/primitives/sidebar'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 type GroupChannel = Extract<Channel, { channel_type: 'Group' }>
 

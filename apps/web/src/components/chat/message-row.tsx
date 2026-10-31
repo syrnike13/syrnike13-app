@@ -40,8 +40,8 @@ import {
 import {
   memberRoleEntries,
   type MemberRoleEntry,
-} from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { isMessageMentioningUser } from '#/lib/mentions'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { messageCreatedAt } from '#/lib/message-time'

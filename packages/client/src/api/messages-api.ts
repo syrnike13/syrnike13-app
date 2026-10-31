@@ -8,9 +8,9 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { encodeReactionId } from '#/lib/reactions'
+import { encodeReactionId } from '../lib/reactions'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from './client'
 
 type MessagesResponse =
   | Message[]

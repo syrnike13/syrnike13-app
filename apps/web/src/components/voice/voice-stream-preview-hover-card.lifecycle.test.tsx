@@ -15,7 +15,7 @@ vi.mock('#/features/voice/voice-stage-context', () => ({
 vi.mock('#/features/voice/use-watch-participant-screen-share', () => ({
   useWatchParticipantScreenShare: () => state.watch,
 }))
-vi.mock('#/lib/api/client', () => ({ apiBlobRequest: state.fetch }))
+vi.mock('@syrnike13/client/api/client', () => ({ apiBlobRequest: state.fetch }))
 vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
   recordDiagnosticEvent: vi.fn(),
 }))

@@ -16,7 +16,7 @@ const userSource = resolve(
 )
 const output = resolve(
   root,
-  'apps/web/src/features/authorization/permission-bits.generated.ts',
+  'packages/client/src/authorization/permission-bits.generated.ts',
 )
 
 function enumBits(source, enumName) {
@@ -42,7 +42,7 @@ const global = enumBits(await readFile(globalSource, 'utf8'), 'GlobalPermission'
 const user = enumBits(await readFile(userSource, 'utf8'), 'UserPermission')
 const generated = `// Generated from services/backend/crates/core/permissions/src/models/{channel,global,user}.rs.
 // Run \`pnpm permissions:generate\` after changing the Rust permission enums.
-import { permissionBit } from '#/lib/permission-bits'
+import { permissionBit } from '../lib/permission-bits'
 
 ${renderObject('ServerPermission', channel)}
 

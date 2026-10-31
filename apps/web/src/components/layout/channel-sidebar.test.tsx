@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { serverBannerUrl } from '#/lib/media'
 
 const mocks = vi.hoisted(() => ({

@@ -2,14 +2,14 @@ import type { Channel } from '@syrnike13/api-types'
 import type { Translator } from '@syrnike13/ui/i18n'
 
 import type { CommandItem } from '#/features/command-palette/types'
-import { getChannelLabel, isTextChannel } from '#/features/sync/channel-label'
-import type { SyncState } from '#/features/sync/types'
+import { getChannelLabel, isTextChannel } from '@syrnike13/client/sync/channel-label'
+import type { SyncState } from '@syrnike13/client/sync/types'
 import {
   findDirectMessageChannelWithUser,
   listDmChannels,
   listServers,
   listServerChannels,
-} from '#/features/sync/selectors'
+} from '@syrnike13/client/sync/selectors'
 import { matchScore } from '#/lib/fuzzy-match'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 

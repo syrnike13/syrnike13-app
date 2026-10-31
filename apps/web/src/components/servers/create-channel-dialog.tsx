@@ -25,11 +25,11 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerChannelEffect,
   editServerEffect,
-} from '#/features/api/servers-api'
+} from '@syrnike13/client/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
-import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
+import { isServerVoiceChannel, normalizeServerChannel } from '@syrnike13/client/lib/channel-voice'
 
 type CreateChannelDialogProps = {
   serverId: string

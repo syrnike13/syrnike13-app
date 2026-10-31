@@ -2,13 +2,13 @@ import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { sendChannelMessage } from '#/features/api/messages-api'
+import { sendChannelMessage } from './messages-api'
 
 const mocks = vi.hoisted(() => ({
   apiRequestEffect: vi.fn(),
 }))
 
-vi.mock('#/lib/api/client', () => ({
+vi.mock('./client', () => ({
   apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
     mocks.apiRequestEffect(...args),
 }))

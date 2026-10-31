@@ -8,7 +8,7 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from './client'
 
 export const editChannelEffect = Effect.fn('web.channels.edit')(
   function*(token: string, channelId: string, data: DataEditChannel) {

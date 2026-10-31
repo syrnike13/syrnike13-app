@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchUser } from '#/features/api/users-api'
+import { fetchUser } from '@syrnike13/client/api/users-api'
 import { queryKeys } from '#/lib/api/query-keys'
 
 /** Sync/WebSocket users omit badges; load them from REST when needed. */

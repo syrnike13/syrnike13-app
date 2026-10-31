@@ -27,9 +27,9 @@ import {
   isServerInviteJoin,
   joinInviteEffect,
 } from '#/features/api/invites-api'
-import { createServerEffect } from '#/features/api/servers-api'
+import { createServerEffect } from '@syrnike13/client/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'
 
 type CreateServerDialogProps = {

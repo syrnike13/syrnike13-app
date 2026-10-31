@@ -7,8 +7,8 @@ import {
   removeFriendOrRequestEffect,
   sendFriendRequestEffect,
   unblockUserEffect,
-} from '#/features/api/users-api'
-import { syncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/users-api'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 export type FriendActionDeps = {
   acceptFriendRequest: typeof acceptFriendRequestEffect

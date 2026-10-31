@@ -4,8 +4,8 @@ import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { syncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 function canNotify() {
   return (

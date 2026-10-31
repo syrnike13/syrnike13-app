@@ -20,8 +20,8 @@ import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import {
   listServerMembers,
   memberRoleEntries,
-} from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { normalizeRoleColour } from '#/lib/server-permissions'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'

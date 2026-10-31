@@ -1,3 +1,5 @@
+import { configureApiClient } from '@syrnike13/client/api/client'
+
 import { env } from '#/env'
 
 /** Публичная конфигурация клиента (бэкенд syrnike13.ru). */
@@ -12,6 +14,8 @@ export const config = {
   gifboxUrl: env.VITE_GIFBOX_URL,
   hcaptchaSiteKey: env.VITE_HCAPTCHA_SITEKEY,
 } as const
+
+configureApiClient({ apiUrl: config.apiUrl })
 
 /** Базовый адрес десктоп-установщиков. */
 const downloadsBaseUrl = 'https://syrnike13.ru/downloads'

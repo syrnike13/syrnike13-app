@@ -30,9 +30,9 @@ import {
 } from '@syrnike13/ui/primitives/native-select'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { sendChannelMessageEffect } from '#/features/api/messages-api'
-import { fetchServerInvitesEffect } from '#/features/api/servers-api'
-import { openDirectMessageEffect } from '#/features/api/users-api'
+import { sendChannelMessageEffect } from '@syrnike13/client/api/messages-api'
+import { fetchServerInvitesEffect } from '@syrnike13/client/api/servers-api'
+import { openDirectMessageEffect } from '@syrnike13/client/api/users-api'
 import {
   createChannelInviteEffect,
   getInviteInactiveReason,
@@ -40,8 +40,8 @@ import {
 import {
   listServerChannels,
   listUsersByRelationship,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   canInviteToChannel,
   canManageServer,

@@ -40,12 +40,12 @@ import {
   fetchGroupMembersEffect,
   removeGroupMemberEffect,
   transferGroupOwnershipEffect,
-} from '#/features/api/channels-api'
+} from '@syrnike13/client/api/channels-api'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
 
 type GroupChannel = Extract<Channel, { channel_type: 'Group' }>

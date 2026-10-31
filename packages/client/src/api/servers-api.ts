@@ -16,7 +16,7 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from './client'
 
 export const editServerEffect = Effect.fn('web.servers.edit')(
   function*(token: string, serverId: string, data: DataEditServer) {

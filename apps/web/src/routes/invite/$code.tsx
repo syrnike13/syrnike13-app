@@ -23,7 +23,7 @@ import {
   isServerInviteJoin,
   joinInviteEffect,
 } from '#/features/api/invites-api'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { loadSession } from '#/lib/session'
 
 export const Route = createFileRoute('/invite/$code')({

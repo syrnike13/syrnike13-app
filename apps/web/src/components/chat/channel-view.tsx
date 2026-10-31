@@ -48,7 +48,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
@@ -61,7 +61,7 @@ import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
-import { channelHasVoice, isServerVoiceChannel } from '#/lib/channel-voice'
+import { channelHasVoice, isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { canMessageUser } from '#/features/authorization/authorization'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
@@ -70,18 +70,18 @@ import {
   reactToMessageEffect,
   sendChannelMessageEffect,
   unreactFromMessageEffect,
-} from '#/features/api/messages-api'
+} from '@syrnike13/client/api/messages-api'
 import {
   cancelDirectMessageCallEffect,
   declineDirectMessageCallEffect,
-} from '#/features/api/channels-api'
-import { listUserMutualServerNicknames } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/api/channels-api'
+import { listUserMutualServerNicknames } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   hasOngoingVoiceCall,
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
+} from '@syrnike13/client/sync/voice-call-utils'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 type ChannelViewProps = {

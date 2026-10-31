@@ -49,7 +49,7 @@ import {
   sendFriendRequestToUser,
   unblockBlockedUser,
 } from '#/features/friends/friend-actions'
-import type { MemberRoleEntry } from '#/features/sync/selectors'
+import type { MemberRoleEntry } from '@syrnike13/client/sync/selectors'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {

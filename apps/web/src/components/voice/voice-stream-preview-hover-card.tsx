@@ -12,7 +12,7 @@ import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useWatchParticipantScreenShare } from '#/features/voice/use-watch-participant-screen-share'
 import { stageMediaItemId } from '#/features/voice/voice-stage-media'
 import { streamPreviewWatchLabel } from '#/features/voice/stream-preview'
-import { apiBlobRequest } from '#/lib/api/client'
+import { apiBlobRequest } from '@syrnike13/client/api/client'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
 
 export function StreamPreviewCardContent({

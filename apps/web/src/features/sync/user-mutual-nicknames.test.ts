@@ -1,9 +1,9 @@
 import type { Member, Server, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { SyncState } from '#/features/sync/types'
+import type { SyncState } from '@syrnike13/client/sync/types'
 
-import { listUserMutualServerNicknames } from './selectors'
+import { listUserMutualServerNicknames } from '@syrnike13/client/sync/selectors'
 
 const CURRENT_USER_ID = 'current-user'
 const TARGET_USER_ID = 'target-user'

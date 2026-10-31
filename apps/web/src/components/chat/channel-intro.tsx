@@ -3,7 +3,7 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { HashIcon, UsersIcon } from '#/components/icons'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { attachmentPreviewUrl } from '#/lib/media'
 
 /** Начало истории канала, как в Discord: крупная иконка, заголовок, пояснение. */

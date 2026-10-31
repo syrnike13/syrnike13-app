@@ -8,13 +8,13 @@ import {
   deleteWebhook,
   editWebhook,
   fetchChannelWebhooks,
-} from '#/features/api/channels-api'
+} from './channels-api'
 
 const mocks = vi.hoisted(() => ({
   apiRequestEffect: vi.fn(),
 }))
 
-vi.mock('#/lib/api/client', () => ({
+vi.mock('./client', () => ({
   apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
     mocks.apiRequestEffect(...args),
 }))

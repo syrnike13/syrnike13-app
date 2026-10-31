@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
@@ -101,7 +101,7 @@ vi.mock('#/features/api/media-api', () => ({
     mocks.uploadAttachment(...args),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   createServerRoleEffect: (
     ...args: Parameters<typeof mocks.createServerRole>
   ) =>

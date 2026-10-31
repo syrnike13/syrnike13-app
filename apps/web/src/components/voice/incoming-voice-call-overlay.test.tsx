@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { IncomingVoiceCallOverlay } from './incoming-voice-call-overlay'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const CURRENT_USER_ID = 'current-user'
 const CALLER_ID = 'caller-user'
@@ -92,7 +92,7 @@ vi.mock('#/features/voice/voice-session-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/channels-api', () => ({
+vi.mock('@syrnike13/client/api/channels-api', () => ({
   cancelDirectMessageCallEffect: cancelDirectMessageCallMock,
   declineDirectMessageCallEffect: declineDirectMessageCallMock,
 }))

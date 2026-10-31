@@ -1,4 +1,4 @@
-import type { GatewayServerEvent } from '#/features/sync/types'
+import type { GatewayServerEvent } from '@syrnike13/client/sync/types'
 
 import type { SoundEventId } from './sound-events'
 

@@ -9,7 +9,7 @@ import {
   type SyrnikeDesktopApi,
 } from '@syrnike13/platform'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from '@syrnike13/client/api/client'
 import { config } from '#/lib/config'
 import { loadDesktopLocalSettingsEffect } from '#/features/settings/desktop-local-settings-client'
 import { readBrowserDiagnosticReportsEnabled } from './diagnostic-preferences'

@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ServerRail } from '#/components/layout/server-rail'
 import en from '#/messages/en.json'
 import ru from '#/messages/ru.json'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
 

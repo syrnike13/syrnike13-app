@@ -15,7 +15,7 @@ import {
   sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'

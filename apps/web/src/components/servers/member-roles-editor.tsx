@@ -6,8 +6,8 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { FxImage } from '#/components/ui/fx-image'
 import { Switch } from '@syrnike13/ui/primitives/switch'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMemberEffect } from '#/features/api/servers-api'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   canEditAnyMemberRole,
   canToggleMemberRole,

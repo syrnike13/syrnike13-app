@@ -38,7 +38,7 @@ import {
   declineIncomingFriendRequest,
   sendFriendRequestToUser,
 } from '#/features/friends/friend-actions'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { canMessageUser } from '#/features/authorization/authorization'
 import { ulidToDate } from '#/lib/ulid'
 

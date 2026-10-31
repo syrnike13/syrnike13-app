@@ -6,8 +6,8 @@ import {
   isParticipantDeafened,
   isParticipantMuted,
 } from '#/features/sync/voice-selectors'
-import type { SyncState } from '#/features/sync/types'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { SyncState } from '@syrnike13/client/sync/types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 const USER_ONE = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6CH'

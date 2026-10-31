@@ -37,25 +37,25 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { ackChannelEffect } from '#/features/api/sync-api'
-import { editServerMemberEffect } from '#/features/api/servers-api'
-import { deleteChannelEffect } from '#/features/api/channels-api'
+import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
+import { deleteChannelEffect } from '@syrnike13/client/api/channels-api'
 import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
-import type { ChannelUnreadState } from '#/features/sync/types'
+import type { ChannelUnreadState } from '@syrnike13/client/sync/types'
 import {
   getChannelLabel,
   getDmRecipientId,
-} from '#/features/sync/channel-label'
+} from '@syrnike13/client/sync/channel-label'
 import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
-import { getChannelLastMessageId, pickDefaultChannelId } from '#/features/sync/selectors'
+} from '@syrnike13/client/sync/voice-call-utils'
+import { getChannelLastMessageId, pickDefaultChannelId } from '@syrnike13/client/sync/selectors'
 import {
   syncStore,
   useSyncStore,
-} from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
@@ -64,7 +64,7 @@ import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobil
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canManageChannel,
   canMoveServerMember,

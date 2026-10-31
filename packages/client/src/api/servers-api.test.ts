@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   deleteOrLeaveServer,
   fetchServerAuditLog,
-} from '#/features/api/servers-api'
+} from './servers-api'
 
 const mocks = vi.hoisted(() => ({
   apiRequestEffect: vi.fn(),
 }))
 
-vi.mock('#/lib/api/client', () => ({
+vi.mock('./client', () => ({
   apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
     mocks.apiRequestEffect(...args),
 }))

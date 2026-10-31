@@ -32,10 +32,10 @@ import {
   reactToMessageEffect,
   sendChannelMessageEffect,
   unreactFromMessageEffect,
-} from '#/features/api/messages-api'
+} from '@syrnike13/client/api/messages-api'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
-import { syncStore } from '#/features/sync/sync-store'
-import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_BOTTOM_OFFSET_PX,

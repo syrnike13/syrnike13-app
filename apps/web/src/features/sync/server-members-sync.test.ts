@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
-import { fetchServerMembersEffect } from '#/features/api/servers-api'
-import { listServerMembers } from '#/features/sync/selectors'
+import { fetchServerMembersEffect } from '@syrnike13/client/api/servers-api'
+import { listServerMembers } from '@syrnike13/client/sync/selectors'
 import {
   clearServerMembersSyncCache,
   loadServerMembersIntoSyncStore,
 } from '#/features/sync/server-members-sync'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   fetchServerMembersEffect: vi.fn(),
 }))
 

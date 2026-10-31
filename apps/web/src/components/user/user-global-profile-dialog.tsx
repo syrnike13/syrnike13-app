@@ -25,9 +25,9 @@ import {
   unblockBlockedUser,
 } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { listServerChannels } from '#/features/sync/selectors'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { canMessageUser } from '#/features/authorization/authorization'
 

@@ -35,11 +35,11 @@ import {
   SettingsPageShell,
 } from '#/components/settings/settings-page-shell'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
-import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
+import { deleteOrLeaveServerEffect } from '@syrnike13/client/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { listServerChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   canOpenServerSettings,
   canViewServerSettingsTab,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { syncStore } from '#/features/sync/sync-store'
-import type { GatewayServerEvent } from '#/features/sync/types'
+import { syncStore } from './sync-store'
+import type { GatewayServerEvent } from './types'
 import type { Channel } from '@syrnike13/api-types'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'

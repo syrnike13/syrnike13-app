@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import type { Member, Role } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
 
-import { fetchServerMemberEffect } from '#/features/api/servers-api'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { fetchServerMemberEffect } from '@syrnike13/client/api/servers-api'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 const inFlight = new Map<
   string,

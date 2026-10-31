@@ -1,7 +1,12 @@
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Option, Schema } from 'effect'
 
-import { config } from '#/lib/config'
+let apiUrl = ''
+
+/** Each app points the client at its backend once, before the first request. */
+export function configureApiClient(options: { apiUrl: string }) {
+  apiUrl = options.apiUrl
+}
 
 export type ApiErrorCode =
   | 'http'
@@ -98,7 +103,7 @@ export const apiRequestEffect = Effect.fn('api.request')(
 
     const { response, text } = yield* Effect.tryPromise({
       try: async (signal) => {
-        const response = await fetch(`${config.apiUrl}${path}`, {
+        const response = await fetch(`${apiUrl}${path}`, {
           ...init,
           headers,
           body:
@@ -216,7 +221,7 @@ export function apiBlobRequest(path: string, options: ApiRequestOptions = {}) {
     Effect.gen(function* () {
       const { response, blob } = yield* Effect.tryPromise({
         try: async (requestSignal) => {
-          const response = await fetch(`${config.apiUrl}${path}`, {
+          const response = await fetch(`${apiUrl}${path}`, {
             ...init,
             body: undefined,
             headers,

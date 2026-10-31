@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerChannelList } from '#/components/channels/server-channel-list'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import { UNCATEGORIZED_SECTION_ID } from '#/lib/channel-sidebar-layout'
 
@@ -64,7 +64,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/servers-api', () => ({
+vi.mock('@syrnike13/client/api/servers-api', () => ({
   editServerEffect: (...args: Parameters<typeof mocks.editServer>) =>
     mocks.editServer(...args),
 }))

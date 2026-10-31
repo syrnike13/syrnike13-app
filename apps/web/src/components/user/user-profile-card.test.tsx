@@ -8,7 +8,7 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserProfileCard } from './user-profile-card'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const navigateMock = vi.hoisted(() => vi.fn())
@@ -41,9 +41,9 @@ vi.mock('#/features/settings/settings-modal-context', () => ({
   useSettingsModal: () => ({ openSettings: vi.fn() }),
 }))
 
-vi.mock('#/features/api/users-api', async (importOriginal) => {
+vi.mock('@syrnike13/client/api/users-api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('#/features/api/users-api')>()
+    await importOriginal<typeof import('@syrnike13/client/api/users-api')>()
   return {
     ...actual,
     fetchUserProfile: vi.fn(async () => ({ content: null, background: null })),

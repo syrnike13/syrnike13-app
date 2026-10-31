@@ -21,10 +21,10 @@ import {
 import { ProfileColoursField } from '#/components/user/profile/profile-colours-field'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { uploadMediaFileEffect } from '#/features/api/media-api'
-import { editServerMemberEffect } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { listServers } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listServers } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useServerProfile } from '#/features/users/use-server-profile'
 import {
   ContextMenu,

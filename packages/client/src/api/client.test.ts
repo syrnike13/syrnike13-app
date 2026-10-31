@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Schema } from 'effect'
 
-vi.mock('#/lib/config', () => ({
-  config: {
-    apiUrl: 'https://api.example.test',
-  },
-}))
+import {
+  ApiError,
+  ApiNetworkError,
+  apiBlobRequest,
+  apiRequest,
+  configureApiClient,
+} from './client'
 
-import { ApiError, ApiNetworkError, apiBlobRequest, apiRequest } from './client'
+configureApiClient({ apiUrl: 'https://api.example.test' })
 
 describe('apiRequest', () => {
   it('classifies image-body read failures without losing their cause', async () => {

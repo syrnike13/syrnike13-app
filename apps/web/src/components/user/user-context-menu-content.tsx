@@ -45,7 +45,7 @@ import {
   banServerMemberEffect,
   editServerMemberEffect,
   kickServerMemberEffect,
-} from '#/features/api/servers-api'
+} from '@syrnike13/client/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { canMessageUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -54,15 +54,15 @@ import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
   listServerChannels,
   selectDirectMessageCallAction,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import {
   isServerVoiceChannel,
   serverChannelServerId,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canBanServerMember,
   canKickServerMember,

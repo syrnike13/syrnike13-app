@@ -27,7 +27,7 @@ import {
 } from '#/components/feedback/feedback-status'
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 function formatFeedbackDate(value: string, locale: AppLocale) {
   const date = new Date(value)

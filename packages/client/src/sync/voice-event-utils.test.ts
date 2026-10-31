@@ -5,8 +5,8 @@ import {
   normalizeUserVoiceState,
   parseVoiceFlag,
   shouldApplyVoiceState,
-} from '#/features/sync/voice-event-utils'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+} from './voice-event-utils'
+import type { UserVoiceState } from './voice-types'
 
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 const USER_TWO = '01KT7DEM3B0T4B0BXGBXWDJ6AE'

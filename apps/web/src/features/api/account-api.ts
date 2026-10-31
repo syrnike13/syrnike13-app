@@ -7,7 +7,7 @@ import type {
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from '@syrnike13/client/api/client'
 
 export const createAccountEffect = Effect.fn('web.account.create')(
   function*(payload: DataCreateAccount) {

@@ -30,11 +30,11 @@ import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { Separator } from '@syrnike13/ui/primitives/separator'
 import { useAuth } from '#/features/auth/auth-context'
-import { createGroupChannelEffect } from '#/features/api/channels-api'
+import { createGroupChannelEffect } from '@syrnike13/client/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { listUsersByRelationship } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listUsersByRelationship } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 type DialogMode = 'dm' | 'group' | null
 

@@ -4,13 +4,13 @@ import { useTranslations } from '@syrnike13/ui/i18n'
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useAuth } from '#/features/auth/auth-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   consumeVoiceChannelChatOpenRequest,
   subscribeVoiceChannelChatOpen,
 } from '#/features/voice/voice-channel-chat-intent'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 type VoiceChannelShellProps = {

@@ -9,8 +9,8 @@ import {
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 
 import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -20,7 +20,7 @@ import {
   isMicVisuallyMuted,
 } from '#/features/voice/voice-mic-status'
 import { useFloatingCornerAnchor } from '#/hooks/use-floating-corner-anchor'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import {
   floatingCornerPositionClass,
   MOBILE_VOICE_FLOATING_TILE_SIZE_PX,

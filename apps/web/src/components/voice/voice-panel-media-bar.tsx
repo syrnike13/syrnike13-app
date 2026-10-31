@@ -22,7 +22,7 @@ import { voiceMediaControlState } from '#/features/voice/voice-media-availabilit
 import { isActivityStageItemId } from '#/features/activities/activity-stage'
 import { useActivityInstance } from '#/features/activities/use-activities'
 import { canUseActivities } from '#/features/authorization/authorization'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'

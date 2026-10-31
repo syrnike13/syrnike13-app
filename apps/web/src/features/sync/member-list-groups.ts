@@ -3,8 +3,8 @@ import type { Translator } from '@syrnike13/ui/i18n'
 
 import { getUserPresence, isUserOnline } from '#/lib/presence'
 
-import type { MemberRoleEntry, ServerMemberEntry } from './selectors'
-import { memberRoleEntries } from './selectors'
+import type { MemberRoleEntry, ServerMemberEntry } from '@syrnike13/client/sync/selectors'
+import { memberRoleEntries } from '@syrnike13/client/sync/selectors'
 
 export function normalizeRoleColour(colour: string): string {
   const trimmed = colour.trim()

@@ -26,11 +26,11 @@ import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   isServerChannel,
   serverChannelServerId,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import {
   canManageChannel,
   canManageChannelPermissions,

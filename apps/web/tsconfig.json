@@ -17,6 +17,7 @@
       "@syrnike13/api-types/gateway-schema": [
         "../../packages/api-types/src/gateway-schema.ts"
       ],
+      "@syrnike13/client/*": ["../../packages/client/src/*"],
       "@syrnike13/platform": ["../../packages/platform/src/index.ts"],
       "@syrnike13/ui": ["../../packages/ui/src/index.ts"],
       "@syrnike13/ui/*": ["../../packages/ui/src/*"]

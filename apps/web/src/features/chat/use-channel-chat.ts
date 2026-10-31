@@ -12,15 +12,15 @@ import {
   MESSAGE_PAGE_SIZE,
   pinChannelMessageEffect,
   unpinChannelMessageEffect,
-} from '#/features/api/messages-api'
-import { ackChannelEffect } from '#/features/api/sync-api'
+} from '@syrnike13/client/api/messages-api'
+import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
-import { getChannelMessages } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { getChannelMessages } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import { serverChannelServerId } from '@syrnike13/client/lib/channel-voice'
 
 type ComposerAction =
   | { type: 'reply'; message: Message }

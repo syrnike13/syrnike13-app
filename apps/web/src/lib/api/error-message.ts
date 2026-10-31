@@ -1,4 +1,4 @@
-import { ApiError, ApiNetworkError } from './client'
+import { ApiError, ApiNetworkError } from '@syrnike13/client/api/client'
 
 /**
  * API failures carry developer-facing messages; show the caller's localized

@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageList } from '#/components/chat/message-list'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ700'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'

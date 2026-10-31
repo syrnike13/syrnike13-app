@@ -10,7 +10,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'
 import { VoiceProvider } from '#/features/voice/voice-provider'
-import { useSyncReady } from '#/features/sync/sync-store'
+import { useSyncReady } from '@syrnike13/client/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { apiErrorMessage } from '#/lib/api/error-message'
 

@@ -1,6 +1,6 @@
 // Generated from services/backend/crates/core/permissions/src/models/{channel,global,user}.rs.
 // Run `pnpm permissions:generate` after changing the Rust permission enums.
-import { permissionBit } from '#/lib/permission-bits'
+import { permissionBit } from '../lib/permission-bits'
 
 export const ServerPermission = {
   ManageChannel: permissionBit(0),

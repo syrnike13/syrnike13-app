@@ -19,7 +19,7 @@ import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
-import type { SendMessageInput } from '#/features/api/messages-api'
+import type { SendMessageInput } from '@syrnike13/client/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
 import {
   memberDisplayColour,
@@ -32,15 +32,15 @@ import {
   MAX_MENTION_SUGGESTION_ITEMS,
   type MentionSuggestionItem,
 } from '#/lib/message-format/extensions/mention-suggestion'
-import { memberRoleEntries } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { memberRoleEntries } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
-import { getChannelLabel } from '#/features/sync/channel-label'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
 import {
   isServerVoiceChannel,
   runtimeChannelName,
   serverChannelServerId,
-} from '#/lib/channel-voice'
+} from '@syrnike13/client/lib/channel-voice'
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import {
   Tooltip,
@@ -50,7 +50,7 @@ import {
 } from '@syrnike13/ui/primitives/tooltip'
 import { cn } from '#/lib/utils'
 import { ChannelPermission } from '#/features/authorization/authorization'
-import { hasPermissionBit } from '#/lib/permission-bits'
+import { hasPermissionBit } from '@syrnike13/client/lib/permission-bits'
 import { useComposerState } from '#/features/chat/use-composer-state'
 import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
 

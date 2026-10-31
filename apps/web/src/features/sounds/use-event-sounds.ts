@@ -4,7 +4,7 @@ import { Effect, Fiber } from 'effect'
 import { fetchSyrnikeConfigEffect } from '#/features/api/config-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 import { playUiSound } from './sound-player'
 import {

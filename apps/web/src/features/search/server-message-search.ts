@@ -1,12 +1,12 @@
 import type { Message, User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 
-import { searchChannelMessagesEffect } from '#/features/api/messages-api'
+import { searchChannelMessagesEffect } from '@syrnike13/client/api/messages-api'
 import type { Translator } from '@syrnike13/ui/i18n'
 
 import { channelLabelForMessage } from '#/features/command-palette/build-command-items'
-import { listServerTextChannelIds } from '#/features/sync/selectors'
-import type { SyncState } from '#/features/sync/types'
+import { listServerTextChannelIds } from '@syrnike13/client/sync/selectors'
+import type { SyncState } from '@syrnike13/client/sync/types'
 
 export type ServerMessageSearchHit = {
   message: Message

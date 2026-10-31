@@ -1,11 +1,10 @@
 import type { Channel, User } from '@syrnike13/api-types'
-import type { Translator } from '@syrnike13/ui/i18n'
+
+/** Any app translator: only the fallback labels below are looked up. */
+type Translator = (key: 'savedMessages' | 'directMessages' | 'channelFallback') => string
 
 /** Sorting callers do not render fallback labels, so they can skip localization. */
-const EMPTY_LABELS = Object.assign((_key: string) => '', {
-  has: () => false,
-  raw: () => undefined,
-}) as Translator
+const EMPTY_LABELS: Translator = () => ''
 
 export function getChannelLabel(
   channel: Channel,

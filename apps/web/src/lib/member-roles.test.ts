@@ -8,8 +8,8 @@ import {
 } from '#/lib/member-roles'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { installAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
-import { GlobalPermission } from '#/features/authorization/permission-bits.generated'
-import { syncStore } from '#/features/sync/sync-store'
+import { GlobalPermission } from '@syrnike13/client/authorization/permission-bits.generated'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 
 beforeEach(() => {
   syncStore.reset()

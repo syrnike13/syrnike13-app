@@ -24,14 +24,14 @@ import { Input } from '@syrnike13/ui/primitives/input'
 import { Label } from '@syrnike13/ui/primitives/label'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchServerInvitesEffect } from '#/features/api/servers-api'
+import { fetchServerInvitesEffect } from '@syrnike13/client/api/servers-api'
 import {
   deleteInviteEffect,
   getInviteInactiveReason,
   type InviteInactiveReason,
 } from '#/features/api/invites-api'
-import { listServerChannels } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 

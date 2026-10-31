@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { Effect } from 'effect'
 
-import { ApiError } from '#/lib/api/client'
+import { ApiError } from '@syrnike13/client/api/client'
 
 import { AuthProvider, useAuth } from './auth-context'
 import { fetchCurrentUserEffect } from './auth-api'

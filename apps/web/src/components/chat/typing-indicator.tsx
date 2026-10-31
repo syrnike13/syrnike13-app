@@ -1,8 +1,8 @@
 import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
-import { EMPTY_TYPING_USERS } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { EMPTY_TYPING_USERS } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 import { cn } from '#/lib/utils'
 

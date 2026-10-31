@@ -1,10 +1,10 @@
 import type { Channel } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
-import { voiceCallUiKey } from './voice-call-utils'
+import type { ChannelUnreadState, SyncState } from '@syrnike13/client/sync/types'
+import { voiceCallUiKey } from '@syrnike13/client/sync/voice-call-utils'
 
-import { listVisibleDmRailChannels } from './selectors'
+import { listVisibleDmRailChannels } from '@syrnike13/client/sync/selectors'
 
 const CURRENT_USER_ID = 'current-user'
 

@@ -69,7 +69,7 @@ vi.mock('#/features/authorization/authorization', () => ({
   canUseActivities: () => testState.activitiesAllowed,
 }))
 
-vi.mock('#/features/sync/sync-store', () => ({
+vi.mock('@syrnike13/client/sync/sync-store', () => ({
   useSyncStore: (selector: (state: unknown) => unknown) => selector({}),
 }))
 

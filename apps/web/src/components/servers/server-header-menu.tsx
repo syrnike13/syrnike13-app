@@ -35,10 +35,10 @@ import {
   DropdownMenuTrigger,
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { useAuth } from '#/features/auth/auth-context'
-import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
+import { deleteOrLeaveServerEffect } from '@syrnike13/client/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { listServerChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listServerChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { usePrivacy } from '#/features/privacy/use-privacy'

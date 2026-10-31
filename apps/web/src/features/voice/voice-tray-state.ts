@@ -1,6 +1,6 @@
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 export function deriveDesktopTrayVoiceState(input: {
   channelId: string | null

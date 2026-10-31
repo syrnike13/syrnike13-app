@@ -33,7 +33,7 @@ import {
 } from './voice-event-utils'
 import { voiceCallUiKey } from './voice-call-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import { serverChannelServerId } from '../lib/channel-voice'
 
 const ChannelSchema = Schema.declare<Channel>(
   (input): input is Channel => Schema.is(ApiSchema.Channel)(input),

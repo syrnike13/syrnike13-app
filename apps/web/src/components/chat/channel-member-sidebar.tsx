@@ -15,8 +15,8 @@ import {
   listServerMembers,
   memberRoleEntries,
   type ServerMemberEntry,
-} from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+} from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'

@@ -6,7 +6,7 @@ import { useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
 
 const CURRENT_USER_ID = 'current-user'

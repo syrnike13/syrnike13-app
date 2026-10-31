@@ -6,14 +6,14 @@ import {
   sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
-import { memberRoleEntries } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { memberRoleEntries } from '@syrnike13/client/sync/selectors'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import { serverChannelServerId } from '@syrnike13/client/lib/channel-voice'
 import { ActivityApplicationIcon } from '#/features/activities/activity-application-icon'
 import {
   useActivityApplication,

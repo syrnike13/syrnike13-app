@@ -1,6 +1,6 @@
 import type { Category, Channel, Server } from '@syrnike13/api-types'
 
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { randomUuid } from '#/lib/random-uuid'
 
 export const UNCATEGORIZED_SECTION_ID = '__uncategorized__'

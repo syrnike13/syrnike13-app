@@ -11,17 +11,17 @@ import {
   SidebarMenuItem,
 } from '@syrnike13/ui/primitives/sidebar'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { deleteChannelEffect } from '#/features/api/channels-api'
+import { deleteChannelEffect } from '@syrnike13/client/api/channels-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
-import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
-import { listDmChannels } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
+import { listDmChannels } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
-} from '#/features/sync/voice-call-utils'
+} from '@syrnike13/client/sync/voice-call-utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'

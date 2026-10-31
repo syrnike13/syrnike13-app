@@ -1,7 +1,7 @@
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Schema } from 'effect'
 
-import { apiRequestEffect } from '#/lib/api/client'
+import { apiRequestEffect } from './client'
 
 export const fetchUnreadsEffect = Effect.fn('web.sync.fetchUnreads')(
   function*(token: string) {

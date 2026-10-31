@@ -5,7 +5,7 @@ import type { User } from '@syrnike13/api-types'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { VoiceStageAvatarRoster } from '#/components/voice/voice-stage-avatar-roster'
-import type { UserVoiceState } from '#/features/sync/voice-types'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
 
 const user = {
   _id: 'user-1',

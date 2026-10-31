@@ -20,8 +20,8 @@ import {
   selectHomeNotificationBadge,
   selectServerNotificationBadge,
 } from '#/features/notifications/notification-selectors'
-import { listServerChannels, listServers } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { listServerChannels, listServers } from '@syrnike13/client/sync/selectors'
+import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
@@ -43,8 +43,8 @@ import {
   type ServerActivityKind,
 } from '#/components/servers/server-avatar'
 import { getChannelVoiceParticipants } from '#/features/sync/voice-selectors'
-import type { UserVoiceState } from '#/features/sync/voice-types'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import type { UserVoiceState } from '@syrnike13/client/sync/voice-types'
+import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 
 type ServerRailVariant = 'desktop' | 'mobile'
 const MAX_TOOLTIP_AVATARS = 6

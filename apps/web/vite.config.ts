@@ -25,6 +25,7 @@ const activitySdkProtocolEntry = path.resolve(
 )
 const platformEntry = path.resolve(webRoot, '../../packages/platform/src/index.ts')
 const uiEntry = path.resolve(webRoot, '../../packages/ui/src')
+const clientEntry = path.resolve(webRoot, '../../packages/client/src')
 /** Пакет помечен `type:module`, но `main` указывает на CJS `dist/index.js`. */
 const squircleReactEntry = path.resolve(
   webRoot,
@@ -49,6 +50,7 @@ const config = defineConfig({
     noExternal: [
       '@syrnike13/activity-sdk',
       '@syrnike13/api-types',
+      '@syrnike13/client',
       '@syrnike13/platform',
       '@syrnike13/ui',
       '@squircle-js/react',
@@ -60,6 +62,7 @@ const config = defineConfig({
       '@syrnike13/api-types/effect-schema': apiTypesEffectSchemaEntry,
       '@syrnike13/api-types/gateway-schema': apiTypesGatewaySchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,
+      '@syrnike13/client': clientEntry,
       '@syrnike13/platform': platformEntry,
       '@syrnike13/ui': uiEntry,
       '@squircle-js/react': squircleReactEntry,
@@ -68,7 +71,7 @@ const config = defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    exclude: ['@syrnike13/ui'],
+    exclude: ['@syrnike13/client', '@syrnike13/ui'],
     include: [
       '@remixicon/react',
       'iconoir-react',

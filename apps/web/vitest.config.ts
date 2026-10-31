@@ -29,6 +29,7 @@ export default defineConfig({
         '../../packages/api-types/src/gateway-schema.ts',
       ),
       '@syrnike13/api-types': path.resolve(root, '../../packages/api-types/src/index.ts'),
+      '@syrnike13/client': path.resolve(root, '../../packages/client/src'),
       '@syrnike13/platform': path.resolve(root, '../../packages/platform/src/index.ts'),
       '@syrnike13/ui': path.resolve(root, '../../packages/ui/src'),
       '@squircle-js/react': squircleReactEntry,

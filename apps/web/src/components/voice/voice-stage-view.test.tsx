@@ -106,7 +106,7 @@ vi.mock('#/features/activities/activity-store', () => ({
   ) => Boolean(instance?.participants.some((p) => p.user_id === userId)),
 }))
 
-vi.mock('#/features/sync/sync-store', () => ({
+vi.mock('@syrnike13/client/sync/sync-store', () => ({
   useSyncStore: (selector: (state: unknown) => unknown) =>
     selector({ users, servers: {}, members: {} }),
   syncStore: { getState: () => ({ users, servers: {}, members: {} }) },

@@ -31,10 +31,10 @@ import {
 } from '#/features/command-palette/build-command-items'
 import type { CommandItem } from '#/features/command-palette/types'
 import { useCommandPalette } from '#/features/command-palette/command-palette-context'
-import { searchChannelMessagesEffect } from '#/features/api/messages-api'
+import { searchChannelMessagesEffect } from '@syrnike13/client/api/messages-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { messagePreviewText } from '#/lib/message-format/preview-text'
 
 function groupIcon(group: string) {

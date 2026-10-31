@@ -10,15 +10,15 @@ import { VoicePingPopoverContent } from '#/components/voice/voice-ping-popover'
 import { formatVoicePingLabel } from '#/features/voice/voice-ping'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { getChannelLabel } from '#/features/sync/channel-label'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
+import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   isVoiceConnectionReady,
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import { serverChannelServerId } from '@syrnike13/client/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 /** Компактная подсказка пинга. */
