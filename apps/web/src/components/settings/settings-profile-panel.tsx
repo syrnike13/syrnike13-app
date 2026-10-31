@@ -31,7 +31,7 @@ import {
 } from '@syrnike13/ui/primitives/field'
 import { Input } from '@syrnike13/ui/primitives/input'
 import { Textarea } from '@syrnike13/ui/primitives/textarea'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import {
   fetchUserProfile,
   updateCurrentUserEffect,

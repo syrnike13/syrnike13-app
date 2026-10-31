@@ -96,7 +96,7 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/api/media-api', () => ({
+vi.mock('@syrnike13/client/api/media-api', () => ({
   uploadAttachment: (...args: Parameters<typeof mocks.uploadAttachment>) =>
     mocks.uploadAttachment(...args),
 }))

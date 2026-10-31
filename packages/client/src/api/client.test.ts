@@ -9,7 +9,7 @@ import {
   configureApiClient,
 } from './client'
 
-configureApiClient({ apiUrl: 'https://api.example.test' })
+configureApiClient({ apiUrl: 'https://api.example.test', mediaUrl: 'https://media.example.test' })
 
 describe('apiRequest', () => {
   it('classifies image-body read failures without losing their cause', async () => {

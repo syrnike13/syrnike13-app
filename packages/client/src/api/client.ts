@@ -2,10 +2,17 @@ import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Option, Schema } from 'effect'
 
 let apiUrl = ''
+let mediaUrl = ''
 
 /** Each app points the client at its backend once, before the first request. */
-export function configureApiClient(options: { apiUrl: string }) {
+export function configureApiClient(options: { apiUrl: string; mediaUrl: string }) {
   apiUrl = options.apiUrl
+  mediaUrl = options.mediaUrl
+}
+
+/** Base URL of the file server (Autumn) the client uploads to. */
+export function configuredMediaUrl() {
+  return mediaUrl
 }
 
 export type ApiErrorCode =

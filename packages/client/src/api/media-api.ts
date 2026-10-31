@@ -1,6 +1,15 @@
-import type { Translator } from '@syrnike13/ui/i18n'
-import { config } from '#/lib/config'
 import { Cause, Effect, Option, Schema } from 'effect'
+
+import { configuredMediaUrl } from './client'
+
+/** The slice of the app's translator the upload messages need (`media.*`). */
+export type Translator = (key: string, values?: Record<string, string | number>) => string
+
+/**
+ * A file to upload: a browser `Blob`/`File`, or React Native's file
+ * reference, which its `FormData` streams from the URI.
+ */
+export type UploadFile = Blob | { uri: string; name: string; type: string }
 
 export type UploadProgressHandler = (progress: number) => void
 
@@ -36,7 +45,7 @@ function uploadRejectionMessage(body: unknown, t: Translator) {
 
 type UploadRequestOptions = {
   token: string
-  file: File
+  file: UploadFile
   endpoint: string
   failureMessage: string
   rejectionMessage?: (body: unknown) => string | undefined
@@ -50,10 +59,11 @@ const uploadFile = Effect.fn('media.uploadFile')(
   function*(options: UploadRequestOptions) {
     return yield* Effect.callback<string, Error>((resume) => {
       const body = new FormData()
-      body.set('file', options.file)
+      // React Native's FormData takes the `{ uri, name, type }` reference as is.
+      body.append('file', options.file as Blob)
 
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${config.mediaUrl}/${options.endpoint}`, true)
+      xhr.open('POST', `${configuredMediaUrl()}/${options.endpoint}`, true)
       xhr.setRequestHeader('X-Session-Token', options.token)
       xhr.responseType = 'json'
 
@@ -169,7 +179,7 @@ function runUpload(
 export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
   function*(
     token: string,
-    file: File,
+    file: UploadFile,
     options: UploadAttachmentOptions,
   ) {
     return yield* interruptibleUpload(
@@ -192,7 +202,7 @@ export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
 
 export function uploadAttachment(
   token: string,
-  file: File,
+  file: UploadFile,
   options: UploadAttachmentOptions,
 ): Promise<string> {
   const effect = uploadAttachmentEffect(token, file, {
@@ -218,7 +228,7 @@ export const uploadMediaFileEffect = Effect.fn('media.uploadMediaFile')(
   function*(
     token: string,
     tag: MediaUploadTag,
-    file: File,
+    file: UploadFile,
     t: Translator,
     onProgress?: UploadProgressHandler,
   ) {
@@ -237,7 +247,7 @@ export const uploadMediaFileEffect = Effect.fn('media.uploadMediaFile')(
 export function uploadMediaFile(
   token: string,
   tag: MediaUploadTag,
-  file: File,
+  file: UploadFile,
   t: Translator,
   onProgress?: UploadProgressHandler,
   signal?: AbortSignal,
@@ -250,7 +260,7 @@ export function uploadMediaFile(
 }
 
 export const uploadEmojiEffect = Effect.fn('media.uploadEmoji')(
-  function*(token: string, file: File, t: Translator) {
+  function*(token: string, file: UploadFile, t: Translator) {
     return yield* uploadFile({
       token,
       file,
@@ -264,7 +274,7 @@ export const uploadEmojiEffect = Effect.fn('media.uploadEmoji')(
 
 export function uploadEmoji(
   token: string,
-  file: File,
+  file: UploadFile,
   t: Translator,
   signal?: AbortSignal,
 ): Promise<string> {

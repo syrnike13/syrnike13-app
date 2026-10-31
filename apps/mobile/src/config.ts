@@ -14,4 +14,4 @@ export const SESSION_KEY = `session.${HOST}`
 /** The newest release APK, published next to the desktop downloads. */
 export const APK_FEED_URL = 'https://syrnike13.ru/downloads/mobile/latest.json'
 
-configureApiClient({ apiUrl: API_URL })
+configureApiClient({ apiUrl: API_URL, mediaUrl: MEDIA_URL })

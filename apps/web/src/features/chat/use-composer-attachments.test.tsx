@@ -7,7 +7,7 @@ import { useComposerAttachments } from './use-composer-attachments'
 
 const uploadAttachment = vi.hoisted(() => vi.fn())
 
-vi.mock('#/features/api/media-api', () => ({
+vi.mock('@syrnike13/client/api/media-api', () => ({
   uploadAttachmentEffect: (
     token: string,
     file: File,

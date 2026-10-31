@@ -62,7 +62,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   uploadEmojiEffect,
   uploadMediaFileEffect,
-} from '#/features/api/media-api'
+} from '@syrnike13/client/api/media-api'
 import {
   createServerEmojiEffect,
   deleteServerEmojiEffect,

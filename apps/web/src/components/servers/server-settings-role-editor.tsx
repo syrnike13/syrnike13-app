@@ -26,7 +26,7 @@ import {
 } from '@syrnike13/ui/primitives/dropdown-menu'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import {
   editServerRoleEffect,
   setServerRolePermissionsEffect,

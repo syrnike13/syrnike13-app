@@ -15,7 +15,7 @@ export const config = {
   hcaptchaSiteKey: env.VITE_HCAPTCHA_SITEKEY,
 } as const
 
-configureApiClient({ apiUrl: config.apiUrl })
+configureApiClient({ apiUrl: config.apiUrl, mediaUrl: config.mediaUrl })
 
 /** Базовый адрес десктоп-установщиков. */
 const downloadsBaseUrl = 'https://syrnike13.ru/downloads'

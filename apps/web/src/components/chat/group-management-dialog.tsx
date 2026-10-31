@@ -41,7 +41,7 @@ import {
   removeGroupMemberEffect,
   transferGroupOwnershipEffect,
 } from '@syrnike13/client/api/channels-api'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { canInviteUser } from '#/features/authorization/authorization'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'

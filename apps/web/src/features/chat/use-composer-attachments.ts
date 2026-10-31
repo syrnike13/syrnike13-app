@@ -5,7 +5,7 @@ import { Cause, Effect, Exit } from 'effect'
 import {
   uploadAttachmentEffect,
   type AttachmentUploadTag,
-} from '#/features/api/media-api'
+} from '@syrnike13/client/api/media-api'
 import {
   createPendingFiles,
   fileForUpload,

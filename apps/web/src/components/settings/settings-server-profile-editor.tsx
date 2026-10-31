@@ -20,7 +20,7 @@ import {
 } from '#/components/user/profile/profile-parts'
 import { ProfileColoursField } from '#/components/user/profile/profile-colours-field'
 import { useUserProfileData } from '#/components/user/use-user-profile-data'
-import { uploadMediaFileEffect } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '@syrnike13/client/api/media-api'
 import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { listServers } from '@syrnike13/client/sync/selectors'
