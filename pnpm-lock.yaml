@@ -302,6 +302,9 @@ importers:
       expo-dev-client:
         specifier: ~58.0.17
         version: 58.0.17(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))
+      expo-document-picker:
+        specifier: ~58.0.4
+        version: 58.0.4(expo@58.0.21)
       expo-linking:
         specifier: ~58.0.15
         version: 58.0.15(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
@@ -5632,6 +5635,11 @@ packages:
     peerDependencies:
       expo: '*'
       react-native: '*'
+
+  expo-document-picker@58.0.4:
+    resolution: {integrity: sha512-rxs+9RrpI55/BEGNB/3sXjoBG6yZDLyn6Z7KzjbbBLdX8bE2cZT4IozQ3Q5wufaEEeaHQn48EgPiuMoTsAidpg==}
+    peerDependencies:
+      expo: '*'
 
   expo-eas-client@58.0.2:
     resolution: {integrity: sha512-mhRYnE35MzGxR1Xnl9FAg7/yHaocy4xoVzgsDmS9cbK+1wM6l74/I/73/E4Kr6wChdVZfeS6S+Tv4I1qYbGY2g==}
@@ -14775,6 +14783,10 @@ snapshots:
       expo: 58.0.21(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.16)(expo-router@58.0.29)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(encoding@0.1.13)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
       expo-dev-menu-interface: 58.0.1(expo@58.0.21)
       react-native: 0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
+
+  expo-document-picker@58.0.4(expo@58.0.21):
+    dependencies:
+      expo: 58.0.21(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.16)(expo-router@58.0.29)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(encoding@0.1.13)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
 
   expo-eas-client@58.0.2: {}
 

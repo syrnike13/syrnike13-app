@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority'
-import { TextInput, type TextInputProps } from 'react-native'
+import { Platform, TextInput, type TextInputProps } from 'react-native'
 import { useResolveClassNames } from 'uniwind'
 
 import { cn } from '../../lib/cn'
@@ -15,6 +15,10 @@ const inputVariants = cva('w-full text-base text-foreground', {
   defaultVariants: { variant: 'default' },
 })
 
+// react-native-web renders a multiline field as a two-row textarea; start it
+// at one row like Android, so the composer pill keeps its 58dp height.
+const webSingleRow = Platform.OS === 'web' ? ({ rows: 1 } as Partial<TextInputProps>) : {}
+
 /** Native mirror of `@syrnike13/ui/primitives/input`: Discord field metrics, 40px, 16px text. */
 function Input({
   className,
@@ -27,6 +31,7 @@ function Input({
     <TextInput
       className={cn(inputVariants({ variant }), className)}
       placeholderTextColor={placeholder.color as string | undefined}
+      {...(props.multiline ? webSingleRow : {})}
       {...props}
     />
   )

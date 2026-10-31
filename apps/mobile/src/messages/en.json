@@ -101,7 +101,8 @@
         "deleteTitle": "Delete message?",
         "deleteDescription": "It will disappear for everyone. This cannot be undone.",
         "cancel": "Cancel"
-      }
+      },
+      "attach": "Attach files"
     },
     "you": {
       "close": "Close",
@@ -138,6 +139,14 @@
         "recovering": "Reconnecting…",
         "failed": "Connection failed"
       }
+    },
+    "media": {
+      "remove": "Remove {name}",
+      "uploadFailed": "Could not upload the file",
+      "uploadTooLarge": "File is larger than {size} MB",
+      "uploadTypeNotAllowed": "This file type cannot be uploaded",
+      "uploadCancelled": "Upload cancelled",
+      "networkError": "Network error while uploading"
     }
   }
 }

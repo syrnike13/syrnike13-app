@@ -28,6 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useSession } from '../auth/session-context'
 import { MessageActionsSheet } from '../chat/message-actions'
 import { MessageRow } from '../chat/message-row'
+import { PendingAttachments } from '../chat/pending-attachments'
+import { useComposerAttachments } from '../chat/use-composer-attachments'
 import { eventsGateway } from '../data/gateway'
 import {
   ArrowLeftIcon,
@@ -35,6 +37,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   HashIcon,
+  PlusIcon,
   XIcon,
 } from '../components/icons/registry'
 import { mediaUrl } from '../lib/media'
@@ -206,6 +209,7 @@ function Composer({
   const [sending, setSending] = useState(false)
   const insets = useSafeAreaInsets()
   const { notifyTyping, stopTyping } = useTypingIndicator(eventsGateway, channelId)
+  const attachments = useComposerAttachments()
 
   // Editing starts from the message's text; leaving edit mode clears it.
   const editing = mode?.kind === 'edit' ? mode.message : null
@@ -213,9 +217,16 @@ function Composer({
     setText(editing?.content ?? '')
   }, [editing])
 
+  // Edits change only the text; new messages may be files alone.
+  const canSend =
+    !sending &&
+    !attachments.uploading &&
+    !attachments.failed &&
+    (text.trim() !== '' || (!editing && attachments.attachmentIds.length > 0))
+
   async function send() {
     const content = text.trim()
-    if (!content) return
+    if (!canSend) return
     setSending(true)
     stopTyping()
     try {
@@ -223,13 +234,15 @@ function Composer({
         ? await Effect.runPromise(editChannelMessageEffect(session.token, channelId, editing._id, content))
         : await Effect.runPromise(
             sendChannelMessageEffect(session.token, channelId, {
-              content,
+              content: content || undefined,
+              attachments: attachments.attachmentIds.length ? attachments.attachmentIds : undefined,
               nonce: randomUuid(),
               replies: mode?.kind === 'reply' ? [{ id: mode.message._id, mention: false }] : undefined,
             }),
           )
       syncStore.upsertMessage(message)
       setText('')
+      if (!editing) attachments.clear()
       onModeEnd()
     } catch {
       // The draft stays in the field so the user can retry.
@@ -261,7 +274,20 @@ function Composer({
           </Button>
         </View>
       ) : null}
-      <View className="min-h-14.5 flex-row items-end gap-1 rounded-3xl bg-card px-3 py-2">
+      {editing ? null : <PendingAttachments pending={attachments.pending} onRemove={attachments.remove} />}
+      <View className="min-h-14.5 flex-row items-end gap-1 rounded-3xl bg-card px-2 py-2">
+        {editing ? null : (
+          <Button
+            variant="secondary"
+            size="icon-lg"
+            shape="circle"
+            accessibilityLabel={t('attach')}
+            disabled={!attachments.canPick}
+            onPress={() => void attachments.pick()}
+          >
+            <PlusIcon size={20} />
+          </Button>
+        )}
         <Input
           variant="bare"
           className="max-h-32 flex-1"
@@ -273,12 +299,12 @@ function Composer({
           }}
           placeholder={placeholder}
         />
-        {text.trim() ? (
+        {text.trim() || attachments.pending.length ? (
           <Button
             size="icon-lg"
             shape="circle"
             accessibilityLabel={t(editing ? 'save' : 'send')}
-            disabled={sending}
+            disabled={!canSend}
             onPress={send}
           >
             {editing ? (
