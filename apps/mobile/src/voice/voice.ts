@@ -30,7 +30,9 @@ export function createVoiceDirector(gateway: Gateway) {
       return { node: await resolveVoiceNode() }
     },
   })
-  const engine = new LiveKitEngineAdapter()
+  const engine = new LiveKitEngineAdapter((source) =>
+    gateway.sendReliable({ type: 'VoiceMediaStopped', source }, `media-stopped:${source}`),
+  )
   // LiveKit RN runs the same WebRTC stack as browsers, so the backend treats it as `web`.
   const director = new VoiceDirector({
     authority,

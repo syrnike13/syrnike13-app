@@ -49,6 +49,12 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
   private readonly listeners = new Set<(event: VoiceEngineEvent) => void>()
   private readonly roomListeners = new Set<(room: Room | null) => void>()
 
+  /**
+   * @param onMediaStopped Told when the user's camera or screen share stops, so
+   *   the server clears its flag now instead of after the unpublish grace period.
+   */
+  constructor(private readonly onMediaStopped: (source: 'camera' | 'screen') => void) {}
+
   /** The connected room, for rendering participants' video. */
   subscribeRoom(listener: (room: Room | null) => void) {
     this.roomListeners.add(listener)
@@ -153,22 +159,34 @@ export class LiveKitEngineAdapter implements RtcEngineAdapter {
       room.localParticipant.setMicrophoneEnabled(!desired.effectiveMuted),
     )
     await this.applyTrack(room, 'camera', desired.cameraEnabled, () => this.applyCamera(room, desired))
-    await this.applyTrack(room, 'screen', desired.screenEnabled, () =>
-      room.localParticipant.setScreenShareEnabled(desired.screenEnabled),
-    )
+    await this.applyTrack(room, 'screen', desired.screenEnabled, () => this.applyScreen(room, desired))
+  }
+
+  private async applyScreen(room: Room, desired: VoiceMediaDesiredState) {
+    const sharing = !!room.localParticipant.getTrackPublication(Track.Source.ScreenShare)
+    await room.localParticipant.setScreenShareEnabled(desired.screenEnabled)
+    if (sharing && !desired.screenEnabled) this.onMediaStopped('screen')
   }
 
   private async applyCamera(room: Room, desired: VoiceMediaDesiredState) {
+    const track = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track
+    // `setCameraEnabled(false)` only mutes: the publication stays, so the
+    // server never sees an unpublish and keeps showing the camera icon.
+    if (!desired.cameraEnabled) {
+      if (!track) return
+      await room.localParticipant.unpublishTrack(track)
+      this.onMediaStopped('camera')
+      return
+    }
     const facingMode: CameraFacing =
       desired.cameraDeviceId === 'environment' ? 'environment' : 'user'
-    const track = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track
     // `setCameraEnabled` ignores capture options for a running camera, so a
     // switch between front and back cameras restarts the track instead.
-    if (desired.cameraEnabled && track instanceof LocalVideoTrack) {
+    if (track instanceof LocalVideoTrack) {
       if (track.constraints.facingMode !== facingMode) await track.restartTrack({ facingMode })
       return
     }
-    await room.localParticipant.setCameraEnabled(desired.cameraEnabled, {
+    await room.localParticipant.setCameraEnabled(true, {
       facingMode,
       resolution: CAMERA_RESOLUTIONS[desired.cameraProfile],
     })
