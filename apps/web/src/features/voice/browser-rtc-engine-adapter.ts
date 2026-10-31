@@ -43,6 +43,16 @@ import { applyStageScreenPublicationSubscription } from '#/features/voice/voice-
 // livekit.TrackSource.MICROPHONE in the LiveKit signal protocol.
 const MICROPHONE_TRACK_SOURCE = 2
 
+/**
+ * Turns the camera off by unpublishing it. `setCameraEnabled(false)` only
+ * mutes the track: the publication stays, LiveKit sends no unpublish webhook,
+ * and the server keeps the participant's camera flag on.
+ */
+async function unpublishCamera(room: Room) {
+  const track = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track
+  if (track) await room.localParticipant.unpublishTrack(track)
+}
+
 function localMicrophonePublishAllowed(room: Room) {
   const permissions = room.localParticipant.permissions
   if (!permissions) return true
@@ -655,14 +665,15 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       this.emitMedia(active, 'camera', {
         state: desired.cameraEnabled ? 'starting' : 'off',
       })
-      yield* promiseEffect(() =>
-        active.room.localParticipant.setCameraEnabled(
-          desired.cameraEnabled,
+      yield* promiseEffect(async () => {
+        if (!desired.cameraEnabled) return unpublishCamera(active.room)
+        await active.room.localParticipant.setCameraEnabled(
+          true,
           desired.cameraDeviceId
             ? { deviceId: desired.cameraDeviceId }
             : undefined,
         )
-      )
+      })
       yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'camera', {
         state: desired.cameraEnabled ? 'running' : 'off',

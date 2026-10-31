@@ -28,6 +28,7 @@ const livekit = vi.hoisted(() => {
       setCameraEnabled: ReturnType<typeof vi.fn>
       setScreenShareEnabled: ReturnType<typeof vi.fn>
       getTrackPublication: ReturnType<typeof vi.fn>
+      unpublishTrack: ReturnType<typeof vi.fn>
     }
     emit(event: string, ...args: unknown[]): void
   }> = []
@@ -105,7 +106,10 @@ vi.mock('livekit-client', () => {
       }),
       setCameraEnabled: vi.fn(async () => undefined),
       setScreenShareEnabled: vi.fn(async () => undefined),
-      getTrackPublication: vi.fn(() => this.publications.at(-1)),
+      getTrackPublication: vi.fn((source: string) =>
+        [...this.publications].reverse().find((publication) => publication.source === source)
+      ),
+      unpublishTrack: vi.fn(async () => undefined),
     }
 
     constructor() {
@@ -146,6 +150,7 @@ vi.mock('livekit-client', () => {
       Kind: { Audio: 'audio' },
       Source: {
         Microphone: 'microphone',
+        Camera: 'camera',
         ScreenShare: 'screen_share',
         ScreenShareAudio: 'screen_share_audio',
       },
@@ -677,6 +682,28 @@ describe('BrowserRtcEngineAdapter', () => {
     const denied = await cameraFailure(new DOMException('denied', 'NotAllowedError'))
     expect(denied).toMatchObject({ code: 'camera_unavailable' })
     expect(denied).not.toHaveProperty('stage')
+  })
+
+  it('turns the camera off by unpublishing it so the server clears its flag', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired({ cameraEnabled: true }), new AbortController().signal)
+    const room = livekit.rooms.at(-1)!
+    await waitUntil(() => room.localParticipant.setCameraEnabled.mock.calls.length === 1)
+    const camera = { sender: new (class {})() }
+    room.publications.push({
+      trackSid: 'TR_CAM',
+      source: 'camera',
+      mute: vi.fn(async () => undefined),
+      unmute: vi.fn(async () => undefined),
+      track: camera as never,
+    })
+
+    adapter.updateDesiredMedia(desired({ cameraEnabled: false }))
+    await waitUntil(() => room.localParticipant.unpublishTrack.mock.calls.length === 1)
+
+    expect(room.localParticipant.unpublishTrack).toHaveBeenCalledWith(camera)
+    expect(room.localParticipant.setCameraEnabled).not.toHaveBeenCalledWith(false, undefined)
+    await adapter.dispose()
   })
 
   it('turns an unexpected Room disconnect into one terminal voice failure', async () => {
