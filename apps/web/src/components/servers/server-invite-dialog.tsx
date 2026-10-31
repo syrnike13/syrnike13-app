@@ -36,7 +36,7 @@ import { openDirectMessageEffect } from '@syrnike13/client/api/users-api'
 import {
   createChannelInviteEffect,
   getInviteInactiveReason,
-} from '#/features/api/invites-api'
+} from '@syrnike13/client/api/invites-api'
 import {
   listServerChannels,
   listUsersByRelationship,

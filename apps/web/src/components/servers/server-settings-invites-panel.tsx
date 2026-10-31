@@ -29,7 +29,7 @@ import {
   deleteInviteEffect,
   getInviteInactiveReason,
   type InviteInactiveReason,
-} from '#/features/api/invites-api'
+} from '@syrnike13/client/api/invites-api'
 import { listServerChannels } from '@syrnike13/client/sync/selectors'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'

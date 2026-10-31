@@ -26,7 +26,7 @@ import {
   isGroupInviteJoin,
   isServerInviteJoin,
   joinInviteEffect,
-} from '#/features/api/invites-api'
+} from '@syrnike13/client/api/invites-api'
 import { createServerEffect } from '@syrnike13/client/api/servers-api'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'

@@ -77,7 +77,7 @@ vi.mock('@syrnike13/client/api/sync-api', () => ({
   ackChannelEffect: vi.fn(() => Effect.void),
 }))
 
-vi.mock('#/features/api/invites-api', () => ({
+vi.mock('@syrnike13/client/api/invites-api', () => ({
   createChannelInviteEffect: vi.fn(() => Effect.succeed({ _id: 'invite-1' })),
 }))
 

@@ -22,7 +22,7 @@ import {
   isGroupInviteJoin,
   isServerInviteJoin,
   joinInviteEffect,
-} from '#/features/api/invites-api'
+} from '@syrnike13/client/api/invites-api'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { loadSession } from '#/lib/session'
 

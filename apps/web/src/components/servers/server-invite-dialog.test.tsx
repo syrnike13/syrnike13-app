@@ -53,9 +53,9 @@ vi.mock('@syrnike13/client/api/servers-api', () => ({
   ) => mocks.fetchServerInvites(...args),
 }))
 
-vi.mock('#/features/api/invites-api', async (importOriginal) => {
+vi.mock('@syrnike13/client/api/invites-api', async (importOriginal) => {
   const actual = await importOriginal<
-    typeof import('#/features/api/invites-api')
+    typeof import('@syrnike13/client/api/invites-api')
   >()
   return {
     ...actual,

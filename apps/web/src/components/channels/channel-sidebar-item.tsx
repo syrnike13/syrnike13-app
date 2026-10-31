@@ -40,7 +40,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { ackChannelEffect } from '@syrnike13/client/api/sync-api'
 import { editServerMemberEffect } from '@syrnike13/client/api/servers-api'
 import { deleteChannelEffect } from '@syrnike13/client/api/channels-api'
-import { createChannelInviteEffect } from '#/features/api/invites-api'
+import { createChannelInviteEffect } from '@syrnike13/client/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import type { ChannelUnreadState } from '@syrnike13/client/sync/types'
 import {
