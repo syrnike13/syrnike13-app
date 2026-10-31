@@ -1,4 +1,4 @@
-import { RoomContext } from '@livekit/react-native'
+import { RoomContext } from '../voice/livekit'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { router, usePathname } from 'expo-router'
 import type { ReactNode } from 'react'

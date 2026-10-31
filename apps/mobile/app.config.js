@@ -24,12 +24,15 @@ module.exports = {
   version,
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
-  platforms: ['android'],
+  platforms: ['android', 'web'],
   icon: './assets/icon.png',
   // Over-the-air JS updates come from our own server (see deploy Caddyfile).
   // The fingerprint changes with any native change, so an update only reaches
   // APKs whose native code it was built against.
   runtimeVersion: { policy: 'fingerprint' },
+  // The browser build replaces the web app's phone layout at `<web host>/m`.
+  web: { bundler: 'metro', output: 'single', favicon: './assets/icon.png' },
+  experiments: { baseUrl: '/m' },
   updates: {
     url: 'https://syrnike13.ru/downloads/mobile/manifest',
     checkAutomatically: 'ON_LOAD',

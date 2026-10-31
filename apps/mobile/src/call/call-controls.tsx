@@ -2,7 +2,7 @@ import type { VoiceDirector, VoiceSnapshot } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { Button } from '@syrnike13/ui-native/primitives/button'
 import { useState } from 'react'
-import { PermissionsAndroid, View } from 'react-native'
+import { View } from 'react-native'
 
 import {
   MicIcon,
@@ -14,6 +14,7 @@ import {
   VideoIcon,
   VideoOffIcon,
 } from '../components/icons/registry'
+import { requestCameraPermission } from '../lib/permissions'
 import type { CameraFacing } from '../voice/livekit-engine'
 
 function isOn(media: VoiceSnapshot['camera']) {
@@ -46,8 +47,7 @@ export function CallDock({
 
   async function toggleCamera() {
     if (cameraOn) return setCamera(false)
-    const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)
-    if (permission === 'granted') setCamera(true)
+    if (await requestCameraPermission()) setCamera(true)
   }
 
   function use(action: () => void) {

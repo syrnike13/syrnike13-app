@@ -1,7 +1,10 @@
 import { configureApiClient } from '@syrnike13/client/api/client'
 
-/** Dev builds talk to the nightly backend; release builds target production only. */
-const HOST = __DEV__ ? 'beta.syrnike13.ru' : 'syrnike13.ru'
+/**
+ * Backend host. Browser builds get it at build time (production or nightly,
+ * like the web app); the APK is production-only and dev builds use nightly.
+ */
+const HOST = process.env.EXPO_PUBLIC_BACKEND_HOST || (__DEV__ ? 'beta.syrnike13.ru' : 'syrnike13.ru')
 
 export const API_URL = `https://${HOST}/api`
 export const WS_URL = `wss://${HOST}/ws`

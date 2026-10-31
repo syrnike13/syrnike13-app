@@ -1,4 +1,4 @@
-import { registerGlobals } from '@livekit/react-native'
+import { registerGlobals } from './src/voice/livekit'
 
 // WebRTC globals for livekit-client; must run before any LiveKit import is used.
 registerGlobals()

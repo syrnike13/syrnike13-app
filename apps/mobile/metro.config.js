@@ -29,7 +29,7 @@ config.resolver.blockList = [/[\\/]android[\\/](app[\\/])?(build|\.cxx|\.gradle)
 // Shared web packages keep their own React in node_modules; a second copy
 // breaks hooks, so React and React Native always come from this app.
 const appOrigin = path.join(__dirname, 'package.json')
-const SINGLETONS = /^(react|react-native)(\/|$)/
+const SINGLETONS = /^(react|react-dom|react-native)(\/|$)/
 
 const resolveRequest = config.resolver.resolveRequest
 config.resolver.resolveRequest = (context, moduleName, platform) => {

@@ -1,4 +1,4 @@
-import { useIsSpeaking, useParticipants, type TrackReference } from '@livekit/react-native'
+import { useIsSpeaking, useParticipants, type TrackReference } from '../voice/livekit'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import type { VoiceDirector, VoiceSnapshot } from '@syrnike13/platform'
 import { useTranslations } from '@syrnike13/ui/i18n'

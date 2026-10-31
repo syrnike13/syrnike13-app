@@ -1,4 +1,4 @@
-import { useParticipants, useSpeakingParticipants } from '@livekit/react-native'
+import { useParticipants, useSpeakingParticipants } from '../voice/livekit'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
 import { useEffect, useRef } from 'react'

@@ -1,8 +1,10 @@
-import { useIsSpeaking, useTracks, VideoTrack, type TrackReference } from '@livekit/react-native'
+import { useIsSpeaking, useTracks, type TrackReference } from '../voice/livekit'
 import { cn } from '@syrnike13/ui-native/lib/cn'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { LocalVideoTrack, Track } from 'livekit-client'
 import { View } from 'react-native'
+
+import { VideoView } from './video-view'
 
 /**
  * Live cameras and screen shares. A turned-off camera stays published as a
@@ -77,13 +79,7 @@ export function VideoTile({
       )}
       style={style}
     >
-      <VideoTrack
-        trackRef={trackRef}
-        style={{ flex: 1 }}
-        objectFit="contain"
-        mirror={isMirrored(trackRef)}
-        zOrder={zOrder}
-      />
+      <VideoView trackRef={trackRef} objectFit="contain" mirror={isMirrored(trackRef)} zOrder={zOrder} />
       {showLabel ? (
         <View className="absolute bottom-2 left-2 rounded-md bg-background/70 px-2 py-0.5">
           <Text className="text-xs">{trackRef.participant.name}</Text>

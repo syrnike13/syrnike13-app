@@ -1,4 +1,4 @@
-import { AudioSession } from '@livekit/react-native'
+import { AudioSession } from './livekit'
 import type {
   RtcEngineAdapter,
   VoiceDisconnectCause,

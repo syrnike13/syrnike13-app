@@ -9,9 +9,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { PermissionsAndroid } from 'react-native'
-
 import { CallService } from '../../modules/call-service'
+import { requestCallPermissions } from '../lib/permissions'
 import { createVoiceDirector } from './voice'
 
 type Voice = {
@@ -23,14 +22,6 @@ type Voice = {
 }
 
 const VoiceContext = createContext<Voice | null>(null)
-
-async function requestCallPermissions() {
-  const results = await PermissionsAndroid.requestMultiple([
-    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-  ])
-  return results[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === 'granted'
-}
 
 /** One voice session per signed-in user; the call outlives screen changes. */
 export function VoiceProvider({ userId, children }: { userId: string; children: ReactNode }) {

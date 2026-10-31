@@ -1,4 +1,4 @@
-import { useParticipants } from '@livekit/react-native'
+import { useParticipants } from '../voice/livekit'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { useEffect, useState } from 'react'
 import { View } from 'react-native'
