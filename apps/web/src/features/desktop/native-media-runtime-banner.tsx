@@ -72,10 +72,9 @@ export function NativeMediaRuntimeBanner() {
       if (state.paths[key].state !== 'failed') continue
       if (key === 'camera' && state.paths.camera.failure?.code === 'camera_profile_not_permitted') {
         messages.push(t('cameraProfileNotPermitted'))
-      } else if (key === 'screen' && state.paths.screen.failure?.code === 'screen_source_unavailable') {
-        messages.push(t('screenSourceUnavailable'))
-      } else if (key === 'screen_audio' && state.paths.screen_audio.failure?.code === 'screen_source_unavailable' &&
-          state.paths.screen.failure?.code === 'screen_source_unavailable') {
+      } else if ((key === 'screen' || key === 'screen_audio') &&
+          state.paths[key].failure?.code === 'screen_source_unavailable') {
+        // Voice Director ends a share whose source expired; nothing to report.
         continue
       } else messages.push(t('pathUnavailable', { label: t(labelKey) }))
     }
