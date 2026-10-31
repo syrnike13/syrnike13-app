@@ -34,7 +34,9 @@
     "home": {
       "directMessages": "Direct messages",
       "empty": "No direct messages yet.",
-      "andMore": "{names} and {count} more"
+      "andMore": "{names} and {count} more",
+      "addFriends": "Add Friends",
+      "newMessage": "New message"
     },
     "time": {
       "now": "now",
@@ -161,6 +163,31 @@
       "empty": "No new mentions.",
       "mentionedYou": "mentioned you",
       "mentionedYouIn": "mentioned you in {place}:"
+    },
+    "friends": {
+      "back": "Back",
+      "title": "Friends",
+      "addTitle": "Add a friend",
+      "addDescription": "Add friends by their username.",
+      "usernamePlaceholder": "Username",
+      "send": "Send request",
+      "requestSent": "Request sent",
+      "requestFailed": "Could not send the request",
+      "requests": "Requests — {count}",
+      "incoming": "Incoming request",
+      "outgoing": "Outgoing request",
+      "accept": "Accept {name}'s request",
+      "decline": "Decline {name}'s request",
+      "cancelRequest": "Cancel request to {name}",
+      "all": "All friends — {count}",
+      "empty": "No friends yet."
+    },
+    "newMessage": {
+      "close": "Close",
+      "title": "New message",
+      "search": "Search friends",
+      "noMatches": "Nobody found.",
+      "noFriends": "No friends yet."
     }
   }
 }

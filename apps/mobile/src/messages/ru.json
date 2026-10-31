@@ -34,7 +34,9 @@
     "home": {
       "directMessages": "Личные сообщения",
       "empty": "Личных сообщений пока нет.",
-      "andMore": "{names} и ещё {count}"
+      "andMore": "{names} и ещё {count}",
+      "addFriends": "Добавить друзей",
+      "newMessage": "Новое сообщение"
     },
     "time": {
       "now": "сейчас",
@@ -161,6 +163,31 @@
       "empty": "Новых упоминаний нет.",
       "mentionedYou": "упоминает вас",
       "mentionedYouIn": "упоминает вас в {place}:"
+    },
+    "friends": {
+      "back": "Назад",
+      "title": "Друзья",
+      "addTitle": "Добавить в друзья",
+      "addDescription": "Добавляйте друзей по имени пользователя.",
+      "usernamePlaceholder": "Имя пользователя",
+      "send": "Отправить запрос",
+      "requestSent": "Заявка отправлена",
+      "requestFailed": "Не удалось отправить заявку",
+      "requests": "Заявки — {count}",
+      "incoming": "Входящая заявка",
+      "outgoing": "Исходящая заявка",
+      "accept": "Принять заявку {name}",
+      "decline": "Отклонить заявку {name}",
+      "cancelRequest": "Отменить заявку {name}",
+      "all": "Все друзья — {count}",
+      "empty": "Пока нет друзей."
+    },
+    "newMessage": {
+      "close": "Закрыть",
+      "title": "Новое сообщение",
+      "search": "Поиск по друзьям",
+      "noMatches": "Никого не нашлось.",
+      "noFriends": "Пока нет друзей."
     }
   }
 }

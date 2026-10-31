@@ -4,7 +4,7 @@ import { useResolveClassNames } from 'uniwind'
 
 import { cn } from '../../lib/cn'
 
-const inputVariants = cva('w-full text-base text-foreground', {
+const inputVariants = cva('w-full text-base text-foreground outline-none', {
   variants: {
     variant: {
       default: 'h-10 rounded-lg border border-input bg-input/30 px-3 focus:border-ring/50',

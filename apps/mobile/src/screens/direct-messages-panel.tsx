@@ -1,17 +1,24 @@
 import type { Channel, Server, User } from '@syrnike13/api-types'
 import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
-import { getChannelLastMessageId, isChannelUnread, listDmChannels } from '@syrnike13/client/sync/selectors'
+import {
+  getChannelLastMessageId,
+  isChannelUnread,
+  listDmChannels,
+  listUsersByRelationship,
+} from '@syrnike13/client/sync/selectors'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import { cn } from '@syrnike13/ui-native/lib/cn'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
+import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { router } from 'expo-router'
 import { FlatList, Pressable, ScrollView, View } from 'react-native'
 
 import { useSession } from '../auth/session-context'
 import { useOpenVoiceChannel } from '../call/voice-preview'
-import { Volume2BoldIcon } from '../components/icons/registry'
+import { MessagePlusIcon, UserPlusIcon, Volume2BoldIcon } from '../components/icons/registry'
+import { MentionBadge } from '../components/mention-badge'
 import { displayName, userStatus } from '../lib/presence'
 import { mediaUrl } from '../lib/media'
 import { shortAge } from '../lib/relative-time'
@@ -45,6 +52,9 @@ export function DirectMessagesPanel() {
       ),
     sameChannels,
   )
+  const friendRequests = useSyncStore(
+    (state) => listUsersByRelationship(state, 'Incoming', session.userId).length,
+  )
   const active = useSyncStore((state) => {
     const result: ActiveVoice[] = []
     for (const [channelId, participants] of Object.entries(state.voiceParticipants)) {
@@ -65,6 +75,23 @@ export function DirectMessagesPanel() {
       ListHeaderComponent={
         <View>
           <Text className="px-4 pt-4 pb-3 text-2xl font-bold">{t('directMessages')}</Text>
+          {/* Discord's action row: a wide "Add friends" and a primary "New message". */}
+          <View className="flex-row gap-2.5 px-4 pb-4">
+            <View className="flex-1">
+              <Button variant="secondary" size="sm" className="w-full" onPress={() => router.push('/friends')}>
+                <UserPlusIcon size={18} />
+                <Text className="text-sm font-semibold">{t('addFriends')}</Text>
+              </Button>
+              <MentionBadge count={friendRequests} className="-top-1.5 -right-1.5" />
+            </View>
+            <Button
+              size="icon"
+              accessibilityLabel={t('newMessage')}
+              onPress={() => router.push('/new-message')}
+            >
+              <MessagePlusIcon size={18} className="text-primary-foreground" />
+            </Button>
+          </View>
           {active.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 px-4 pb-4">
               {active.map((item) => (
