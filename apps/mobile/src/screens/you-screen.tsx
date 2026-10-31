@@ -1,18 +1,21 @@
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
+import { cn } from '@syrnike13/ui-native/lib/cn'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
 import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import * as Application from 'expo-application'
 import Constants from 'expo-constants'
 import { router } from 'expo-router'
-import { ScrollView, View } from 'react-native'
+import { useState } from 'react'
+import { Pressable, ScrollView, View } from 'react-native'
 
 import { useActiveChannelName } from '../call/call-layer'
 import { useSession } from '../auth/session-context'
-import { LogOutIcon, Volume2BoldIcon, XIcon } from '../components/icons/registry'
+import { ChevronRightIcon, LogOutIcon, PencilIcon, Volume2BoldIcon, XIcon } from '../components/icons/registry'
 import { displayName, userStatus } from '../lib/presence'
 import { mediaUrl } from '../lib/media'
+import { chosenPresence, PRESENCES, StatusSheet } from '../profile/status-sheet'
 import { useVoice } from '../voice/voice-provider'
 
 /** Profile sheet opened from the user card: who you are, your call, language, sign-out. */
@@ -39,6 +42,13 @@ export function YouScreen() {
         ) : null}
       </View>
 
+      <Button size="lg" onPress={() => router.push('/edit-profile')}>
+        <PencilIcon size={18} className="text-primary-foreground" />
+        <Text className="font-semibold text-primary-foreground">{t('editProfile')}</Text>
+      </Button>
+
+      <StatusCard />
+
       <VoiceCard />
 
       <View className="gap-3 rounded-2xl bg-card p-4">
@@ -61,6 +71,39 @@ export function YouScreen() {
         {t('version', { version: Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '' })}
       </Text>
     </ScrollView>
+  )
+}
+
+/** Current presence and custom status; tapping opens the status sheet. */
+function StatusCard() {
+  const t = useTranslations('mobile.status')
+  const { session } = useSession()
+  const user = useSyncStore((state) => state.users[session.userId])
+  const [open, setOpen] = useState(false)
+  const presence = chosenPresence(user)
+  const dot = PRESENCES.find((option) => option.value === presence)?.dot
+
+  return (
+    <>
+      <Pressable
+        role="button"
+        accessibilityLabel={t('change')}
+        onPress={() => setOpen(true)}
+        className="flex-row items-center gap-3 rounded-2xl bg-card p-4 active:bg-hover"
+      >
+        <View className={cn('size-3 rounded-full', dot)} />
+        <View className="min-w-0 flex-1">
+          <Text className="font-medium">{t(`presence.${presence}`)}</Text>
+          {user?.status?.text ? (
+            <Text className="text-sm text-muted-foreground" numberOfLines={1}>
+              {user.status.text}
+            </Text>
+          ) : null}
+        </View>
+        <ChevronRightIcon size={18} className="text-muted-foreground" />
+      </Pressable>
+      {open ? <StatusSheet user={user} onClose={() => setOpen(false)} /> : null}
+    </>
   )
 }
 

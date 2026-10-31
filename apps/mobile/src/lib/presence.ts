@@ -6,7 +6,9 @@ export function userStatus(user: User | undefined): AvatarStatus | undefined {
   if (!user) return undefined
   if (!user.online) return 'offline'
   switch (user.status?.presence) {
+    // The web's Focus has no Discord dot; it reads as Do Not Disturb.
     case 'Busy':
+    case 'Focus':
       return 'dnd'
     case 'Idle':
       return 'idle'

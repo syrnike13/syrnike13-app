@@ -122,7 +122,8 @@
         "ru": "Русский"
       },
       "logout": "Sign out",
-      "version": "Version {version}"
+      "version": "Version {version}",
+      "editProfile": "Edit profile"
     },
     "voice": {
       "collapse": "Collapse",
@@ -214,6 +215,33 @@
       "join": "Join",
       "open": "Open server",
       "joinFailed": "Could not join."
+    },
+    "status": {
+      "change": "Change status",
+      "close": "Close",
+      "custom": "Custom status",
+      "customPlaceholder": "What are you up to?",
+      "save": "Save status",
+      "clear": "Clear status",
+      "failed": "Could not change the status.",
+      "presence": {
+        "Online": "Online",
+        "Idle": "Idle",
+        "Busy": "Do Not Disturb",
+        "Invisible": "Invisible"
+      }
+    },
+    "editProfile": {
+      "back": "Back",
+      "title": "Profile",
+      "changeAvatar": "Change avatar",
+      "uploading": "Uploading…",
+      "removeAvatar": "Remove avatar",
+      "displayName": "Display name",
+      "displayNameHint": "Leave empty to show your username.",
+      "save": "Save",
+      "saved": "Saved",
+      "failed": "Could not save the profile."
     }
   }
 }
