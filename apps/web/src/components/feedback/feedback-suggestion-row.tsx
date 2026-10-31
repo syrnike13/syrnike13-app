@@ -26,7 +26,6 @@ import {
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 
 function formatFeedbackDate(value: string, locale: AppLocale) {
@@ -48,7 +47,6 @@ export function FeedbackSuggestionRow({
   const t = useTranslations('feedback')
   const tm = useTranslations('feedback.meta')
   const { locale } = useLocale()
-  const prefix = useAppRoutePrefix()
   const author = useSyncStore((state) =>
     suggestion.author ? state.users[suggestion.author] : undefined,
   )
@@ -65,7 +63,7 @@ export function FeedbackSuggestionRow({
       <ItemOverlay
         render={
           <Link
-            to={`${prefix}/feedback/$feedbackId`}
+            to={'/feedback/$feedbackId'}
             params={{ feedbackId: suggestion._id }}
           />
         }

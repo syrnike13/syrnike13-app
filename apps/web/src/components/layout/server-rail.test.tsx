@@ -20,7 +20,7 @@ import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
 
 function renderRail() {
-  return renderWithI18n(<ServerRail variant="desktop" />, {
+  return renderWithI18n(<ServerRail />, {
     messages: { en, ru },
   })
 }
@@ -53,7 +53,7 @@ vi.mock('@tanstack/react-router', () => ({
       : to,
   }),
   useMatch: ({ from }: { from: string }) =>
-    from === '/_app/' || from === '/m/'
+    from === '/_app/'
       ? { routeId: from, params: {}, search: {} }
       : false,
   useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>

@@ -19,7 +19,6 @@ import {
 } from '@syrnike13/ui/primitives/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   blockUserRelationship,
   unblockBlockedUser,
@@ -48,7 +47,6 @@ export function UserGlobalProfileDialog({
   const t = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
@@ -84,7 +82,7 @@ export function UserGlobalProfileDialog({
           (channelId) => {
             close()
             return navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId },
               search: { m: undefined },
             })
@@ -142,7 +140,7 @@ export function UserGlobalProfileDialog({
     if (!channelId) return
     close()
     void navigate({
-      to: `${prefix}/c/$channelId`,
+      to: '/c/$channelId',
       params: { channelId },
       search: { m: undefined },
     })

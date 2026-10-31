@@ -44,7 +44,6 @@ import {
   deleteChannelEffect,
   editChannelEffect,
 } from '@syrnike13/client/api/channels-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { pickDefaultChannelId } from '@syrnike13/client/sync/selectors'
 import {
   buildVoiceChannelVoicePatch,
@@ -99,7 +98,6 @@ export function ChannelSettingsOverviewPanel({
   const t = useTranslations('channels.overview')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const voiceChannel = isServerVoiceChannel(channel)
   const textChannel = channel.channel_type === 'TextChannel'
   const [name, setName] = useState(channel.name)
@@ -287,11 +285,11 @@ export function ChannelSettingsOverviewPanel({
           try: () =>
             fallback
               ? navigate({
-                  to: `${prefix}/c/$channelId`,
+                  to: '/c/$channelId',
                   params: { channelId: fallback },
                   search: { m: undefined },
                 })
-              : navigate({ to: prefix || '/', search: { tab: 'online' } }),
+              : navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

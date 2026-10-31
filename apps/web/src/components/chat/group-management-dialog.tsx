@@ -44,7 +44,6 @@ import {
 import { uploadMediaFileEffect } from '#/features/api/media-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { canInviteUser } from '#/features/authorization/authorization'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
 
@@ -77,7 +76,6 @@ function GroupManagementDialogContent({
   const tm = useTranslations('media')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const users = useSyncStore((state) => state.users)
   const [open, setOpen] = useState(false)
   const [members, setMembers] = useState<User[]>([])
@@ -351,7 +349,7 @@ function GroupManagementDialogContent({
         })
         yield* Effect.tryPromise({
           try: () =>
-            navigate({ to: prefix || '/', search: { tab: 'online' } }),
+            navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(

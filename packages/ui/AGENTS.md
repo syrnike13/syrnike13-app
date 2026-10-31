@@ -115,7 +115,7 @@
 | Чат/канал | `apps/web/src/components/chat/channel-view.tsx` | header + list + composer + sidebars |
 | Голос | `apps/web/src/components/voice/voice-stage-view.tsx` | stage/grid/filmstrip, контролы |
 | Auth | `apps/web/src/components/auth/auth-layout.tsx` | центрирование, тема, ошибки |
-| Mobile | `apps/web/src/routes/m/c/$channelId.tsx` | drawer/Sheet, safe-area, тач |
+| Mobile | `apps/mobile/src/screens/chat-screen.tsx` (React Native, `@syrnike13/ui-native`) | Discord-раскладка, safe-area, тач |
 | Overlay | `apps/web/src/features/overlay/desktop-overlay-hud.tsx` | прозрачность, data-контракты |
 | Admin | `apps/admin/src/components/admin-shell.tsx` | навигация, плотность, dark-only |
 | Каталог | `apps/web/src/features/ui-gallery/ui-gallery-page.tsx` | все примитивы, палитры, примеры |

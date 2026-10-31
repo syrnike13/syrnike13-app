@@ -12,9 +12,8 @@ import {
   useTranslations,
   type Translator,
 } from '@syrnike13/ui/i18n'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Effect } from 'effect'
-import { useRouterState } from '@tanstack/react-router'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
 import { SettingsHotkeysPanel } from '#/components/settings/settings-hotkeys-panel'
@@ -26,14 +25,11 @@ import { SettingsPrivacyPanel } from '#/components/settings/settings-privacy-pan
 import { ChangeUsernameDialog } from '#/components/user/change-username-dialog'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorSchemeCards } from '#/components/appearance/color-scheme-cards'
-import { ThemeEditorDialog } from '#/components/appearance/theme-editor-dialog'
-import type { ThemeEditorSubmit } from '#/components/appearance/theme-editor-fields'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
 import { PlusIcon, ShuffleIcon } from '#/components/icons'
 import { PresetSlider } from '#/components/ui/preset-slider'
 import {
   anchorsForNewTheme,
-  createCustomThemeId,
   randomThemeAnchors,
 } from '#/features/appearance/appearance-themes'
 import { useAppearance } from '#/features/appearance/appearance-context'
@@ -370,61 +366,21 @@ export function SettingsAppearancePanel() {
   const {
     setScale,
     settings,
-    createCustomTheme,
-    updateCustomTheme,
   } = useAppearance()
   const { setOpen } = useSettingsModal()
   const studio = useThemeStudioOptional()
-  const isMobileSettings = useRouterState({
-    select: (state) => state.location.pathname.startsWith('/m'),
-  })
-  const editorNonce = useRef(0)
-  const [editor, setEditor] = useState<
-    | { mode: 'create'; anchors: AppearanceCustomTheme['anchors']; nonce: number }
-    | { mode: 'edit'; themeId: string; nonce: number }
-    | null
-  >(null)
-
   const themeLimitReached =
     settings.customThemes.length >= APPEARANCE_CUSTOM_THEME_LIMIT
 
-  const editingTheme =
-    editor?.mode === 'edit'
-      ? (settings.customThemes.find(
-          (theme) => theme.id === editor.themeId,
-        ) ?? null)
-      : null
-
-  // На десктопе редактор открывается панелью на основном экране приложения,
-  // поэтому окно настроек закрывается; на мобильном остаётся диалог.
+  // The editor opens as a panel over the app, so the settings window closes.
   const openCreateEditor = (anchors: AppearanceCustomTheme['anchors']) => {
-    if (!isMobileSettings && studio) {
-      studio.openCreate(anchors)
-      setOpen(false)
-      return
-    }
-    editorNonce.current += 1
-    setEditor({ mode: 'create', anchors, nonce: editorNonce.current })
+    studio?.openCreate(anchors)
+    setOpen(false)
   }
 
   const openEditEditor = (themeId: string) => {
-    if (!isMobileSettings && studio) {
-      studio.openEdit(themeId)
-      setOpen(false)
-      return
-    }
-    editorNonce.current += 1
-    setEditor({ mode: 'edit', themeId, nonce: editorNonce.current })
-  }
-
-  const submitEditor = ({ name, anchors }: ThemeEditorSubmit) => {
-    if (editor?.mode === 'edit') {
-      const themeId = editor.themeId
-      updateCustomTheme(themeId, (theme) => ({ ...theme, name, anchors }))
-    } else {
-      createCustomTheme({ id: createCustomThemeId(), name, anchors })
-    }
-    setEditor(null)
+    studio?.openEdit(themeId)
+    setOpen(false)
   }
 
   return (
@@ -484,17 +440,6 @@ export function SettingsAppearancePanel() {
           />
         </SettingsRow>
       </SettingsBlock>
-      {isMobileSettings ? (
-        <ThemeEditorDialog
-          open={editor !== null}
-          initial={editingTheme}
-          initialAnchors={editor?.mode === 'create' ? editor.anchors : null}
-          onOpenChange={(open) => {
-            if (!open) setEditor(null)
-          }}
-          onSubmit={submitEditor}
-        />
-      ) : null}
     </div>
   )
 }

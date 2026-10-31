@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { useTranslations } from '@syrnike13/ui/i18n'
 import {
@@ -18,7 +18,6 @@ import {
 import { ProfileDraftProvider } from '#/components/settings/profile-draft-context'
 import { ProfileUnsavedChangesBar } from '#/components/settings/profile-unsaved-changes-bar'
 import { GENERAL_SETTINGS_NAV } from '#/components/settings/settings-nav-config'
-import { SettingsMobileModal } from '#/components/settings/settings-mobile-modal'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '@syrnike13/ui/primitives/button'
 import {
@@ -76,22 +75,8 @@ const DESKTOP_ONLY_NAV_ITEMS: {
   DESKTOP_NAV_ITEM,
 ]
 
-/**
- * Модалка настроек.
- *
- * Вариант (desktop/mobile) выбирается по текущему пути: `/m/*` → mobile,
- * иначе — desktop. Раньше использовался `useIsCompact`, но после разделения
- * роутов каждая зона знает свой shell, и проверка media query избыточна.
- */
+/** Модалка настроек. */
 export function SettingsModal() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
-  if (pathname.startsWith('/m')) {
-    return <SettingsMobileModal />
-  }
-  return <SettingsDesktopModal />
-}
-
-function SettingsDesktopModal() {
   const t = useTranslations('settings')
   const auth = useAuth()
   const navigate = useNavigate()

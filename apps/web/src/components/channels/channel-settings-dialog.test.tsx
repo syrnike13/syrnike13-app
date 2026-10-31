@@ -28,11 +28,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-  useAppRouteIdPrefix: () => '/_app',
-}))
-
 const textChannel = {
   _id: 'text-general',
   channel_type: 'TextChannel',

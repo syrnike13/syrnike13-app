@@ -62,7 +62,6 @@ import {
   unblockBlockedUser,
 } from '#/features/friends/friend-actions'
 import { selectFriendRequestNotificationBadge } from '#/features/notifications/notification-selectors'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '@syrnike13/client/sync/selectors'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
@@ -273,7 +272,6 @@ function visibleListTabs(lists: RelationshipLists): ListTab[] {
 function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
   const t = useTranslations('home.friends')
   const auth = useAuth()
-  const prefix = useAppRoutePrefix()
   const friendRequestBadge = useSyncStore((s) =>
     selectFriendRequestNotificationBadge(s, auth.user?._id),
   )
@@ -283,7 +281,7 @@ function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
       {tabs.map((item) => (
         <Link
           key={item}
-          to={prefix || '/'}
+          to={'/'}
           search={{ tab: item }}
           aria-current={tab === item ? 'page' : undefined}
           className={buttonVariants({
@@ -296,7 +294,7 @@ function HomeTabsNav({ tab, tabs }: { tab: HomeTab; tabs: ListTab[] }) {
         </Link>
       ))}
       <Link
-        to={prefix || '/'}
+        to={'/'}
         search={{ tab: 'add' }}
         aria-current={tab === 'add' ? 'page' : undefined}
         className={buttonVariants({
@@ -368,7 +366,6 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
   const t = useTranslations('home.friends')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const [search, setSearch] = useState('')
   const headingId = useId()
@@ -389,7 +386,7 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
         userId,
         (channelId) =>
           navigate({
-            to: `${prefix}/c/$channelId`,
+            to: '/c/$channelId',
             params: { channelId },
             search: { m: undefined },
           }),
@@ -507,15 +504,14 @@ function FriendsList({ tab, lists }: { tab: ListTab; lists: RelationshipLists })
 export function HomeView({ tab }: { tab: HomeTab }) {
   const t = useTranslations('home.friends')
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const lists = useRelationshipLists()
   const tabs = visibleListTabs(lists)
   const tabHidden = tab !== 'add' && !tabs.includes(tab)
 
   useEffect(() => {
     if (!tabHidden) return
-    void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
-  }, [tabHidden, navigate, prefix])
+    void navigate({ to: '/', search: { tab: 'online' }, replace: true })
+  }, [tabHidden, navigate])
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">

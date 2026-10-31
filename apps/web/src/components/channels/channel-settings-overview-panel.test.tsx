@@ -66,10 +66,6 @@ vi.mock('@syrnike13/client/api/channels-api', () => ({
     mocks.editChannel(...args),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 function textChannel(
   id: string,
   name: string,

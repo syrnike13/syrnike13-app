@@ -4,10 +4,6 @@ import { useMatch, useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@syrnike13/ui/primitives/button'
 import { useAuth } from '#/features/auth/auth-context'
-import {
-  useAppRouteIdPrefix,
-  useAppRoutePrefix,
-} from '#/features/navigation/route-prefix'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import {
@@ -34,10 +30,8 @@ export function ChannelSettingsDialog({
   const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
-  const routePrefix = useAppRouteIdPrefix()
   const channelRouteMatch = useMatch({
-    from: `${routePrefix}/c/$channelId`,
+    from: '/_app/c/$channelId',
     shouldThrow: false,
   })
   const serverId = serverChannelServerId(channel)
@@ -75,7 +69,7 @@ export function ChannelSettingsDialog({
       (match && 'params' in match ? match.params.channelId : undefined) ??
       channel._id
     void navigate({
-      to: `${prefix}/c/$channelId`,
+      to: '/c/$channelId',
       params: { channelId: hostChannelId },
       search: channelSettingsSearch({
         settingsChannel: channel._id,

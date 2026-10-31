@@ -48,7 +48,6 @@ import {
 } from '@syrnike13/client/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { canMessageUser } from '#/features/authorization/authorization'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
@@ -286,7 +285,6 @@ export function UserContextMenuContent({
   const t = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const voice = useVoiceSession()
   const { openSettings } = useSettingsModal()
   const [kickDialogOpen, setKickDialogOpen] = useState(false)
@@ -362,7 +360,7 @@ export function UserContextMenuContent({
           user._id,
           (channelId) =>
             navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId },
               search: { m: undefined },
             }),
@@ -382,7 +380,7 @@ export function UserContextMenuContent({
           user._id,
           (channelId) =>
             navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId },
               search: { m: undefined },
             }),

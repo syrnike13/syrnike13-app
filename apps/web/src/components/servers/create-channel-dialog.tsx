@@ -26,7 +26,6 @@ import {
   createServerChannelEffect,
   editServerEffect,
 } from '@syrnike13/client/api/servers-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { appendChannelToCategory } from '@syrnike13/client/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '@syrnike13/client/lib/channel-voice'
@@ -47,7 +46,6 @@ export function CreateChannelDialog({
   const t = useTranslations('servers.channels')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const [name, setName] = useState('')
   const [type, setType] = useState<'Text' | 'Voice'>('Text')
   const [saving, setSaving] = useState(false)
@@ -104,7 +102,7 @@ export function CreateChannelDialog({
         yield* Effect.tryPromise({
           try: () =>
             navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId: channel._id },
               search: { m: undefined },
             }),

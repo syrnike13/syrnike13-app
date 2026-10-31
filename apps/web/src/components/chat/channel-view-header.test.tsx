@@ -672,23 +672,4 @@ describe('ChannelView direct message header', () => {
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
   })
 
-  it('shows a back button on mobile routes that returns to the home list', () => {
-    routerMocks.pathname = '/m/c/dm-1'
-
-    const { container } = renderChannelView(
-      <ChannelView channelId={CHANNEL_ID} />,
-    )
-    const header = container.querySelector('header')
-
-    expect(header).toBeTruthy()
-    const backButton = within(header!).getByRole('button', { name: 'Назад' })
-    fireEvent.click(backButton)
-
-    expect(syncStore.getState().selectedServerId).toBeNull()
-    expect(routerMocks.navigate).toHaveBeenCalledWith({
-      to: '/m',
-      search: { tab: 'online' },
-    })
-  })
-
 })

@@ -22,7 +22,6 @@ import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-int
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
-  openVoiceChannelDrawer: vi.fn(),
   deleteChannel: vi.fn((_token: string, _channelId: string) => Effect.void),
   pathname: '/',
   voice: {
@@ -88,14 +87,6 @@ vi.mock('#/lib/clipboard', () => ({
 
 vi.mock('#/features/voice/voice-session-context', () => ({
   useVoiceSession: () => mocks.voice,
-}))
-
-vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useOptionalMobileVoiceChannelDrawer: () => ({
-    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
-    closeVoiceChannelDrawer: vi.fn(),
-    channelId: null,
-  }),
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({
@@ -228,7 +219,6 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
     mocks.navigate.mockClear()
     mocks.join.mockClear()
-    mocks.openVoiceChannelDrawer.mockClear()
     mocks.deleteChannel.mockReturnValue(Effect.void)
     mocks.deleteChannel.mockClear()
     mocks.pathname = '/'
@@ -316,19 +306,6 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).not.toHaveBeenCalled()
-  })
-
-  it('opens mobile voice drawer instead of navigating on mobile route', () => {
-    mocks.pathname = '/m/'
-    mocks.voice.channelId = null
-    mocks.voice.status = 'idle'
-    renderVoiceItem('text-general')
-
-    fireEvent.click(screen.getByRole('link', { name: 'main' }))
-
-    expect(mocks.openVoiceChannelDrawer).toHaveBeenCalledWith('voice-main')
-    expect(mocks.navigate).not.toHaveBeenCalled()
-    expect(mocks.join).not.toHaveBeenCalled()
   })
 
   it('opens voice channel chat from the sidebar action button', () => {

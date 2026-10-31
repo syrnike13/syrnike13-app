@@ -35,10 +35,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 vi.mock('#/components/channels/channel-settings-permissions-panel', () => ({
   ChannelSettingsPermissionsPanel: ({
     channel,

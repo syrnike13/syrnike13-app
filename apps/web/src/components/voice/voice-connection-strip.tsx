@@ -9,7 +9,6 @@ import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoicePingPopoverContent } from '#/components/voice/voice-ping-popover'
 import { formatVoicePingLabel } from '#/features/voice/voice-ping'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel } from '@syrnike13/client/sync/channel-label'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
@@ -50,7 +49,6 @@ export function VoiceConnectionStrip() {
   const auth = useAuth()
   const voice = useVoiceSession()
   const voiceTelemetry = useVoiceTelemetry()
-  const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) =>
     voice.channelId ? s.channels[voice.channelId] : undefined,
   )
@@ -144,7 +142,7 @@ export function VoiceConnectionStrip() {
             {statusLabel}
           </p>
           <Link
-            to={prefix === '/m' ? '/m/c/$channelId' : '/c/$channelId'}
+            to="/c/$channelId"
             params={{ channelId: voice.channelId }}
             search={{ m: undefined }}
             className="block truncate text-xs leading-4 text-muted-foreground hover:text-foreground hover:underline"

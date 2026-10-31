@@ -34,7 +34,6 @@ import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchFeedbackSuggestion } from '#/features/api/feedback-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
 import { shellColumnHeaderClass } from '#/components/layout/shell-chrome'
@@ -45,7 +44,6 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   const tm = useTranslations('feedback.meta')
   const { locale } = useLocale()
   const auth = useAuth()
-  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const viewerId = auth.user?._id
   const query = useQuery({
@@ -97,7 +95,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
           variant="ghost"
           size="icon"
           aria-label={t('backAria')}
-          render={<Link to={`${prefix}/feedback`} search={{ view: 'all' }} />}
+          render={<Link to={'/feedback'} search={{ view: 'all' }} />}
         >
           <ChevronLeftIcon className="size-5" />
         </Button>
@@ -196,7 +194,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
               <AlertDescription>
                 {suggestion.merge_reason ? <p>{suggestion.merge_reason}</p> : null}
                 <Link
-                  to={`${prefix}/feedback/$feedbackId`}
+                  to={'/feedback/$feedbackId'}
                   params={{ feedbackId: suggestion.merged_into }}
                 >
                   {t('openMainIdea')}

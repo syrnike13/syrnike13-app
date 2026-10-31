@@ -36,8 +36,6 @@ import {
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
-type PeopleRailVariant = 'desktop' | 'mobile'
-
 function voiceCallMarkerTitleForCall(
   voiceCall: VoiceCallState | undefined,
   dismissedVoiceCallKeys: Record<string, true>,
@@ -63,10 +61,8 @@ function voiceCallMarkerTitleForCall(
 }
 
 export function PeopleRailSection({
-  variant,
   activeChannelId,
 }: {
-  variant: PeopleRailVariant
   activeChannelId?: string
 }) {
   const auth = useAuth()
@@ -82,7 +78,6 @@ export function PeopleRailSection({
         <li key={channel._id} className={railIconItemRowClass}>
           <PeopleRailButton
             channel={channel}
-            variant={variant}
             activeChannelId={activeChannelId}
             currentUserId={auth.user?._id}
           />
@@ -94,12 +89,10 @@ export function PeopleRailSection({
 
 function PeopleRailButton({
   channel,
-  variant,
   activeChannelId,
   currentUserId,
 }: {
   channel: Channel
-  variant: PeopleRailVariant
   activeChannelId?: string
   currentUserId?: string
 }) {
@@ -122,7 +115,7 @@ function PeopleRailButton({
   const label = getChannelLabel(channel, users, currentUserId, tChat)
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
-  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/c/$channelId'
+  const channelTo = '/c/$channelId'
   const title = callTitle ? `${label} — ${callTitle}` : label
   const railNotificationBadge = active ? undefined : notificationBadge
   const railBadge = resolveAvatarBadgeLayout(40, {

@@ -31,10 +31,7 @@ export function ShellNavColumn({
           скругление `rounded-tl-shell` просвечивает самый нижний слой и в углу
           остаётся тёмный клин. */}
       <div className={cn('flex min-h-0 flex-1', shellNavSurface)}>
-        <ServerRail
-          variant="desktop"
-          userPanelReservePx={userPanelReservePx}
-        />
+        <ServerRail userPanelReservePx={userPanelReservePx} />
         <div
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-tl-shell border-l border-t',

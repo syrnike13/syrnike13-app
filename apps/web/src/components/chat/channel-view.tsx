@@ -7,7 +7,6 @@ import {
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import {
-  ChevronLeftIcon,
   HashIcon,
   HeadphonesIcon,
   PhoneIcon,
@@ -47,7 +46,6 @@ import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
@@ -116,8 +114,6 @@ export function ChannelView({
   const tVoice = useTranslations('chat.voice')
   const tu = useTranslations('users')
   const navigate = useNavigate()
-  const routePrefix = useAppRoutePrefix()
-  const isMobileRoute = routePrefix === '/m'
   const voice = useVoiceSession()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
@@ -167,11 +163,11 @@ export function ChannelView({
     if (!syncReady || !observedChannelRef.current) return
 
     void navigate({
-      to: routePrefix || '/',
+      to: '/',
       search: { tab: 'online' },
       replace: true,
     })
-  }, [channel, navigate, routePrefix, syncReady])
+  }, [channel, navigate, syncReady])
 
   useEffect(() => {
     setDmProfilePanelOpen(true)
@@ -367,40 +363,12 @@ export function ChannelView({
     window.addEventListener('pointerup', stopResize, { once: true })
   }
 
-  function handleMobileBack() {
-    if (isServerChannel && serverIdForSelection) {
-      syncStore.setSelectedServerId(serverIdForSelection)
-    } else {
-      syncStore.setSelectedServerId(null)
-    }
-    void navigate({
-      to: '/m',
-      search: { tab: 'online' },
-    })
-  }
-
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {!dmInCallLayout ? (
         <header
-          className={cn(
-            shellColumnHeaderClass,
-            shellChromeSurface,
-            isMobileRoute ? 'px-2' : 'pr-2 pl-4',
-          )}
+          className={cn(shellColumnHeaderClass, shellChromeSurface, 'pr-2 pl-4')}
         >
-          {isMobileRoute ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={tVoice('back')}
-              title={tVoice('back')}
-              onClick={handleMobileBack}
-            >
-              <ChevronLeftIcon className="size-5" />
-            </Button>
-          ) : null}
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {isDirectMessage && dmRecipient ? (
               <UserAvatar

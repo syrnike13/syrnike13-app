@@ -45,10 +45,6 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => testState.navigate,
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 vi.mock('#/features/voice/voice-session-context', () => ({
   useVoiceSession: () => testState.session,
 }))

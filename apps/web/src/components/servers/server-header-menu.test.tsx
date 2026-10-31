@@ -97,10 +97,6 @@ vi.mock('@syrnike13/client/api/servers-api', () => ({
   ) => mocks.deleteOrLeaveServer(...args),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 function upsertServer(owner = 'user-1') {
   syncStore.upsertServer({
     _id: 'server-1',

@@ -24,7 +24,6 @@ import { useActivityInstance } from '#/features/activities/use-activities'
 import { canUseActivities } from '#/features/authorization/authorization'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'
 
 const panelMediaButtonBaseClass =
@@ -112,7 +111,6 @@ function PanelMediaButtonSoon({
 export function VoicePanelMediaBar() {
   const t = useTranslations('voice')
   const navigate = useNavigate()
-  const routePrefix = useAppRoutePrefix()
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
@@ -203,10 +201,7 @@ export function VoicePanelMediaBar() {
                 Effect.tryPromise({
                   try: () =>
                     navigate({
-                      to:
-                        routePrefix === '/m'
-                          ? '/m/c/$channelId'
-                          : '/c/$channelId',
+                      to: '/c/$channelId',
                       params: { channelId },
                       search: { m: undefined },
                     }),

@@ -43,7 +43,6 @@ import {
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   blockUserRelationship,
   sendFriendRequestToUser,
@@ -82,7 +81,6 @@ export function UserProfileCard({
   const t = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
 
   const [busy, setBusy] = useState(false)
@@ -180,7 +178,7 @@ export function UserProfileCard({
             dismiss()
             setMessageDraft('')
             return navigate({
-              to: `${prefix}/c/$channelId`,
+              to: '/c/$channelId',
               params: { channelId },
               search: { m: undefined },
             })

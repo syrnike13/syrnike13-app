@@ -37,7 +37,6 @@ import {
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { deleteOrLeaveServerEffect } from '@syrnike13/client/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '@syrnike13/client/sync/selectors'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
@@ -67,7 +66,6 @@ function SettingsNavLink({
   icon: ReactNode
   label: string
 }) {
-  const prefix = useAppRoutePrefix()
   return (
     <SettingsNavItem
       active={activeTab === tab}
@@ -75,7 +73,7 @@ function SettingsNavLink({
       label={label}
       render={
         <Link
-          to={`${prefix}/servers/$serverId/settings`}
+          to={'/servers/$serverId/settings'}
           params={{ serverId }}
           search={{ tab }}
         />
@@ -88,7 +86,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const t = useTranslations('servers.settings')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingServer, setDeletingServer] = useState(false)
@@ -115,14 +112,14 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     )
     if (textChannel) {
       void navigate({
-        to: `${prefix}/c/$channelId`,
+        to: '/c/$channelId',
         params: { channelId: textChannel._id },
         search: { m: undefined },
       })
       return
     }
-    void navigate({ to: prefix || '/', search: { tab: 'online' } })
-  }, [channels, navigate, prefix])
+    void navigate({ to: '/', search: { tab: 'online' } })
+  }, [channels, navigate])
 
   async function deleteOwnedServer() {
     const token = auth.session?.token
@@ -138,7 +135,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           setDeleteDialogOpen(false)
         })
         yield* Effect.tryPromise({
-          try: () => navigate({ to: prefix || '/', search: { tab: 'online' } }),
+          try: () => navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
@@ -154,7 +151,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   useEffect(() => {
     if (!server) return
     if (!settingsAccess || !canOpenSettings) {
-      void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
+      void navigate({ to: '/', search: { tab: 'online' }, replace: true })
       return
     }
     if (!canViewCurrentTab) {
@@ -162,7 +159,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
         canViewServerSettingsTab(settingsAccess, candidate),
       )
       void navigate({
-        to: `${prefix}/servers/$serverId/settings`,
+        to: '/servers/$serverId/settings',
         params: { serverId },
         search: { tab: firstTab ?? 'overview' },
         replace: true,
@@ -172,7 +169,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     canOpenSettings,
     canViewCurrentTab,
     navigate,
-    prefix,
     server,
     serverId,
     settingsAccess,

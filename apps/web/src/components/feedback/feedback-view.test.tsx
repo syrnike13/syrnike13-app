@@ -45,10 +45,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '',
-}))
-
 function renderFeedbackView(initialMode: FeedbackViewMode = 'all') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

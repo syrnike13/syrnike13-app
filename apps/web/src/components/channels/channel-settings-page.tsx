@@ -25,7 +25,6 @@ import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import {
   isServerChannel,
@@ -62,7 +61,6 @@ function SettingsNavLink({
   label: string
   highlightMessageId?: string
 }) {
-  const prefix = useAppRoutePrefix()
   return (
     <SettingsNavItem
       active={activeTab === tab}
@@ -70,7 +68,7 @@ function SettingsNavLink({
       label={label}
       render={
         <Link
-          to={`${prefix}/c/$channelId`}
+          to={'/c/$channelId'}
           params={{ channelId: hostChannelId }}
           search={channelSettingsSearch({
             settingsChannel: channelId,
@@ -92,7 +90,6 @@ export function ChannelSettingsPage({
   const t = useTranslations('channels')
   const auth = useAuth()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) => s.channels[channelId])
   const settingsChannel = channel
   const serverId = serverChannelServerId(settingsChannel)
@@ -136,17 +133,17 @@ export function ChannelSettingsPage({
 
   const closeSettings = useCallback(() => {
     void navigate({
-      to: `${prefix}/c/$channelId`,
+      to: '/c/$channelId',
       params: { channelId: hostChannelId },
       search: clearChannelSettingsSearch(highlightMessageId),
     })
-  }, [highlightMessageId, hostChannelId, navigate, prefix])
+  }, [highlightMessageId, hostChannelId, navigate])
 
   useEffect(() => {
     if (!settingsChannel) return
 
     if (!isServerSettingsChannel) {
-      void navigate({ to: prefix || '/', search: { tab: 'online' }, replace: true })
+      void navigate({ to: '/', search: { tab: 'online' }, replace: true })
       return
     }
 
@@ -154,7 +151,7 @@ export function ChannelSettingsPage({
 
     if (!canManage && !canManagePermissions && !canManageWebhooks) {
       void navigate({
-        to: `${prefix}/c/$channelId`,
+        to: '/c/$channelId',
         params: { channelId: hostChannelId },
         search: clearChannelSettingsSearch(highlightMessageId),
         replace: true,
@@ -170,7 +167,6 @@ export function ChannelSettingsPage({
     hostChannelId,
     isServerSettingsChannel,
     navigate,
-    prefix,
     server,
     settingsChannel,
   ])

@@ -87,6 +87,7 @@ jobs:
             VITE_PROXY_URL=https://beta.syrnike13.ru/january
             VITE_GIFBOX_URL=https://api.gifbox.me
             VITE_VOICE_NODE=worldwide
+            MOBILE_BACKEND_HOST=beta.syrnike13.ru
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-web:nightly
             ghcr.io/${{ github.repository_owner }}/app-web:nightly-${{ needs.version.outputs.sha_tag }}

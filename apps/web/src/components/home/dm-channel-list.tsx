@@ -13,7 +13,6 @@ import {
 import { UserAvatar } from '#/components/user/user-avatar'
 import { deleteChannelEffect } from '@syrnike13/client/api/channels-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import { getChannelLabel, getDmRecipientId } from '@syrnike13/client/sync/channel-label'
 import { listDmChannels } from '@syrnike13/client/sync/selectors'
@@ -38,7 +37,6 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   const tChat = useTranslations('chat')
   const tSidebar = useTranslations('home.sidebar')
   const auth = useAuth()
-  const prefix = useAppRoutePrefix()
   const navigate = useNavigate()
   const syncState = useSyncStore((s) => s)
   const ready = syncState.ready
@@ -55,7 +53,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
         yield* Effect.sync(() => syncStore.removeChannel(channelId))
         if (channelId !== activeChannelId) return
         yield* Effect.tryPromise({
-          try: () => navigate({ to: prefix || '/', search: { tab: 'online' } }),
+          try: () => navigate({ to: '/', search: { tab: 'online' } }),
           catch: (cause) => cause,
         })
       }).pipe(
@@ -117,7 +115,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                 data-avatar-hover-scope=""
                 render={
                   <Link
-                    to={`${prefix}/c/$channelId`}
+                    to={'/c/$channelId'}
                     params={{ channelId: channel._id }}
                     search={{ m: undefined }}
                   />

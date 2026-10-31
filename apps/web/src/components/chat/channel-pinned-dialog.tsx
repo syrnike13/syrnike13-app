@@ -23,7 +23,6 @@ import {
   DialogTrigger,
 } from '@syrnike13/ui/primitives/dialog'
 import { fetchPinnedMessagesEffect } from '@syrnike13/client/api/messages-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -47,7 +46,6 @@ export function ChannelPinnedDialog({
 }: ChannelPinnedDialogProps) {
   const t = useTranslations('chat')
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const channels = useSyncStore((s) => s.channels)
   const serverId = serverChannelServerId(channels[channelId])
@@ -164,7 +162,7 @@ export function ChannelPinnedDialog({
                     onClick={() => {
                       setOpen(false)
                       void navigate({
-                        to: `${prefix}/c/$channelId`,
+                        to: '/c/$channelId',
                         params: { channelId },
                         search: { m: message._id },
                       })

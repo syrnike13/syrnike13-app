@@ -14,7 +14,6 @@ import {
 } from '@syrnike13/client/sync/voice-call-utils'
 import { declineDirectMessageCallEffect } from '@syrnike13/client/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 
 type IncomingVoiceCallOverlayProps = {
@@ -29,7 +28,6 @@ export function IncomingVoiceCallOverlay({
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const currentUserId = auth.user?._id
   const currentVoiceSessionChannelId =
     voice.status === 'connected' || voice.status === 'connecting'
@@ -144,17 +142,6 @@ export function IncomingVoiceCallOverlay({
               }).pipe(
                 Effect.flatMap((joined) => {
                   if (!joined) return Effect.void
-                  if (prefix === '/m') {
-                    return Effect.tryPromise({
-                      try: () =>
-                        navigate({
-                          to: '/m/c/$channelId',
-                          params: { channelId: call.channelId },
-                          search: { m: undefined },
-                        }),
-                      catch: (cause) => cause,
-                    })
-                  }
                   return Effect.tryPromise({
                     try: () =>
                       navigate({
