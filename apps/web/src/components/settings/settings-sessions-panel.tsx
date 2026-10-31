@@ -28,7 +28,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@syrnike13/ui/primitives/item'
-import { ulidToDate } from '#/lib/ulid'
+import { ulidToDate } from '@syrnike13/client/lib/ulid'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import { Spinner } from '@syrnike13/ui/primitives/spinner'
 import { useAuth } from '#/features/auth/auth-context'

@@ -40,7 +40,7 @@ import {
 } from '#/features/friends/friend-actions'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { canMessageUser } from '#/features/authorization/authorization'
-import { ulidToDate } from '#/lib/ulid'
+import { ulidToDate } from '@syrnike13/client/lib/ulid'
 
 type UserGlobalProfileSidebarProps = {
   user: User

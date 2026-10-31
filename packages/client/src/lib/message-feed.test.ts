@@ -1,7 +1,7 @@
 import type { Message } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import { buildMessageFeedItems } from '#/lib/message-feed'
+import { buildMessageFeedItems } from './message-feed'
 
 const AUTHOR = '00000000000000000000000000'
 const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'

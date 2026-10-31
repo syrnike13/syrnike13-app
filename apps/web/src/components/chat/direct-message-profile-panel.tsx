@@ -14,7 +14,7 @@ import { useUserProfileData } from '#/components/user/use-user-profile-data'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { ScrollArea } from '@syrnike13/ui/primitives/scroll-area'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
-import { ulidToDate } from '#/lib/ulid'
+import { ulidToDate } from '@syrnike13/client/lib/ulid'
 import { cn } from '#/lib/utils'
 
 type DirectMessageProfilePanelProps = {

@@ -14,7 +14,7 @@ import {
   SettingsBlock,
   SettingsRow,
 } from '#/components/settings/settings-panels'
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 import { Button } from '@syrnike13/ui/primitives/button'
 import { Empty, EmptyDescription } from '@syrnike13/ui/primitives/empty'
 import {

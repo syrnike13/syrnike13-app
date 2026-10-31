@@ -11,7 +11,7 @@ import {
   UNCATEGORIZED_SECTION_ID,
   type ChannelSidebarSection,
   type ServerChannel,
-} from '#/lib/channel-sidebar-layout'
+} from './channel-sidebar-layout'
 
 const channel = (id: string): ServerChannel =>
   ({

@@ -44,7 +44,7 @@ import {
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
 import { isMessageMentioningUser } from '#/lib/mentions'
 import { renderMessageContent } from '#/lib/message-markdown'
-import { messageCreatedAt } from '#/lib/message-time'
+import { messageCreatedAt } from '@syrnike13/client/lib/message-time'
 import { useMessageTimeShort, useMessageTimestamp } from '#/lib/use-message-time'
 import type { CSSVars } from '#/lib/css-vars'
 import { cn } from '#/lib/utils'

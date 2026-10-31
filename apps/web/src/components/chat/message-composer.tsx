@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from 'react'
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 import type { Message } from '@syrnike13/api-types'
 import { useLocale, useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import { useQuery } from '@tanstack/react-query'

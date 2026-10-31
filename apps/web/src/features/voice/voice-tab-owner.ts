@@ -1,5 +1,5 @@
 import type { Room } from 'livekit-client'
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 import {
   computeEffectiveMuted,
   isVoiceCommand,

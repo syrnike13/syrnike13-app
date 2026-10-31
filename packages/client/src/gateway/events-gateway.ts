@@ -205,7 +205,8 @@ export class EventsGateway {
     for (const field of READY_FIELDS) {
       url.searchParams.append('ready', field)
     }
-    return url
+    // React Native's WebSocket takes only a string, not a URL object.
+    return url.toString()
   }
 
   #openSocket(isReconnect: boolean) {

@@ -1,4 +1,4 @@
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 
 export type PendingComposerFile = {
   id: string

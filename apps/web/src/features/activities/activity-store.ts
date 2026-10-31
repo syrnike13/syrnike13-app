@@ -10,7 +10,7 @@ import type {
   JsonValue,
 } from '@syrnike13/activity-sdk/protocol'
 
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 
 /** Gateway surface the store needs; `eventsGateway` satisfies it. */
 export type ActivityGateway = Readonly<{

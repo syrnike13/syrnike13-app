@@ -28,7 +28,7 @@ import {
 } from '@syrnike13/client/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
-import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
+import { appendChannelToCategory } from '@syrnike13/client/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '@syrnike13/client/lib/channel-voice'
 
 type CreateChannelDialogProps = {

@@ -46,7 +46,7 @@ import {
   UNCATEGORIZED_SECTION_ID,
   type ChannelSidebarSection,
   type ServerChannel,
-} from '#/lib/channel-sidebar-layout'
+} from '@syrnike13/client/lib/channel-sidebar-layout'
 import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 

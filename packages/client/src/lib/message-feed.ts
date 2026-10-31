@@ -4,7 +4,7 @@ import {
   formatDateDividerDate,
   messageCreatedAt,
   shouldCompactMessage,
-} from '#/lib/message-time'
+} from './message-time'
 
 export type MessageFeedItem =
   | { type: 'date'; key: string; dateLabel: string }

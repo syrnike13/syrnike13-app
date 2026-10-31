@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ServerChannelList } from '#/components/channels/server-channel-list'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
-import { UNCATEGORIZED_SECTION_ID } from '#/lib/channel-sidebar-layout'
+import { UNCATEGORIZED_SECTION_ID } from '@syrnike13/client/lib/channel-sidebar-layout'
 
 const mocks = vi.hoisted(() => ({
   editServer: vi.fn(() => Effect.never),

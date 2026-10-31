@@ -6,7 +6,7 @@ import {
   formatMessageTimeShort,
   formatMessageTimestamp,
   messageDayKind,
-} from '#/lib/message-time'
+} from '@syrnike13/client/lib/message-time'
 
 /** Формат: «Сегодня в 19:44», «Вчера в 19:44», иначе полная дата. */
 export function useMessageTimestamp() {

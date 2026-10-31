@@ -15,7 +15,7 @@ import { Label } from '@syrnike13/ui/primitives/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '@syrnike13/client/api/servers-api'
 import { syncStore } from '@syrnike13/client/sync/sync-store'
-import { createCategoryId } from '#/lib/channel-sidebar-layout'
+import { createCategoryId } from '@syrnike13/client/lib/channel-sidebar-layout'
 
 type CreateCategoryDialogProps = {
   serverId: string

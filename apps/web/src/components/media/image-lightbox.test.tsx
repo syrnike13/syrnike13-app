@@ -5,7 +5,7 @@ import type { File, User } from '@syrnike13/api-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ImageLightbox } from '#/components/media/image-lightbox'
-import { formatMessageTimestamp } from '#/lib/message-time'
+import { formatMessageTimestamp } from '@syrnike13/client/lib/message-time'
 
 vi.mock('#/components/user/user-avatar', () => ({
   UserAvatar: ({ user }: { user?: User | null }) => (

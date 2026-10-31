@@ -1,4 +1,4 @@
-import { ulidToDate } from '#/lib/ulid'
+import { ulidToDate } from './ulid'
 
 /** Группа сообщений одного автора рвётся после 7 минут. */
 export const MESSAGE_GROUP_BREAK_MS = 7 * 60 * 1000

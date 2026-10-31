@@ -1,5 +1,5 @@
 import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
-import { randomUuid } from '#/lib/random-uuid'
+import { randomUuid } from '@syrnike13/client/lib/random-uuid'
 import {
   useCallback,
   useEffect,
