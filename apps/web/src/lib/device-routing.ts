@@ -29,10 +29,13 @@ export function isMobileUserAgent(userAgent?: string): boolean {
 }
 
 /**
- * Where a phone opening an app path goes in the mobile app: channels keep
- * their id, everything else lands on its home. Public pages return null.
+ * Where a phone opening an app path goes in the mobile app: channels and
+ * invites keep their id, everything else lands on its home. Other public
+ * pages return null.
  */
 export function mobileAppUrl(pathname: string): string | null {
+  const invite = /^\/invite\/([^/]+)/.exec(pathname)
+  if (invite) return `${MOBILE_APP_PATH}/invite/${invite[1]}`
   if (!isAppPath(pathname)) return null
   const channel = /^\/c\/([^/]+)/.exec(pathname)
   return channel

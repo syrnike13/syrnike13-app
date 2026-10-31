@@ -29,9 +29,12 @@ describe('device-routing', () => {
       expect(mobileAppUrl('/servers/x/settings')).toBe('/m/')
     })
 
-    it('leaves public pages alone', () => {
+    it('opens invites in the mobile app', () => {
+      expect(mobileAppUrl('/invite/EQN59gBc')).toBe('/m/invite/EQN59gBc')
+    })
+
+    it('leaves other public pages alone', () => {
       expect(mobileAppUrl('/login')).toBeNull()
-      expect(mobileAppUrl('/invite/abc')).toBeNull()
     })
   })
 })

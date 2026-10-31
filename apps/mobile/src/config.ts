@@ -9,6 +9,8 @@ const HOST = process.env.EXPO_PUBLIC_BACKEND_HOST || (__DEV__ ? 'beta.syrnike13.
 export const API_URL = `https://${HOST}/api`
 export const WS_URL = `wss://${HOST}/ws`
 export const MEDIA_URL = `https://${HOST}/autumn`
+/** The web app, which serves invite links (`/invite/<code>`) and this app at `/m`. */
+export const APP_URL = `https://app.${HOST}`
 /** Sessions are per backend, so switching builds never reuses a foreign token. */
 export const SESSION_KEY = `session.${HOST}`
 /** The newest release APK, published next to the desktop downloads. */

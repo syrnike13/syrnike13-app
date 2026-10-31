@@ -7,8 +7,10 @@ import {
 import { isServerVoiceChannel } from '@syrnike13/client/lib/channel-voice'
 import { channelUnreadMentionCount, isChannelUnread, listServerChannels } from '@syrnike13/client/sync/selectors'
 import { useSyncStore } from '@syrnike13/client/sync/sync-store'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { cn } from '@syrnike13/ui-native/lib/cn'
 import { Avatar } from '@syrnike13/ui-native/primitives/avatar'
+import { Button } from '@syrnike13/ui-native/primitives/button'
 import { Text } from '@syrnike13/ui-native/primitives/text'
 import { router } from 'expo-router'
 import { useMemo, useState, type ReactNode } from 'react'
@@ -16,9 +18,16 @@ import { Pressable, ScrollView, View } from 'react-native'
 
 import { useSession } from '../auth/session-context'
 import { useOpenVoiceChannel } from '../call/voice-preview'
-import { ChevronDownIcon, ChevronRightIcon, HashIcon, Volume2BoldIcon } from '../components/icons/registry'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  HashIcon,
+  UserPlusIcon,
+  Volume2BoldIcon,
+} from '../components/icons/registry'
 import { displayName } from '../lib/presence'
 import { mediaUrl } from '../lib/media'
+import { InviteSheet, ServerInfoSheet } from '../servers/server-sheets'
 import { useVoiceChannelUsers } from '../voice/voice-channel-users'
 import { useVoice } from '../voice/voice-provider'
 
@@ -28,19 +37,40 @@ export function ServerPanel({ server }: { server: Server }) {
   // listServerChannels caches its list, so this selector stays referentially stable.
   const channels = useSyncStore((state) => listServerChannels(state, server._id, session.userId))
   const sections = useMemo(() => buildChannelSidebarSections(server, channels), [server, channels])
+  const t = useTranslations('mobile.server')
+  const [sheet, setSheet] = useState<'info' | 'invite' | null>(null)
+  // Invites point at a text channel, as on the web: the first one.
+  const inviteChannelId = channels.find((channel) => !isServerVoiceChannel(channel))?._id
 
   return (
     <ScrollView contentContainerClassName="pb-24">
-      <View className="flex-row items-center gap-1 px-4 pt-4 pb-3">
+      <Pressable
+        role="button"
+        accessibilityLabel={t('info')}
+        onPress={() => setSheet('info')}
+        className="flex-row items-center gap-1 px-4 pt-4 pb-3"
+      >
         <Text className="shrink text-xl font-bold" numberOfLines={1}>
           {server.name}
         </Text>
         <ChevronRightIcon size={18} className="text-muted-foreground" />
+      </Pressable>
+      <View className="flex-row px-4 pb-3">
+        <Button variant="secondary" size="sm" onPress={() => setSheet('invite')}>
+          <UserPlusIcon size={16} />
+          <Text className="text-sm font-semibold">{t('invite')}</Text>
+        </Button>
       </View>
       <View className="mx-4 mb-2 h-px bg-border" />
       {sections.map((section) => (
         <CategorySection key={section.id} section={section} />
       ))}
+      {sheet === 'info' ? (
+        <ServerInfoSheet server={server} onClose={() => setSheet(null)} onInvite={() => setSheet('invite')} />
+      ) : null}
+      {sheet === 'invite' ? (
+        <InviteSheet server={server} channelId={inviteChannelId} onClose={() => setSheet(null)} />
+      ) : null}
     </ScrollView>
   )
 }

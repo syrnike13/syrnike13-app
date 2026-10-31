@@ -188,6 +188,32 @@
       "search": "Search friends",
       "noMatches": "Nobody found.",
       "noFriends": "No friends yet."
+    },
+    "server": {
+      "info": "Server info",
+      "close": "Close",
+      "invite": "Invite",
+      "leave": "Leave server",
+      "leaveTitle": "Leave {name}?",
+      "leaveDescription": "You can only come back with a new invite.",
+      "cancel": "Cancel",
+      "inviteTitle": "Invite friends to {name}",
+      "inviteCreating": "Creating an invite…",
+      "inviteFailed": "Could not create an invite. You may not have permission.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "share": "Share"
+    },
+    "invite": {
+      "close": "Close",
+      "loading": "Loading the invite…",
+      "invalidTitle": "Invalid invite",
+      "invalidDescription": "The link has expired or was revoked.",
+      "invitedBy": "{name} invited you to join",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "join": "Join",
+      "open": "Open server",
+      "joinFailed": "Could not join."
     }
   }
 }
