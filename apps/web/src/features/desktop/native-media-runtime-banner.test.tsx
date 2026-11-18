@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NativeMediaRuntimeState } from '@syrnike13/platform'
@@ -139,7 +139,7 @@ describe('NativeMediaRuntimeBanner', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
-  it('asks for source selection once when an expired source affects screen video and audio', async () => {
+  it('stays silent when an expired source ends screen video and audio', async () => {
     const expiredSource: NativeMediaRuntimeState['paths']['screen'] = {
       revision: 3, state: 'failed', warning: false,
       failure: { code: 'screen_source_unavailable', message: '', retryable: false, stage: 'screen' },
@@ -149,9 +149,8 @@ describe('NativeMediaRuntimeBanner', () => {
       paths: { ...unavailableState.paths, screen: expiredSource, screen_audio: expiredSource },
     })
     render(<NativeMediaRuntimeBanner />)
-    expect(await screen.findByText('Источник демонстрации недоступен. Выберите экран или приложение заново.')).toBeTruthy()
-    expect(screen.queryByText('Звук демонстрации: недоступно.')).toBeNull()
-    expect(screen.queryByRole('button')).toBeNull()
+    await waitFor(() => expect(mediaRuntime.getRuntimeState).toHaveBeenCalled())
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('offers one manual runtime retry only for a retryable runtime failure', async () => {

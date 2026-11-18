@@ -2581,7 +2581,6 @@
     "recovering": "Recovering media…",
     "failed": "Could not start media.",
     "cameraProfileNotPermitted": "The selected camera quality is not available for this account or channel. Change the quality in the settings.",
-    "screenSourceUnavailable": "The screen share source is unavailable. Pick a screen or application again.",
     "pathUnavailable": "{label}: unavailable.",
     "cameraSettingsNotApplied": "Could not apply the camera settings. Continuing with the previous settings.",
     "retrying": "Starting…",
