@@ -2,7 +2,7 @@ use syrnike_config::configure;
 use syrnike_database::{voice::VoiceClient, DatabaseInfo, AMQP};
 use syrnike_result::Result;
 use tasks::{
-    acks, badge_rules, diagnostic_reports, file_deletion, prune_dangling_files, prune_members,
+    badge_rules, diagnostic_reports, file_deletion, prune_dangling_files, prune_members,
     voice_calls,
 };
 use tokio::try_join;
@@ -23,7 +23,6 @@ async fn main() -> Result<()> {
         prune_dangling_files::task(db.clone()),
         prune_members::task(db.clone()),
         badge_rules::task(db.clone()),
-        acks::task(db.clone(), amqp.clone()),
         voice_calls::task(db.clone(), voice_client, amqp.clone()),
     )
     .map(|_| ())

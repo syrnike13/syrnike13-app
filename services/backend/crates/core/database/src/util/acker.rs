@@ -1,76 +1,73 @@
-use redis_kiss::{get_connection, AsyncCommands};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::{Result, ToSyrnikeError};
+use syrnike_result::Result;
 
-use crate::{events::client::EventV1, Channel, Database, Server, User, AMQP};
+use crate::{events::client::EventV1, Channel, ChannelUnread, Database, Server, User, AMQP};
 
-pub async fn ack_channel(user: &str, channel: &str, message: &str, amqp: &AMQP) -> Result<()> {
-    let mut redis = get_connection()
-        .await
-        .map_err(|_| create_error!(InternalError))?;
+/// Persists the user's read marker for a channel and clears the mentions it covers.
+///
+/// The marker is written before the request returns, so every later Ready or
+/// unread fetch already reflects it.
+pub async fn ack_channel(
+    db: &Database,
+    amqp: &AMQP,
+    user: &str,
+    channel: &str,
+    message: &str,
+) -> Result<()> {
+    let before = db.fetch_unread(user, channel).await?;
+    #[allow(clippy::disallowed_methods)] // single entry point for read markers
+    let after = db.acknowledge_message(channel, user, message).await?;
 
-    let old: Option<String> = redis
-        .getset(format!("acker:{user}+{channel}"), message)
-        .await
-        .to_internal_error()?;
-
-    if old.is_none() || old.unwrap() == message {
-        amqp.process_ack(user, Some(channel), None)
+    // Apple devices show the mention count as a badge; tell pushd to refresh it.
+    if mention_count(after) < mention_count(before) {
+        if let Err(err) = amqp
+            .ack_notification_message(user.to_string(), channel.to_string(), message.to_string())
             .await
-            .to_internal_error()?;
+        {
+            syrnike_config::capture_error(&err);
+        }
     }
 
     Ok(())
 }
 
-pub async fn ack_server(user: &User, server: &Server, db: &Database, amqp: &AMQP) -> Result<()> {
-    let mut redis = get_connection()
-        .await
-        .map_err(|_| create_error!(InternalError))?;
+fn mention_count(unread: Option<ChannelUnread>) -> usize {
+    unread
+        .and_then(|unread| unread.mentions)
+        .map_or(0, |mentions| mentions.len())
+}
 
+pub async fn ack_server(user: &User, server: &Server, db: &Database, amqp: &AMQP) -> Result<()> {
     let channels = db.fetch_channels(&server.channels).await?;
     let query = crate::util::permissions::DatabasePermissionQuery::new(db, user).server(server);
 
     for channel in channels {
-        let channel_id = channel.id();
-        let mut q = query.clone().channel(&channel);
+        let Channel::TextChannel {
+            id: channel_id,
+            last_message_id: Some(channel_last_msg),
+            ..
+        } = &channel
+        else {
+            continue;
+        };
 
-        if calculate_channel_permissions(&mut q)
+        let mut q = query.clone().channel(&channel);
+        if !calculate_channel_permissions(&mut q)
             .await
             .has_channel_permission(ChannelPermission::ViewChannel)
         {
-            let channel_last_msg = match &channel {
-                Channel::TextChannel {
-                    last_message_id, ..
-                } => last_message_id,
-                _ => unreachable!(),
-            }
-            .clone();
-
-            if let Some(channel_last_msg) = channel_last_msg {
-                let old: Option<String> = redis
-                    .getset(
-                        format!("acker:{}+{}", user.id, channel_id),
-                        &channel_last_msg,
-                    )
-                    .await
-                    .to_internal_error()?;
-
-                if old.is_none() || old.unwrap() == channel_last_msg {
-                    amqp.process_ack(&user.id, Some(channel_id), Some(&server.id))
-                        .await
-                        .to_internal_error()?;
-
-                    EventV1::ChannelAck {
-                        id: channel_id.to_string(),
-                        user: user.id.clone(),
-                        message_id: channel_last_msg,
-                    }
-                    .private(user.id.clone())
-                    .await;
-                }
-            }
+            continue;
         }
+
+        ack_channel(db, amqp, &user.id, channel_id, channel_last_msg).await?;
+
+        EventV1::ChannelAck {
+            id: channel_id.to_string(),
+            user: user.id.clone(),
+            message_id: channel_last_msg.clone(),
+        }
+        .private(user.id.clone())
+        .await;
     }
 
     Ok(())

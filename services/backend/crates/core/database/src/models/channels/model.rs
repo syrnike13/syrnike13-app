@@ -801,7 +801,9 @@ impl Channel {
     }
 
     /// Acknowledge a message
-    pub async fn ack(&self, user: &str, message: &str, amqp: &AMQP) -> Result<()> {
+    pub async fn ack(&self, db: &Database, amqp: &AMQP, user: &str, message: &str) -> Result<()> {
+        crate::util::acker::ack_channel(db, amqp, user, self.id(), message).await?;
+
         EventV1::ChannelAck {
             id: self.id().to_string(),
             user: user.to_string(),
@@ -810,7 +812,7 @@ impl Channel {
         .private(user.to_string())
         .await;
 
-        crate::util::acker::ack_channel(user, self.id(), message, amqp).await
+        Ok(())
     }
 
     /// Remove user from a group

@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::events::rabbit::*;
 use crate::User;
@@ -24,7 +25,6 @@ pub struct AMQP {
     mass_mention_message_sent: Arc<Channel>,
     ack_notification_message: Arc<Channel>,
     dm_call_updated: Arc<Channel>,
-    process_ack: Arc<Channel>,
     #[allow(unused)]
     connection: Arc<Connection>,
 }
@@ -39,7 +39,6 @@ impl AMQP {
             mass_mention_message_sent: Self::create_channel(&connection).await,
             ack_notification_message: Self::create_channel(&connection).await,
             dm_call_updated: Self::create_channel(&connection).await,
-            process_ack: Self::create_channel(&connection).await,
             connection,
         }
     }
@@ -56,7 +55,16 @@ impl AMQP {
                     &config.rabbit.host,
                     &config.rabbit.port,
                 ),
-                ConnectionProperties::default(),
+                // Recover the connection and its channels in the background
+                // after RabbitMQ restarts, retrying for as long as it takes,
+                // instead of leaving publishers permanently closed.
+                ConnectionProperties::default()
+                    .enable_auto_recover()
+                    .configure_backoff(|backoff| {
+                        backoff
+                            .without_max_times()
+                            .with_max_delay(Duration::from_secs(10))
+                    }),
             )
             .await
             .expect("Failed to connect to RabbitMQ"),
@@ -256,7 +264,6 @@ impl AMQP {
     }
 
     /// # Sends an ack to pushd to update badges on iPhones.
-    /// Not to be confused with the process_ack function, which handles sending all acks to crond for processing.
     pub async fn ack_notification_message(
         &self,
         user_id: String,
@@ -333,42 +340,6 @@ impl AMQP {
             .basic_publish(
                 config.pushd.exchange.clone().into(),
                 config.pushd.get_dm_call_routing_key().into(),
-                BasicPublishOptions::default(),
-                payload.as_bytes(),
-                AMQPProperties::default()
-                    .with_content_type("application/json".into())
-                    .with_delivery_mode(2),
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    /// # Send an ack to crond for processing
-    pub async fn process_ack(
-        &self,
-        user_id: &str,
-        channel_id: Option<&str>,
-        server_id: Option<&str>,
-    ) -> Result<(), AMQPError> {
-        let config = syrnike_config::config().await;
-
-        let payload = AckEventPayload {
-            user_id: user_id.to_string(),
-            channel_id: channel_id.map(|value| value.to_string()),
-            server_id: server_id.map(|value| value.to_string()),
-        };
-        let payload = to_string(&payload).unwrap();
-
-        info!(
-            "Sending ack processor event on exchange {}, channel {}: {}",
-            config.rabbit.default_exchange, config.rabbit.queues.acks, payload
-        );
-
-        self.process_ack
-            .basic_publish(
-                config.rabbit.default_exchange.clone().into(),
-                config.rabbit.queues.acks.into(),
                 BasicPublishOptions::default(),
                 payload.as_bytes(),
                 AMQPProperties::default()

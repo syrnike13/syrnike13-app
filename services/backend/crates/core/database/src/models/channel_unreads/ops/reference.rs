@@ -21,8 +21,16 @@ impl AbstractChannelUnreads for ReferenceDb {
         };
 
         if let Some(unread) = unreads.get_mut(&key) {
-            unread.mentions = None;
-            unread.last_id.replace(message_id.to_string());
+            if let Some(mentions) = &mut unread.mentions {
+                mentions.retain(|id| id.as_str() > message_id);
+            }
+            if unread
+                .last_id
+                .as_deref()
+                .is_none_or(|last| last < message_id)
+            {
+                unread.last_id.replace(message_id.to_string());
+            }
         } else {
             unreads.insert(
                 key.clone(),

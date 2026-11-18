@@ -34,9 +34,6 @@ username = "rabbituser"
 password = "rabbitpass"
 default_exchange = "syrnike.default"
 
-[rabbit.queues]
-acks = "internal.ack"
-
 [api]
 
 [api.registration]

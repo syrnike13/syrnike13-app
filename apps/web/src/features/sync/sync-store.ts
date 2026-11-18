@@ -15,6 +15,7 @@ import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { Effect, Fiber, Option, Schema } from 'effect'
 
 import type {
+  ChannelUnreadState,
   GatewayServerEvent,
   GroupJoinBundle,
   ReadyPayload,
@@ -320,6 +321,26 @@ function unreadStateFromApi(unread: ChannelUnread) {
   }
 }
 
+/**
+ * A snapshot (Ready, `/sync/unreads`) can be older than a local ack: it may
+ * have been read before the ack request landed. Message ids are ULIDs and sort
+ * by time, so keep whichever marker is further ahead and drop mentions it
+ * already covers.
+ */
+function mergeUnreadState(
+  current: ChannelUnreadState | undefined,
+  incoming: ChannelUnreadState,
+): ChannelUnreadState {
+  const localLastId = current?.lastId
+  if (!localLastId || (incoming.lastId && incoming.lastId >= localLastId)) {
+    return incoming
+  }
+  return {
+    lastId: localLastId,
+    mentions: incoming.mentions.filter((id) => id > localLastId),
+  }
+}
+
 function readUnreadState(messageId: string | null) {
   return {
     lastId: messageId,
@@ -437,7 +458,11 @@ export const syncStore = {
     const unreads = { ...state.unreads }
 
     for (const unread of payload.channel_unreads ?? []) {
-      unreads[unread._id.channel] = unreadStateFromApi(unread)
+      const channelId = unread._id.channel
+      unreads[channelId] = mergeUnreadState(
+        unreads[channelId],
+        unreadStateFromApi(unread),
+      )
     }
 
     const voiceParticipants = mergeVoiceStatesFromReady(
@@ -818,8 +843,8 @@ export const syncStore = {
     let changed = false
     for (const unread of unreadsList) {
       const channelId = unread._id.channel
-      const next = unreadStateFromApi(unread)
       const current = unreads[channelId]
+      const next = mergeUnreadState(current, unreadStateFromApi(unread))
       if (
         current?.lastId !== next.lastId ||
         current.mentions.length !== next.mentions.length ||
@@ -835,8 +860,17 @@ export const syncStore = {
   setChannelLastRead(channelId: string, messageId: string | null) {
     const current = state.unreads[channelId]
     if (current?.lastId === messageId && current.mentions.length === 0) return
+    // An older ack (another session, a late event) only clears the mentions
+    // it covers; it never moves the marker backwards.
+    const next =
+      messageId && current?.lastId && current.lastId > messageId
+        ? {
+            lastId: current.lastId,
+            mentions: current.mentions.filter((id) => id > messageId),
+          }
+        : readUnreadState(messageId)
     setState({
-      unreads: { ...state.unreads, [channelId]: readUnreadState(messageId) },
+      unreads: { ...state.unreads, [channelId]: next },
     })
   },
 

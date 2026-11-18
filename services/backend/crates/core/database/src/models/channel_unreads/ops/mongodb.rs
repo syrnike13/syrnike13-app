@@ -33,7 +33,9 @@ impl AbstractChannelUnreads for MongoDb {
                             "$lte": message_id
                         }
                     },
-                    "$set": {
+                    // Message ids are ULIDs, so `$max` keeps the newest marker
+                    // when acks from several sessions arrive out of order.
+                    "$max": {
                         "last_id": message_id
                     }
                 },

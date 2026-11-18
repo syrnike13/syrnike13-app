@@ -34,7 +34,7 @@ pub async fn ack(
         .throw_if_lacking_channel_permission(ChannelPermission::ViewChannel)?;
 
     channel
-        .ack(&user.id, message.id, amqp)
+        .ack(db, amqp, &user.id, message.id)
         .await
         .map(|_| EmptyResponse)
 }

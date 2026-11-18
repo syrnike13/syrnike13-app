@@ -1303,6 +1303,109 @@ describe('syncStore applyReady', () => {
     })
   })
 
+  it('keeps a newer local read marker over a stale server snapshot', () => {
+    syncStore.reset()
+
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B5')
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+        mentions: [
+          '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+          '01KT7DEM3B0T4B0BXGBXWDJ6B6',
+        ],
+      },
+    ])
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+      mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B6'],
+    })
+  })
+
+  it('keeps a newer local read marker when Ready carries a stale one', () => {
+    syncStore.reset()
+
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B5')
+    syncStore.applyReady({
+      servers: [],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [
+        {
+          _id: { channel: CHANNEL_ID, user: USER_ID },
+          last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+          mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B1'],
+        },
+      ],
+      voice_states: [],
+    } as never)
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+      mentions: [],
+    })
+  })
+
+  it('keeps the local marker when the server snapshot has no last_id', () => {
+    syncStore.reset()
+
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B5')
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        mentions: [
+          '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+          '01KT7DEM3B0T4B0BXGBXWDJ6B6',
+        ],
+      },
+    ])
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+      mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B6'],
+    })
+  })
+
+  it('does not move the read marker back on an older ChannelAck', () => {
+    syncStore.reset()
+
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+        mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B6'],
+      },
+    ])
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B2')
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+      mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B6'],
+    })
+  })
+
+  it('takes a server read marker that is ahead of the local one', () => {
+    syncStore.reset()
+
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B0')
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+        mentions: [],
+      },
+    ])
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B5',
+      mentions: [],
+    })
+  })
+
   it('preserves null selectedServerId instead of auto-selecting the first server', () => {
     syncStore.reset()
 
