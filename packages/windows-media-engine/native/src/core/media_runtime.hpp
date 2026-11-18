@@ -15,8 +15,11 @@ struct MediaRuntimeSnapshot {
   // process. Escalate that condition through the supervised engine boundary.
   std::optional<EngineFailure> failure;
   // Fixed numeric telemetry, without device identities or audio contents.
-  std::optional<std::array<DiagnosticMetric, 13>> screen_audio_metrics;
+  std::optional<std::array<DiagnosticMetric, 15>> screen_audio_metrics;
   std::optional<std::array<DiagnosticMetric, 16>> screen_video_metrics;
+  // Capture backend feeding the share, its switches and last failure, and
+  // whether Windows granted capture without the yellow border.
+  std::optional<std::array<DiagnosticMetric, 5>> screen_capture_metrics;
   std::optional<std::array<DiagnosticMetric, 8>> screen_bitrate_metrics;
   // Load governor level, the scheduling help it holds, late-frame drops and
   // in-place encoder recoveries.

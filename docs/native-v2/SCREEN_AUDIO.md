@@ -101,7 +101,17 @@ browsers do:
 `ScreenAudioOwner` consumes monotonically increasing desired revisions.
 An absent intent is audio off; on contains a mode and validated process identity.
 Equivalent healthy intents do not republish. A newer explicit intent may retry
-a recoverable failure. There is no autonomous retry or Room/video recovery path.
+a recoverable failure. A lost capture device (`device_lost`, `capture_failed`,
+`activation_failed`, `format_unavailable`) is the one autonomous exception: a
+game switching the display mode can take the HDMI or DisplayPort audio endpoint
+with it, so the owner restarts the same intent after 0.5, 1, 2, 4 and 4 seconds
+and reports `starting` meanwhile. Ten seconds of running capture refill that
+budget; an exhausted budget reports `failed` for an explicit retry.
+An endpoint that went away may stop signalling instead of failing a read, so a
+second without a packet polls the stream and its invalidation surfaces as
+`device_lost` instead of an endlessly silent publication; a silent but valid
+stream keeps running. `screen_audio_metrics` reports the last failure code and
+the number of automatic restarts. There is no Room/video recovery path.
 An uncertain SDK timeout permanently fences that owner from replacement work.
 
 Capture activation precedes publication and both must succeed before `running`.
@@ -123,5 +133,6 @@ References: [process-tree semantics and minimum build](https://learn.microsoft.c
 `screen-audio-pcm` and `screen-audio-owner` cover fragmented, silent and
 discontinuous packets, invalid QPC, generation fencing, 60,000 producer packets
 against a stalled consumer, backlog replay on recovery, superseded startup,
-explicit retry, sticky retirement and concurrent stop. Capture never writes the
+explicit retry, automatic restart after device loss, sticky retirement and
+concurrent stop. Capture never writes the
 level, mute, category or ducking of foreign audio sessions.

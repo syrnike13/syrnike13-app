@@ -1,6 +1,7 @@
 #include "screen/screen_owner.hpp"
 
 #include "capture/selecting_monitor_capture.hpp"
+#include "capture/wgc_monitor_capture.hpp"
 #include "capture/wgc_window_capture.hpp"
 #include "capture/window_capture.hpp"
 #include "sources/win32_source_enumerator.hpp"
@@ -120,6 +121,8 @@ bool ScreenOwner::releasePreview(std::uint64_t generation, std::uint64_t sequenc
 void ScreenOwner::run() noexcept {
   std::shared_ptr<sources::SourceRegistry> registry;
   std::unique_ptr<capture::MonitorCapture> monitor;
+  // Owned by monitor; read only for backend diagnostics.
+  capture::SelectingMonitorCaptureBackend* monitor_backend = nullptr;
   std::unique_ptr<capture::WindowCapture> window;
   std::shared_ptr<ScreenFramePipeline> frames;
   std::shared_ptr<ProductionScreenPipeline> pipeline;
@@ -145,6 +148,7 @@ void ScreenOwner::run() noexcept {
     }
     pipeline.reset();
     adapter.reset();
+    monitor_backend = nullptr;
     monitor.reset();
     window.reset();
     frames.reset();
@@ -257,12 +261,17 @@ void ScreenOwner::run() noexcept {
             capture::SelectingMonitorOptions options;
             // Desktop duplication captures the monitor without a capture
             // border. Where it is unavailable (hybrid GPUs, some remote
-            // sessions) or lost, fall back to WGC instead of failing the share.
+            // sessions) or cannot be recreated, fall back to WGC instead of
+            // failing the share. Borderless access is asked now, on a settled
+            // desktop, not first during the game launch that caused the fallback.
+            (void)capture::requestBorderlessCapture();
             options.preferred = capture::CaptureBackendKind::dxgi;
             options.resolve_target = [monitor_target] { return monitor_target; };
             options.wgc_min_update_interval = capture_interval;
+            auto backend = capture::createSelectingMonitorCaptureBackend(std::move(options));
+            monitor_backend = backend.get();
             monitor = std::make_unique<capture::MonitorCapture>(*registry, desired.intent.source_id,
-                capture::createSelectingMonitorCaptureBackend(std::move(options)));
+                std::move(backend));
             started = monitor->start();
           } else {
             capture::WgcWindowCaptureOptions options;
@@ -345,6 +354,16 @@ void ScreenOwner::run() noexcept {
       ScreenOwnerSnapshot current;
       if (pipeline) current.pipeline = pipeline->stats();
       else current.pipeline.preview = LocalScreenPreview::processPreview().stats();
+      if (monitor_backend) {
+        const auto selection = monitor_backend->diagnostics();
+        if (selection.policy.active_healthy && selection.policy.active)
+          current.capture.backend = selection.policy.active->kind;
+        current.capture.switches = selection.policy.committed_switches;
+        current.capture.attempts = selection.attempts;
+        if (selection.last_failure) current.capture.last_failure = selection.last_failure->kind;
+      } else if (window) {
+        current.capture.backend = capture::CaptureBackendKind::wgc;
+      }
       const bool running = pipeline && pipeline->state() == ProductionScreenPipelineState::running;
       current.path = {desired.revision, desired.intent.state == ScreenIntentState::off ? MediaPathState::Off :
           problem && !running ? MediaPathState::Failed : running ? MediaPathState::Running : MediaPathState::Starting,

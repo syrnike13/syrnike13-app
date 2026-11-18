@@ -1,5 +1,6 @@
 #include "core/windows_media_runtime.hpp"
 #include "audio/livekit_screen_audio_session.hpp"
+#include "capture/wgc_monitor_capture.hpp"
 
 namespace syrnike::windows_media {
 namespace {
@@ -209,10 +210,24 @@ void WindowsMediaRuntime::run() noexcept {
             {"dependent_encoded_drops", static_cast<double>(pipeline.dependent_encoded_drops)},
             {"encoder_recoveries", static_cast<double>(pipeline.encoder_recoveries)},
         }};
+        // Backend 0: none, 1: DXGI, 2: WGC. Last failure: CaptureFailureKind
+        // plus one, 0: none. Borderless: 0 not asked, 1 granted, 2 refused,
+        // 3 unsupported (Windows 10).
+        const auto& backend = screen.capture;
+        snapshot_.screen_capture_metrics = std::array<DiagnosticMetric, 5>{{
+            {"capture_backend", !backend.backend ? 0.0
+                : *backend.backend == capture::CaptureBackendKind::dxgi ? 1.0 : 2.0},
+            {"capture_backend_switches", static_cast<double>(backend.switches)},
+            {"capture_backend_attempts", static_cast<double>(backend.attempts)},
+            {"capture_last_failure", backend.last_failure
+                ? static_cast<double>(*backend.last_failure) + 1.0 : 0.0},
+            {"borderless_capture", static_cast<double>(capture::borderlessCaptureStatus())},
+        }};
       } else {
         snapshot_.screen_video_metrics.reset();
         snapshot_.screen_bitrate_metrics.reset();
         snapshot_.screen_load_metrics.reset();
+        snapshot_.screen_capture_metrics.reset();
       }
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
@@ -244,7 +259,7 @@ void WindowsMediaRuntime::run() noexcept {
             "Screen audio SDK work exceeded its completion deadline", "screenAudio", true};
       if (audio.state == audio::ScreenAudioState::running || audio.state == audio::ScreenAudioState::failed) {
         const auto& metrics = audio.session;
-        snapshot_.screen_audio_metrics = std::array<DiagnosticMetric, 13>{{
+        snapshot_.screen_audio_metrics = std::array<DiagnosticMetric, 15>{{
             {"captured", static_cast<double>(metrics.captured)},
             {"submitted", static_cast<double>(metrics.submitted)},
             {"silent", static_cast<double>(metrics.silent_packets)},
@@ -258,6 +273,11 @@ void WindowsMediaRuntime::run() noexcept {
             {"producer_process_id", static_cast<double>(GetCurrentProcessId())},
             {"maximum_callback_wait_us", static_cast<double>(metrics.maximum_callback_wait_us)},
             {"silence_filled", static_cast<double>(metrics.silence_filled)},
+            // Last capture failure (code plus one, 0: none) and how often a
+            // lost or stalled loopback was restarted without user action.
+            {"last_failure_code", audio.last_failure
+                ? static_cast<double>(audio.last_failure->code) + 1.0 : 0.0},
+            {"recoveries", static_cast<double>(audio.recoveries)},
         }};
       } else snapshot_.screen_audio_metrics.reset();
       const bool wants_audio = desired_.screen.state == ScreenIntentState::on &&

@@ -48,6 +48,10 @@ struct BackendSelectionState {
   CaptureBackendKind preferred = CaptureBackendKind::wgc;
   std::optional<BackendGeneration> active, candidate;
   std::optional<CaptureBackendKind> last_attempt;
+  // An active generation that lost access is recreated with its own backend
+  // first: DXGI reports a fullscreen game or a mode switch as access loss, and
+  // only a failed recreate moves the share to the other backend.
+  std::optional<CaptureBackendKind> recreate;
   bool active_healthy = false, paused = false, terminal = false, pending = false;
   bool retirement_pending = false;
   bool wgc_available = true, dxgi_available = true;
