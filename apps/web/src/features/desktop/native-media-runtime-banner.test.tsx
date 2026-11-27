@@ -153,6 +153,24 @@ describe('NativeMediaRuntimeBanner', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('reports screen audio that lost an expired source while screen video keeps running', async () => {
+    const expiredSource: NativeMediaRuntimeState['paths']['screen'] = {
+      revision: 3, state: 'failed', warning: false,
+      failure: { code: 'screen_source_unavailable', message: '', retryable: false, stage: 'screen' },
+    }
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...unavailableState, available: true, status: 'ready', failure: undefined,
+      paths: {
+        ...unavailableState.paths,
+        screen: { revision: 3, state: 'running', warning: false },
+        screen_audio: expiredSource,
+      },
+    })
+    render(<NativeMediaRuntimeBanner />)
+    expect(await screen.findByText('Звук демонстрации: недоступно.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('offers one manual runtime retry only for a retryable runtime failure', async () => {
     mediaRuntime.getRuntimeState.mockResolvedValue({
       ...unavailableState, available: true, status: 'failed',
