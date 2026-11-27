@@ -75,8 +75,9 @@ class VoiceDirectorOperationError extends Schema.ErrorClass<VoiceDirectorOperati
 }) {}
 
 
-// Native capture codes for a shared window that was closed or replaced.
-const SCREEN_SOURCE_ENDED_CODES = new Set(['source_closed', 'source_replaced'])
+// Native capture codes for a shared window that was closed or replaced, and
+// for a selection that expired with its media utility (crash recovery replay).
+const SCREEN_SOURCE_ENDED_CODES = new Set(['source_closed', 'source_replaced', 'screen_source_unavailable'])
 
 export class VoiceDirector {
   private readonly listeners = new Set<(snapshot: VoiceSnapshot) => void>()

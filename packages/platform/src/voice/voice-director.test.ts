@@ -1269,6 +1269,24 @@ describe('VoiceDirector', () => {
     expect(harness.engine.desired).toHaveLength(desiredUpdates + 1)
   })
 
+  it('ends the share when recovery replays an expired screen source', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a', audioEnabled: true })
+
+    harness.engine.emit({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media: { state: 'failed', error: { code: 'screen_source_unavailable', message: 'Select a current screen source', retryable: false } },
+    })
+
+    expect(harness.engine.desired.at(-1)).toMatchObject({ screenEnabled: false, screenAudioEnabled: false })
+    expect(harness.engine.desired.at(-1)?.screenSourceId).toBeUndefined()
+    expect(harness.engine.connected).toHaveLength(1)
+  })
+
   it('does not reconnect Room when one media track fails', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')
