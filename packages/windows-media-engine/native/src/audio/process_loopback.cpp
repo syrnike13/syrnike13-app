@@ -46,6 +46,7 @@ std::int64_t now100ns() noexcept {
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
+constexpr DWORD kLoopbackPollMs = 1000;
 // At most one unresolved Windows activation may survive a timed-out owner.
 std::atomic_bool activation_pending{false};
 struct Activation {
@@ -329,11 +330,14 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
     // Scheduling hint only; absent when the MMCSS service is disabled.
     Mmcss mmcss;
     for (;;) {
-      const auto event = WaitForMultipleObjects(3, events, FALSE, INFINITE);
+      // An endpoint that went away, as under a display mode switch, may stop
+      // signalling instead of failing a read. A quiet second polls the stream,
+      // so its invalidation surfaces as device_lost rather than endless silence.
+      const auto event = WaitForMultipleObjects(3, events, FALSE, kLoopbackPollMs);
       if (event == WAIT_OBJECT_0) break;
       if (event == WAIT_OBJECT_0 + 2)
         throw ScreenAudioFailure{ScreenAudioFailureCode::target_exited};
-      if (event != WAIT_OBJECT_0 + 1)
+      if (event != WAIT_OBJECT_0 + 1 && event != WAIT_TIMEOUT)
         throw ScreenAudioFailure{ScreenAudioFailureCode::capture_failed,
                                  HRESULT_FROM_WIN32(GetLastError())};
       if (queue_->stopped()) break;

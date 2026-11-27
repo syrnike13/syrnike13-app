@@ -34,9 +34,10 @@ BackendSelectionResult beginCandidate(BackendSelectionState state, std::int64_t 
       (state.attempt_count &&
        now - state.attempts[state.attempt_count - 1] < kBackendAttemptIntervalMs))
     return {state};
-  const auto preferred = state.last_failure && state.last_attempt ? other(*state.last_attempt)
-                         : state.active                           ? state.active->kind
-                                                                  : state.preferred;
+  const auto preferred = state.recreate                             ? *state.recreate
+                         : state.last_failure && state.last_attempt ? other(*state.last_attempt)
+                         : state.active                             ? state.active->kind
+                                                                    : state.preferred;
   auto selected = state.forced.value_or(preferred);
   if (!available(state, selected) && !state.forced) selected = other(selected);
   if (!available(state, selected)) {
@@ -48,6 +49,7 @@ BackendSelectionResult beginCandidate(BackendSelectionState state, std::int64_t 
   }
   state.candidate = BackendGeneration{selected, state.next_generation++};
   state.last_attempt = selected;
+  state.recreate.reset();
   state.candidate_started_ms = now;
   state.attempts[state.attempt_count++] = now;
   state.pending = false;
@@ -145,6 +147,7 @@ BackendSelectionResult selectCaptureBackend(BackendSelectionState state,
     state.active_healthy = false;
     state.last_failure = observation;
     state.pending = true;
+    if (observation == BackendObservation::access_lost) state.recreate = state.active->kind;
     if (observation == BackendObservation::source_unavailable ||
         observation == BackendObservation::device_removed) {
       state.terminal = true;
@@ -163,6 +166,11 @@ BackendSelectionResult selectCaptureBackend(BackendSelectionState state,
         state.dxgi_available = false;
     }
     ++state.consecutive_failures;
+    // The recreate can start while a game's mode switch is still settling:
+    // a first access loss of the replacement tries that backend once more.
+    if (!candidate_expired && observation == BackendObservation::access_lost &&
+        !state.active_healthy && state.consecutive_failures == 1)
+      state.recreate = state.candidate->kind;
     state.candidate.reset();
     state.pending = !state.active_healthy;
     return {state, BackendSelectionAction::discard_candidate};
@@ -175,6 +183,7 @@ BackendSelectionResult selectCaptureBackend(BackendSelectionState state,
     state.active_healthy = true;
     state.consecutive_failures = 0;
     state.last_failure.reset();
+    state.recreate.reset();
     state.pending = false;
     return {state, BackendSelectionAction::commit_candidate};
   }

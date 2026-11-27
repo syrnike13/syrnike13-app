@@ -1111,6 +1111,7 @@ private:
         emit("screen", "screen_video_metrics", media.screen_video_metrics);
         emit("screen", "screen_bitrate_metrics", media.screen_bitrate_metrics);
         emit("screen", "screen_load_metrics", media.screen_load_metrics);
+        emit("screen", "screen_capture_metrics", media.screen_capture_metrics);
         emit("camera", "camera_metrics", media.camera_metrics);
         emit("microphone", "microphone_metrics", media.microphone_metrics);
         emit("microphone", "microphone_monitor_metrics", media.microphone_monitor_metrics);

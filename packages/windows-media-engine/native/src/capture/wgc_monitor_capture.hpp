@@ -38,4 +38,11 @@ class WgcMonitorCaptureBackend : public MonitorCaptureBackend {
 std::unique_ptr<WgcMonitorCaptureBackend> createWgcMonitorCaptureBackend(
     WgcMonitorCaptureOptions options = {});
 
+// Windows 11 captures without the yellow border once borderless access is
+// granted. Every WGC session asks until Windows grants it; a share that may
+// fall back to WGC asks up front, before a game or display transition.
+enum class BorderlessCaptureStatus { unknown, granted, refused, unsupported };
+BorderlessCaptureStatus requestBorderlessCapture() noexcept;
+BorderlessCaptureStatus borderlessCaptureStatus() noexcept;
+
 }  // namespace syrnike::windows_media::capture
