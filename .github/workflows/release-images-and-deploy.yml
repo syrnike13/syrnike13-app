@@ -422,24 +422,14 @@ jobs:
       - version
       - native-windows
     if: ${{ needs.changes.outputs.desktop == 'true' && needs.native-windows.result == 'success' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            artifact: desktop-macos
-          - os: windows-2022
-            artifact: desktop-windows
-          - os: ubuntu-24.04
-            artifact: desktop-linux
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-2022
     env:
       SYRNIKE_DESKTOP_BUILD_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Apply release version
-        # This matrix also runs on windows-2022, where the default shell is
-        # pwsh: `printf` there receives an empty "$RELEASE_VERSION" because
+        # This job runs on windows-2022, where the default shell is pwsh:
+        # `printf` there receives an empty "$RELEASE_VERSION" because
         # PowerShell needs "$env:RELEASE_VERSION" for environment variables.
         shell: bash
         env:
@@ -450,46 +440,33 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Install Linux packaging deps
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
       - name: Download verified Windows hook addons
-        if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: native-hooks-windows-stable-${{ github.sha }}
           path: .
       - name: Verify downloaded Windows hook addons
-        if: runner.os == 'Windows'
         run: pnpm desktop-native:verify
       - name: Download verified Windows media lifecycle artifacts
-        if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: media-engine-windows-stable-${{ github.sha }}
           path: .
       - name: Verify downloaded Windows media lifecycle artifacts
-        if: runner.os == 'Windows'
         run: pnpm windows-media:verify
       - name: Download Windows native debug symbols
-        if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: native-hooks-windows-symbols-${{ github.sha }}
           path: packages/desktop-native
       - name: Download Windows media lifecycle debug symbols
-        if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: media-engine-windows-symbols-${{ github.sha }}
           path: packages/windows-media-engine
-      - name: Build desktop
-        if: runner.os != 'Windows'
-        run: pnpm desktop:build
       - name: Build Windows desktop with verified native runtime
-        if: runner.os == 'Windows'
         env:
           SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
           SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: production
@@ -499,31 +476,20 @@ jobs:
           pnpm --filter @syrnike13/platform build
           pnpm --filter @syrnike13/desktop exec tsup
       - name: Upload Windows debug artifacts when configured
-        if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
       - name: Package Windows desktop
-        if: runner.os == 'Windows'
-        run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Package desktop
-        if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: desktop-windows
           path: |
-            apps/desktop/release/latest*.yml
+            apps/desktop/release/latest.yml
             apps/desktop/release/*.exe
             apps/desktop/release/*.exe.blockmap
-            apps/desktop/release/*.zip
-            apps/desktop/release/*.zip.blockmap
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.dmg.blockmap
-            apps/desktop/release/*.AppImage
-            apps/desktop/release/*.AppImage.blockmap
             apps/desktop/release/*.7z
             apps/desktop/release/*.7z.blockmap
 
@@ -544,31 +510,15 @@ jobs:
         with:
           name: desktop-windows
           path: desktop-artifacts/desktop-windows
-      - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: desktop-macos
-          path: desktop-artifacts/desktop-macos
-      - name: Download Linux desktop artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: desktop-linux
-          path: desktop-artifacts/desktop-linux
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: syrnike13 v${{ needs.version.outputs.version }}
-          # Installers plus latest*.yml and *.blockmap — required for electron-updater.
+          # Installer plus latest.yml and *.blockmap — required for electron-updater.
           files: |
-            desktop-artifacts/**/latest*.yml
+            desktop-artifacts/**/latest.yml
             desktop-artifacts/**/*.exe
             desktop-artifacts/**/*.exe.blockmap
-            desktop-artifacts/**/*.zip
-            desktop-artifacts/**/*.zip.blockmap
-            desktop-artifacts/**/*.dmg
-            desktop-artifacts/**/*.dmg.blockmap
-            desktop-artifacts/**/*.AppImage
-            desktop-artifacts/**/*.AppImage.blockmap
             desktop-artifacts/**/*.7z
             desktop-artifacts/**/*.7z.blockmap
 
@@ -641,7 +591,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$RELEASE_VERSION"
-          FEED_FILES=(latest.yml latest-mac.yml latest-linux.yml)
+          FEED_FILES=(latest.yml)
           for FEED_FILE in "${FEED_FILES[@]}"; do
             FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/${FEED_FILE}")"
             FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
@@ -658,7 +608,7 @@ jobs:
       - name: Verify stable download aliases
         run: |
           set -euo pipefail
-          for ALIAS in syrnike13.dmg syrnike13-setup.exe syrnike13.AppImage; do
+          for ALIAS in syrnike13-setup.exe; do
             curl --fail --silent --head "https://${SYRNIKE_DOMAIN}/downloads/${ALIAS}" >/dev/null
             echo "OK /downloads/${ALIAS}"
           done
