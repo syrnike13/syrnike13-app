@@ -27,14 +27,10 @@ class PublishReleaseTest(unittest.TestCase):
         self.payloads = {
             "syrnike13 Setup 0.7.1.exe": b"windows installer",
             "syrnike13 Setup 0.7.1.exe.blockmap": b"windows blockmap",
-            "syrnike13-0.7.1-mac.zip": b"mac updater",
-            "syrnike13-0.7.1.dmg": b"mac installer",
-            "syrnike13-0.7.1.AppImage": b"linux installer",
+            "syrnike13-0.7.1.7z": b"windows differential package",
         }
         manifests = {
             "latest.yml": ["syrnike13 Setup 0.7.1.exe"],
-            "latest-mac.yml": ["syrnike13-0.7.1-mac.zip", "syrnike13-0.7.1.dmg"],
-            "latest-linux.yml": ["syrnike13-0.7.1.AppImage"],
         }
         self.contents = {name.replace(" ", "."): body for name, body in self.payloads.items()}
         for feed, names in manifests.items():
@@ -67,33 +63,31 @@ class PublishReleaseTest(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 publisher.publish(self.release, self.directory, self.version)
 
-    def test_publishes_verified_payloads_with_original_windows_names_and_aliases(self):
+    def test_publishes_verified_payloads_with_original_windows_names_and_alias(self):
         self.publish()
         for name, body in self.payloads.items():
             self.assertEqual((self.directory / name).read_bytes(), body)
         self.assertEqual((self.directory / "syrnike13-setup.exe").read_bytes(), b"windows installer")
-        self.assertEqual((self.directory / "syrnike13.dmg").read_bytes(), b"mac installer")
-        self.assertEqual((self.directory / "syrnike13.AppImage").read_bytes(), b"linux installer")
         for feed in publisher.FEEDS:
             self.assertEqual((self.directory / feed).read_bytes(), self.contents[feed])
 
     def test_reuses_only_existing_files_with_matching_size_and_hash(self):
         self.publish()
         self.downloads.clear()
-        (self.directory / "syrnike13-0.7.1.AppImage").write_bytes(b"corrupt installer")
+        (self.directory / "syrnike13 Setup 0.7.1.exe").write_bytes(b"corrupt installer")
         self.publish()
-        self.assertCountEqual(self.downloads, [*publisher.FEEDS, "syrnike13-0.7.1.AppImage"])
+        self.assertCountEqual(self.downloads, [*publisher.FEEDS, "syrnike13.Setup.0.7.1.exe"])
 
     def test_corrupt_download_does_not_change_public_feeds_or_aliases(self):
         self.publish()
         before = {feed: (self.directory / feed).read_bytes() for feed in publisher.FEEDS}
-        (self.directory / "syrnike13-0.7.1.AppImage").unlink()
-        self.contents["syrnike13-0.7.1.AppImage"] = b"corrupt installer"
+        (self.directory / "syrnike13 Setup 0.7.1.exe").unlink()
+        self.contents["syrnike13.Setup.0.7.1.exe"] = b"corrupt installer"
         with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
             self.publish()
         for feed, body in before.items():
             self.assertEqual((self.directory / feed).read_bytes(), body)
-        self.assertFalse((self.directory / "syrnike13-0.7.1.AppImage").exists())
+        self.assertFalse((self.directory / "syrnike13 Setup 0.7.1.exe").exists())
 
     def test_manifest_hash_mismatch_does_not_publish_any_payload(self):
         manifest = yaml.safe_load(self.contents["latest.yml"])
@@ -107,7 +101,7 @@ class PublishReleaseTest(unittest.TestCase):
         self.assertEqual([p.name for p in self.directory.iterdir()], [".publish.lock"])
 
     def test_missing_manifest_target_fails_before_publishing(self):
-        self.release["assets"] = [a for a in self.release["assets"] if not a["name"].endswith(".AppImage")]
+        self.release["assets"] = [a for a in self.release["assets"] if not a["name"].endswith(".exe")]
         with self.assertRaisesRegex(ValueError, "Missing manifest target"):
             self.publish()
         self.assertFalse((self.directory / "latest.yml").exists())

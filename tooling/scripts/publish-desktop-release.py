@@ -20,8 +20,8 @@ from urllib.parse import unquote, urlparse
 import yaml
 
 
-FEEDS = ("latest.yml", "latest-mac.yml", "latest-linux.yml")
-SUFFIXES = (".exe", ".zip", ".dmg", ".AppImage", ".7z", ".blockmap")
+FEEDS = ("latest.yml",)
+SUFFIXES = (".exe", ".7z", ".blockmap")
 
 
 def filename(value):
@@ -145,11 +145,6 @@ def publish(release, directory, version):
 
             aliases = {
                 "syrnike13-setup.exe": manifests["latest.yml"]["path"],
-                "syrnike13.AppImage": manifests["latest-linux.yml"]["path"],
-                "syrnike13.dmg": next(
-                    unquote(entry["url"]) for entry in manifests["latest-mac.yml"]["files"]
-                    if entry["url"].endswith(".dmg")
-                ),
             }
             # Every target and checksum is validated before changing public files.
             for name, target in prepared.items():
