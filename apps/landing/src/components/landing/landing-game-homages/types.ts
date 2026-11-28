@@ -3,7 +3,6 @@ export type HomageKind = 'sideShooter' | 'snake' | 'paddleBall'
 export const HOMAGE_ANCHOR_IDS = [
   'logo',
   'download',
-  'platforms',
   'header-cta',
   'hero',
 ] as const

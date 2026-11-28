@@ -310,10 +310,10 @@ Caddy serves that directory read-only from `data/desktop`. The directory is serv
 Publishing flow:
 
 1. Run `.github/workflows/release-images-and-deploy.yml` on `main` with the release version typed into the form and `desktop` enabled.
-2. GitHub Actions builds Windows, macOS, and Linux packages.
+2. GitHub Actions builds the Windows package.
 3. The workflow publishes the desktop packages to the public GitHub Release, then sends only release metadata and `tooling/scripts/publish-desktop-release.py` to the production server. The server needs `curl`, Python 3, and PyYAML (`python3-yaml` on Ubuntu); GitHub credentials are not sent to it.
 4. The server downloads packages over HTTPS into a private staging directory inside `data/desktop/`. It verifies GitHub's SHA-256 digests and manifest SHA-512 hashes and sizes, reusing already-verified packages on retries. Original Windows filenames with spaces are preserved even though GitHub normalizes release asset names.
-5. Only after all packages pass verification does the publisher atomically replace package files and stable aliases, then publish `latest*.yml` last. A failed download leaves the previous public feed unchanged. Old release history is pruned only after successful publication.
+5. Only after all packages pass verification does the publisher atomically replace package files and stable aliases, then publish `latest.yml` last. A failed download leaves the previous public feed unchanged. Old release history is pruned only after successful publication.
 6. Packaged desktop clients check `https://syrnike13.ru/downloads/desktop/` for updates.
 
 The publication lock prevents concurrent publishers. Run publisher regression checks with:
@@ -342,16 +342,14 @@ GitHub Releases remain available for manual downloads. Auto-update uses the prod
 
 The landing page links to stable URLs that always point at the latest desktop release:
 
-- `https://<domain>/downloads/syrnike13.dmg`
 - `https://<domain>/downloads/syrnike13-setup.exe`
-- `https://<domain>/downloads/syrnike13.AppImage`
 
 Caddy serves these from symlinks in `data/desktop/`. The verified release publisher updates the symlinks from the staged manifests after checking every payload and before making the new feed public.
 
 Health checks:
 
 ```bash
-curl -fsSI "https://syrnike13.ru/downloads/syrnike13.dmg" | head -5
+curl -fsSI "https://syrnike13.ru/downloads/syrnike13-setup.exe" | head -5
 curl -fsSI "https://syrnike13.ru/" | head -5
 curl -fsSI "https://app.syrnike13.ru/" | head -5
 ```

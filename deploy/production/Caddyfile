@@ -85,7 +85,7 @@ import /etc/caddy/sites/*.caddyfile
 		}
 	}
 
-	@stable_download path /downloads/syrnike13.dmg /downloads/syrnike13-setup.exe /downloads/syrnike13.AppImage
+	@stable_download path /downloads/syrnike13-setup.exe
 	handle @stable_download {
 		root * /srv/desktop
 		uri strip_prefix /downloads
@@ -99,7 +99,7 @@ import /etc/caddy/sites/*.caddyfile
 		@manifest path_regexp manifest \.yml$
 		header @manifest Cache-Control "no-cache"
 
-		@artifacts path_regexp artifact \.(exe|zip|dmg|AppImage|blockmap|7z)$
+		@artifacts path_regexp artifact \.(exe|blockmap|7z)$
 		header @artifacts Cache-Control "public, max-age=31536000, immutable"
 
 		file_server
