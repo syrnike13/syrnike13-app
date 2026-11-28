@@ -1,25 +1,13 @@
-import {
-  Button,
-  buttonVariants,
-} from '@syrnike13/ui/primitives/button'
-import { cn } from '#/lib/utils'
+import { buttonVariants } from '@syrnike13/ui/primitives/button'
 import { useTranslations } from '@syrnike13/ui/i18n'
 
-import { PlatformIcon } from '#/components/platform-icons'
+import { WindowsIcon } from '#/components/icons'
 import { APP_LOGO_SRC, APP_NAME } from '#/lib/brand'
-import { desktopDownloads, type DesktopPlatform } from '#/lib/config'
+import { desktopDownload } from '#/lib/config'
+import { cn } from '#/lib/utils'
 
-interface HeroSectionProps {
-  platform: DesktopPlatform
-  onSwitchPlatform: (p: DesktopPlatform) => void
-}
-
-const PLATFORM_ORDER: DesktopPlatform[] = ['windows', 'macos', 'linux']
-
-export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
+export function HeroSection() {
   const t = useTranslations('landing')
-  const current = desktopDownloads[platform]
-  const others = PLATFORM_ORDER.filter((p) => p !== platform)
 
   return (
     <section
@@ -45,38 +33,14 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
       </div>
 
       {/* Действие — вторая точка тяжести */}
-      <div className="mt-14 flex w-full flex-col items-center gap-4">
-        <a
-          data-homage-anchor="download"
-          href={current.url}
-          className={cn(buttonVariants({ size: 'xl' }), 'w-full')}
-        >
-          <PlatformIcon platform={platform} className="size-4" />
-          {t('downloadFor', { platform: current.label })}
-        </a>
-
-        {others.length > 0 && (
-          <div
-            data-homage-anchor="platforms"
-            className="flex items-center gap-2"
-          >
-            {others.map((p) => (
-              <Button
-                key={p}
-                type="button"
-                variant="outline"
-                size="xs"
-                shape="circle"
-                onClick={() => onSwitchPlatform(p)}
-                className="gap-1.5"
-              >
-                <PlatformIcon platform={p} className="size-3" />
-                {desktopDownloads[p].label}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
+      <a
+        data-homage-anchor="download"
+        href={desktopDownload.url}
+        className={cn(buttonVariants({ size: 'xl' }), 'mt-14 w-full')}
+      >
+        <WindowsIcon className="size-4" />
+        {t('downloadFor', { platform: desktopDownload.label })}
+      </a>
     </section>
   )
 }
